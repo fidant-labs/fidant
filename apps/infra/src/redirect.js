@@ -5,9 +5,10 @@ function handler(event) {
   if (host === "fidant.se") {
     return request;
   }
+  const query = request.rawQueryString();
   return {
     statusCode: 301,
     statusDescription: "Moved Permanently",
-    headers: { location: { value: `https://fidant.se${request.uri}` } },
+    headers: { location: { value: `https://fidant.se${request.uri}${query ? `?${query}` : ""}` } },
   };
 }
