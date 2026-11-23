@@ -50,13 +50,26 @@
   },
   "enabledPlugins": {
     "superpowers@claude-plugins-official": true,
-    "ponytail@ponytail": true
+    "ponytail@sigill-tools": true,
+    "ponytail@ponytail": false
   },
   "extraKnownMarketplaces": {
-    "ponytail": {
+    "sigill-tools": {
       "source": {
-        "source": "github",
-        "repo": "DietrichGebert/ponytail"
+        "source": "settings",
+        "name": "sigill-tools",
+        "owner": { "name": "Sigill" },
+        "plugins": [
+          {
+            "name": "ponytail",
+            "description": "Pushes Claude toward the simplest working solution, pinned to a reviewed upstream commit.",
+            "source": {
+              "source": "github",
+              "repo": "DietrichGebert/ponytail",
+              "sha": "7086abecc268657a2da241a7acde62fa11793036"
+            }
+          }
+        ]
       }
     }
   }
