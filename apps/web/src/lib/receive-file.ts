@@ -37,7 +37,7 @@ import {
 import { createInbox } from "./inbox.ts";
 import { deriveFileKey } from "./keys.ts";
 import { assertFrameFits } from "./peer.ts";
-import { abortable, type FrameChannel, PROGRESS_INTERVAL_MS } from "./send-file.ts";
+import { abortable, anySignal, type FrameChannel, PROGRESS_INTERVAL_MS } from "./send-file.ts";
 import type { Sink } from "./sink.ts";
 
 /** The part of RTCDataChannel that receiving uses, so tests can pass a fake. */
@@ -102,7 +102,7 @@ export type ReceiveResult =
 export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveResult> {
   const { channel, maxMessageSize, secret } = options;
   const abort = new AbortController();
-  const signal = AbortSignal.any([options.signal, abort.signal]);
+  const signal = anySignal([options.signal, abort.signal]);
   const onClose = () => abort.abort(new Error("data channel closed"));
   channel.addEventListener("close", onClose);
   const inbox = createInbox(channel, signal);

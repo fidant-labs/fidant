@@ -84,7 +84,7 @@ export type SendResult =
 export async function sendFile(options: SendFileOptions): Promise<SendResult> {
   const { channel, maxMessageSize, file, secret } = options;
   const abort = new AbortController();
-  const signal = AbortSignal.any([options.signal, abort.signal]);
+  const signal = anySignal([options.signal, abort.signal]);
   const onClose = () => abort.abort(new Error("data channel closed"));
   channel.addEventListener("close", onClose);
   const inbox = createInbox(channel, signal);
@@ -116,6 +116,18 @@ export async function sendFile(options: SendFileOptions): Promise<SendResult> {
     if (answer.kind !== RecipientKind.ACCEPT) throw new Error("expected ACCEPT or DECLINE");
     options.onAccepted();
 
+    // The recipient may send nothing more until it has END, but read its next
+    // frame now: a bad frame mid-stream then stops sending right away instead
+    // of after the whole file.
+    let streaming = true;
+    const reply = inbox.next();
+    reply.then(
+      () => {
+        if (streaming) abort.abort(new Error("recipient sent a frame before END"));
+      },
+      (error: unknown) => abort.abort(error),
+    );
+
     // Progress counts bytes handed to the channel minus what is still
     // buffered, so it follows what has actually gone out. Padding counts as
     // sent bytes, but progress never goes past the file size.
@@ -146,8 +158,9 @@ export async function sendFile(options: SendFileOptions): Promise<SendResult> {
 
     const sha256 = await abortable(options.sha256, signal);
     send(await writer.encrypt(SenderKind.END, encodeEnd(sha256, file.size)));
+    streaming = false;
 
-    const receipt = await inbox.next();
+    const receipt = await abortable(reply, signal);
     if (receipt.kind !== RecipientKind.RECEIPT) throw new Error("expected RECEIPT");
     clearInterval(progressTimer);
     progressTimer = undefined;
@@ -183,6 +196,32 @@ function bufferLow(channel: FrameChannel, signal: AbortSignal): Promise<void> {
     channel.addEventListener("bufferedamountlow", onLow);
     signal.addEventListener("abort", onAbort, { once: true });
   });
+}
+
+/**
+ * A signal that aborts when any of `signals` does, with its reason. Uses
+ * AbortSignal.any where the browser has it (Safari 17.4+, Firefox 124+).
+ */
+export function anySignal(signals: readonly AbortSignal[]): AbortSignal {
+  const native = (AbortSignal as { any?: (signals: AbortSignal[]) => AbortSignal }).any;
+  if (typeof native === "function") return native.call(AbortSignal, [...signals]);
+  return anySignalFallback(signals);
+}
+
+/** anySignal for browsers without AbortSignal.any. Exported for tests. */
+export function anySignalFallback(signals: readonly AbortSignal[]): AbortSignal {
+  const controller = new AbortController();
+  const already = signals.find((s) => s.aborted);
+  if (already) {
+    controller.abort(already.reason);
+    return controller.signal;
+  }
+  const onAbort = (event: Event) => {
+    for (const s of signals) s.removeEventListener("abort", onAbort);
+    controller.abort((event.target as AbortSignal).reason);
+  };
+  for (const s of signals) s.addEventListener("abort", onAbort, { once: true });
+  return controller.signal;
 }
 
 /** Resolves or rejects like `promise`, or rejects as soon as `signal` aborts. */

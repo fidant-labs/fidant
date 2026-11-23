@@ -17,9 +17,22 @@ import {
 } from "./frames.ts";
 import { deriveFileKey } from "./keys.ts";
 import { createLink } from "./link.ts";
-import { type FrameChannel, HASH_SLICE_BYTES, hashFile, sendFile } from "./send-file.ts";
+import {
+  anySignal,
+  anySignalFallback,
+  type FrameChannel,
+  HASH_SLICE_BYTES,
+  hashFile,
+  sendFile,
+} from "./send-file.ts";
 
-type Behaviour = "accept" | "decline" | "bad-receipt" | "close-after-meta" | "wrong-key";
+type Behaviour =
+  | "accept"
+  | "decline"
+  | "bad-receipt"
+  | "close-after-meta"
+  | "wrong-key"
+  | "garbage-mid-stream";
 
 /**
  * A fake open data channel whose far end is a scripted recipient using the
@@ -71,6 +84,12 @@ function fakeChannel(secret: string, behaviour: Behaviour) {
       else await reply(RecipientKind.ACCEPT, new Uint8Array());
     } else if (frame.kind === SenderKind.CHUNK) {
       received.bytes += verifier.chunk(frame.body).length;
+      if (behaviour === "garbage-mid-stream" && received.chunkFrames.length === 1) {
+        const garbage = new Uint8Array(HEADER_BYTES + TAG_BYTES + 32);
+        setTimeout(() =>
+          target.dispatchEvent(new MessageEvent("message", { data: garbage.buffer })),
+        );
+      }
     } else if (frame.kind === SenderKind.END) {
       const sha = verifier.end(frame.body);
       if (behaviour === "bad-receipt") sha[0] = (sha[0] as number) ^ 1;
@@ -211,6 +230,44 @@ test("rejects an answer sealed with the wrong key", async () => {
   const fake = fakeChannel(secret, "wrong-key");
   await assert.rejects(sendFile(options(fake.channel, secret, new Uint8Array(10)).value));
 });
+
+test("stops sending as soon as the recipient sends a bad frame mid-stream", async () => {
+  const { secret } = createLink("https://localhost");
+  const fake = fakeChannel(secret, "garbage-mid-stream");
+  const size = 4 * 1024 * 1024;
+  await assert.rejects(sendFile(options(fake.channel, secret, new Uint8Array(size)).value));
+  await fake.done();
+  const total = paddedLength(size) / MAX_CHUNK_BYTES;
+  assert.ok(
+    fake.received.chunkFrames.length < total / 2,
+    `sent ${fake.received.chunkFrames.length} of ${total} chunks`,
+  );
+});
+
+for (const [label, any] of [
+  ["anySignal", anySignal],
+  ["anySignalFallback", anySignalFallback],
+] as const) {
+  test(`${label} aborts with the first signal's reason`, () => {
+    const a = new AbortController();
+    const b = new AbortController();
+    const signal = any([a.signal, b.signal]);
+    assert.equal(signal.aborted, false);
+    let events = 0;
+    signal.addEventListener("abort", () => events++);
+    b.abort(new Error("second"));
+    a.abort(new Error("first"));
+    assert.equal(signal.aborted, true);
+    assert.equal((signal.reason as Error).message, "second");
+    assert.equal(events, 1);
+
+    const done = new AbortController();
+    done.abort(new Error("already"));
+    const early = any([new AbortController().signal, done.signal]);
+    assert.equal(early.aborted, true);
+    assert.equal((early.reason as Error).message, "already");
+  });
+}
 
 test("hashFile matches node:crypto across slice boundaries", async () => {
   for (const size of [0, 1, HASH_SLICE_BYTES - 1, HASH_SLICE_BYTES, HASH_SLICE_BYTES + 7]) {
