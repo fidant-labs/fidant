@@ -103,6 +103,19 @@ export function FileCard({ name, size }: { name: string; size: string }) {
   );
 }
 
+function Facts({ rows }: { rows: ReadonlyArray<readonly [string, ComponentChildren]> }) {
+  return (
+    <dl class="facts">
+      {rows.map(([term, value]) => (
+        <div key={term}>
+          <dt>{term}</dt>
+          <dd>{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 export function TechDetails({
   rows,
 }: {
@@ -111,14 +124,7 @@ export function TechDetails({
   return (
     <details class="tech">
       <summary>Technical details</summary>
-      <dl>
-        {rows.map(([term, value]) => (
-          <div key={term}>
-            <dt>{term}</dt>
-            <dd>{value}</dd>
-          </div>
-        ))}
-      </dl>
+      <Facts rows={rows} />
     </details>
   );
 }
@@ -145,14 +151,7 @@ export function ServerPanel({
   return (
     <section class="server-panel" aria-labelledby="server-panel-heading">
       <h2 id="server-panel-heading">What our server has right now</h2>
-      <dl>
-        {rows.map(([term, value]) => (
-          <div key={term}>
-            <dt>{term}</dt>
-            <dd>{value}</dd>
-          </div>
-        ))}
-      </dl>
+      <Facts rows={rows} />
     </section>
   );
 }
