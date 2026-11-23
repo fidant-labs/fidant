@@ -354,6 +354,21 @@ export function decodeEnd(body: Uint8Array): { sha256: Uint8Array; size: number 
   return { sha256: body.slice(0, 32), size: readU64(view, 32) };
 }
 
+/**
+ * Thrown by ReceiveVerifier.end when every frame was valid but the file bytes
+ * do not hash to END's checksum. `actual` is the checksum of what arrived, for
+ * the RECEIPT that tells the sender.
+ */
+export class ChecksumMismatchError extends Error {
+  readonly actual: Uint8Array;
+
+  constructor(actual: Uint8Array) {
+    super("checksum mismatch");
+    this.name = "ChecksumMismatchError";
+    this.actual = actual;
+  }
+}
+
 function equalBytes(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;
   let diff = 0;
@@ -411,7 +426,10 @@ export class ReceiveVerifier {
     });
   }
 
-  /** Checks the END body. Returns the checksum of the received file bytes. */
+  /**
+   * Checks the END body. Returns the checksum of the received file bytes, or
+   * throws ChecksumMismatchError if it differs from END's.
+   */
   end(endBody: Uint8Array): Uint8Array {
     return this.step(() => {
       if (this.size === undefined) throw new Error("END before META");
@@ -420,7 +438,7 @@ export class ReceiveVerifier {
       if (end.size !== this.size) throw new Error("END size differs from META size");
       if (this.received !== this.expected) throw new Error("END before all chunks were received");
       const digest = this.hash.digest();
-      if (!equalBytes(digest, end.sha256)) throw new Error("checksum mismatch");
+      if (!equalBytes(digest, end.sha256)) throw new ChecksumMismatchError(digest.slice());
       this.digest = digest;
       return digest.slice();
     });

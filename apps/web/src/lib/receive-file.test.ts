@@ -13,7 +13,13 @@ import {
 } from "./frames.ts";
 import { createTransferId, deriveFileKey } from "./keys.ts";
 import { createLink } from "./link.ts";
-import { type FileOffer, type ReceiveFileOptions, receiveFile } from "./receive-file.ts";
+import {
+  type FileOffer,
+  ReceiveError,
+  type ReceiveFailure,
+  type ReceiveFileOptions,
+  receiveFile,
+} from "./receive-file.ts";
 import { type FrameChannel, type SendResult, sendFile } from "./send-file.ts";
 import { BlobSink, type Sink } from "./sink.ts";
 
@@ -108,7 +114,13 @@ type RunOptions = {
   sink?: Sink;
   onOffer?: ReceiveFileOptions["onOffer"];
   signal?: AbortSignal;
+  /** The checksum the sender puts in END. Defaults to the real one. */
+  senderSha256?: Uint8Array;
 };
+
+/** Matches a ReceiveError with this reason. */
+const failedWith = (reason: ReceiveFailure) => (error: unknown) =>
+  error instanceof ReceiveError && error.reason === reason;
 
 /** Runs the real sendFile against receiveFile over a channel pair. */
 function run(options: RunOptions) {
@@ -125,7 +137,7 @@ function run(options: RunOptions) {
     maxMessageSize: 65536,
     file,
     secret,
-    sha256: Promise.resolve(sha256(options.bytes)),
+    sha256: Promise.resolve(options.senderSha256 ?? sha256(options.bytes)),
     signal: new AbortController().signal,
     onAccepted: () => {},
     onProgress: () => {},
@@ -201,6 +213,58 @@ test("rejects a link with the wrong secret before offering anything", async () =
   assert.equal(r.offers.length, 0);
   r.pair.close();
   await assert.rejects(r.sending);
+});
+
+test("a checksum mismatch discards the file and tells the sender", async () => {
+  const sink = new RecordingSink();
+  const bytes = new Uint8Array(randomBytes(100_000));
+  const wrong = sha256(bytes);
+  wrong[0] = (wrong[0] as number) ^ 1;
+  const r = run({ bytes, sink, senderSha256: wrong });
+  await assert.rejects(r.receiving, failedWith("checksum"));
+  assert.equal(sink.aborted, true);
+  assert.equal(sink.closed, false);
+  assert.deepEqual(await r.sending, { type: "receipt", match: false });
+});
+
+test("failures say whether the sender, the connection or the sink failed", async () => {
+  // A frame that does not decrypt: the sender sent invalid data.
+  let chunks = 0;
+  const tampered = channelPair({
+    toRecipient(frame) {
+      if (frame[1] === SenderKind.CHUNK && ++chunks === 2)
+        frame[HEADER_BYTES] = (frame[HEADER_BYTES] as number) ^ 1;
+      return frame;
+    },
+  });
+  const invalid = run({ bytes: new Uint8Array(randomBytes(200_000)), pair: tampered });
+  await assert.rejects(invalid.receiving, failedWith("invalid"));
+  tampered.close();
+  await assert.rejects(invalid.sending);
+
+  // The channel closing first: the connection was lost.
+  const closing = channelPair();
+  const closed = run({
+    bytes: new Uint8Array(1000),
+    pair: closing,
+    onOffer: async () => {
+      closing.close();
+      return new RecordingSink();
+    },
+  });
+  await assert.rejects(closed.receiving, failedWith("connection"));
+
+  // The sink failing: the file could not be saved.
+  const broken = new RecordingSink();
+  broken.write = () => Promise.reject(new Error("disk full"));
+  const unsaved = run({ bytes: new Uint8Array(randomBytes(100_000)), sink: broken });
+  await assert.rejects(
+    unsaved.receiving,
+    (error: unknown) => failedWith("save")(error) && /disk full/.test(String(error)),
+  );
+  assert.equal(broken.aborted, true);
+  unsaved.pair.close();
+  await assert.rejects(unsaved.sending);
 });
 
 test("aborts the sink when the channel closes mid-transfer", async () => {

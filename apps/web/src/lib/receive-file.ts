@@ -14,10 +14,17 @@
 // other ending (a frame that does not decrypt, wrong order, too many bytes, the
 // channel closing first) aborts the sink, so no partial file is kept.
 //
+// If every frame was valid but the file bytes do not hash to END's checksum,
+// the recipient still sends RECEIPT, with the checksum it computed, so the
+// sender learns of the mismatch; then it rejects. Every rejection is a
+// ReceiveError whose `reason` tells a checksum mismatch, a misbehaving sender,
+// a lost connection and a failed save apart.
+//
 // No DOM or UI here beyond the data channel API, so tests can drive it with a
 // fake channel. The file name only ever reaches onOffer.
 
 import {
+  ChecksumMismatchError,
   decodeInit,
   decodeMeta,
   type Frame,
@@ -59,6 +66,27 @@ export type ReceiveFileOptions = {
   onProgress(bytesReceived: number): void;
 };
 
+export type ReceiveFailure =
+  /** Every frame was valid, but the file did not match END's checksum. RECEIPT was sent. */
+  | "checksum"
+  /** The sender sent a frame that failed to decrypt, came out of order or broke the format. */
+  | "invalid"
+  /** The channel closed or the transfer was aborted. */
+  | "connection"
+  /** The sink failed to write or close the file. */
+  | "save";
+
+/** Why receiveFile rejected. The message is the underlying error's. */
+export class ReceiveError extends Error {
+  readonly reason: ReceiveFailure;
+
+  constructor(reason: ReceiveFailure, message: string, options?: { cause: unknown }) {
+    super(message, options);
+    this.name = "ReceiveError";
+    this.reason = reason;
+  }
+}
+
 export type ReceiveResult =
   /** The recipient declined; DECLINE was sent. */
   | { type: "declined" }
@@ -68,7 +96,8 @@ export type ReceiveResult =
 /**
  * Receives one file. Resolves after sending DECLINE or RECEIPT; the sender
  * closes the channel after either, which is then no longer an error. Rejects
- * (after aborting the sink) on any failure, abort or early channel close.
+ * with a ReceiveError (after aborting the sink) on any failure, abort or early
+ * channel close.
  */
 export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveResult> {
   const { channel, maxMessageSize, secret } = options;
@@ -135,29 +164,65 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
       pending = undefined;
       if (frame.kind === SenderKind.CHUNK) {
         const data = verifier.chunk(frame.body);
-        if (data.length > 0) await abortable(sink.write(data), signal);
+        if (data.length > 0) await abortable(saving(sink.write(data)), signal);
         const now = Date.now();
         if (now - reportedAt >= PROGRESS_INTERVAL_MS) {
           reportedAt = now;
           options.onProgress(verifier.bytesReceived);
         }
       } else if (frame.kind === SenderKind.END) {
-        sha256 = verifier.end(frame.body);
+        try {
+          sha256 = verifier.end(frame.body);
+        } catch (error) {
+          if (!(error instanceof ChecksumMismatchError)) throw error;
+          // Discard the file first, then tell the sender what arrived.
+          const discarded = sink;
+          sink = undefined;
+          await discarded.abort().catch(() => {});
+          send(await writer.encrypt(RecipientKind.RECEIPT, error.actual));
+          throw new ReceiveError("checksum", error.message, { cause: error });
+        }
       } else {
         throw new Error("expected CHUNK or END");
       }
     }
     options.onProgress(verifier.bytesReceived);
 
-    const blob = await sink.close();
+    const blob = await saving(sink.close());
     send(await writer.encrypt(RecipientKind.RECEIPT, sha256));
     return { type: "received", sha256, blob };
   } catch (error) {
     if (sink) await sink.abort().catch(() => {});
-    throw error;
+    throw classify(error, signal);
   } finally {
     channel.removeEventListener("close", onClose);
     inbox.stop();
     abort.abort();
   }
+}
+
+/** Marks a sink failure as a save failure. */
+async function saving<T>(promise: Promise<T>): Promise<T> {
+  try {
+    return await promise;
+  } catch (error) {
+    throw new ReceiveError("save", messageOf(error), { cause: error });
+  }
+}
+
+/**
+ * The ReceiveError for a failure. Once the transfer was aborted (channel
+ * closed, caller gave up), whatever failed next counts as the connection.
+ */
+function classify(error: unknown, signal: AbortSignal): ReceiveError {
+  if (error instanceof ReceiveError && error.reason === "checksum") return error;
+  if (signal.aborted) {
+    return new ReceiveError("connection", messageOf(signal.reason), { cause: error });
+  }
+  if (error instanceof ReceiveError) return error;
+  return new ReceiveError("invalid", messageOf(error), { cause: error });
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

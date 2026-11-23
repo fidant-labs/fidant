@@ -31,7 +31,7 @@ import { deriveSignalKey } from "../lib/keys.ts";
 import { parseRecipientLocation } from "../lib/link.ts";
 import { createRecipientPeer, type Peer } from "../lib/peer.ts";
 import type { FileOffer } from "../lib/receive-file.ts";
-import { receiveFile } from "../lib/receive-file.ts";
+import { ReceiveError, receiveFile } from "../lib/receive-file.ts";
 import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
 import { createSink, isPickerCancel, type Sink } from "../lib/sink.ts";
 
@@ -70,6 +70,9 @@ const REFUSED_TEXT = {
 } as const;
 const OFFLINE_TEXT = "The sender is offline";
 const LOST_TEXT = "Transfer failed. The connection to the sender was lost.";
+const CHECKSUM_TEXT = "Transfer failed: the file did not match its checksum.";
+const INVALID_TEXT = "Transfer failed: the sender sent invalid data.";
+const SAVE_TEXT = "Transfer failed. Could not save the file.";
 const CONNECT_TEXT = "Transfer failed. Could not connect to the sender.";
 const SERVER_TEXT = "Transfer failed. Could not reach the server.";
 
@@ -211,7 +214,14 @@ export function ReceivePage() {
           if (result.type === "declined") finish({ s: "declined" }, true);
           else if (offered) finish({ s: "done", offer: offered, blob: result.blob }, true);
         },
-        () => lost(),
+        (error: unknown) => {
+          const reason = error instanceof ReceiveError ? error.reason : "connection";
+          // RECEIPT went out for a mismatch: linger so it reaches the sender.
+          if (reason === "checksum") finish({ s: "failed", text: CHECKSUM_TEXT }, true);
+          else if (reason === "invalid") finish({ s: "failed", text: INVALID_TEXT });
+          else if (reason === "save") finish({ s: "failed", text: SAVE_TEXT });
+          else lost();
+        },
       );
     };
 

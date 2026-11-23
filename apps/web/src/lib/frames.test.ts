@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
 import { test } from "node:test";
 import {
+  ChecksumMismatchError,
   decodeEnd,
   decodeHeader,
   decodeInit,
@@ -488,7 +489,13 @@ test("verifier: truncation makes finish() throw", () => {
   const wrongHash = new ReceiveVerifier();
   wrongHash.meta(meta(10));
   for (const c of chunks) wrongHash.chunk(c);
-  assert.throws(() => wrongHash.end(encodeEnd(randomBytes(32), 10)), /checksum/);
+  assert.throws(
+    () => wrongHash.end(encodeEnd(randomBytes(32), 10)),
+    (error: unknown) =>
+      error instanceof ChecksumMismatchError &&
+      Buffer.from(error.actual).equals(Buffer.from(sha256(file))),
+    "a mismatch says what the recipient computed",
+  );
   assert.throws(() => wrongHash.finish());
 
   const nothing = new ReceiveVerifier();
