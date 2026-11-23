@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Fragment handoff check</title>
+    <link rel="stylesheet" href="/src/bench/bench.css" />
+    <link rel="stylesheet" href="/src/handoff.css" />
+  </head>
+  <body data-mode="make">
+    <h1>Fragment handoff check (SIG-7)</h1>
+    <p>
+      Does a link fragment survive email, link scanners and chat apps? Send a probe link through a
+      channel, open it on the other side, and this page reports whether the fragment arrived
+      intact. The key in the link is a <strong>dummy made for this test, not a real key</strong>.
+      Nothing on this page sends data anywhere.
+    </p>
+
+    <section id="landing" aria-labelledby="landing-heading" hidden>
+      <h2 id="landing-heading">What arrived</h2>
+      <p id="verdict" role="status" aria-live="polite"></p>
+      <table>
+        <tbody id="landing-results"></tbody>
+      </table>
+      <p id="cleared"></p>
+    </section>
+
+    <section aria-labelledby="make-heading">
+      <h2 id="make-heading">Make a probe link</h2>
+      <p>
+        Open this page on an address the receiving device can reach (the LAN address printed by the
+        bench server), then send the link.
+      </p>
+      <p><code id="link"></code></p>
+      <div class="buttons">
+        <button id="share" type="button">Share</button>
+        <button id="email" type="button">Email</button>
+        <button id="copy" type="button">Copy</button>
+        <button id="new-link" type="button">New link</button>
+      </div>
+      <p id="make-status" role="status" aria-live="polite"></p>
+    </section>
+
+    <section aria-labelledby="paste-heading">
+      <h2 id="paste-heading">Check a pasted link</h2>
+      <p>
+        When the received link cannot open this page, copy it from the message and paste it here.
+      </p>
+      <form id="paste-form">
+        <label>
+          Received link
+          <input id="paste-input" type="text" autocomplete="off" spellcheck="false" size="60" />
+        </label>
+        <button type="submit">Check</button>
+      </form>
+    </section>
+
+    <script type="module" src="/src/handoff.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "name": "@sigill/spike-split-key",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "bench": "vite build && node serve.ts",
+    "bench:run": "node src/runner/run.ts",
+    "typecheck": "tsc --noEmit -p .",
+    "test": "node --test \"src/**/*.test.ts\""
+  },
+  "devDependencies": {
+    "@playwright/test": "catalog:",
+    "@types/node": "^24.19.2",
+    "vite": "^8.3.8"
+  }
+}

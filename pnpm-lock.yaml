@@ -81,6 +81,18 @@ importers:
         specifier: ^24.19.2
         version: 24.19.2
 
+  spikes/split-key:
+    devDependencies:
+      '@playwright/test':
+        specifier: 'catalog:'
+        version: 1.65.1
+      '@types/node':
+        specifier: ^24.19.2
+        version: 24.19.2
+      vite:
+        specifier: ^8.3.8
+        version: 8.3.8(@types/node@24.19.2)(jiti@2.7.0)
+
 packages:
 
   '@biomejs/biome@2.6.8':
