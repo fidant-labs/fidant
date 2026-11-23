@@ -1,0 +1,12 @@
+{
+  "name": "@sigill/spike-split-key",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p .",
+    "test": "node --test \"src/**/*.test.ts\""
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2"
+  }
+}
