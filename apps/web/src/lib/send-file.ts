@@ -4,7 +4,7 @@
 // Frames on the channel (see frames.ts):
 //
 //   sender → recipient   INIT(transferId)                     plaintext
-//   sender → recipient   META{name, size, type, chunkSize}    encrypted
+//   sender → recipient   META{name, size, type, chunkSize, from}  encrypted
 //   recipient → sender   ACCEPT  (or DECLINE: stop here)
 //   sender → recipient   CHUNK × n                            all chunkSize, zero-padded
 //   sender → recipient   END(sha256, size)
@@ -58,6 +58,8 @@ export type SendFileOptions = {
   /** From PeerOpenInfo. Every frame is checked against it. */
   maxMessageSize: number;
   file: Blob & { readonly name: string; readonly type: string };
+  /** The sender's own name for the recipient to see, or "". Travels only inside META. */
+  from: string;
   /** The recipient's link secret. */
   secret: string;
   /** The file's SHA-256 from hashFile. Awaited before END. */
@@ -82,7 +84,7 @@ export type SendResult =
  * decrypt, or the recipient sends something out of order.
  */
 export async function sendFile(options: SendFileOptions): Promise<SendResult> {
-  const { channel, maxMessageSize, file, secret } = options;
+  const { channel, maxMessageSize, file, secret, from } = options;
   const abort = new AbortController();
   const signal = anySignal([options.signal, abort.signal]);
   const onClose = () => abort.abort(new Error("data channel closed"));
@@ -112,7 +114,7 @@ export async function sendFile(options: SendFileOptions): Promise<SendResult> {
     if (chunkSize < 1) {
       throw new Error("max message size too small");
     }
-    const meta = { name: file.name, size: file.size, type: file.type, chunkSize };
+    const meta = { name: file.name, size: file.size, type: file.type, chunkSize, from };
     send(await writer.encrypt(SenderKind.META, encodeMeta(meta)));
 
     const answer = await inbox.next();
