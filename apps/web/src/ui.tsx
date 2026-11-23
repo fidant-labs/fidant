@@ -6,7 +6,8 @@ import { buttonVariants } from "#components/ui/button";
 import { Card, CardContent } from "#components/ui/card";
 import { useI18n } from "./i18n/I18n.tsx";
 import { LANGUAGE_NAMES } from "./i18n/language.ts";
-import { FILE_DATA, passedOn, type Relayed } from "./lib/server-facts.ts";
+import { formatBytes } from "./lib/format.ts";
+import type { Relayed } from "./lib/server-facts.ts";
 
 const ICONS = {
   computer: (
@@ -207,9 +208,10 @@ export function TechDetails({
 }: {
   rows: ReadonlyArray<readonly [string, ComponentChildren]>;
 }) {
+  const { t } = useI18n();
   return (
     <details class="mt-8 text-[0.9rem] [&_code]:text-[0.85rem]">
-      <summary class="cursor-pointer text-muted-foreground">Technical details</summary>
+      <summary class="cursor-pointer text-muted-foreground">{t.common.techDetails}</summary>
       <Facts rows={rows} />
     </details>
   );
@@ -226,19 +228,19 @@ export function ServerPanel({
   relayed: Relayed;
   afterwards: string;
 }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const rows: ReadonlyArray<readonly [string, string]> = [
-    ["Sees", sees],
-    ["Holds", holds],
-    ["Passed on", passedOn(relayed)],
-    ["File data", FILE_DATA],
-    ["Logs", t.server.logs],
-    ["Afterwards", afterwards],
+    [t.server.seesLabel, sees],
+    [t.server.holdsLabel, holds],
+    [t.server.passedOnLabel, t.server.passedOn(relayed.messages, formatBytes(relayed.bytes, lang))],
+    [t.server.fileDataLabel, t.server.fileData],
+    [t.server.logsLabel, t.server.logs],
+    [t.server.afterwardsLabel, afterwards],
   ];
   return (
     <section class="mt-8 text-[0.9rem]" aria-labelledby="server-panel-heading">
       <h2 id="server-panel-heading" class="m-0 text-[1rem] font-bold">
-        What our server has right now
+        {t.server.heading}
       </h2>
       <Facts rows={rows} />
     </section>

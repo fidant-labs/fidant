@@ -28,20 +28,14 @@ import { cn } from "cn";
 import type { ComponentChildren, VNode } from "preact";
 import { useEffect, useMemo, useReducer, useRef, useState } from "preact/hooks";
 import { Button, buttonVariants } from "#components/ui/button";
+import { useI18n } from "../i18n/I18n.tsx";
 import { displayName, formatBytes, formatProgress, toHex } from "../lib/format.ts";
 import { deriveSignalKey } from "../lib/keys.ts";
 import { parseRecipientLocation } from "../lib/link.ts";
 import { createRecipientPeer, type Peer } from "../lib/peer.ts";
 import type { FileOffer } from "../lib/receive-file.ts";
 import { ReceiveError, receiveFile } from "../lib/receive-file.ts";
-import {
-  AFTERWARDS_RECIPIENT,
-  addRelay,
-  NO_RELAYS,
-  recipientHolds,
-  SEES_RECIPIENT,
-  type Tie,
-} from "../lib/server-facts.ts";
+import { addRelay, NO_RELAYS, type Tie } from "../lib/server-facts.ts";
 import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
 import { createSink, isPickerCancel, type Sink } from "../lib/sink.ts";
 import { Direct, FileCard, Icon, Page, Problem, ServerPanel, TechDetails } from "../ui.tsx";
@@ -137,6 +131,7 @@ const HOST_GONE_GRACE_MS = 1000;
 const LINGER_MS = 5000;
 
 export function ReceivePage() {
+  const { t, lang } = useI18n();
   const link = useMemo(() => parseRecipientLocation(location), []);
   const [view, setView] = useState<View>({ s: "connecting" });
   const [picking, setPicking] = useState(false);
@@ -437,10 +432,10 @@ export function ReceivePage() {
 
   const panel = reachedServer ? (
     <ServerPanel
-      sees={SEES_RECIPIENT}
-      holds={recipientHolds(tie)}
+      sees={t.server.seesRecipient}
+      holds={t.server.recipientHolds(tie)}
       relayed={relayed}
-      afterwards={AFTERWARDS_RECIPIENT}
+      afterwards={t.server.afterwardsRecipient}
     />
   ) : null;
 
@@ -462,7 +457,7 @@ export function ReceivePage() {
           {offer.from && (
             <p class="text-muted-foreground">Name typed by the sender, not verified.</p>
           )}
-          <FileCard name={offer.name} size={formatBytes(offer.size)} />
+          <FileCard name={offer.name} size={formatBytes(offer.size, lang)} />
           <div class="mt-6 mb-8 flex flex-col items-start gap-2">
             <Button type="button" size="lg" onClick={onAccept} disabled={picking}>
               <Icon name="download" class="size-4" /> Download
@@ -486,7 +481,7 @@ export function ReceivePage() {
       body = (
         <>
           <h1>Downloading…</h1>
-          <FileCard name={offer.name} size={formatBytes(offer.size)} />
+          <FileCard name={offer.name} size={formatBytes(offer.size, lang)} />
           <div class="my-3 flex flex-wrap items-center gap-3">
             <progress
               class="min-w-40 flex-1 accent-primary"
@@ -495,7 +490,7 @@ export function ReceivePage() {
               value={offer.size === 0 ? 0 : bytes}
             />
             <span class="text-[0.85rem] text-muted-foreground tabular-nums">
-              {formatProgress(bytes, offer.size)}
+              {formatProgress(bytes, offer.size, lang)}
             </span>
           </div>
           <Direct from="Sender" to="You" state="active" />
@@ -514,7 +509,7 @@ export function ReceivePage() {
             <Icon name="check" class="size-8 stroke-[2.5]" />
             <h1 class="m-0">Download complete</h1>
           </div>
-          <FileCard name={offer.name} size={formatBytes(offer.size)} />
+          <FileCard name={offer.name} size={formatBytes(offer.size, lang)} />
           <p>We checked it: this is exactly the file that was sent.</p>
           {blob ? (
             <div class="flex flex-wrap items-center gap-4">

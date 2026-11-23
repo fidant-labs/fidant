@@ -24,6 +24,8 @@ import { Alert, AlertDescription } from "#components/ui/alert";
 import { Button } from "#components/ui/button";
 import { Input } from "#components/ui/input";
 import { Label } from "#components/ui/label";
+import type { Messages } from "../i18n/en.ts";
+import { useI18n } from "../i18n/I18n.tsx";
 import { formatBytes, toHex } from "../lib/format.ts";
 import { hasForbiddenCharacters, MAX_FROM_LENGTH, metaFits } from "../lib/frames.ts";
 import { deriveSignalKey } from "../lib/keys.ts";
@@ -41,13 +43,7 @@ import {
   type SenderState,
   update,
 } from "../lib/sender-state.ts";
-import {
-  addRelay,
-  NO_RELAYS,
-  SEES_SENDER,
-  senderAfterwards,
-  senderHolds,
-} from "../lib/server-facts.ts";
+import { addRelay, NO_RELAYS } from "../lib/server-facts.ts";
 import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
 import { FileCard, Icon, lede, Page, ServerPanel, TechDetails } from "../ui.tsx";
 import { RecipientList } from "./RecipientList.tsx";
@@ -65,6 +61,9 @@ type Connection = {
   deadline?: ReturnType<typeof setTimeout>;
 };
 
+// Errors are kept as keys and turned into text in render, so they follow a language switch.
+type ErrorOf<K extends "fromError" | "fileError" | "nameError"> = keyof Messages["send"][K] | "";
+
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 const field = "flex flex-1 flex-col gap-1";
@@ -72,15 +71,16 @@ const fieldError = "mt-1 mb-0 text-destructive";
 const hint = "text-[0.9rem] text-muted-foreground";
 
 export function SendPage() {
+  const { t, lang } = useI18n();
   const [file, setFile] = useState<File | undefined>(undefined);
   const [hash, setHash] = useState<Hash>({ status: "none" });
   const [sender, setSender] = useState<SenderState>(initialSenderState);
   const [lostServer, setLostServer] = useState(false);
   const [relayed, countRelay] = useReducer(addRelay, NO_RELAYS);
-  const [nameError, setNameError] = useState("");
-  const [fileError, setFileError] = useState("");
+  const [nameError, setNameError] = useState<ErrorOf<"nameError">>("");
+  const [fileError, setFileError] = useState<ErrorOf<"fileError">>("");
   const [from, setFrom] = useState("");
-  const [fromError, setFromError] = useState("");
+  const [fromError, setFromError] = useState<ErrorOf<"fromError">>("");
 
   // Mutable state used from network callbacks, outside render.
   const senderRef = useRef<SenderState>(initialSenderState);
@@ -271,13 +271,7 @@ export function SendPage() {
     const unsafe =
       !!chosen && (hasForbiddenCharacters(chosen.name) || hasForbiddenCharacters(chosen.type));
     const fits = !chosen || (!unsafe && metaFits(chosen));
-    setFileError(
-      fits
-        ? ""
-        : unsafe
-          ? "This file name contains characters that can't be sent. Rename the file and try again."
-          : "This file name is too long to send. Rename the file and try again.",
-    );
+    setFileError(fits ? "" : unsafe ? "unsafe" : "tooLong");
     setFile(fits ? chosen : undefined);
     // Clear the input so it does not show a file that will not be sent.
     if (!fits) {
@@ -314,12 +308,12 @@ export function SendPage() {
     const input = form.elements.namedItem("name") as HTMLInputElement;
     const name = input.value.trim();
     if (!name) {
-      setNameError("Enter a name.");
+      setNameError("missing");
       input.focus();
       return;
     }
     if (sender.recipients.some((r) => r.name === name)) {
-      setNameError("That name is already on the list.");
+      setNameError("taken");
       input.focus();
       return;
     }
@@ -327,9 +321,9 @@ export function SendPage() {
     if (sender.recipients.length === 0) {
       const typed = from.trim();
       const problem = hasForbiddenCharacters(typed)
-        ? "Your name contains characters that can't be sent. Remove them and try again."
+        ? "unsafe"
         : file && !metaFits(file, typed)
-          ? "Your name and the file name are too long together. Shorten your name or rename the file."
+          ? "tooLong"
           : "";
       setFromError(problem);
       if (problem) {
@@ -366,32 +360,24 @@ export function SendPage() {
 
   return (
     <Page current="send">
-      <h1>Send a file</h1>
-      <p class={lede}>
-        Your file goes straight from this browser to the people you choose. It's encrypted on the
-        way and never uploaded or stored.
-      </p>
+      <h1>{t.send.title}</h1>
+      <p class={lede}>{t.send.lede}</p>
 
       {isLocalhost && (
         <Alert role="note" className="my-4">
-          <AlertDescription>
-            This page is open on localhost, so the links won't work on other computers. Open the
-            network address the server printed instead.
-          </AlertDescription>
+          <AlertDescription>{t.send.localhost}</AlertDescription>
         </Alert>
       )}
       {lostServer && (
         <Alert variant="destructive" className="my-4">
-          <AlertDescription>
-            Lost the connection to the server. Files already on their way can finish, but nobody new
-            can connect. Reload the page to start again.
-          </AlertDescription>
+          <AlertDescription>{t.send.lostServer}</AlertDescription>
         </Alert>
       )}
 
       <div class={`${field} my-4`}>
         <Label htmlFor="from">
-          Your name <span class="font-normal text-muted-foreground">(optional)</span>
+          {t.send.fromLabel}{" "}
+          <span class="font-normal text-muted-foreground">{t.send.optional}</span>
         </Label>
         <Input
           id="from"
@@ -406,11 +392,11 @@ export function SendPage() {
         />
         {fromError && (
           <p id="from-error" class={fieldError}>
-            {fromError}
+            {t.send.fromError[fromError]}
           </p>
         )}
         <p id="from-hint" class={`m-0 ${hint}`}>
-          Shown to the people you send to.
+          {t.send.fromHint}
         </p>
       </div>
 
@@ -430,51 +416,49 @@ export function SendPage() {
           >
             <Icon name="file" class="size-8" />
             <span>
-              <strong class="text-primary">
-                {file ? "Choose a different file" : "Choose a file"}
-              </strong>{" "}
-              or drop it here
+              <strong class="text-primary">{file ? t.send.chooseOther : t.send.chooseFile}</strong>{" "}
+              {t.send.orDrop}
             </span>
           </label>
         </div>
       )}
       {fileError && (
         <p id="file-error" class={fieldError}>
-          {fileError}
+          {t.send.fileError[fileError]}
         </p>
       )}
       {file && (
         <>
-          <FileCard name={file.name} size={formatBytes(file.size)} />
+          <FileCard name={file.name} size={formatBytes(file.size, lang)} />
           {hash.status === "preparing" && (
             <p class="text-muted-foreground" role="status">
-              Getting the file ready…
+              {t.send.preparing}
             </p>
           )}
           {hash.status === "failed" && (
             <p class={fieldError} role="alert">
-              Couldn't read the file. Choose it again.
+              {t.send.readFailed}
             </p>
           )}
           <TechDetails
             rows={[
-              ["Size", `${file.size.toLocaleString("en-US")} bytes`],
-              ["Type", file.type || "Not given"],
-              ["SHA-256", hash.status === "ready" ? <code>{hash.hex}</code> : "Not ready yet"],
+              [t.common.size, t.format.bytes(file.size)],
+              [t.common.type, file.type || t.common.typeMissing],
+              ["SHA-256", hash.status === "ready" ? <code>{hash.hex}</code> : t.send.hashPending],
             ]}
           />
         </>
       )}
-      {hasRecipients && <p class={hint}>Remove everyone to change your name or file.</p>}
+      {hasRecipients && <p class={hint}>{t.send.locked}</p>}
 
       <form class="mt-8 flex flex-wrap items-end gap-2" onSubmit={onAdd} noValidate>
         <div class={field}>
-          <Label htmlFor="recipient-name">Who is it for?</Label>
+          <Label htmlFor="recipient-name">{t.send.recipientLabel}</Label>
           <Input
             id="recipient-name"
             name="name"
             type="text"
-            placeholder="Their name"
+            placeholder={t.send.recipientPlaceholder}
             autoComplete="off"
             maxLength={100}
             disabled={!file || full}
@@ -483,36 +467,32 @@ export function SendPage() {
           />
         </div>
         <Button type="submit" disabled={!file || full}>
-          Add
+          {t.send.add}
         </Button>
       </form>
       {nameError && (
         <p id="name-error" class={fieldError}>
-          {nameError}
+          {t.send.nameError[nameError]}
         </p>
       )}
       <p id="recipient-hint" class={hint}>
-        {!file
-          ? "Choose a file first."
-          : full
-            ? `You can send to up to ${MAX_LINKS} people at a time.`
-            : "Each person gets their own link, which works once."}
+        {!file ? t.send.fileFirst : full ? t.send.full(MAX_LINKS) : t.send.oneLinkEach}
       </p>
       <RecipientList
         recipients={sender.recipients}
         fileSize={file?.size ?? 0}
         onRemove={onRemove}
       />
-      {unfinished && (
-        <p class={hint}>
-          Keep this tab open until everyone has the file. It's sent straight from here.
-        </p>
-      )}
+      {unfinished && <p class={hint}>{t.send.keepOpen}</p>}
       <ServerPanel
-        sees={SEES_SENDER}
-        holds={senderHolds({ online: !lostServer, links: hostedLinks(sender).length, connected })}
+        sees={t.server.seesSender}
+        holds={t.server.senderHolds({
+          online: !lostServer,
+          links: hostedLinks(sender).length,
+          connected,
+        })}
         relayed={relayed}
-        afterwards={senderAfterwards(!lostServer)}
+        afterwards={t.server.senderAfterwards(!lostServer)}
       />
     </Page>
   );

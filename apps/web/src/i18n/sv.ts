@@ -1,6 +1,7 @@
 // Swedish text. Same keys as en.ts.
 
 import type { LogFields } from "@sigill/protocol";
+import type { Tie } from "../lib/server-facts.ts";
 import type { Messages } from "./en.ts";
 
 export const sv: Messages = {
@@ -15,7 +16,126 @@ export const sv: Messages = {
     title: "Sidan behöver en säker anslutning",
     body: "Filer krypteras i din webbläsare, och det fungerar bara över en säker anslutning. Öppna sidan med en adress som börjar med https://.",
   },
+  common: {
+    techDetails: "Tekniska detaljer",
+    size: "Storlek",
+    type: "Typ",
+    typeMissing: "Inte angiven",
+  },
+  format: {
+    bytes: (n: number) => `${n.toLocaleString("sv")} byte`,
+    progress: (percent: string, done: string, total: string) => `${percent} · ${done} av ${total}`,
+  },
+  send: {
+    title: "Skicka en fil",
+    lede: "Din fil går direkt från den här webbläsaren till dem du väljer. Den krypteras på vägen och laddas aldrig upp eller sparas.",
+    localhost:
+      "Sidan är öppnad på localhost, så länkarna fungerar inte på andra datorer. Öppna i stället nätverksadressen som servern skrev ut.",
+    lostServer:
+      "Anslutningen till servern bröts. Filer som redan är på väg kan komma fram, men ingen ny kan ansluta. Ladda om sidan för att börja om.",
+    fromLabel: "Ditt namn",
+    optional: "(valfritt)",
+    fromHint: "Visas för dem du skickar till.",
+    fromError: {
+      unsafe: "Ditt namn innehåller tecken som inte kan skickas. Ta bort dem och försök igen.",
+      tooLong:
+        "Ditt namn och filnamnet är för långa tillsammans. Korta ditt namn eller byt namn på filen.",
+    },
+    chooseFile: "Välj en fil",
+    chooseOther: "Välj en annan fil",
+    orDrop: "eller släpp den här",
+    fileError: {
+      unsafe:
+        "Filnamnet innehåller tecken som inte kan skickas. Byt namn på filen och försök igen.",
+      tooLong: "Filnamnet är för långt för att kunna skickas. Byt namn på filen och försök igen.",
+    },
+    preparing: "Gör i ordning filen…",
+    readFailed: "Det gick inte att läsa filen. Välj den igen.",
+    hashPending: "Inte klar än",
+    locked: "Ta bort alla mottagare för att ändra ditt namn eller din fil.",
+    recipientLabel: "Vem ska få den?",
+    recipientPlaceholder: "Mottagarens namn",
+    add: "Lägg till",
+    nameError: {
+      missing: "Skriv ett namn.",
+      taken: "Det namnet finns redan på listan.",
+    },
+    fileFirst: "Välj en fil först.",
+    full: (max: number) => `Du kan skicka till högst ${max} personer åt gången.`,
+    oneLinkEach: "Varje person får en egen länk, som fungerar en gång.",
+    keepOpen: "Ha fliken öppen tills alla har fått filen. Den skickas direkt härifrån.",
+    recipients: "Mottagare",
+    status: {
+      waiting: (name: string) => `Väntar på att ${name} ska öppna länken`,
+      connecting: (name: string) => `Ansluter till ${name}…`,
+      offered: (name: string) => `Länken till ${name} har öppnats`,
+      receiving: (name: string) => `Skickar till ${name}`,
+      delivered: (name: string) => `Levererad via länken till ${name}`,
+      failed: (name: string) =>
+        `Filen kom inte fram oskadd till ${name}. Länken kan öppnas igen för att försöka på nytt.`,
+    },
+    you: "Du",
+    progressFor: (name: string) => `Förlopp för ${name}`,
+    copy: "Kopiera länk",
+    copyFor: (name: string) => `Kopiera länken till ${name}`,
+    copyNote: {
+      copied: "Kopierad",
+      failed: "Det gick inte att kopiera. Markera länken nedan och kopiera den själv.",
+    },
+    remove: "Ta bort",
+    removeFor: (name: string) => `Ta bort ${name}`,
+    linkFor: (name: string) => `Länk till ${name}`,
+  },
   server: {
+    heading: "Vad vår server har just nu",
+    seesLabel: "Ser",
+    holdsLabel: "Har",
+    passedOnLabel: "Har skickat vidare",
+    fileDataLabel: "Filinnehåll",
+    logsLabel: "Loggar",
+    afterwardsLabel: "Efteråt",
+    seesSender:
+      "Din IP-adress och de vanliga uppgifter om webbläsaren som alla webbplatser får, och samma sak för varje mottagare när de öppnar sin länk.",
+    seesRecipient:
+      "Din IP-adress och de vanliga uppgifter om webbläsaren som alla webbplatser får.",
+    senderHolds: ({ online, links, connected }) => {
+      if (!online) {
+        return "Ingenting, när den har märkt att anslutningen har stängts. Det tar upp till en minut om nätverket bröts.";
+      }
+      if (links === 0) {
+        return "Inga länkar ännu.";
+      }
+      const ids =
+        links === 1
+          ? "ID:t för din länk, aldrig den del som låser upp filen."
+          : `ID:na för dina ${links} länkar, aldrig den del som låser upp filen.`;
+      if (connected === 0) {
+        return ids;
+      }
+      const who =
+        connected === 1 ? "1 mottagare är ansluten" : `${connected} mottagare är anslutna`;
+      return `${ids} ${who} just nu.`;
+    },
+    recipientHolds: (tie: Tie) =>
+      ({
+        paired:
+          "ID:t för din länk, aldrig den del som låser upp filen, och att den här sidan är ansluten till avsändaren.",
+        unpaired:
+          "Ingenting som knyter den här sidan till din länk. Bara avsändarens sida kan hålla kvar din länks ID där.",
+        closed:
+          "Ingenting om den här sidan, när den har märkt att anslutningen har stängts. Det tar upp till en minut om nätverket bröts. Bara avsändarens sida kan hålla kvar din länks ID där.",
+      })[tie],
+    passedOn: (messages: number, size: string) =>
+      messages === 0
+        ? "Inget ännu."
+        : `${messages} ${messages === 1 ? "uppkopplingsmeddelande" : "uppkopplingsmeddelanden"} (${size}), alla krypterade så att servern inte kan läsa dem.`,
+    fileData: "Inget. Filen går direkt mellan webbläsarna.",
+    senderAfterwards: (online: boolean) =>
+      online
+        ? "När du stänger den här fliken glömmer servern dina länkar, inom högst en minut. Loggraderna finns kvar."
+        : "Dina länkar försvinner från servern inom en minut efter att anslutningen stängdes. Loggraderna finns kvar.",
+    afterwardsRecipient:
+      "När den här sidan kopplas från släpper servern det den har om sidan, inom högst en minut. Loggraderna finns kvar.",
     logs: `Vad som hände, till exempel att en länk öppnades, med ${new Intl.ListFormat("sv", {
       type: "conjunction",
     }).format(

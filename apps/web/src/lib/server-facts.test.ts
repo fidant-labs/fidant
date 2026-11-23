@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import {
-  addRelay,
-  NO_RELAYS,
-  passedOn,
-  recipientHolds,
-  senderAfterwards,
-  senderHolds,
-} from "./server-facts.ts";
+import { en } from "../i18n/en.ts";
+import { sv } from "../i18n/sv.ts";
+import { formatBytes } from "./format.ts";
+import { addRelay, NO_RELAYS, type Relayed } from "./server-facts.ts";
+
+const { recipientHolds, senderAfterwards, senderHolds } = en.server;
+const passedOn = (relayed: Relayed) =>
+  en.server.passedOn(relayed.messages, formatBytes(relayed.bytes, "en"));
 
 test("passedOn says nothing yet, then counts with singular and plural", () => {
   assert.equal(passedOn(NO_RELAYS), "Nothing yet.");
@@ -64,5 +64,25 @@ test("recipientHolds for a paired, unpaired and closed page", () => {
   assert.equal(
     recipientHolds("closed"),
     "Nothing about this page once it notices the connection has closed, which takes up to a minute if the network dropped. Only the sender's page can keep your link's ID there.",
+  );
+});
+
+test("the Swedish server text counts and picks singular or plural", () => {
+  assert.equal(sv.server.passedOn(0, ""), "Inget ännu.");
+  assert.equal(
+    sv.server.passedOn(1, formatBytes(310, "sv")),
+    "1 uppkopplingsmeddelande (310 byte), alla krypterade så att servern inte kan läsa dem.",
+  );
+  assert.equal(
+    sv.server.passedOn(14, formatBytes(9200, "sv")),
+    "14 uppkopplingsmeddelanden (9,2 KB), alla krypterade så att servern inte kan läsa dem.",
+  );
+  assert.equal(
+    sv.server.senderHolds({ online: true, links: 1, connected: 1 }),
+    "ID:t för din länk, aldrig den del som låser upp filen. 1 mottagare är ansluten just nu.",
+  );
+  assert.equal(
+    sv.server.senderHolds({ online: true, links: 3, connected: 2 }),
+    "ID:na för dina 3 länkar, aldrig den del som låser upp filen. 2 mottagare är anslutna just nu.",
   );
 });

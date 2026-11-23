@@ -2,6 +2,7 @@
 // Plain strings, or functions for text with numbers or names in it.
 
 import type { LogFields } from "@sigill/protocol";
+import type { Tie } from "../lib/server-facts.ts";
 
 export const en = {
   product: "Fidant",
@@ -15,7 +16,133 @@ export const en = {
     title: "This page needs a secure connection",
     body: "Files are encrypted in your browser, which only works over a secure connection. Open this page with an address that starts with https://.",
   },
+  common: {
+    techDetails: "Technical details",
+    size: "Size",
+    type: "Type",
+    typeMissing: "Not given",
+  },
+  format: {
+    bytes: (n: number) => (n === 1 ? "1 byte" : `${n.toLocaleString("en-US")} bytes`),
+    progress: (percent: string, done: string, total: string) => `${percent} · ${done} of ${total}`,
+  },
+  send: {
+    title: "Send a file",
+    lede: "Your file goes straight from this browser to the people you choose. It's encrypted on the way and never uploaded or stored.",
+    localhost:
+      "This page is open on localhost, so the links won't work on other computers. Open the network address the server printed instead.",
+    lostServer:
+      "Lost the connection to the server. Files already on their way can finish, but nobody new can connect. Reload the page to start again.",
+    fromLabel: "Your name",
+    optional: "(optional)",
+    fromHint: "Shown to the people you send to.",
+    fromError: {
+      unsafe: "Your name contains characters that can't be sent. Remove them and try again.",
+      tooLong:
+        "Your name and the file name are too long together. Shorten your name or rename the file.",
+    },
+    chooseFile: "Choose a file",
+    chooseOther: "Choose a different file",
+    orDrop: "or drop it here",
+    fileError: {
+      unsafe:
+        "This file name contains characters that can't be sent. Rename the file and try again.",
+      tooLong: "This file name is too long to send. Rename the file and try again.",
+    },
+    preparing: "Getting the file ready…",
+    readFailed: "Couldn't read the file. Choose it again.",
+    hashPending: "Not ready yet",
+    locked: "Remove everyone to change your name or file.",
+    recipientLabel: "Who is it for?",
+    recipientPlaceholder: "Their name",
+    add: "Add",
+    nameError: {
+      missing: "Enter a name.",
+      taken: "That name is already on the list.",
+    },
+    fileFirst: "Choose a file first.",
+    full: (max: number) => `You can send to up to ${max} people at a time.`,
+    oneLinkEach: "Each person gets their own link, which works once.",
+    keepOpen: "Keep this tab open until everyone has the file. It's sent straight from here.",
+    recipients: "Recipients",
+    status: {
+      waiting: (name: string) => `Waiting for ${name} to open the link`,
+      connecting: (name: string) => `Connecting to ${name}…`,
+      offered: (name: string) => `${name}'s link has been opened`,
+      receiving: (name: string) => `Sending to ${name}`,
+      delivered: (name: string) => `Delivered through ${name}'s link`,
+      failed: (name: string) =>
+        `The file didn't arrive intact for ${name}. They can open the link again to retry.`,
+    },
+    you: "You",
+    progressFor: (name: string) => `Progress for ${name}`,
+    copy: "Copy link",
+    copyFor: (name: string) => `Copy link for ${name}`,
+    copyNote: {
+      copied: "Copied",
+      failed: "Couldn't copy. Select the link below and copy it yourself.",
+    },
+    remove: "Remove",
+    removeFor: (name: string) => `Remove ${name}`,
+    linkFor: (name: string) => `Link for ${name}`,
+  },
   server: {
+    heading: "What our server has right now",
+    seesLabel: "Sees",
+    holdsLabel: "Holds",
+    passedOnLabel: "Passed on",
+    fileDataLabel: "File data",
+    logsLabel: "Logs",
+    afterwardsLabel: "Afterwards",
+    seesSender:
+      "Your IP address and the usual browser details any website gets, and the same for each recipient when they open their link.",
+    seesRecipient: "Your IP address and the usual browser details any website gets.",
+    senderHolds: ({
+      online,
+      links,
+      connected,
+    }: {
+      online: boolean;
+      links: number;
+      connected: number;
+    }) => {
+      if (!online) {
+        return "Nothing once it notices the connection has closed. That takes up to a minute if the network dropped.";
+      }
+      if (links === 0) {
+        return "No links yet.";
+      }
+      const ids =
+        links === 1
+          ? "The ID of your link, never the part that unlocks the file."
+          : `The IDs of your ${links} links, never the part that unlocks the file.`;
+      if (connected === 0) {
+        return ids;
+      }
+      const who = connected === 1 ? "1 recipient" : `${connected} recipients`;
+      return `${ids} ${who} connected right now.`;
+    },
+    recipientHolds: (tie: Tie) =>
+      ({
+        paired:
+          "The ID of your link, never the part that unlocks the file, and that this page is connected to the sender.",
+        unpaired:
+          "Nothing that ties this page to your link. Only the sender's page can keep your link's ID there.",
+        closed:
+          "Nothing about this page once it notices the connection has closed, which takes up to a minute if the network dropped. Only the sender's page can keep your link's ID there.",
+      })[tie],
+    /** `size` is already formatted, like "9.2 KB". */
+    passedOn: (messages: number, size: string) =>
+      messages === 0
+        ? "Nothing yet."
+        : `${messages} ${messages === 1 ? "setup message" : "setup messages"} (${size}), all encrypted so the server can't read them.`,
+    fileData: "None. The file goes directly between browsers.",
+    senderAfterwards: (online: boolean): string =>
+      online
+        ? "When you close this tab, the server forgets your links, within a minute at most. Its log lines stay."
+        : "Your links are gone from the server within a minute of the connection closing. Its log lines stay.",
+    afterwardsRecipient:
+      "When this page disconnects, the server drops what it has about this page, within a minute at most. Its log lines stay.",
     logs: `What happened, like a link being opened, with ${new Intl.ListFormat("en", {
       type: "conjunction",
     }).format(

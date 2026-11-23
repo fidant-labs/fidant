@@ -8,7 +8,7 @@ const h2 = "mb-3 text-[1.25rem] font-bold";
 const h3 = "mt-6 mb-2 font-bold";
 
 // Written for people who aren't technical. Keep every sentence true of what the
-// code does today: server-facts.ts and apps/server/src/signaling.ts are the source.
+// code does today: `server` in the dictionaries and apps/server/src/signaling.ts are the source.
 // The text lives in i18n/en.ts and i18n/sv.ts under `privacy`.
 
 function Facts({ rows }: { rows: ReadonlyArray<readonly [string, string]> }) {
