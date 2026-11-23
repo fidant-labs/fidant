@@ -58,7 +58,7 @@ In `apps/web/src/lib`:
 - `keys.ts`: every transfer attempt gets a fresh 16-byte random `transferId`, sent in clear in the INIT frame. The file key is `HKDF-SHA256(fragmentSecret, salt = transferId, info "sigill/v1/file")`. The code's `transferId` names one attempt, not the server-side transfer that 0001 calls a transfer ID.
 - `send-file.ts`: `chunkSize = min(48 KiB, maxMessageSize − 64)`. It depends on the data channel of that connection.
 - `frames.ts`:
-  - META is `{name, size, type, chunkSize}`, padded to exactly 1024 bytes. It has no salt and no commitment. `parseMeta` rejects any other set of keys.
+  - META is `{chunkSize, from, name, size, type}`, padded to exactly 1024 bytes. `from` is the name the sender typed for themselves, unverified (SIG-55). It has no salt and no commitment. `parseMeta` rejects any other set of keys.
   - Names and types with control characters or direction controls are refused.
   - The sender sends META before the recipient's ACCEPT. Every frame after INIT is encrypted under the one file key.
   - END carries a plain SHA-256 of the file and the exact size. RECEIPT carries the SHA-256 the recipient computed. Both travel only inside the encrypted channel.
@@ -230,7 +230,7 @@ Rules:
 - **Date.** Day without a leading zero, then the month name, then the year. Swedish month names are lowercase.
 - **Time.** Swedish local time (Europe/Stockholm), 24-hour clock, two-digit hour and minute: "14.02" in Swedish, "14:02" in English. The minute is truncated, not rounded. The text says "svensk tid" or "Swedish time". This takes the option "Swedish local time, labelled". The hidden data holds the exact UTC time, which also settles the repeated hour when summer time ends.
 - **"Sent".** The server's time of the `transfer.created` event, in both modes. It is the moment the sender created the transfer, not when the recipient's copy arrived.
-- **Sender.** The name of the logged-in sender, as BankID returned it when they logged in. There is no sender signature in the POC.
+- **Sender.** The name of the logged-in sender, as BankID returned it when they logged in. Never META's `from`, the name the sender typed, which nobody checks. There is no sender signature in the POC.
 - **No organisation line.** The POC omits it until SIG-36 adds the sender signature or Fidant can check the organisation. This takes the option "Omit it until checked": the recipient signs only what Fidant knows.
 - **Visible checksum.** The first 4 and the last 4 lowercase hex characters of `C`, joined by … (U+2026). This takes the option "Shortened `C`": it is the same value a verifier recomputes from the file and the salt.
 - **Template IDs.** `receipt-sv-1` and `receipt-en-1`. Any change to the wording, the date or time format, or the rules above gets a new ID. Old templates stay, so old receipts can still be checked.
