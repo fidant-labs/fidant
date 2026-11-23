@@ -21,8 +21,16 @@ function makeFile(sigill: Sigill, size: number): TestFile {
   sigill.forbid("file name", file.name);
   sigill.forbid("file SHA-256", file.sha256);
   const sample = file.buffer.subarray(Math.floor(size / 2), Math.floor(size / 2) + 30);
-  sigill.forbid("file bytes (base64)", sample.toString("base64"));
-  sigill.forbid("file bytes (base64url)", sample.toString("base64url"));
+  // Inside a longer base64 stream the sample can start at any of three byte
+  // offsets from a 3-byte group boundary, and only whole groups encode the
+  // same way everywhere. So forbid, for each offset, the sample from there on,
+  // cut to whole groups: one of the three always appears verbatim.
+  for (const offset of [0, 1, 2]) {
+    const groups = Math.floor((sample.length - offset) / 3);
+    const aligned = sample.subarray(offset, offset + groups * 3);
+    sigill.forbid(`file bytes (base64, offset ${offset})`, aligned.toString("base64"));
+    sigill.forbid(`file bytes (base64url, offset ${offset})`, aligned.toString("base64url"));
+  }
   return file;
 }
 

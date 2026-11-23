@@ -37,6 +37,9 @@ function linkId(): string {
   return `link${String(counter).padStart(18, "0")}`;
 }
 
+/** How long next() waits, so a missing message fails the test instead of hanging it. */
+const NEXT_TIMEOUT_MS = 2000;
+
 type Client = {
   socket: WebSocket;
   send(message: unknown): void;
@@ -69,7 +72,17 @@ async function connect(): Promise<Client> {
     next: () => {
       const message = queue.shift();
       if (message) return Promise.resolve(message);
-      return new Promise((done) => waiting.push(done));
+      return new Promise((done, fail) => {
+        const timer = setTimeout(() => {
+          waiting.splice(waiting.indexOf(waiter), 1);
+          fail(new Error(`no message within ${NEXT_TIMEOUT_MS} ms`));
+        }, NEXT_TIMEOUT_MS);
+        const waiter = (m: ServerMessage) => {
+          clearTimeout(timer);
+          done(m);
+        };
+        waiting.push(waiter);
+      });
     },
     closed,
   };
@@ -149,6 +162,20 @@ test("tells the guest when the host goes away and frees its links", async () => 
   assert.deepEqual(await late.next(), { t: "refused", reason: "unknown" });
   // Another sender may now host the same link.
   await hostFor(link);
+});
+
+test("keeps the guest bound when the host re-sends an unchanged list", async () => {
+  const link = linkId();
+  const other = linkId();
+  const host = await hostFor(link, other);
+  const guest = await joinAs(link, host);
+  host.send({ t: "host", links: [link, other] });
+  host.send({ t: "host", links: [other, link] });
+  // Had the guest been told host-gone, that would arrive before this relay.
+  host.send({ t: "relay", link, data: "c3RpbGw" });
+  assert.deepEqual(await guest.next(), { t: "relay", link, data: "c3RpbGw" });
+  guest.send({ t: "relay", link, data: "Ym91bmQ" });
+  assert.deepEqual(await host.next(), { t: "relay", link, data: "Ym91bmQ" });
 });
 
 test("tells the guest when the host drops its link from the list", async () => {

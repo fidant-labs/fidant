@@ -212,7 +212,10 @@ test("reports a receipt that does not match", async () => {
 test("rejects when the channel closes", async () => {
   const { secret } = createLink("https://localhost");
   const fake = fakeChannel(secret, "close-after-meta");
-  await assert.rejects(sendFile(options(fake.channel, secret, new Uint8Array(1000)).value));
+  await assert.rejects(
+    sendFile(options(fake.channel, secret, new Uint8Array(1000)).value),
+    /data channel closed/,
+  );
 });
 
 test("rejects when aborted", async () => {
