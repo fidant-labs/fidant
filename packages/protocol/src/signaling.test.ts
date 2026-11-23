@@ -138,7 +138,7 @@ test("rejects unknown refuse reasons and error codes", () => {
     assert.equal(parseClientMessage(JSON.stringify({ t: "refuse", link, reason })), undefined);
     assert.equal(parseServerMessage(JSON.stringify({ t: "refused", reason })), undefined);
   }
-  for (const code of ["", "Bad", "has space", 3, null, "x".repeat(65)]) {
+  for (const code of ["", "Bad", "has space", "no-such-code", 3, null, "x".repeat(65)]) {
     assert.equal(parseServerMessage(JSON.stringify({ t: "error", code })), undefined);
   }
 });
@@ -160,7 +160,7 @@ test("rejects extra fields", () => {
     { t: "relay", link, data: "x", ...extra },
     { t: "refused", reason: "busy", ...extra },
     { t: "host-gone", ...extra },
-    { t: "error", code: "x", ...extra },
+    { t: "error", code: "bad-message", ...extra },
   ];
   for (const message of server) {
     assert.equal(parseServerMessage(JSON.stringify(message)), undefined, message.t);

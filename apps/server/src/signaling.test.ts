@@ -3,7 +3,13 @@ import { randomBytes } from "node:crypto";
 import { createServer, request } from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, before, test } from "node:test";
-import { parseServerMessage, type ServerMessage } from "@sigill/protocol";
+import {
+  ERROR_CODES,
+  parseServerMessage,
+  REFUSE_REASONS,
+  type ServerMessage,
+  UPGRADE_REJECT_REASONS,
+} from "@sigill/protocol";
 import { attachSignaling, type LogFields } from "./signaling.ts";
 
 const logLines: { event: string; fields: LogFields | undefined }[] = [];
@@ -243,6 +249,8 @@ test("logs only allowlisted fields and never relay payloads", async () => {
   await bad.closed;
 
   const allowed = new Set(["link", "links", "bytes", "reason", "code", "port"]);
+  const logReasons: readonly unknown[] = [...REFUSE_REASONS, ...UPGRADE_REJECT_REASONS];
+  const errorCodes: readonly unknown[] = ERROR_CODES;
   assert.ok(logLines.some((line) => line.event === "relay"));
   for (const line of logLines) {
     const text = JSON.stringify(line);
@@ -250,7 +258,9 @@ test("logs only allowlisted fields and never relay payloads", async () => {
     assert.ok(!text.includes(link), `full link ID leaked into the log: ${text}`);
     for (const [key, value] of Object.entries(line.fields ?? {})) {
       assert.ok(allowed.has(key), `field ${key} is not allowlisted`);
-      if (key === "link") assert.ok(String(value).length <= 6);
+      if (key === "link") assert.match(String(value), /^[A-Za-z0-9_-]{6}$/);
+      if (key === "reason") assert.ok(logReasons.includes(value), `unknown reason ${value}`);
+      if (key === "code") assert.ok(errorCodes.includes(value), `unknown code ${value}`);
     }
   }
 });

@@ -11,6 +11,8 @@ import type { Server as HttpsServer } from "node:https";
 import type { Duplex } from "node:stream";
 import {
   type ClientMessage,
+  type ErrorCode,
+  type LogReason,
   parseClientMessage,
   type RefuseReason,
   type ServerMessage,
@@ -22,8 +24,8 @@ export type LogFields = {
   link?: string;
   links?: number;
   bytes?: number;
-  reason?: string;
-  code?: string;
+  reason?: LogReason;
+  code?: ErrorCode;
   port?: number;
 };
 
@@ -135,7 +137,7 @@ export function attachSignaling(
     }
   }
 
-  function error(socket: WebSocket, code: string): void {
+  function error(socket: WebSocket, code: ErrorCode): void {
     log("error", { code });
     send(socket, { t: "error", code });
   }

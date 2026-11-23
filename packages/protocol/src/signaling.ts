@@ -16,9 +16,25 @@ export const MAX_RELAY_DATA = 16384;
 const BASE64URL_PATTERN = /^[A-Za-z0-9_-]+$/;
 
 /** Why a sender turns a recipient away. */
-export type RefuseReason = "used" | "busy" | "unknown";
+export const REFUSE_REASONS = ["used", "busy", "unknown"] as const;
+export type RefuseReason = (typeof REFUSE_REASONS)[number];
 
-const REFUSE_REASONS: readonly string[] = ["used", "busy", "unknown"] satisfies RefuseReason[];
+/** Protocol errors the server reports in an `error` message. */
+export const ERROR_CODES = [
+  "bad-message",
+  "wrong-role",
+  "already-hosted",
+  "already-joined",
+  "not-on-link",
+] as const;
+export type ErrorCode = (typeof ERROR_CODES)[number];
+
+/** Why the server rejects a WebSocket upgrade. */
+export const UPGRADE_REJECT_REASONS = ["path", "origin"] as const;
+export type UpgradeRejectReason = (typeof UPGRADE_REJECT_REASONS)[number];
+
+/** Every value the server may write in a log line's `reason` field. */
+export type LogReason = RefuseReason | UpgradeRejectReason;
 
 /** The sender announces its full list of link IDs. Re-sent whenever the list changes. */
 export type HostMessage = { t: "host"; links: string[] };
@@ -40,7 +56,7 @@ export type RefusedMessage = { t: "refused"; reason: RefuseReason };
 /** Tells a recipient that the sender went away. */
 export type HostGoneMessage = { t: "host-gone" };
 /** Reports a protocol error. */
-export type ErrorMessage = { t: "error"; code: string };
+export type ErrorMessage = { t: "error"; code: ErrorCode };
 
 export type ServerMessage =
   | JoinedMessage
@@ -80,11 +96,11 @@ function isRelayData(value: unknown): value is string {
 }
 
 function isRefuseReason(value: unknown): value is RefuseReason {
-  return typeof value === "string" && REFUSE_REASONS.includes(value);
+  return (REFUSE_REASONS as readonly unknown[]).includes(value);
 }
 
-function isErrorCode(value: unknown): value is string {
-  return typeof value === "string" && /^[a-z][a-z0-9-]{0,63}$/.test(value);
+function isErrorCode(value: unknown): value is ErrorCode {
+  return (ERROR_CODES as readonly unknown[]).includes(value);
 }
 
 function parseRelay(value: Fields): RelayMessage | undefined {
