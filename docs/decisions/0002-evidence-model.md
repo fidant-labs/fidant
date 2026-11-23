@@ -216,14 +216,14 @@ Rules:
 - **Lines.** Lines end with a single LF. There is no trailing line break.
 - **No size.** 0001 keeps the exact size inside the browsers, and a rounded size would need a new exception to 0001. This takes the option "Drop it". It also makes the English-only `formatBytes` irrelevant to the receipt.
 - **File name in quotation marks.** Swedish uses ” on both sides (U+201D). English uses straight double quotes (U+0022). Because names cannot contain these marks or anything that looks like them (see Name rules), they show where the name starts and ends.
-- **Name rules.** A file name in a verified transfer must pass three checks, because lookalikes of the closing mark are too many to list. After NFC normalisation:
+- **Name rules.** A file name in a verified transfer must pass four checks, because lookalikes of the closing mark are too many to list. After NFC normalisation:
   1. **Allowlist.** Each character is one of:
      - a letter that is not a modifier letter (`\p{Lu}`, `\p{Ll}`, `\p{Lt}`, `\p{Lo}`) or a decimal digit (`\p{Nd}`), followed by at most two combining marks (`\p{Mn}`, `\p{Mc}`);
      - a space (U+0020) or one of `. , - _ ( ) [ ] & + ! # % @ = ~ ; :`;
      - an apostrophe ' (U+0027) or ’ (U+2019).
   2. **Nothing invisible.** No character is `\p{Default_Ignorable_Code_Point}`. That refuses blank-rendering letters (such as U+3164), variation selectors and the combining grapheme joiner, which the allowlist alone lets through.
   3. **No quote lookalikes.** The Unicode confusable skeleton of the name (UTS #39) contains no quotation mark, and no two apostrophes in a row. That refuses letters that look like quotes, such as ꞌꞌ (U+A78C) or ײ (U+05F2), and `’’`, which looks like ”.
-  4. **Short.** At most 120 characters. META would allow about 900 bytes, enough for whole sentences inside the quotation marks, such as `avtal.pdf från Anna Andersson. Jag godkänner även fakturan om 100 000 kr. Bilaga`. A signed receipt is read quickly, so a short name keeps the one statement the recipient signs easy to see.
+  4. **Short.** At most 120 Unicode code points after NFC; each combining mark counts as one. The browser and the server count the same way. META would allow about 900 bytes, room for a paragraph inside the quotation marks. The cap limits how much a name can say. It does not stop a short sentence such as `avtal.pdf från Anna Andersson. Jag godkänner även fakturan om 100 000 kr. Bilaga` (80 code points).
 
   Together these refuse every quotation mark, every character Unicode lists as confusable with one, every format, direction and invisible character, and every line or paragraph separator. So the name cannot start a new line or hide or reorder text, and no character Unicode lists as confusable can close the quotation marks. Lookalikes that Unicode does not list remain possible, and so does a short sentence within 120 characters. The hidden data still binds the file through `C`, so such a name can mislead the reader but cannot change which file the receipt covers. The send page refuses a name that fails the checks when the sender chooses the file and asks for a new name. The server's re-render check applies the same checks. SIG-15 fixes the Unicode data version and the code, with tests for every example above.
 - **Name direction.** The template puts FSI (U+2068) right after the opening mark and PDI (U+2069) right before the closing mark: `”`, U+2068, the name, U+2069, `”`. FSI and PDI are fixed template bytes, not part of the name. The examples above contain them, though they are invisible. The variable slot is the text strictly between U+2068 and U+2069. The name cannot contain U+2069, so the slot boundary is unambiguous. The isolates keep a right-to-left name from moving the quotation marks or the words around it. Unverified: that the BankID app honours them. If it does not, SIG-15 refuses right-to-left letters in verified names instead.
@@ -284,7 +284,7 @@ This takes the option "`C` plus a ciphertext hash".
 - **The sender registers `C`.** The sender's browser sends `C` to the server when it creates a verified transfer. `C` is not secret, exception (c). The server stores it in the `transfer.created` event and refuses a sign-start whose `C` differs. So the server holds the sender's own reference for the blame rule below, independent of anything the recipient reports.
 - **The ciphertext hash is the check before signing.** Its definition depends on the mode:
   - Hosted: SHA-256 of the one stored ciphertext object. The server can check it too.
-  - P2P: SHA-256 of the CHUNK frames as received in that attempt, in order. The sender declares it in a frame the recipient can read with the fragment half (see Key layering), sent after the last CHUNK, in or next to END. So the sender hashes the ciphertext as it streams and needs neither a second encryption pass nor a buffer of the whole ciphertext. It covers one attempt only. Retries after signing are bound by `C` alone.
+  - P2P: SHA-256 of the CHUNK frames as received in that attempt, in order. The sender declares it in a frame the recipient can read with the fragment half (see Key layering), sent right after the last CHUNK. It is its own frame, not a field in END, because END is under the full key, which the recipient does not hold before signing. So the sender hashes the ciphertext as it streams and needs neither a second encryption pass nor a buffer of the whole ciphertext. It covers one attempt only. Retries after signing are bound by `C` alone.
 - **Sign only after the ciphertext is on the device**, in both modes. The recipient's browser checks the ciphertext hash first, so "har tagit emot" is true when they sign. This follows SIG-23's order.
 - **Who is to blame.**
   - The ciphertext hash does not match: transport or storage failed. The recipient retries and does not sign.
@@ -368,7 +368,7 @@ Why this much and no more:
   - META gains `C` as base64url (43 characters, about 50 bytes with its key) of META's 1024 bytes, so the file-name budget shrinks. `metaFits` must reserve the room, and `parseMeta` accepts the new key set.
   - A new SALT frame carries the salt under the full key, so it reaches the recipient only after signing.
   - META and the frame declaring the P2P ciphertext hash move under a key from the fragment half. CHUNK frames stay under the full key.
-  - A new frame, or a new END field, carries the ciphertext hash after the last CHUNK.
+  - A new frame under the fragment-half key carries the ciphertext hash, sent right after the last CHUNK.
   - `parseMeta` and `metaFits` also enforce the Name rules for verified transfers.
 - **SIG-15**:
   - The receipt templates, the browser rendering and the server's re-render check.
