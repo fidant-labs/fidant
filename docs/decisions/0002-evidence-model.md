@@ -216,7 +216,12 @@ Rules:
 - **Lines.** Lines end with a single LF. There is no trailing line break.
 - **No size.** 0001 keeps the exact size inside the browsers, and a rounded size would need a new exception to 0001. This takes the option "Drop it". It also makes the English-only `formatBytes` irrelevant to the receipt.
 - **File name in quotation marks.** Swedish uses ” on both sides (U+201D). English uses straight double quotes (U+0022). Because names cannot contain these marks (see Name rules), they show where the name starts and ends.
-- **Name rules.** A file name in a verified transfer must not contain U+2028, U+2029 or U+061C, so it cannot start a new line or reorder the signed text. It must not contain ” (U+201D), “ (U+201C) or " (U+0022), so it cannot close the quotation marks. The browser refuses such a file when the sender chooses it. The server's re-render check enforces the same rules.
+- **Name rules.** A file name in a verified transfer must not contain:
+  - any format character (`\p{Cf}`), line separator or paragraph separator (`\p{Zl}`, `\p{Zp}`). That covers U+2028, U+2029, U+061C, zero-width characters, U+FEFF, the soft hyphen and tag characters, so the name cannot start a new line or hide or reorder text;
+  - any quotation mark (`\p{Quotation_Mark}`) except the apostrophes ' (U+0027) and ’ (U+2019), nor the double primes and ditto marks ″ (U+2033), ‶ (U+2036), ʺ (U+02BA), ˮ (U+02EE) and 〃 (U+3003). So no character in the name looks like the closing mark.
+
+  The browser refuses such a file when the sender chooses it. The server's re-render check applies the same rules.
+- **Name direction.** The template wraps the name in FSI (U+2068) and PDI (U+2069). The name cannot contain direction controls, so a right-to-left name cannot move the quotation marks or the words around it. Unverified: that the BankID app honours these isolates. If it does not, SIG-15 refuses right-to-left letters in verified names instead.
 - **Date.** Day without a leading zero, then the month name, then the year. Swedish month names are lowercase.
 - **Time.** Swedish local time (Europe/Stockholm), 24-hour clock, two-digit hour and minute: "14.02" in Swedish, "14:02" in English. The minute is truncated, not rounded. The text says "svensk tid" or "Swedish time". This takes the option "Swedish local time, labelled". The hidden data holds the exact UTC time, which also settles the repeated hour when summer time ends.
 - **"Sent".** The server's time of the `transfer.created` event, in both modes. It is the moment the sender created the transfer, not when the recipient's copy arrived.
@@ -270,7 +275,7 @@ The hidden data never contains the file name, the salt, the exact size or the MI
 
 This takes the option "`C` plus a ciphertext hash".
 
-- **`C` is the lasting binding.** The sender's browser computes `C` when the file is chosen, with a fresh 32-byte salt, and puts the salt and `C` in META. After decrypting, the recipient's browser recomputes `C` and reports the value it got. The server compares it with the registered `C`, the same value the receipt signs.
+- **`C` is the lasting binding.** The sender's browser computes `C` when the file is chosen, with a fresh 32-byte salt. It puts `C` in META and the salt in a separate SALT frame (see Key layering). After decrypting, the recipient's browser recomputes `C` and reports the value it got. The server compares it with the registered `C`, the same value the receipt signs.
 - **The sender registers `C`.** The sender's browser sends `C` to the server when it creates a verified transfer. `C` is not secret, exception (c). The server stores it in the `transfer.created` event and refuses a sign-start whose `C` differs. So the server holds the sender's own reference for the blame rule below, independent of anything the recipient reports.
 - **The ciphertext hash is the check before signing.** Its definition depends on the mode:
   - Hosted: SHA-256 of the one stored ciphertext object. The server can check it too.
@@ -287,11 +292,12 @@ This stays within 0001. The ciphertext hash is computed from ciphertext, which i
 
 This takes the option "META under a key from the fragment half, content under the full key". SIG-7, SIG-13, SIG-15 and SIG-23 implement it.
 
-- META (name, type, exact size, salt and `C`) and the frame declaring the P2P ciphertext hash are encrypted under a key derived from the fragment half alone.
-- CHUNK frames, the file content, are encrypted under the full key, which needs the server half.
-- So the recipient's browser can read the name and render the receipt before signing, but cannot decrypt the content until the server releases its half.
+- META (name, type, exact size and `C`) and the frame declaring the P2P ciphertext hash are encrypted under a key derived from the fragment half alone.
+- The salt travels in its own SALT frame under the full key, which needs the server half. 0001 puts the salt in the encrypted metadata; here that metadata spans two frames, META and SALT.
+- CHUNK frames, the file content, are also under the full key.
+- So the recipient's browser can read the name and `C` and render the receipt before signing, but can read neither the salt nor the content until the server releases its half. The receipt needs only the name and the short form of `C`. The salt is needed only after decrypting, to recompute `C`.
 
-The trade-off: anyone holding the link can read the file name, type and size without signing. This is accepted because the link is already the capability to receive, the content still needs the signature, and the recipient must see what they sign. The fragment half never reaches infrastructure, so META stays AEAD ciphertext under a key no infrastructure holds, exception (a).
+The trade-off: anyone holding the link can read the file name, type, size and `C` without signing. This is accepted because the link is already the capability to receive, the content still needs the signature, and the recipient must see what they sign. `C` alone reveals nothing about the content: without the 32-byte salt, a guess about the file cannot be checked against it. The salt stays behind the signature for exactly that reason. If a link holder could read it, then with `C`, which the server, the audit log and BankID also hold, they could confirm guesses about a predictable file offline. The fragment half never reaches infrastructure, so META stays AEAD ciphertext under a key no infrastructure holds, exception (a).
 
 ### Rendering and checking
 
@@ -302,6 +308,7 @@ This takes the option "Browser sends the full `receiptText`; server re-renders a
 - The recipient's browser renders the text from the template and META, shows it, and sends it as `receiptText` in the sign-start request, the one field 0001 allows. The request also carries the language, `C`, and the ciphertext hash with its attempt ID.
 - The server re-renders the text from what it knows: the template for that language, the sender's name, `sentAt` and the short form of `C`. It takes the file name from the template's one variable slot in the received text and applies META's name rules to it.
 - The server rejects any `receiptText` that is not byte for byte identical to its own rendering. It builds the hidden data itself, so the visible checksum and the hidden `C` always agree.
+- On rejection, neither the `receiptText` nor the name taken from it goes into the error response, a log line, an exception message or an audit `reason`, and neither is kept beyond the request. The response and the log carry only a fixed code from `@sigill/protocol`. Error paths are where a name most easily leaks outside 0001's six places.
 - The evidence records the choice as `lang` and `template`, in the hidden data and in the audit event.
 
 ### What counts as a download
@@ -353,7 +360,8 @@ Why this much and no more:
 ## Consequences
 
 - **SIG-7 and SIG-13**:
-  - META gains the salt and `C`. That takes about 100 of META's 1024 bytes, so the file-name budget shrinks. `metaFits` must reserve the room, and `parseMeta` accepts the new key set.
+  - META gains `C`, which takes about 50 of META's 1024 bytes, so the file-name budget shrinks. `metaFits` must reserve the room, and `parseMeta` accepts the new key set.
+  - A new SALT frame carries the salt under the full key, so it reaches the recipient only after signing.
   - META and the frame declaring the P2P ciphertext hash move under a key from the fragment half. CHUNK frames stay under the full key.
   - A new frame, or a new END field, carries the ciphertext hash.
   - `parseMeta` and `metaFits` also enforce the Name rules for verified transfers.
