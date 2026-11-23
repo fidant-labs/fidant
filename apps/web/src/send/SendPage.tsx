@@ -30,6 +30,7 @@ import {
   findRecipient,
   hostedLinks,
   initialSenderState,
+  isActive,
   SETUP_TIMEOUT_MS,
   type SenderAction,
   type SenderEffect,
@@ -354,9 +355,7 @@ export function SendPage() {
   const full = sender.recipients.length >= MAX_LINKS;
   const isLocalhost = LOCAL_HOSTS.has(location.hostname);
   // ponytail: counts by status, so it over-counts if a recipient's signaling drops mid-transfer; track joined/left if that matters
-  const connected = sender.recipients.filter(
-    (r) => r.status === "connecting" || r.status === "offered" || r.status === "receiving",
-  ).length;
+  const connected = sender.recipients.filter(isActive).length;
   const unfinished = sender.recipients.some((r) => r.status !== "delivered");
 
   return (

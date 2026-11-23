@@ -135,8 +135,8 @@ export function ServerPanel({
   afterwards: string;
 }) {
   const rows: ReadonlyArray<readonly [string, string]> = [
-    ["It sees", sees],
-    ["It holds", holds],
+    ["Sees", sees],
+    ["Holds", holds],
     ["Passed on", passedOn(relayed)],
     ["File data", FILE_DATA],
     ["Logs", LOGS],
