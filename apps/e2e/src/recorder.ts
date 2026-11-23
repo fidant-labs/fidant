@@ -20,6 +20,8 @@ export class Recorder {
   readonly actor: string;
   /** Requests and sockets that were aborted because they left the stack, in order. */
   readonly blocked: BlockedRecord[] = [];
+  /** The context this recorder is attached to, once `attach()` has run. */
+  context: BrowserContext | undefined;
   #records: Promise<ObservationRecord>[] = [];
   #stackOrigins: readonly string[];
 
@@ -30,6 +32,7 @@ export class Recorder {
 
   /** Attaches the listeners and routes. Call it before the context opens any page. */
   async attach(context: BrowserContext): Promise<void> {
+    this.context = context;
     context.on("request", (request) => this.#add(requestRecord(request)));
     context.on("response", (response) => this.#add(responseRecord(response)));
     context.on("requestfailed", (request) =>

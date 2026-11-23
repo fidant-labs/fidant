@@ -42,7 +42,7 @@ export function isStackHost(url: string, stackOrigins: readonly string[]): boole
   });
 }
 
-/** Parses the comma-separated `STACK_ORIGINS` that global setup publishes. */
+/** Parses the comma-separated `SIGILL_E2E_STACK_ORIGINS` that global setup publishes. */
 export function parseStackOrigins(value: string | undefined): string[] {
   const origins = (value ?? "")
     .split(",")
@@ -50,7 +50,9 @@ export function parseStackOrigins(value: string | undefined): string[] {
     .filter((origin) => origin.length > 0)
     .map((origin) => new URL(origin).origin);
   if (origins.length === 0) {
-    throw new Error("STACK_ORIGINS is not set. Run the suite through Playwright's global setup.");
+    throw new Error(
+      "SIGILL_E2E_STACK_ORIGINS is not set. Run the suite through Playwright's global setup.",
+    );
   }
   return origins;
 }

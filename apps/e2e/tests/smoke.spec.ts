@@ -53,3 +53,9 @@ test("a request outside the stack fails the test by default", async ({ page }) =
   test.fail();
   await page.goto(outside).catch(() => {});
 });
+
+test("a context without a recorder fails the test", async ({ browser }) => {
+  // Expected to fail: the fixture's teardown fails any test that left a context unrecorded.
+  test.fail();
+  await browser.newContext();
+});

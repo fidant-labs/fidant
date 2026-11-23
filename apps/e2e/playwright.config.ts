@@ -11,10 +11,12 @@ export default defineConfig({
   reporter: [["list"], ["html", { open: "never" }]],
   use: {
     // Set by global setup once the stack is running. Workers start later and inherit it.
-    baseURL: process.env.BASE_URL,
+    baseURL: process.env.SIGILL_E2E_BASE_URL,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     ignoreHTTPSErrors: true,
+    // Service-worker traffic is a routing blind spot for the recorder. Revisit if SIG-7 adds a worker.
+    serviceWorkers: "block",
   },
   projects: [
     {
