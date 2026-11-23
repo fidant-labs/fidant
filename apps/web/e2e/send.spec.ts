@@ -185,12 +185,19 @@ test("the sender's name must fit with the file name, and stray drops are ignored
     mimeType: "application/octet-stream",
     buffer: Buffer.from("hello"),
   });
-  const fileDrop = `(() => {
-    const drop = new DragEvent("drop", { bubbles: true, cancelable: true });
-    document.getElementById("file").dispatchEvent(drop);
-    return drop.defaultPrevented;
+  const drop = (id: string, fill: string) => `(() => {
+    const dt = new DataTransfer();
+    ${fill};
+    const e = new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: dt });
+    document.getElementById("${id}").dispatchEvent(e);
+    return e.defaultPrevented;
   })()`;
-  expect(await page.evaluate(fileDrop)).toBe(false);
+  const file = `dt.items.add(new File(["x"], "x.bin"))`;
+  const text = `dt.setData("text/plain", "x")`;
+  expect(await page.evaluate(drop("file", file))).toBe(false);
+  expect(await page.evaluate(drop("file", text))).toBe(true);
+  expect(await page.evaluate(drop("recipient-name", text))).toBe(false);
+  expect(await page.evaluate(drop("recipient-name", file))).toBe(true);
   const name = `Anna-${randomTag()}`;
   await page.getByLabel("Who is it for?").fill(name);
   await page.getByRole("button", { name: "Add", exact: true }).click();
@@ -203,6 +210,7 @@ test("the sender's name must fit with the file name, and stray drops are ignored
   const link = await addRecipient(sigill, page, name);
   await expect(page.getByLabel("Your name")).toBeDisabled();
 
+  expect(await page.evaluate(drop("from", text))).toBe(true);
   const strayDrop = `(() => {
     const drop = new DragEvent("drop", { bubbles: true, cancelable: true });
     document.body.dispatchEvent(drop);

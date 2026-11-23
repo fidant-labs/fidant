@@ -25,13 +25,11 @@ function App() {
   return <SendPage />;
 }
 
-/** Only inputs take drops (text into text fields, files into the file input). Elsewhere the browser would open the file and lose the page. */
+/** The browser handles a drag only when an enabled input takes that kind (files into the file input, text into the others); anything else is cancelled so it cannot open the file and lose the page. */
 function ignoreStrayDrop(event: DragEvent) {
   const target = event.target;
-  if (
-    target instanceof HTMLInputElement &&
-    (target.type === "file" || !event.dataTransfer?.types.includes("Files"))
-  )
+  const files = event.dataTransfer?.types.includes("Files") ?? false;
+  if (target instanceof HTMLInputElement && !target.disabled && (target.type === "file") === files)
     return;
   event.preventDefault();
   if (event.dataTransfer) event.dataTransfer.dropEffect = "none";
