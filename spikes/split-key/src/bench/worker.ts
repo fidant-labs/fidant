@@ -4,6 +4,10 @@
 
 import type { WorkerRequest, WorkerResponse, WorkerScope } from "./messages.ts";
 import { type Progress, runMicro } from "./micro.ts";
+import { clearBenchDir, hasSyncAccessHandle } from "./opfs.ts";
+import { runPipeline } from "./pipeline.ts";
+import { readStorage } from "./results.ts";
+import { workerSinkSupport } from "./sinks.ts";
 
 const scope = self as unknown as WorkerScope;
 
@@ -36,6 +40,22 @@ async function handle(request: WorkerRequest): Promise<WorkerResponse> {
       );
       return { type: "micro-result", id: request.id, results };
     }
+    case "pipeline": {
+      const { result, output } = await runPipeline(request, progressFor(request.id));
+      return output
+        ? { type: "pipeline-result", id: request.id, result, output }
+        : { type: "pipeline-result", id: request.id, result };
+    }
+    case "clear-opfs":
+      await clearBenchDir();
+      return { type: "opfs-cleared", id: request.id, storage: await readStorage() };
+    case "probe":
+      return {
+        type: "probe-result",
+        id: request.id,
+        sinks: workerSinkSupport(),
+        syncAccessHandle: hasSyncAccessHandle(),
+      };
   }
 }
 
