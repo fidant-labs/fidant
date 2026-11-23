@@ -48,12 +48,12 @@ jobs:
       - if: steps.pw-cache.outputs.cache-hit == 'true'
         run: pnpm --filter @sigill/e2e exec playwright install-deps chromium
       - run: pnpm e2e
+      # Only the observations (recorded traffic, and run/ with the server logs) are uploaded.
+      # Traces, screenshots and the HTML report can contain full link URLs with key fragments,
+      # so they stay local: this repository's artifacts are public.
       - if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: e2e-artifacts
-          path: |
-            apps/e2e/playwright-report
-            apps/e2e/test-results
-            apps/e2e/observations
+          name: e2e-observations
+          path: apps/e2e/observations
           retention-days: 7
