@@ -1,0 +1,14 @@
+{
+  "name": "@sigill/e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "e2e": "playwright test",
+    "typecheck": "tsc --noEmit -p .",
+    "test": "node --test \"src/**/*.test.ts\""
+  },
+  "devDependencies": {
+    "@playwright/test": "catalog:",
+    "@types/node": "^24.19.2"
+  }
+}

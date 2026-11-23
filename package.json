@@ -9,6 +9,7 @@
   },
   "scripts": {
     "start": "pnpm run build && pnpm --filter @sigill/server start",
+    "e2e": "pnpm run build && pnpm --filter @sigill/e2e e2e",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build",
     "build": "pnpm -r --if-present run build",
     "lint": "biome ci .",

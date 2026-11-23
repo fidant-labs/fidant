@@ -24,6 +24,15 @@ importers:
         specifier: 7.0.2
         version: 7.0.2
 
+  apps/e2e:
+    devDependencies:
+      '@playwright/test':
+        specifier: 'catalog:'
+        version: 1.65.1
+      '@types/node':
+        specifier: ^24.19.2
+        version: 24.19.2
+
   apps/server:
     dependencies:
       '@sigill/protocol':

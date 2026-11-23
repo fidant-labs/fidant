@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // DOM types cover the callbacks that specs pass to page.evaluate, which run in the browser.
+    "lib": ["ES2024", "DOM"],
+    "types": ["node"]
+  },
+  "include": ["src", "tests", "*.ts"]
+}

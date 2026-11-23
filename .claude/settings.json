@@ -7,10 +7,26 @@
       "Bash(pnpm lint)",
       "Bash(pnpm typecheck)",
       "Bash(pnpm test)",
-      "Bash(pnpm format)"
+      "Bash(pnpm format)",
+      "Bash(bash .claude/scripts/review-gate.sh mark)"
     ]
   },
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/scripts/review-gate.sh\""
+          },
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/scripts/behind-main.sh\""
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Edit|Write|MultiEdit",
@@ -20,7 +36,41 @@
             "command": "f=$(jq -r '.tool_input.file_path // empty'); [ -n \"$f\" ] && cd \"$CLAUDE_PROJECT_DIR\" && pnpm exec biome check --write --no-errors-on-unmatched --files-ignore-unknown=true \"$f\" >/dev/null 2>&1; exit 0"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/scripts/linear-reminder.sh\""
+          }
+        ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "superpowers@claude-plugins-official": true,
+    "ponytail@sigill-tools": true,
+    "ponytail@ponytail": false
+  },
+  "extraKnownMarketplaces": {
+    "sigill-tools": {
+      "source": {
+        "source": "settings",
+        "name": "sigill-tools",
+        "owner": { "name": "Sigill" },
+        "plugins": [
+          {
+            "name": "ponytail",
+            "description": "Pushes Claude toward the simplest working solution, pinned to a reviewed upstream commit.",
+            "source": {
+              "source": "github",
+              "repo": "DietrichGebert/ponytail",
+              "sha": "7086abecc268657a2da241a7acde62fa11793036"
+            }
+          }
+        ]
+      }
+    }
   }
 }
