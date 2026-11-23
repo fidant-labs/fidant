@@ -1,10 +1,19 @@
-import { expect, test } from "../src/fixtures.ts";
+import { canaryFile, canaryKey, expect, test } from "../src/fixtures.ts";
 
 // A host outside the stack. The route aborts requests to it before DNS, and the browser's
 // host-resolver-rules resolve it to nothing, so these tests never reach the internet.
 const outside = "https://example.com/";
 
-test("the app loads for a sender and a recipient", async ({ actor, observed, baseURL }) => {
+test("the app loads for a sender and a recipient", async ({
+  actor,
+  observed,
+  baseURL,
+  leaks,
+  canary,
+}) => {
+  // Nothing sends these yet; the leak check after the test must find neither.
+  leaks.watch(canaryFile(canary.fork("file")));
+  leaks.watchKey("fragment secret", canaryKey(canary.fork("key")));
   const actors = { sender: await actor("sender"), recipient: await actor("recipient") };
 
   for (const [name, { page }] of Object.entries(actors)) {
