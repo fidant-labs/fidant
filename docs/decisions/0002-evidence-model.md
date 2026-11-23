@@ -346,8 +346,8 @@ Why this much and no more:
 
 - **Data minimisation.** GDPR Art. 5(1)(c) allows only the personal data needed for the purpose. The purpose is to show who sent, who received, and when. A reference that resolves through `parties` does that.
 - **Personnummer.** Dataskyddslagen (2018:218) 3 kap. 10 § allows personnummer only where clearly justified, for example for secure identification. BankID identification is that case. The personnummer is stored once, in `parties`, and nowhere else.
-- **Erasure.** An append-only chain cannot honour erasure or end of retention. So it holds nothing directly identifying. Deleting a `parties` row leaves only references that cannot be resolved without the pepper.
-- **Transparency.** This table is the input for the privacy notice in SIG-31.
+- **Erasure.** An append-only chain cannot honour erasure or end of retention. So it holds nothing directly identifying. Deleting a `parties` row leaves only references. Anyone with the pepper can still resolve a reference by trying every personnummer, so the references stay personal data (pseudonymous, not anonymous) until the pepper is destroyed. SIG-29 decides when that happens.
+- **Transparency.** This table feeds SIG-31, the public page that lists every piece of data Sigill stores.
 
 ## Consequences
 
