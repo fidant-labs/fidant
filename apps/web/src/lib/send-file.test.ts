@@ -142,6 +142,7 @@ function options(channel: FrameChannel, secret: string, bytes: Uint8Array, signa
       channel,
       maxMessageSize: 65536,
       file,
+      from: "Anna",
       secret,
       sha256: Promise.resolve(sha256(bytes)),
       signal: signal ?? new AbortController().signal,
@@ -170,6 +171,7 @@ test("sends a file and reports a matching receipt", async () => {
     size: bytes.length,
     type: "application/octet-stream",
     chunkSize: 48 * 1024,
+    from: "Anna",
   });
   assert.equal(o.progress.at(-1), bytes.length);
 });

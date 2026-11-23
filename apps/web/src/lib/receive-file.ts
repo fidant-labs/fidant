@@ -3,7 +3,7 @@
 // Frames on the channel (see frames.ts and send-file.ts):
 //
 //   sender → recipient   INIT(transferId)                     plaintext
-//   sender → recipient   META{name, size, type, chunkSize}    → onOffer, user decides
+//   sender → recipient   META{name, size, type, chunkSize, from}  → onOffer, user decides
 //   recipient → sender   ACCEPT  (or DECLINE: stop here)
 //   sender → recipient   CHUNK × n                            verified, file bytes to the sink
 //   sender → recipient   END(sha256, size)                    checked against what arrived
@@ -46,8 +46,8 @@ export type ReceiveChannel = Pick<
   "readyState" | "addEventListener" | "removeEventListener" | "send"
 >;
 
-/** What the recipient is shown before deciding. */
-export type FileOffer = { name: string; size: number; type: string };
+/** What the recipient is shown before deciding. `from` is the sender's unverified name, or "". */
+export type FileOffer = { name: string; size: number; type: string; from: string };
 
 export type ReceiveFileOptions = {
   channel: ReceiveChannel;
@@ -142,7 +142,8 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
       throw new Error("sender sent a frame before the recipient answered");
     });
 
-    const decision = options.onOffer({ name: meta.name, size: meta.size, type: meta.type });
+    const { name, size, type, from } = meta;
+    const decision = options.onOffer({ name, size, type, from });
     // A sink that arrives after the transfer ended is discarded.
     decision.then(
       (late) => {
