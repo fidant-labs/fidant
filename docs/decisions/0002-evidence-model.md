@@ -107,3 +107,79 @@ If the signature XML embeds the IP, every evidence package carries it, whatever 
 8. **Recipient labels.** In P2P, the labels a sender types for recipients are class M, so the audit log cannot name recipients by those labels.
 9. **Size formatting.** `formatBytes` is English only, while the receipt is Swedish or English.
 10. **Who confirms a download.** The confirmation comes from the recipient's browser. The server can only compare it with what it knows.
+
+## Options considered
+
+### Checksums the receipt signs
+
+`C` is the salted commitment of 0001 exception (c). A ciphertext hash is a hash of the encrypted file. In P2P it covers one attempt only.
+
+| Option                     | For                                                                      | Against                                                         |
+| -------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------- |
+| `C` only                   | One value; already allowed by 0001                                       | Checkable only after decryption, so only after signing          |
+| `C` plus a ciphertext hash | Ciphertext checked before signing; a later mismatch points at the sender | Two values; in P2P the ciphertext hash changes per attempt      |
+| Ciphertext hash only       | Checkable before decryption                                              | Says nothing about the plaintext; a verifier also needs the key |
+
+### Checksum in the visible text
+
+| Option                    | For                                                 | Against                                                    |
+| ------------------------- | --------------------------------------------------- | ---------------------------------------------------------- |
+| Shortened `C`             | Same value a verifier recomputes from file and salt | Shows what the sender declared; checked only after signing |
+| Shortened ciphertext hash | Checked before signing                              | Changes per attempt in P2P; means nothing without the key  |
+| None                      | Shorter text                                        | Visible text does not tie to a file                        |
+
+### File size in the visible text
+
+| Option             | For                                    | Against                                                      |
+| ------------------ | -------------------------------------- | ------------------------------------------------------------ |
+| Drop it            | No change to 0001                      | Less for the recipient to recognise the file by              |
+| Rounded ("2,4 MB") | Helps the recipient recognise the file | Needs a new exception to 0001; `formatBytes` is English only |
+| Padded size        | Not secret (0001 exception (b))        | Misleading: not the file's size                              |
+
+### Who renders the receipt text
+
+| Option                                                               | For                                                                              | Against                                                |
+| -------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| Browser sends the full `receiptText`; server re-renders and compares | The single `receiptText` field of 0001; the browser shows exactly what is signed | Server needs the templates and a byte-exact comparison |
+| Browser sends the name only; server renders                          | Server alone controls the wording                                                | The name travels in a field 0001 does not allow        |
+
+### Reading the file name before signing
+
+| Option                                                              | For                                                                     | Against                                                                          |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| META under the full key                                             | No change to the keys                                                   | The recipient's browser cannot name the file before signing                      |
+| META under a key from the fragment half, content under the full key | The browser can render the receipt; content still needs the server half | Name, type and size readable with the link alone; key change in SIG-7 and SIG-13 |
+
+### Identity in the audit log
+
+| Option                                                             | For                                                                    | Against                                                     |
+| ------------------------------------------------------------------ | ---------------------------------------------------------------------- | ----------------------------------------------------------- |
+| Plain personnummer                                                 | Simple                                                                 | Personal data in an append-only chain that cannot be erased |
+| Plain SHA-256 of the personnummer                                  | No personnummer in clear                                               | Brute-forced from about 10^7 to 10^8 possible values        |
+| HMAC under a server pepper, identity in a separate deletable table | Chain holds nothing directly identifying; identity rows can be deleted | A pepper to keep secret; a second table to manage           |
+
+### IP address and user agent
+
+| Option                         | For                        | Against                                        |
+| ------------------------------ | -------------------------- | ---------------------------------------------- |
+| Store them                     | Helps investigate disputes | Personal data in a chain that cannot be erased |
+| Store them truncated           | Less identifying           | Still personal data; little evidential value   |
+| Keep them out of the audit log | Least personal data        | Not available for investigations               |
+
+BankID receives `endUserIp` with every request whichever option is chosen.
+
+### Time in the visible text
+
+| Option                       | For                          | Against                                |
+| ---------------------------- | ---------------------------- | -------------------------------------- |
+| Swedish local time, no zone  | Reads naturally              | Ambiguous to later and foreign readers |
+| Swedish local time, labelled | Reads naturally; unambiguous | A label in both languages              |
+| UTC                          | Unambiguous                  | Unfamiliar to most recipients          |
+
+### Organisation line in the POC
+
+| Option                                    | For                                    | Against                                            |
+| ----------------------------------------- | -------------------------------------- | -------------------------------------------------- |
+| Show it as the sender states it           | Matches the issue's draft              | The recipient signs a claim Sigill has not checked |
+| Omit it until checked                     | The text states only what Sigill knows | The recipient does not see the organisation        |
+| Show it labelled "uppgiven av avsändaren" | Informative and honest                 | Longer text; unchecked data in the evidence        |
