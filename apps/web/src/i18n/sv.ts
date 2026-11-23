@@ -4,6 +4,36 @@ import type { LogFields } from "@sigill/protocol";
 import type { Tie } from "../lib/server-facts.ts";
 import type { Messages } from "./en.ts";
 
+// Samma fält som logFields i en.ts, inklusive `event`.
+const logFields: Record<"event" | keyof LogFields, readonly [string, string]> = {
+  event: [
+    "vad som hände, till exempel att en länk öppnades eller en anslutning nekades",
+    "För att se hur tjänsten beter sig och hitta vad som gick fel.",
+  ],
+  link: [
+    "de 6 första tecknen i ett länk-ID",
+    "Så att vi kan följa en länk genom loggen när något går fel, utan att kunna hitta själva länken.",
+  ],
+  links: [
+    "hur många länkar en avsändare har",
+    "För att se hur tjänsten används och upptäcka en avsändare med ovanligt många länkar.",
+  ],
+  bytes: [
+    "meddelandens storlek",
+    "För att upptäcka för stora eller trasiga meddelanden och dimensionera servern.",
+  ],
+  reason: [
+    "varför en länk eller anslutning nekades",
+    "För att se varför anslutningar misslyckas, så att vi kan åtgärda orsaken.",
+  ],
+  code: ["felkoder", "För att hitta fel i webbappen eller servern."],
+  path: [
+    "om varje anslutning gick direkt, via vårt relä eller misslyckades",
+    "För att veta hur ofta anslutningar behöver vårt relä, vilket visar hur stort det måste vara.",
+  ],
+  port: ["porten servern lyssnar på", "För att bekräfta att servern startade där den ska."],
+};
+
 export const sv: Messages = {
   product: "Fidant",
   tabTitles: {
@@ -291,15 +321,9 @@ export const sv: Messages = {
     logs: `Vad som hände, till exempel att en länk öppnades, med ${new Intl.ListFormat("sv", {
       type: "conjunction",
     }).format(
-      Object.values({
-        link: "de 6 första tecknen i ett länk-ID",
-        links: "hur många länkar en avsändare har",
-        bytes: "meddelandens storlek",
-        reason: "varför en länk eller anslutning nekades",
-        code: "felkoder",
-        path: "om varje anslutning gick direkt, via vårt relä eller misslyckades",
-        port: "porten servern lyssnar på",
-      } satisfies Record<keyof LogFields, string>),
+      Object.entries(logFields)
+        .filter(([field]) => field !== "event")
+        .map(([, [what]]) => what),
     )}. Aldrig namn, nycklar, filinnehåll eller IP-adresser.`,
   },
   privacy: {
@@ -360,8 +384,8 @@ export const sv: Messages = {
         "Några små, låsta meddelanden som hjälper de två webbläsarna att ansluta. Vi skickar dem vidare utan att kunna läsa dem, och sparar dem inte.",
       ],
     ],
-    logLines: "Loggrader",
     keepHeading: "Vad vi sparar",
-    keep: "Vi har inga konton, ingen databas, inga cookies och ingen spårning. Förutom loggraderna ovan sparas ingenting när avsändarens sida har stängts, inom högst en minut.",
+    keep: "Vi har inga konton, ingen databas, inga cookies och ingen spårning. Förutom loggraderna nedan sparas ingenting när avsändarens sida har stängts, inom högst en minut.",
+    logFields,
   },
 };

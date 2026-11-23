@@ -13,6 +13,7 @@ import {
   type ClientMessage,
   type ConnectionPath,
   type ErrorCode,
+  type LogEvent,
   type LogFields,
   parseClientMessage,
   type RefuseReason,
@@ -20,7 +21,7 @@ import {
 } from "@sigill/protocol";
 import { type RawData, WebSocket, WebSocketServer } from "ws";
 
-export type Logger = (event: string, fields?: LogFields) => void;
+export type Logger = (event: LogEvent, fields?: LogFields) => void;
 
 export const SIGNAL_PATH = "/signal";
 

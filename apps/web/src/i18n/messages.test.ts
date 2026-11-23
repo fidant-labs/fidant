@@ -32,7 +32,7 @@ test("pickLanguage prefers the stored choice, then a Swedish browser", () => {
 test("server.logs lists every log field and what the server never logs", () => {
   assert.equal(
     en.server.logs,
-    "What happened, like a link being opened, with the first 6 characters of a link ID, how many links a sender has, message sizes, why a link or connection was refused, error codes, whether each connection was direct, went through our relay or failed, and the port it listens on. Never names, keys, file data or IP addresses.",
+    "What happened, like a link being opened, with the first 6 characters of a link ID, how many links a sender has, message sizes, why a link or connection was refused, error codes, whether each connection was direct, went through our relay or failed, and the port the server listens on. Never names, keys, file data or IP addresses.",
   );
   assert.equal(
     sv.server.logs,
