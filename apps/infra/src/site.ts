@@ -8,24 +8,15 @@ import * as s3deploy from "aws-cdk-lib/aws-s3-deployment";
 import type { Construct } from "constructs";
 import { primaryDomain, siteNames } from "./config.ts";
 
-export class CertificateStack extends Stack {
-  readonly certificate: acm.Certificate;
-
+export class SiteStack extends Stack {
   constructor(scope: Construct, id: string, props: StackProps) {
     super(scope, id, props);
-    this.certificate = new acm.Certificate(this, "Certificate", {
+
+    const certificate = new acm.Certificate(this, "Certificate", {
       domainName: primaryDomain,
       subjectAlternativeNames: siteNames.filter((name) => name !== primaryDomain),
       validation: acm.CertificateValidation.fromDns(),
     });
-  }
-}
-
-export type SiteStackProps = StackProps & { certificate: acm.ICertificate };
-
-export class SiteStack extends Stack {
-  constructor(scope: Construct, id: string, props: SiteStackProps) {
-    super(scope, id, { ...props, crossRegionReferences: true });
 
     const bucket = new s3.Bucket(this, "Bucket", {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
@@ -62,7 +53,7 @@ export class SiteStack extends Stack {
 
     const distribution = new cloudfront.Distribution(this, "Distribution", {
       domainNames: siteNames,
-      certificate: props.certificate,
+      certificate,
       defaultRootObject: "index.html",
       priceClass: cloudfront.PriceClass.PRICE_CLASS_100,
       minimumProtocolVersion: cloudfront.SecurityPolicyProtocol.TLS_V1_2_2021,
@@ -75,6 +66,10 @@ export class SiteStack extends Stack {
           { function: redirect, eventType: cloudfront.FunctionEventType.VIEWER_REQUEST },
         ],
       },
+      // S3 answers 403 for a missing key because CloudFront may not list the bucket.
+      errorResponses: [
+        { httpStatus: 403, responseHttpStatus: 404, responsePagePath: "/index.html" },
+      ],
     });
 
     new s3deploy.BucketDeployment(this, "Page", {

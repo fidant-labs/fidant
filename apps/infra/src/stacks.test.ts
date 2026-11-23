@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { App } from "aws-cdk-lib";
+import { App, Stack } from "aws-cdk-lib";
 import { Match, Template } from "aws-cdk-lib/assertions";
+import { addStacks } from "./app.ts";
 import { siteNames } from "./config.ts";
 import { DnsStack } from "./dns.ts";
-import { CertificateStack, SiteStack } from "./site.ts";
+import { SiteStack } from "./site.ts";
 
 const account = "111111111111";
+const dnsAccount = "222222222222";
+const pocAccount = "333333333333";
 
 function synth() {
   const app = new App();
@@ -21,18 +24,11 @@ function synth() {
     certificateValidation: [{ name: "_a.www.fidant.eu.", value: "_b.acm-validations.aws." }],
     distributionDomain: "d111.cloudfront.net",
   });
-  const { certificate } = new CertificateStack(app, "Certificate", {
-    env: { account, region: "us-east-1" },
-  });
-  const site = new SiteStack(app, "Site", { env: { account, region: "eu-north-1" }, certificate });
-  return {
-    dns: Template.fromStack(dns),
-    certificate: Template.fromStack(certificate.stack),
-    site: Template.fromStack(site),
-  };
+  const site = new SiteStack(app, "Site", { env: { account, region: "us-east-1" } });
+  return { dns: Template.fromStack(dns), site: Template.fromStack(site) };
 }
 
-const { dns, certificate, site } = synth();
+const { dns, site } = synth();
 
 function zoneRef(zoneName: string): { Ref: string } {
   const [id] = Object.entries(dns.findResources("AWS::Route53::HostedZone")).find(
@@ -40,6 +36,51 @@ function zoneRef(zoneName: string): { Ref: string } {
   ) ?? [""];
   return { Ref: id };
 }
+
+function stacksFor(currentAccount: string | undefined): Stack[] {
+  const app = new App();
+  addStacks(app, {
+    CDK_DEFAULT_ACCOUNT: currentAccount,
+    FIDANT_DNS_ACCOUNT: dnsAccount,
+    FIDANT_POC_ACCOUNT: pocAccount,
+  });
+  return app.node.children.filter((child) => child instanceof Stack);
+}
+
+test("the fidant-dns account gets only the protected DNS stack", () => {
+  const stacks = stacksFor(dnsAccount);
+  assert.deepEqual(
+    stacks.map((stack) => [stack.stackName, stack.region, stack.terminationProtection]),
+    [["FidantDns", "eu-north-1", true]],
+  );
+});
+
+test("the fidant-poc account gets only the site stack, in us-east-1", () => {
+  const stacks = stacksFor(pocAccount);
+  assert.deepEqual(
+    stacks.map((stack) => [stack.stackName, stack.region]),
+    [["FidantSite", "us-east-1"]],
+  );
+  Template.fromStack(stacks[0] as Stack);
+});
+
+test("any other account gets no stacks", () => {
+  assert.throws(() => stacksFor(account), /neither FIDANT_DNS_ACCOUNT nor FIDANT_POC_ACCOUNT/);
+  assert.throws(() => stacksFor(undefined), /aws sso login/);
+  assert.throws(
+    () => addStacks(new App(), { CDK_DEFAULT_ACCOUNT: dnsAccount }),
+    /FIDANT_DNS_ACCOUNT and FIDANT_POC_ACCOUNT/,
+  );
+});
+
+test("the committed config synthesizes and keeps the Proton verification record", () => {
+  const [stack] = stacksFor(dnsAccount);
+  Template.fromStack(stack as Stack).hasResourceProperties("AWS::Route53::RecordSet", {
+    Name: "fidant.se.",
+    Type: "TXT",
+    ResourceRecords: Match.arrayWith([Match.stringLikeRegexp('^"protonmail-verification=')]),
+  });
+});
 
 test("the hosted zones survive the stack being deleted", () => {
   const zones = Object.values(dns.findResources("AWS::Route53::HostedZone"));
@@ -106,7 +147,7 @@ test("every site name points at the distribution over IPv4 and IPv6", () => {
 });
 
 test("one certificate covers every site name", () => {
-  certificate.hasResourceProperties("AWS::CertificateManager::Certificate", {
+  site.hasResourceProperties("AWS::CertificateManager::Certificate", {
     DomainName: "fidant.se",
     SubjectAlternativeNames: siteNames.filter((name) => name !== "fidant.se"),
     ValidationMethod: "DNS",
@@ -144,6 +185,16 @@ test("the distribution serves every site name over HTTPS only", () => {
         ViewerProtocolPolicy: "redirect-to-https",
         FunctionAssociations: [Match.objectLike({ EventType: "viewer-request" })],
       }),
+    }),
+  });
+});
+
+test("a missing page answers 404, not S3's 403", () => {
+  site.hasResourceProperties("AWS::CloudFront::Distribution", {
+    DistributionConfig: Match.objectLike({
+      CustomErrorResponses: [
+        Match.objectLike({ ErrorCode: 403, ResponseCode: 404, ResponsePagePath: "/index.html" }),
+      ],
     }),
   });
 });
