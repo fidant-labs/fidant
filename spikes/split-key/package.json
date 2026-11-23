@@ -3,10 +3,12 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "bench": "vite build && node serve.ts",
     "typecheck": "tsc --noEmit -p .",
     "test": "node --test \"src/**/*.test.ts\""
   },
   "devDependencies": {
-    "@types/node": "^24.19.2"
+    "@types/node": "^24.19.2",
+    "vite": "^8.3.8"
   }
 }

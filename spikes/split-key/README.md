@@ -21,3 +21,37 @@ pnpm --filter @sigill/spike-split-key test
 ```
 
 `pnpm check` at the root lints, typechecks and tests this package too.
+
+## Bench
+
+```sh
+pnpm --filter @sigill/spike-split-key bench
+```
+
+This builds the bench page into `dist/` and serves it:
+
+- `http://127.0.0.1:8450/` on this machine. Loopback HTTP is a secure context
+  in every browser, so no certificate is involved.
+- `https://<LAN address>:8451/` for phones and other laptops, with the same
+  self-signed certificate as `pnpm start` (from `CERT_DIR`, or `.certs/` at the
+  repository root, created on first use). Accept the warning once.
+
+`BENCH_PORT` and `BENCH_HTTPS_PORT` change the ports. The server prints the
+addresses, logs nothing per request, and sends every response with COOP and
+COEP so the page is cross-origin isolated.
+
+On the page, "Run microbenchmarks" pushes the chosen amount of seeded data
+(256 MiB by default) through each stage in a dedicated worker:
+
+| Stage             | What it measures                                            |
+| ----------------- | ----------------------------------------------------------- |
+| `generator`       | the seeded test-data generator, 1 MiB at a time             |
+| `sha256-js`       | the app's JavaScript SHA-256 (`apps/web/src/lib/sha256.ts`) |
+| `aes-gcm-encrypt` | `StreamWriter.encrypt` per chunk, at each chosen chunk size |
+| `aes-gcm-decrypt` | `StreamReader.decrypt` per chunk, at each chosen chunk size |
+
+MB/s is 10^6 bytes per second of stage time. "Copy JSON" copies the full
+report: the results and the environment block (user agent, core count, device
+memory, cross-origin isolation, `storage.estimate()`, and which memory and file
+APIs exist). The report has no keys, file names or file content; keys are
+random per run and never leave the worker.

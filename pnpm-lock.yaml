@@ -80,6 +80,9 @@ importers:
       '@types/node':
         specifier: ^24.19.2
         version: 24.19.2
+      vite:
+        specifier: ^8.3.8
+        version: 8.3.8(@types/node@24.19.2)
 
 packages:
 
