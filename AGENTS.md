@@ -35,6 +35,12 @@ Planning lives in Linear: workspace `sigill`, team `SIG`, issue keys like `SIG-2
 - Branches: `sig-<number>-<short-slug>` after the Linear issue. One pull request per issue. `main` is protected: changes land only through pull requests with green CI.
 - Pull request titles start with the Linear issue key (`SIG-21: ...`) so Linear links them.
 
+## Merging
+
+- An agent may merge a pull request when the required `check` passed and the latest review by `github-actions[bot]` on the pull request's current head commit is an approval. The approval counts only with a successful `Claude review` run on that same commit, because any workflow in this repository can post a review as `github-actions[bot]`.
+- Pull requests that touch `.github/**`, `AGENTS.md`, `CLAUDE.md`, `.claude/**`, `.agents/**`, `.mcp.json` or `skills-lock.json` also need an approval from the `maintainers` team. Authors cannot approve their own pull requests, so the other developer approves. The `sensitive-paths` ruleset enforces this, and repository admins can bypass it.
+- Agents never approve pull requests, never merge with `--admin` or any other rule bypass, and never change rulesets, teams or repository settings.
+
 ## Invariants
 
 - Never send file content, file names, file metadata or keys to the server or any other infrastructure, and never log them. The one deliberate exception: the BankID receipt text names the file.
