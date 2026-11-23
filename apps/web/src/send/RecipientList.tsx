@@ -7,7 +7,12 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { formatProgress } from "../lib/format.ts";
 import type { Recipient, RecipientStatus } from "../lib/sender-state.ts";
-import { Direct, Icon } from "../ui.tsx";
+import { button, Direct, Icon, linkButton } from "../ui.tsx";
+
+const STATUS_COLOR: Partial<Record<RecipientStatus, string>> = {
+  delivered: "text-success",
+  failed: "text-destructive",
+};
 
 const STATUS_TEXT: Record<RecipientStatus, (name: string) => string> = {
   waiting: (name) => `Waiting for ${name} to open the link`,
@@ -30,7 +35,7 @@ export function RecipientList({ recipients, fileSize, onRemove }: Props) {
     return null;
   }
   return (
-    <ul class="recipients" aria-label="Recipients">
+    <ul class="mt-6 mb-4 grid gap-3" aria-label="Recipients">
       {recipients.map((recipient) => (
         <RecipientRow
           key={recipient.linkId}
@@ -73,46 +78,55 @@ function RecipientRow({ recipient, fileSize, onRemove }: RowProps) {
   const shareable = status === "waiting" || status === "failed";
 
   return (
-    <li class={`recipient status-${status}`}>
-      <p class="recipient-status" aria-live="polite">
+    <li class="rounded-lg border border-border bg-card px-4 py-3">
+      <p
+        class={`m-0 flex items-center gap-[0.4rem] font-semibold wrap-anywhere ${STATUS_COLOR[status] ?? ""}`}
+        aria-live="polite"
+      >
         {status === "delivered" && <Icon name="check" />}
         {status === "failed" && <Icon name="alert" />}
         <span>{STATUS_TEXT[status](name)}</span>
       </p>
       {status === "receiving" && (
         <>
-          <Direct from="You" to={name} state="active" />
-          <div class="progress-row">
+          <Direct from="You" to={name} state="active" class="mt-3" />
+          <div class="my-3 flex flex-wrap items-center gap-3">
             <progress
+              class="min-w-40 flex-1 accent-primary"
               aria-label={`Progress for ${name}`}
               max={Math.max(fileSize, 1)}
               value={fileSize > 0 ? bytesSent : 0}
             />
-            <span class="progress-text">{formatProgress(bytesSent, fileSize)}</span>
+            <span class="text-[0.85rem] text-muted-foreground tabular-nums">
+              {formatProgress(bytesSent, fileSize)}
+            </span>
           </div>
         </>
       )}
-      <div class="recipient-actions">
+      <div class="mt-3 flex flex-wrap items-center gap-3">
         {shareable && (
-          <button type="button" aria-label={`Copy link for ${name}`} onClick={copy}>
+          <button type="button" class={button} aria-label={`Copy link for ${name}`} onClick={copy}>
             Copy link
           </button>
         )}
         <button
           type="button"
-          class="link"
+          class={linkButton}
           aria-label={`Remove ${name}`}
           data-remove={linkId}
           onClick={() => onRemove(linkId)}
         >
           Remove
         </button>
-        <span class="copy-note" role="status">
+        <span class="text-[0.85rem] text-muted-foreground" role="status">
           {copyNote}
         </span>
       </div>
       {shareable && (
-        <output class="link-text" aria-label={`Link for ${name}`}>
+        <output
+          class="mt-2 block font-mono text-[0.8rem] text-muted-foreground wrap-anywhere select-all"
+          aria-label={`Link for ${name}`}
+        >
           {url}
         </output>
       )}

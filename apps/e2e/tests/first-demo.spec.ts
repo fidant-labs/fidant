@@ -135,6 +135,9 @@ async function receive(
   await expect(page.getByText(sizeText, { exact: true })).toBeVisible();
   await page.getByText("Technical details").click();
   await expect(page.getByText(`${file.size.toLocaleString("en-US")} bytes`)).toBeVisible();
+  await expect(page.getByRole("region", { name: "What our server has right now" })).toContainText(
+    "this page is connected to the sender",
+  );
   const downloading = page.waitForEvent("download", { timeout: 60_000 });
   await page.getByRole("button", { name: "Download" }).click();
   await expect(page.getByText("this is exactly the file that was sent")).toBeVisible({
@@ -178,6 +181,21 @@ test("delivers a file to two recipients with a verified checksum", async ({
   for (const name of names) {
     await expect(delivered(sender, name)).toBeVisible();
   }
+
+  const panel = sender.getByRole("region", { name: "What our server has right now" });
+  await expect(panel).toContainText("None. The file goes directly between browsers.");
+  await expect(panel).toContainText(/[1-9]\d* setup messages? \(/);
+
+  const recipientPanel = received[0]?.page.getByRole("region", {
+    name: "What our server has right now",
+  });
+  if (!recipientPanel) {
+    throw new Error("no recipient");
+  }
+  await expect(recipientPanel).toContainText(
+    "Nothing about this page once it notices the connection has closed",
+  );
+  await expect(recipientPanel).toContainText(/[1-9]\d* setup messages? \(/);
 });
 
 test("refuses used, unknown and malformed links", async ({ demo, leaks, canary, baseURL }) => {
@@ -206,6 +224,11 @@ test("refuses used, unknown and malformed links", async ({ demo, leaks, canary, 
   const malformed = await demo.open("malformed");
   await malformed.goto("/r/not-a-link#nope");
   await expect(malformed.getByText("This link doesn't work")).toBeVisible();
+
+  const bare = await demo.open("no-fragment");
+  await bare.goto(`/r/${linkId}`);
+  await expect(bare.getByText("This link doesn't work")).toBeVisible();
+  await expect(bare.getByRole("region", { name: "What our server has right now" })).toHaveCount(0);
 });
 
 test("a declined offer puts the recipient back to waiting, and can be reopened", async ({
