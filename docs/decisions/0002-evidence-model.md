@@ -1,6 +1,6 @@
 # 0002: Evidence model for verified transfers
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-23
 - Linear: SIG-6
 
@@ -269,7 +269,8 @@ The hidden data never contains the file name, the salt, the exact size or the MI
 
 This takes the option "`C` plus a ciphertext hash".
 
-- **`C` is the lasting binding.** The sender's browser computes `C` when the file is chosen, with a fresh 32-byte salt, and puts the salt and `C` in META. After decrypting, the recipient's browser recomputes `C` and reports the value it got. The server knows `C` from the signed hidden data and compares.
+- **`C` is the lasting binding.** The sender's browser computes `C` when the file is chosen, with a fresh 32-byte salt, and puts the salt and `C` in META. After decrypting, the recipient's browser recomputes `C` and reports the value it got. The server compares it with the registered `C`, the same value the receipt signs.
+- **The sender registers `C`.** The sender's browser sends `C` to the server when it creates a verified transfer. `C` is not secret, exception (c). The server stores it in the `transfer.created` event and refuses a sign-start whose `C` differs. So the server holds the sender's own reference for the blame rule below, independent of anything the recipient reports.
 - **The ciphertext hash is the check before signing.** Its definition depends on the mode:
   - Hosted: SHA-256 of the one stored ciphertext object. The server can check it too.
   - P2P: SHA-256 of the CHUNK frames as received in that attempt, in order. The sender declares it in a frame the recipient can read with the fragment half (see Key layering). It covers one attempt only. Retries after signing are bound by `C` alone.
@@ -304,7 +305,84 @@ This takes the option "Browser sends the full `receiptText`; server re-renders a
 
 ### What counts as a download
 
-- A download counts once the recipient's browser reports a `C` that matches and the server's comparison with `C` from the signed hidden data agrees.
+- A download counts once the recipient's browser reports a `C` that matches and the server's comparison with the registered `C`, which the receipt also signs, agrees.
 - Until then the recipient may retry without limit, even when repeat downloads are off. Every attempt is logged.
-- The confirmation is reported by the recipient's browser. The server cannot see the plaintext, so it can back the report only by comparing the reported `C` with the signed one. A modified browser could report a match it never computed.
+- The confirmation is reported by the recipient's browser. The server cannot see the plaintext, so it can back the report only by comparing the reported `C` with the registered one. A modified browser could report a match it never computed.
 - In P2P, every download needs the sender's browser online. If the sender allows repeat downloads, they are available only while the sender's browser stays online until expiry. The send page must say so.
+
+### Personal data per audit event
+
+The principle:
+
+- The audit chain holds pseudonymous references and hashes, nothing directly identifying.
+- Names and personnummer live in a separate `parties` table, outside the chain. Its rows can be deleted.
+- An evidence package carries identity through the BankID signature, which names the signer.
+
+Rules:
+
+- **Party reference.** `partyRef = HMAC-SHA256(serverPepper, personnummer)`. The pepper is a server secret, kept outside the database. A plain SHA-256 would not do: there are only about 10^7 to 10^8 personnummer, so it is easily brute-forced. This takes the option "HMAC under a server pepper, identity in a separate deletable table".
+- **`parties` table.** One row per `partyRef`: name and personnummer, written once at the first BankID login. When a sender names a recipient by personnummer, that personnummer goes here too, so the sign request can set `requirement.personalNumber`.
+- **No IP address and no user agent** in the audit log. This takes the option "Keep them out of the audit log". BankID still receives `endUserIp` with every request, as its API requires. If the BankID signature XML embeds the IP (unverified, see Context), every evidence package carries it regardless.
+- **Time.** Every event has the server's UTC time. The TSA anchors the chain in batches, as SIG-9 decides.
+
+Every event also has `eventId`, `transferId`, `at` and its chain hash. The other fields:
+
+| Event                                                    | Fields                                                                                                                                                    | Personal data and why                                                                                                               |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `transfer.created`                                       | `mode` (`p2p` or `hosted`), `senderRef`, `recipientSlots` (a count), `repeatDownloads`, `expiresAt`, `commitment` (`C`), `ciphertextSha256` (hosted only) | `senderRef` only. Name and personnummer are in `parties`, needed to show who sent. P2P recipient labels are class M and never sent. |
+| `recipient.slot.added`                                   | `slotId`, `expectedRecipientRef` (if the sender named one)                                                                                                | A reference only                                                                                                                    |
+| `party.authenticated`                                    | `slotId` or `sender`, `partyRef`, hash of the BankID `orderRef`                                                                                           | A reference only. The name goes to `parties` once.                                                                                  |
+| `ciphertext.checked`                                     | `slotId`, `attemptId`, `result`                                                                                                                           | None                                                                                                                                |
+| `receipt.signed`                                         | `slotId`, `partyRef`, `lang`, `template`, SHA-256 of `signature`, of `userNonVisibleData` and of `ocspResponse`                                           | A reference only. The signature lives in its one Postgres column (0001); the chain stores its hash only, exception (e).             |
+| `keyhalf.released`                                       | `slotId`                                                                                                                                                  | None                                                                                                                                |
+| `download.attempted`                                     | `slotId`, `attemptId`                                                                                                                                     | None. Every attempt is logged.                                                                                                      |
+| `download.confirmed`, `download.failed`                  | `slotId`, `attemptId`, `result` (`match`, `mismatch` or `decrypt-failed`)                                                                                 | None                                                                                                                                |
+| `transfer.expired`, `transfer.revoked`, `object.deleted` | `reason`                                                                                                                                                  | None                                                                                                                                |
+| `sender.signed` (SIG-36, production)                     | SHA-256 of `signature`                                                                                                                                    | As `receipt.signed`                                                                                                                 |
+
+The POC stores no organisation number. The organisation line is omitted (see Receipt text).
+
+Why this much and no more:
+
+- **Data minimisation.** GDPR Art. 5(1)(c) allows only the personal data needed for the purpose. The purpose is to show who sent, who received, and when. A reference that resolves through `parties` does that.
+- **Personnummer.** Dataskyddslagen (2018:218) 3 kap. 10 § allows personnummer only where clearly justified, for example for secure identification. BankID identification is that case. The personnummer is stored once, in `parties`, and nowhere else.
+- **Erasure.** An append-only chain cannot honour erasure or end of retention. So it holds nothing directly identifying. Deleting a `parties` row leaves only references that cannot be resolved without the pepper.
+- **Transparency.** This table is the input for the privacy notice in SIG-31.
+
+## Consequences
+
+- **SIG-7 and SIG-13**:
+  - META gains the salt and `C`. That takes about 100 of META's 1024 bytes, so the file-name budget shrinks. `metaFits` must reserve the room, and `parseMeta` accepts the new key set.
+  - META and the frame declaring the P2P ciphertext hash move under a key from the fragment half. CHUNK frames stay under the full key.
+  - A new frame, or a new END field, carries the ciphertext hash.
+- **SIG-15**:
+  - The receipt templates, the browser rendering and the server's re-render check.
+  - Signing only after the ciphertext check; refusing a sign-start whose `C` differs from the registered one.
+  - `requirement.personalNumber` when the sender named the recipient.
+  - Check the current BankID RP guidelines first, especially the facts marked unverified in Context.
+- **SIG-34**: the BankID simulator enforces the same limits as the real API, including the lengths of `userVisibleData` and `userNonVisibleData`.
+- **SIG-9**: the event types and fields above; the `parties` table outside the chain; the pepper.
+- **SIG-19 and SIG-20**:
+  - The evidence package is assembled in the browser. It holds the signature, `ocspResponse`, the TSA tokens, the salt and the template text for the version signed.
+  - A verifier recomputes `C` from the file and the salt, checks the hidden data, and checks the visible text against the template.
+- **SIG-23**:
+  - The create-transfer request carries `C`.
+  - The recipient signs after the ciphertext is on the device, and the key half is released after signing.
+  - The send page says that repeat downloads need the sender's browser online.
+- **SIG-29**: retention, deleting `parties` rows, and the pepper's lifecycle.
+- **SIG-31**: publish the per-event table.
+- **SIG-36**: the sender signature and the organisation line.
+- **SIG-28**: this model is not qualified electronic registered delivery under eIDAS.
+
+The inconsistencies in Context:
+
+1. **Size**: dropped from the receipt (Receipt text).
+2. **Where the signature lives**: 0001's wording; the audit log stores its hash (Personal data per audit event).
+3. **"The encrypted file" in P2P**: the ciphertext hash is defined per mode (Checksums).
+4. **Naming the file before signing**: META moves under a key from the fragment half (Key layering; SIG-7, SIG-13).
+5. **The declared checksum**: it is `C`, carried in META and registered with the server (Checksums; SIG-7, SIG-13, SIG-23).
+6. **Plain checksums in END and RECEIPT**: kept for unverified transfers; verified transfers compare `C` (Checksums).
+7. **Draft wording**: time labelled "svensk tid", organisation line omitted (Receipt text; SIG-36).
+8. **Recipient labels**: never sent; recipients are identified by slot ID and, after BankID, by `partyRef` (Personal data per audit event).
+9. **Size formatting**: moot, since the size is dropped (Receipt text).
+10. **Who confirms a download**: browser-reported and backed only by comparison with the registered `C` (What counts as a download).
