@@ -35,10 +35,10 @@ const ICONS = {
 type IconName = keyof typeof ICONS;
 
 /** Decorative: the text next to an icon always carries its meaning. */
-export function Icon({ name }: { name: IconName }) {
+export function Icon({ name, class: cls }: { name: IconName; class?: string }) {
   return (
     <svg
-      class="icon"
+      class={`flex-none ${cls ?? "size-[1.25em]"}`}
       viewBox="0 0 24 24"
       width="24"
       height="24"
@@ -55,7 +55,22 @@ export function Icon({ name }: { name: IconName }) {
   );
 }
 
+export const lede = "mt-2 mb-6 text-[1.05rem] text-muted-foreground";
+
+/** Add the colors: `border-border bg-warning-bg` or `border-destructive bg-destructive-bg`. */
+export const notice = "rounded-lg border px-4 py-3";
+
+export const buttonBase =
+  "inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg disabled:cursor-not-allowed disabled:opacity-50";
+
+export const button = `${buttonBase} border border-primary bg-primary px-4 py-[0.55rem] text-primary-foreground`;
+
+/** A button that looks like a link. */
+export const linkButton = `${buttonBase} p-1 text-primary underline`;
+
 type Section = "send" | "privacy";
+
+const menuItem = "block rounded-lg px-[0.7rem] py-[0.35rem] text-foreground no-underline";
 
 const MENU: ReadonlyArray<readonly [Section, string, string]> = [
   ["send", "/", "Send a file"],
@@ -70,16 +85,26 @@ function Menu({ current }: { current: Section | undefined }) {
   const newTab = current !== "privacy";
   return (
     <nav aria-label="Main">
-      <ul class="menu">
+      <ul class="flex gap-1">
         {MENU.map(([section, href, label]) => (
           <li key={section}>
             {section === current ? (
               // Not a link: following it would reload the page and drop a transfer in progress.
-              <span aria-current="page">{label}</span>
-            ) : (
-              <a href={href} target={newTab ? "_blank" : undefined} rel="noopener">
+              <span
+                aria-current="page"
+                class={`${menuItem} bg-card font-semibold inset-ring inset-ring-border`}
+              >
                 {label}
-                {newTab && <span class="visually-hidden"> (opens in a new tab)</span>}
+              </span>
+            ) : (
+              <a
+                href={href}
+                target={newTab ? "_blank" : undefined}
+                rel="noopener"
+                class={`${menuItem} hover:bg-card hover:underline`}
+              >
+                {label}
+                {newTab && <span class="sr-only"> (opens in a new tab)</span>}
               </a>
             )}
           </li>
@@ -92,35 +117,57 @@ function Menu({ current }: { current: Section | undefined }) {
 export function Page({ children, current }: { children: ComponentChildren; current?: Section }) {
   return (
     <>
-      <header class="menu-bar">
-        <p class="brand">
+      <header class="mx-auto flex max-w-xl flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border px-4 pt-4 pb-3">
+        <p class="m-0 flex items-center gap-[0.4rem] font-bold text-muted-foreground">
           <Icon name="lock" /> Sigill
         </p>
         <Menu current={current} />
       </header>
-      <main>{children}</main>
+      <main class="mx-auto max-w-xl px-4 pt-8 pb-16">{children}</main>
     </>
   );
 }
 
 type DirectState = "ready" | "active" | "done";
 
+const DIRECT_LINE: Record<DirectState, string> = {
+  ready:
+    "bg-[image:repeating-linear-gradient(90deg,var(--color-border)_0_6px,transparent_6px_12px)]",
+  active:
+    "bg-[image:repeating-linear-gradient(90deg,var(--color-primary)_0_6px,transparent_6px_12px)] bg-[length:12px_2px] animate-flow motion-reduce:animate-none",
+  done: "bg-success",
+};
+
 /** Hidden from screen readers, so always pair it with a sentence that says the same. */
-export function Direct({ from, to, state }: { from: string; to: string; state: DirectState }) {
+export function Direct({
+  from,
+  to,
+  state,
+  class: cls = "mt-6",
+}: {
+  from: string;
+  to: string;
+  state: DirectState;
+  /** Top margin; the default suits a page, a card passes a smaller one. */
+  class?: string;
+}) {
+  const done = state === "done";
   return (
-    <div class={`direct direct-${state}`} aria-hidden="true">
-      <span class="direct-end">
-        <Icon name="computer" />
-        <span class="direct-label">{from}</span>
+    <div class={`mb-1 flex items-center gap-3 ${cls}`} aria-hidden="true">
+      <span class="flex max-w-28 flex-col items-center text-muted-foreground">
+        <Icon name="computer" class="size-9 text-foreground" />
+        <span class="max-w-full truncate text-[0.85rem]">{from}</span>
       </span>
-      <span class="direct-line">
-        <span class="direct-badge">
-          <Icon name={state === "done" ? "check" : "lock"} />
+      <span class={`mb-5 flex h-0.5 flex-1 items-center justify-center ${DIRECT_LINE[state]}`}>
+        <span
+          class={`inline-flex rounded-[50%] border bg-background p-[0.35rem] ${done ? "border-success text-success" : "border-border text-primary"}`}
+        >
+          <Icon name={done ? "check" : "lock"} />
         </span>
       </span>
-      <span class="direct-end">
-        <Icon name="computer" />
-        <span class="direct-label">{to}</span>
+      <span class="flex max-w-28 flex-col items-center text-muted-foreground">
+        <Icon name="computer" class="size-9 text-foreground" />
+        <span class="max-w-full truncate text-[0.85rem]">{to}</span>
       </span>
     </div>
   );
@@ -128,15 +175,17 @@ export function Direct({ from, to, state }: { from: string; to: string; state: D
 
 export function FileCard({ name, size }: { name: string; size: string }) {
   return (
-    <div class="file-card">
-      <Icon name="file" />
+    <div class="my-4 flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3">
+      <Icon name="file" class="size-8 text-muted-foreground" />
       <div>
-        <p class="file-name">{name}</p>
-        <p class="muted">{size}</p>
+        <p class="m-0 font-semibold wrap-anywhere">{name}</p>
+        <p class="m-0 text-muted-foreground">{size}</p>
       </div>
     </div>
   );
 }
+
+const detailList = "mt-3 grid gap-2";
 
 export function TechDetails({
   rows,
@@ -144,13 +193,13 @@ export function TechDetails({
   rows: ReadonlyArray<readonly [string, ComponentChildren]>;
 }) {
   return (
-    <details class="tech">
-      <summary>Technical details</summary>
-      <dl>
+    <details class="mt-8 text-[0.9rem] [&_code]:text-[0.85rem]">
+      <summary class="cursor-pointer text-muted-foreground">Technical details</summary>
+      <dl class={detailList}>
         {rows.map(([term, value]) => (
           <div key={term}>
-            <dt>{term}</dt>
-            <dd>{value}</dd>
+            <dt class="text-muted-foreground">{term}</dt>
+            <dd class="m-0 wrap-anywhere">{value}</dd>
           </div>
         ))}
       </dl>
@@ -178,13 +227,15 @@ export function ServerPanel({
     ["Afterwards", afterwards],
   ];
   return (
-    <section class="server-panel" aria-labelledby="server-panel-heading">
-      <h2 id="server-panel-heading">What our server has right now</h2>
-      <dl>
+    <section class="mt-8 text-[0.9rem]" aria-labelledby="server-panel-heading">
+      <h2 id="server-panel-heading" class="m-0 text-[1rem] font-bold">
+        What our server has right now
+      </h2>
+      <dl class={detailList}>
         {rows.map(([term, value]) => (
           <div key={term}>
-            <dt>{term}</dt>
-            <dd>{value}</dd>
+            <dt class="text-muted-foreground">{term}</dt>
+            <dd class="m-0 wrap-anywhere">{value}</dd>
           </div>
         ))}
       </dl>
@@ -194,11 +245,14 @@ export function ServerPanel({
 
 export function Problem({ title, body }: { title: string; body: string }) {
   return (
-    <div class="problem" role="alert">
-      <Icon name="alert" />
+    <div
+      class="mb-4 flex gap-3 rounded-lg border border-destructive bg-destructive-bg p-4"
+      role="alert"
+    >
+      <Icon name="alert" class="size-7 text-destructive" />
       <div>
-        <h1>{title}</h1>
-        <p>{body}</p>
+        <h1 class="mt-0 mb-1 text-[1.2rem]">{title}</h1>
+        <p class="m-0">{body}</p>
       </div>
     </div>
   );
