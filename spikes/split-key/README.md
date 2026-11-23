@@ -6,6 +6,8 @@ fragment and the server, and how does it save the result to disk in each
 browser. Nothing here ships. The findings and the recommended format go into
 the issue, and production code gets written fresh in `packages/` or `apps/web`.
 
+Results, answers and recommendations: [findings.md](findings.md).
+
 The key split:
 
 - `F`, the fragment half (32 bytes), travels in the link after `#`.
