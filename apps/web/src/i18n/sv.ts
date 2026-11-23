@@ -33,7 +33,7 @@ export const sv: Messages = {
       ],
       [
         "Inget blir kvar",
-        "När överföringen är klar finns ingen kopia någon annanstans än hos mottagaren.",
+        "Inget sparas på någon server. När överföringen är klar finns filen bara hos dig och hos mottagaren.",
       ],
     ],
     stepsHeading: "Tre steg",
@@ -43,7 +43,7 @@ export const sv: Messages = {
       ["Dela länken", "När de öppnar den kommer filen krypterad, direkt från dig."],
     ],
     closingTitle: "Redo att skicka något privat?",
-    closingBody: "Det tar mindre än en minut. Låt fliken vara öppen tills filen har kommit fram.",
+    closingBody: "Låt fliken vara öppen tills filen har kommit fram.",
     art: {
       you: "Du",
       them: "Anna",

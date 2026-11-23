@@ -33,7 +33,7 @@ export const en = {
       ],
       [
         "Nothing left behind",
-        "When the transfer is done, there is no copy anywhere but on their computer.",
+        "Nothing is stored on a server. When the transfer is done, the only copies are yours and theirs.",
       ],
     ],
     stepsHeading: "Three steps",
@@ -43,7 +43,7 @@ export const en = {
       ["Share the link", "When they open it, the file arrives encrypted, straight from you."],
     ],
     closingTitle: "Ready to send something private?",
-    closingBody: "It takes less than a minute. Keep the tab open until it has arrived.",
+    closingBody: "Keep the tab open until it has arrived.",
     art: {
       you: "You",
       them: "Anna",

@@ -7,7 +7,7 @@ import { Icon, Link } from "../ui.tsx";
 
 const FEATURE_ICONS = ["lock", "send", "check"] as const;
 const gradientText =
-  "bg-gradient-to-r from-indigo-500 to-emerald-400 bg-clip-text text-transparent";
+  "bg-gradient-to-r from-indigo-600 to-emerald-600 dark:from-indigo-400 dark:to-emerald-400 bg-clip-text text-transparent";
 
 /** Decorative: a laptop sending an encrypted file to a phone. The hero text says the same. */
 function HeroArt() {
@@ -126,7 +126,7 @@ export function LandingPage() {
               key={title}
               class="rounded-2xl border border-border bg-card p-6 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-indigo-500/5"
             >
-              <span class="mb-4 inline-flex size-11 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-emerald-400 text-white">
+              <span class="mb-4 inline-flex size-11 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-emerald-600 text-white">
                 <Icon name={FEATURE_ICONS[i] ?? "lock"} class="size-5" />
               </span>
               <h3 class="m-0 text-[1.1rem] font-bold">{title}</h3>
@@ -146,7 +146,7 @@ export function LandingPage() {
         <ol class="grid gap-8 md:grid-cols-3">
           {l.steps.map(([title, body], i) => (
             <li key={title} class="text-center">
-              <span class="mx-auto mb-4 flex size-12 items-center justify-center rounded-full border-2 border-indigo-500/40 text-[1.1rem] font-bold text-indigo-500">
+              <span class="mx-auto mb-4 flex size-12 items-center justify-center rounded-full border-2 border-indigo-500/40 text-[1.1rem] font-bold text-indigo-600 dark:text-indigo-400">
                 {i + 1}
               </span>
               <h3 class="m-0 text-[1.1rem] font-bold">{title}</h3>
@@ -157,12 +157,12 @@ export function LandingPage() {
       </section>
 
       <section class="mx-auto max-w-6xl px-4 pt-8 pb-24">
-        <div class="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-600 to-emerald-500 px-6 py-14 text-center text-white">
+        <div class="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-700 to-emerald-700 px-6 py-14 text-center text-white">
           <div class="absolute -top-20 -right-20 size-64 rounded-full bg-white/10 blur-2xl" />
           <h2 class="m-0 text-[1.75rem] font-extrabold tracking-tight sm:text-[2.25rem]">
             {l.closingTitle}
           </h2>
-          <p class="mx-auto mt-3 max-w-lg text-white/85">{l.closingBody}</p>
+          <p class="mx-auto mt-3 max-w-lg text-white">{l.closingBody}</p>
           <Link
             href="/send"
             class="mt-6 inline-flex h-12 items-center gap-2 rounded-lg bg-white px-6 text-base font-medium text-indigo-700 shadow-lg transition hover:bg-white/90"

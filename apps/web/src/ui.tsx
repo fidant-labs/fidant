@@ -198,7 +198,7 @@ export function Header({ current }: { current: Route }) {
   const { lang, t, setLang } = useI18n();
   return (
     <header class="fixed inset-x-0 top-0 z-50 border-b border-border/60 bg-background/70 backdrop-blur-xl backdrop-saturate-150">
-      <div class="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4">
+      <div class="mx-auto flex h-16 max-w-6xl items-center justify-between gap-2 px-3 sm:gap-4 sm:px-4">
         <Link
           href="/"
           aria-current={current === "landing" ? "page" : undefined}
@@ -207,16 +207,16 @@ export function Header({ current }: { current: Route }) {
           <span class="inline-flex size-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-emerald-400 text-white shadow-sm">
             <Icon name="lock" class="size-4" />
           </span>
-          {t.product}
+          <span class="max-sm:sr-only">{t.product}</span>
         </Link>
         <nav aria-label={t.menu.label}>
-          <ul class="flex items-center gap-1">
+          <ul class="flex items-center gap-0.5 sm:gap-1">
             {MENU.map(([section, href]) => (
               <li key={section}>
                 <Link
                   href={href}
                   aria-current={section === current ? "page" : undefined}
-                  class={buttonVariants({ variant: section === current ? "secondary" : "ghost" })}
+                  class={`${buttonVariants({ variant: section === current ? "secondary" : "ghost" })} max-sm:px-2`}
                 >
                   {t.menu[section]}
                 </Link>

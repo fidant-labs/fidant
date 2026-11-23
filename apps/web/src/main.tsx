@@ -49,6 +49,22 @@ function App() {
     return () => removeEventListener("popstate", onPop);
   }, []);
 
+  // A page change replaces or hides the link that had focus, so focus moves to the new page's
+  // heading (also on back and forward). The first render keeps the browser's own focus.
+  const firstRoute = useRef(true);
+  useEffect(() => {
+    if (firstRoute.current) {
+      firstRoute.current = false;
+      return;
+    }
+    const heading = document.querySelector<HTMLElement>("main:not([hidden] *) h1");
+    if (!heading) {
+      return;
+    }
+    heading.tabIndex = -1;
+    heading.focus();
+  }, [route]);
+
   const secure = hasSecureCrypto();
   if (route === "send" || route === "receive") {
     kept.current.add(route);
