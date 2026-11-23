@@ -86,7 +86,7 @@ function makeName(leaks: Leaks, canary: SeededRandom, first: string): string {
 /** Opens the sender page, types the sender's name if given, and chooses the file. */
 async function openSender(demo: Demo, file: CanaryFile, from = ""): Promise<Page> {
   const page = await demo.open("sender");
-  await page.goto("/");
+  await page.goto("/send");
   if (from) {
     await page.getByLabel("Your name").fill(from);
   }
@@ -268,7 +268,7 @@ test("the sender's name must fit with the file name, and stray drops are ignored
   const fileName = `${base32Token(canary.fork("long file name"), 8)}${"r".repeat(872)}.bin`;
   leaks.watchText("long file name", fileName);
   const page = await demo.open("sender");
-  await page.goto("/");
+  await page.goto("/send");
   await page.getByLabel("Your name").fill("x".repeat(100));
   await page.getByLabel("Choose a file").setInputFiles({
     name: fileName,

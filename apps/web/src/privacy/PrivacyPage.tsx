@@ -32,7 +32,7 @@ export function PrivacyPage() {
   const { t } = useI18n();
   const p = t.privacy;
   return (
-    <Page current="privacy">
+    <Page>
       <h1>{p.title}</h1>
       <p class={lede}>{p.lede}</p>
 

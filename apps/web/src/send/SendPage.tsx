@@ -81,6 +81,7 @@ export function SendPage() {
   const [fileError, setFileError] = useState<ErrorOf<"fileError">>("");
   const [from, setFrom] = useState("");
   const [fromError, setFromError] = useState<ErrorOf<"fromError">>("");
+  const [step, setStep] = useState<"file" | "recipients">("file");
 
   // Mutable state used from network callbacks, outside render.
   const senderRef = useRef<SenderState>(initialSenderState);
@@ -358,142 +359,194 @@ export function SendPage() {
   const connected = sender.recipients.filter(isActive).length;
   const unfinished = sender.recipients.some((r) => r.status !== "delivered");
 
+  // Phones show one panel at a time: the file first, then recipients after "Continue".
+  const showRecipients = () => {
+    setStep("recipients");
+    requestAnimationFrame(() => document.getElementById("recipients-heading")?.focus());
+  };
+  const showFile = () => {
+    setStep("file");
+    requestAnimationFrame(() => document.getElementById("continue")?.focus());
+  };
+
   return (
-    <Page current="send">
-      <h1>{t.send.title}</h1>
-      <p class={lede}>{t.send.lede}</p>
+    <Page wide>
+      <div class="pb-24 lg:grid lg:grid-cols-[minmax(0,1fr)_26rem] lg:items-start lg:gap-10 lg:pb-0">
+        <section class={step === "recipients" ? "max-lg:hidden" : ""} aria-labelledby="send-title">
+          <h1 id="send-title">{t.send.title}</h1>
+          <p class={lede}>{t.send.lede}</p>
 
-      {isLocalhost && (
-        <Alert role="note" className="my-4">
-          <AlertDescription>{t.send.localhost}</AlertDescription>
-        </Alert>
-      )}
-      {lostServer && (
-        <Alert variant="destructive" className="my-4">
-          <AlertDescription>{t.send.lostServer}</AlertDescription>
-        </Alert>
-      )}
+          {isLocalhost && (
+            <Alert role="note" className="my-4">
+              <AlertDescription>{t.send.localhost}</AlertDescription>
+            </Alert>
+          )}
+          {lostServer && (
+            <Alert variant="destructive" className="my-4">
+              <AlertDescription>{t.send.lostServer}</AlertDescription>
+            </Alert>
+          )}
 
-      <div class={`${field} my-4`}>
-        <Label htmlFor="from">
-          {t.send.fromLabel}{" "}
-          <span class="font-normal text-muted-foreground">{t.send.optional}</span>
-        </Label>
-        <Input
-          id="from"
-          type="text"
-          autoComplete="name"
-          maxLength={MAX_FROM_LENGTH}
-          value={from}
-          onInput={(event) => setFrom(event.currentTarget.value)}
-          disabled={hasRecipients}
-          aria-invalid={fromError ? "true" : "false"}
-          aria-describedby={fromError ? "from-error from-hint" : "from-hint"}
-        />
-        {fromError && (
-          <p id="from-error" class={fieldError}>
-            {t.send.fromError[fromError]}
+          {!hasRecipients && (
+            <div class="group relative my-4 rounded-2xl border-2 border-dashed border-border bg-card transition-colors focus-within:outline-3 focus-within:outline-offset-2 focus-within:outline-primary hover:border-indigo-400 hover:bg-indigo-500/5">
+              <input
+                id="file"
+                type="file"
+                class="absolute inset-0 size-full cursor-pointer opacity-0"
+                onChange={onFileChange}
+                aria-invalid={fileError ? "true" : "false"}
+                aria-describedby={fileError ? "file-error" : undefined}
+              />
+              <label
+                for="file"
+                class="flex flex-col items-center gap-3 px-4 py-14 text-center text-muted-foreground lg:py-20"
+              >
+                <span class="inline-flex size-14 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-emerald-400 text-white shadow-lg shadow-indigo-500/20 transition-transform group-hover:-translate-y-1">
+                  <Icon name="file" class="size-7" />
+                </span>
+                <span>
+                  <strong class="text-foreground">
+                    {file ? t.send.chooseOther : t.send.chooseFile}
+                  </strong>{" "}
+                  {t.send.orDrop}
+                </span>
+              </label>
+            </div>
+          )}
+          {fileError && (
+            <p id="file-error" class={fieldError}>
+              {t.send.fileError[fileError]}
+            </p>
+          )}
+          {file && (
+            <>
+              <h2 class="mt-6 mb-0 text-[1rem] font-bold">{t.send.fileHeading}</h2>
+              <FileCard name={file.name} size={formatBytes(file.size, lang)} />
+              {hash.status === "preparing" && (
+                <p class="text-muted-foreground" role="status">
+                  {t.send.preparing}
+                </p>
+              )}
+              {hash.status === "failed" && (
+                <p class={fieldError} role="alert">
+                  {t.send.readFailed}
+                </p>
+              )}
+              <TechDetails
+                rows={[
+                  [t.common.size, t.format.bytes(file.size)],
+                  [t.common.type, file.type || t.common.typeMissing],
+                  [
+                    "SHA-256",
+                    hash.status === "ready" ? <code>{hash.hex}</code> : t.send.hashPending,
+                  ],
+                ]}
+              />
+            </>
+          )}
+          {hasRecipients && <p class={hint}>{t.send.locked}</p>}
+        </section>
+
+        <aside
+          class={`${step === "file" ? "max-lg:hidden" : "max-lg:animate-in max-lg:slide-in-from-right-8 max-lg:fade-in"} lg:sticky lg:top-24 lg:rounded-2xl lg:border lg:border-border lg:bg-card/70 lg:p-6 lg:shadow-xl lg:shadow-indigo-500/5 lg:backdrop-blur`}
+          aria-labelledby="recipients-heading"
+        >
+          <Button type="button" variant="ghost" className="mb-4 -ml-3 lg:hidden" onClick={showFile}>
+            ← {t.send.back}
+          </Button>
+          <h2 id="recipients-heading" tabIndex={-1} class="m-0 mb-4 text-[1.25rem] font-bold">
+            {t.send.recipientsHeading}
+          </h2>
+
+          <div class={field}>
+            <Label htmlFor="from">
+              {t.send.fromLabel}{" "}
+              <span class="font-normal text-muted-foreground">{t.send.optional}</span>
+            </Label>
+            <Input
+              id="from"
+              type="text"
+              autoComplete="name"
+              maxLength={MAX_FROM_LENGTH}
+              value={from}
+              onInput={(event) => setFrom(event.currentTarget.value)}
+              disabled={hasRecipients}
+              aria-invalid={fromError ? "true" : "false"}
+              aria-describedby={fromError ? "from-error from-hint" : "from-hint"}
+            />
+            {fromError && (
+              <p id="from-error" class={fieldError}>
+                {t.send.fromError[fromError]}
+              </p>
+            )}
+            <p id="from-hint" class={`m-0 ${hint}`}>
+              {t.send.fromHint}
+            </p>
+          </div>
+
+          <form class="mt-6 flex flex-wrap items-end gap-2" onSubmit={onAdd} noValidate>
+            <div class={field}>
+              <Label htmlFor="recipient-name">{t.send.recipientLabel}</Label>
+              <Input
+                id="recipient-name"
+                name="name"
+                type="text"
+                placeholder={t.send.recipientPlaceholder}
+                autoComplete="off"
+                maxLength={100}
+                disabled={!file || full}
+                aria-invalid={nameError ? "true" : "false"}
+                aria-describedby={nameError ? "name-error recipient-hint" : "recipient-hint"}
+              />
+            </div>
+            <Button type="submit" disabled={!file || full}>
+              {t.send.add}
+            </Button>
+          </form>
+          {nameError && (
+            <p id="name-error" class={fieldError}>
+              {t.send.nameError[nameError]}
+            </p>
+          )}
+          <p id="recipient-hint" class={hint}>
+            {!file ? t.send.fileFirst : full ? t.send.full(MAX_LINKS) : t.send.oneLinkEach}
           </p>
-        )}
-        <p id="from-hint" class={`m-0 ${hint}`}>
-          {t.send.fromHint}
-        </p>
+          <RecipientList
+            recipients={sender.recipients}
+            fileSize={file?.size ?? 0}
+            onRemove={onRemove}
+          />
+          {unfinished && <p class={hint}>{t.send.keepOpen}</p>}
+        </aside>
       </div>
 
-      {!hasRecipients && (
-        <div class="relative my-4 rounded-lg border-2 border-dashed border-border bg-card focus-within:outline-3 focus-within:outline-offset-2 focus-within:outline-primary hover:border-primary">
-          <input
-            id="file"
-            type="file"
-            class="absolute inset-0 size-full cursor-pointer opacity-0"
-            onChange={onFileChange}
-            aria-invalid={fileError ? "true" : "false"}
-            aria-describedby={fileError ? "file-error" : undefined}
-          />
-          <label
-            for="file"
-            class="flex flex-col items-center gap-2 px-4 py-8 text-center text-muted-foreground"
-          >
-            <Icon name="file" class="size-8" />
-            <span>
-              <strong class="text-primary">{file ? t.send.chooseOther : t.send.chooseFile}</strong>{" "}
-              {t.send.orDrop}
-            </span>
-          </label>
-        </div>
-      )}
-      {fileError && (
-        <p id="file-error" class={fieldError}>
-          {t.send.fileError[fileError]}
-        </p>
-      )}
-      {file && (
-        <>
-          <FileCard name={file.name} size={formatBytes(file.size, lang)} />
-          {hash.status === "preparing" && (
-            <p class="text-muted-foreground" role="status">
-              {t.send.preparing}
-            </p>
-          )}
-          {hash.status === "failed" && (
-            <p class={fieldError} role="alert">
-              {t.send.readFailed}
-            </p>
-          )}
-          <TechDetails
-            rows={[
-              [t.common.size, t.format.bytes(file.size)],
-              [t.common.type, file.type || t.common.typeMissing],
-              ["SHA-256", hash.status === "ready" ? <code>{hash.hex}</code> : t.send.hashPending],
-            ]}
-          />
-        </>
-      )}
-      {hasRecipients && <p class={hint}>{t.send.locked}</p>}
+      <div class={step === "recipients" ? "max-lg:hidden" : ""}>
+        <ServerPanel
+          sees={t.server.seesSender}
+          holds={t.server.senderHolds({
+            online: !lostServer,
+            links: hostedLinks(sender).length,
+            connected,
+          })}
+          relayed={relayed}
+          afterwards={t.server.senderAfterwards(!lostServer)}
+        />
+      </div>
 
-      <form class="mt-8 flex flex-wrap items-end gap-2" onSubmit={onAdd} noValidate>
-        <div class={field}>
-          <Label htmlFor="recipient-name">{t.send.recipientLabel}</Label>
-          <Input
-            id="recipient-name"
-            name="name"
-            type="text"
-            placeholder={t.send.recipientPlaceholder}
-            autoComplete="off"
-            maxLength={100}
-            disabled={!file || full}
-            aria-invalid={nameError ? "true" : "false"}
-            aria-describedby={nameError ? "name-error recipient-hint" : "recipient-hint"}
-          />
+      {step === "file" && (
+        <div class="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-background/80 p-4 backdrop-blur-xl lg:hidden">
+          <Button
+            id="continue"
+            type="button"
+            size="lg"
+            className="h-12 w-full text-base"
+            disabled={!file}
+            onClick={showRecipients}
+          >
+            {t.send.continue}
+          </Button>
         </div>
-        <Button type="submit" disabled={!file || full}>
-          {t.send.add}
-        </Button>
-      </form>
-      {nameError && (
-        <p id="name-error" class={fieldError}>
-          {t.send.nameError[nameError]}
-        </p>
       )}
-      <p id="recipient-hint" class={hint}>
-        {!file ? t.send.fileFirst : full ? t.send.full(MAX_LINKS) : t.send.oneLinkEach}
-      </p>
-      <RecipientList
-        recipients={sender.recipients}
-        fileSize={file?.size ?? 0}
-        onRemove={onRemove}
-      />
-      {unfinished && <p class={hint}>{t.send.keepOpen}</p>}
-      <ServerPanel
-        sees={t.server.seesSender}
-        holds={t.server.senderHolds({
-          online: !lostServer,
-          links: hostedLinks(sender).length,
-          connected,
-        })}
-        relayed={relayed}
-        afterwards={t.server.senderAfterwards(!lostServer)}
-      />
     </Page>
   );
 }
