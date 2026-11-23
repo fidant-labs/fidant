@@ -182,9 +182,9 @@ export const sv: Messages = {
     logsLabel: "Loggar",
     afterwardsLabel: "Efteråt",
     seesSender:
-      "Din IP-adress och de vanliga uppgifter om webbläsaren som alla webbplatser får, och samma sak för varje mottagare när de öppnar sin länk.",
+      "Din IP-adress och de vanliga uppgifterna om webbläsaren som alla webbplatser får, och samma sak för varje mottagare när de öppnar sin länk.",
     seesRecipient:
-      "Din IP-adress och de vanliga uppgifter om webbläsaren som alla webbplatser får.",
+      "Din IP-adress och de vanliga uppgifterna om webbläsaren som alla webbplatser får.",
     senderHolds: ({ online, links, connected }) => {
       if (!online) {
         return "Ingenting, när den har märkt att anslutningen har stängts. Det tar upp till en minut om nätverket bröts.";
