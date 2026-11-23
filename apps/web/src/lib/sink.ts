@@ -13,7 +13,7 @@ export type Sink = {
   write(chunk: Uint8Array): Promise<void>;
   /** Finishes the file. Resolves with the Blob for BlobSink, undefined for FileSystemSink. */
   close(): Promise<Blob | undefined>;
-  /** Discards everything written. Safe to call more than once, or after close(). */
+  /** Discards everything written so far. Safe to call more than once; after close() the finished file stays. */
   abort(): Promise<void>;
 };
 
