@@ -10,7 +10,7 @@ echo '/swapfile none swap sw 0 0' >>/etc/fstab
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get -o DPkg::Lock::Timeout=600 update
-apt-get -o DPkg::Lock::Timeout=600 install -y caddy git xz-utils
+apt-get -o DPkg::Lock::Timeout=600 install -y caddy git libatomic1 xz-utils
 
 cd /tmp
 dist=https://nodejs.org/dist/latest-v@NODE_MAJOR@.x
