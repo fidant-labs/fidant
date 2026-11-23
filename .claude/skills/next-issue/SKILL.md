@@ -117,9 +117,44 @@ SIG-<number>
 
 If follow-up work came up, create Linear issues for it in the same project and milestone (check for duplicates with `list_issues` first) and list them under Notes.
 
-## 8. Report
+## 8. Answer the bot review
 
-Tell the user: the issue, the PR URL, the commit list, and the worktree path. Leave the worktree in place for review fixes. After the PR merges, clean up with:
+The `Claude review` workflow reviews every push and posts as `github-actions[bot]`: a review with a verdict, and inline comments. Read it before telling the user the PR is ready. Two things make it easy to miss:
+
+- Each run reviews the head commit from scratch. A later run can approve without repeating a blocker an earlier run raised, and that blocker may still hold.
+- The `review` check passes even when the verdict is request changes (SIG-52), so a green check says nothing about the verdict.
+
+After opening the PR, and after every later push:
+
+1. Wait for the run on the head commit:
+
+   ```sh
+   sha=$(git -C <worktree> rev-parse HEAD)
+   gh run list --repo sigill-labs/sigill --workflow "Claude review" --commit "$sha" --json databaseId --jq '.[0].databaseId'
+   gh run watch <run id> --repo sigill-labs/sigill
+   ```
+
+   Run `gh run watch` in the background. If the list is empty, the run has not started yet; list again shortly.
+
+2. Read every bot review and inline comment, on all commits, not only the head:
+
+   ```sh
+   gh api repos/sigill-labs/sigill/pulls/<number>/reviews --jq '.[] | select(.user.login == "github-actions[bot]") | {commit: .commit_id, state, body}'
+   gh api repos/sigill-labs/sigill/pulls/<number>/comments --jq '.[] | select(.user.login == "github-actions[bot]") | {commit: .commit_id, path, line: (.line // .original_line), body}'
+   ```
+
+   Comments on older commits have `line: null`; `original_line` is the line in the commit they were made on.
+
+3. Handle each point that still holds against the current files. A point from an earlier commit is not settled because a later run did not repeat it.
+   - Blocking or major points: fix them with the `review-changes` fix rules, commit, run `review-changes` on the fix, push, and go back to 1.
+   - Minor points and nits: fix them when the fix is small and objective. List the rest under Notes in the PR body, or create Linear follow-ups.
+   - A point that does not hold: say why under Notes.
+
+4. Stop when the latest bot review on the head commit approves and no earlier blocking point is still open. After 3 rounds, stop and report what is left; never call the PR ready with an open blocking point.
+
+## 9. Report
+
+Tell the user: the issue, the PR URL, the commit list, what the bot review raised and what was done about each point, and the worktree path. Leave the worktree in place for review fixes. After the PR merges, clean up with:
 
 ```sh
 git worktree remove .claude/worktrees/<branch> && git branch -d <branch>
