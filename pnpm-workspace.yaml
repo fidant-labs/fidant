@@ -3,3 +3,5 @@ packages:
   - packages/*
 allowBuilds:
   lefthook: false
+catalog:
+  "@playwright/test": 1.65.1

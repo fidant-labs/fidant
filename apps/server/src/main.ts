@@ -24,7 +24,7 @@ const log: Logger = (event, fields) => console.log(JSON.stringify({ event, ...fi
 const server = await startServer({
   port: Number(process.env.PORT ?? 8443),
   root,
-  certDir: fileURLToPath(new URL("../../../.certs/", import.meta.url)),
+  certDir: process.env.CERT_DIR ?? fileURLToPath(new URL("../../../.certs/", import.meta.url)),
   hosts: ["localhost", "127.0.0.1", ...lanAddresses],
   log,
 });
