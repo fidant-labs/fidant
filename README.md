@@ -59,7 +59,7 @@ Server stdout is one JSON object per line, with allowlisted fields only: the eve
 ## Known limits of the demo
 
 - A link is a bearer token. Anyone who opens an unused link first gets the file, so a forwarded link can be taken by someone else.
-- Tested in Chrome. Safari and Firefox results go in [docs/demo-results.md](docs/demo-results.md).
+- The automated end-to-end test runs in headless Chromium only. Results of manual runs in other browsers and on other devices are tracked in [docs/demo-results.md](docs/demo-results.md).
 - Browsers without a save picker (Safari, Firefox) hold the whole received file in memory until it is saved, so very large files may fail there.
 - One file per session. To send a different file, remove all recipients first.
 

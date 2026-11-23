@@ -301,8 +301,8 @@ export function SendPage() {
       )}
       {lostServer && (
         <p class="notice error" role="alert">
-          Lost connection to the server. Transfers already under way can finish, but nobody new can
-          connect. Reload the page to start over.
+          Lost connection to the server. Files that recipients are already receiving can finish, but
+          offers not yet accepted end and nobody new can connect. Reload the page to start over.
         </p>
       )}
 
