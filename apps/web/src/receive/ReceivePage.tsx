@@ -78,6 +78,8 @@ type Attempt = {
 const HOST_GONE_GRACE_MS = 1000;
 /** How long the peer stays up after DECLINE or RECEIPT for the sender to close it. */
 const LINGER_MS = 5000;
+/** How long to wait for the data channel before giving up on the sender. */
+const CONNECT_TIMEOUT_MS = 30_000;
 
 export function ReceivePage() {
   const { t, lang } = useI18n();
@@ -156,6 +158,14 @@ export function ReceivePage() {
         setTimeout(() => finish({ s: "failed", problem: lostMessage() }), HOST_GONE_GRACE_MS),
       );
     };
+    // Without it, a sender whose signals never arrive leaves "Connecting…" up for good.
+    attempt.timers.push(
+      setTimeout(() => {
+        if (!attempt.channelOpen) {
+          finish({ s: "failed", problem: attempt.peer ? "connect" : "server" });
+        }
+      }, CONNECT_TIMEOUT_MS),
+    );
 
     signaling.onClose(({ byClient }) => {
       if (byClient || !current()) {
