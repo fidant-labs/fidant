@@ -319,7 +319,7 @@ export function ReceivePage() {
       firstView.current = false;
       return;
     }
-    const heading = document.querySelector<HTMLElement>("main h1");
+    const heading = document.querySelector<HTMLElement>("#receive h1");
     if (!heading) {
       return;
     }

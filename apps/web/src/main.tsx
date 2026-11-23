@@ -1,9 +1,12 @@
 import { render } from "preact";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { I18nProvider, useI18n } from "./i18n/I18n.tsx";
+import { LandingPage } from "./landing/LandingPage.tsx";
 import { PrivacyPage } from "./privacy/PrivacyPage.tsx";
 import { ReceivePage } from "./receive/ReceivePage.tsx";
 import { SendPage } from "./send/SendPage.tsx";
-import { Page, Problem } from "./ui.tsx";
+import { applyTheme, initialTheme } from "./theme.ts";
+import { Header, Page, Problem, type Route } from "./ui.tsx";
 
 /** Encryption needs Web Crypto, which browsers only offer on HTTPS or localhost. */
 function hasSecureCrypto(): boolean {
@@ -19,18 +22,72 @@ function InsecurePage() {
   );
 }
 
+function routeOf(path: string): Route {
+  if (/^\/privacy\/?$/.test(path)) {
+    return "privacy";
+  }
+  if (/^\/send\/?$/.test(path)) {
+    return "send";
+  }
+  if (path.startsWith("/r/")) {
+    return "receive";
+  }
+  return "landing";
+}
+
+/**
+ * Navigation never reloads the page (see `navigate`). The send and receive pages
+ * hold a transfer only in memory, so once opened they stay mounted, hidden while
+ * another page shows.
+ */
 function App() {
-  // The privacy page uses no crypto, so it opens even without a secure connection.
-  if (/^\/privacy\/?$/.test(location.pathname)) {
-    return <PrivacyPage />;
+  const [route, setRoute] = useState(() => routeOf(location.pathname));
+  const kept = useRef(new Set<Route>());
+  useEffect(() => {
+    const onPop = () => setRoute(routeOf(location.pathname));
+    addEventListener("popstate", onPop);
+    return () => removeEventListener("popstate", onPop);
+  }, []);
+
+  // A page change replaces or hides the link that had focus, so focus moves to the new page's
+  // heading (also on back and forward). The first render keeps the browser's own focus.
+  const firstRoute = useRef(true);
+  useEffect(() => {
+    if (firstRoute.current) {
+      firstRoute.current = false;
+      return;
+    }
+    const heading = document.querySelector<HTMLElement>("main:not([hidden] *) h1");
+    if (!heading) {
+      return;
+    }
+    heading.tabIndex = -1;
+    heading.focus();
+  }, [route]);
+
+  const secure = hasSecureCrypto();
+  if (route === "send" || route === "receive") {
+    kept.current.add(route);
   }
-  if (!hasSecureCrypto()) {
-    return <InsecurePage />;
-  }
-  if (location.pathname.startsWith("/r/")) {
-    return <ReceivePage />;
-  }
-  return <SendPage />;
+  return (
+    <>
+      <Header current={route} />
+      {route === "landing" && <LandingPage />}
+      {/* The privacy page uses no crypto, so it opens even without a secure connection. */}
+      {route === "privacy" && <PrivacyPage />}
+      {!secure && (route === "send" || route === "receive") && <InsecurePage />}
+      {secure && kept.current.has("receive") && (
+        <div id="receive" hidden={route !== "receive"}>
+          <ReceivePage />
+        </div>
+      )}
+      {secure && kept.current.has("send") && (
+        <div hidden={route !== "send"}>
+          <SendPage />
+        </div>
+      )}
+    </>
+  );
 }
 
 /** The browser handles a drag only when an enabled input takes that kind (files into the file input, text into the others); anything else is cancelled so it cannot open the file and lose the page. */
@@ -51,6 +108,9 @@ function ignoreStrayDrop(event: DragEvent) {
 }
 window.addEventListener("dragover", ignoreStrayDrop);
 window.addEventListener("drop", ignoreStrayDrop);
+
+// A stored light or dark choice; with none, the CSS already follows the system.
+applyTheme(initialTheme());
 
 const root = document.getElementById("app");
 if (root) {
