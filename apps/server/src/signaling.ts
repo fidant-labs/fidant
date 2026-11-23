@@ -12,22 +12,13 @@ import type { Duplex } from "node:stream";
 import {
   type ClientMessage,
   type ErrorCode,
+  type LogFields,
   type LogReason,
   parseClientMessage,
   type RefuseReason,
   type ServerMessage,
 } from "@sigill/protocol";
 import { type RawData, WebSocket, WebSocketServer } from "ws";
-
-/** The only fields a log line may carry. `link` is cut to its first 6 characters. */
-export type LogFields = {
-  link?: string;
-  links?: number;
-  bytes?: number;
-  reason?: LogReason;
-  code?: ErrorCode;
-  port?: number;
-};
 
 export type Logger = (event: string, fields?: LogFields) => void;
 
