@@ -61,6 +61,12 @@ importers:
       preact:
         specifier: ^11.2.0
         version: 11.2.0
+      react:
+        specifier: npm:@preact/compat@18.3.2
+        version: '@preact/compat@18.3.2(preact@11.2.0)'
+      react-dom:
+        specifier: npm:@preact/compat@18.3.2
+        version: '@preact/compat@18.3.2(preact@11.2.0)'
     devDependencies:
       '@tailwindcss/vite':
         specifier: ^4.3.5
@@ -191,6 +197,11 @@ packages:
     resolution: {integrity: sha512-y+NCIRm2LvY4slUVWvGh1nujJ8RF/hEisIsq2mtUPgdQC4L701bq5hZGMhrpeXjACvwvO9tj5dJqhvM6TP9lbw==}
     engines: {node: '>=20'}
     hasBin: true
+
+  '@preact/compat@18.3.2':
+    resolution: {integrity: sha512-5vSl55K5yLMvocT7PBKxDOHGgYPjMrKQqqr6roSNjIXcJOtSgDDMjpiCAF3s7klRdmGrN75b/Przmjw8gmlg/w==}
+    peerDependencies:
+      preact: '*'
 
   '@rolldown/binding-android-arm-eabi@1.2.19':
     resolution: {integrity: sha512-e+Ebe0WT+9tbXmNKPIiC8YrWAHYwug3m6i4p3rZGGulfZri1jtI4HslT+OZnFf/OIHowWF71DTlHwXBP2SiA7A==}
@@ -895,6 +906,10 @@ snapshots:
   '@playwright/test@1.65.1':
     dependencies:
       playwright: 1.65.1
+
+  '@preact/compat@18.3.2(preact@11.2.0)':
+    dependencies:
+      preact: 11.2.0
 
   '@rolldown/binding-android-arm-eabi@1.2.19':
     optional: true

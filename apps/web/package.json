@@ -10,7 +10,9 @@
   },
   "dependencies": {
     "@sigill/protocol": "workspace:*",
-    "preact": "^11.2.0"
+    "preact": "^11.2.0",
+    "react": "npm:@preact/compat@18.3.2",
+    "react-dom": "npm:@preact/compat@18.3.2"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.5",
