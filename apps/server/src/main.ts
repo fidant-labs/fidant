@@ -20,6 +20,9 @@ const server = await startServer({
   root,
   certDir: fileURLToPath(new URL("../../../.certs/", import.meta.url)),
   hosts: ["localhost", "127.0.0.1", ...lanAddresses],
+  // One JSON line per event. Fields are limited to LogFields, which never
+  // carry file content, names, metadata, keys or relay payloads.
+  log: (event, fields) => console.log(JSON.stringify({ event, ...fields })),
 });
 
 const { port } = server.address() as AddressInfo;
