@@ -11,7 +11,8 @@ import {
   type ServerMessage,
   UPGRADE_REJECT_REASONS,
 } from "@sigill/protocol";
-import { attachSignaling } from "./signaling.ts";
+import { WebSocket as WsClient } from "ws";
+import { attachSignaling, HEARTBEAT_MS } from "./signaling.ts";
 
 const logLines: { event: string; fields: LogFields | undefined }[] = [];
 const server = createServer((_req, res) => res.writeHead(404).end());
@@ -51,8 +52,8 @@ type Client = {
 };
 
 /** Opens a WebSocket to /signal and queues the messages it receives. */
-async function connect(): Promise<Client> {
-  const socket = new WebSocket(`ws://localhost:${port}/signal`);
+async function connect(url = `ws://localhost:${port}/signal`): Promise<Client> {
+  const socket = new WebSocket(url);
   const queue: ServerMessage[] = [];
   const waiting: ((message: ServerMessage) => void)[] = [];
   socket.addEventListener("message", (event) => {
@@ -304,4 +305,35 @@ test("logs only allowlisted fields and never relay payloads", async () => {
       }
     }
   }
+});
+
+test("heartbeat lets the panel promise a dropped connection is noticed within a minute", () => {
+  assert.ok(
+    2 * HEARTBEAT_MS <= 60_000,
+    "server-facts.ts promises a dropped connection is noticed within a minute",
+  );
+});
+
+test("terminates a guest that never answers pings and tells the host it left", async (t) => {
+  const quickServer = createServer();
+  const quickSignaling = attachSignaling(quickServer, { log: () => {}, heartbeatMs: 20 });
+  t.after(() => {
+    quickSignaling.close();
+    quickServer.close();
+  });
+  await new Promise<void>((done) => quickServer.listen(0, done));
+  const url = `ws://localhost:${(quickServer.address() as AddressInfo).port}/signal`;
+
+  const link = linkId();
+  const host = await connect(url);
+  host.send({ t: "host", links: [link] });
+  host.send({ t: "relay", link: linkId(), data: "sync" });
+  assert.deepEqual(await host.next(), { t: "error", code: "not-on-link" });
+
+  const guest = new WsClient(url, { autoPong: false });
+  guest.on("open", () => guest.send(JSON.stringify({ t: "join", link })));
+  assert.deepEqual(await host.next(), { t: "joined", link });
+  const joinedAt = performance.now();
+  assert.deepEqual(await host.next(), { t: "left", link });
+  assert.ok(performance.now() - joinedAt < 200, "the silent guest outlived two heartbeats");
 });

@@ -35,13 +35,20 @@ export function senderHolds(state: { online: boolean; links: number; connected: 
   return `${ids} ${who} connected right now.`;
 }
 
-export function recipientHolds(connected: boolean): string {
-  return connected
-    ? "The ID of your link, never the part that unlocks the file, and that this page is connected to the sender."
-    : "Nothing about this page once it notices the connection has closed, which takes up to a minute if the network dropped. Only the sender's page can keep your link's ID there.";
+export type Tie = "paired" | "unpaired" | "closed";
+
+export function recipientHolds(tie: Tie): string {
+  switch (tie) {
+    case "paired":
+      return "The ID of your link, never the part that unlocks the file, and that this page is connected to the sender.";
+    case "unpaired":
+      return "Nothing that ties this page to your link. Only the sender's page can keep your link's ID there.";
+    case "closed":
+      return "Nothing about this page once it notices the connection has closed, which takes up to a minute if the network dropped. Only the sender's page can keep your link's ID there.";
+  }
 }
 
-export const LOG_FIELD_PHRASES = {
+const LOG_FIELD_PHRASES = {
   link: "the first 6 characters of a link ID",
   links: "how many links a sender has",
   bytes: "message sizes",
@@ -60,7 +67,10 @@ export const SEES_SENDER =
   "Your IP address and the usual browser details any website gets, and the same for each recipient when they open their link.";
 export const SEES_RECIPIENT = "Your IP address and the usual browser details any website gets.";
 export const FILE_DATA = "None. The file goes directly between browsers.";
-export const AFTERWARDS_SENDER =
-  "When you close this tab, the server forgets your links, within a minute at most. Its log lines stay.";
+export function senderAfterwards(online: boolean): string {
+  return online
+    ? "When you close this tab, the server forgets your links, within a minute at most. Its log lines stay."
+    : "Your links are gone from the server within a minute of the connection closing. Its log lines stay.";
+}
 export const AFTERWARDS_RECIPIENT =
   "When this page disconnects, the server drops what it has about this page, within a minute at most. Its log lines stay.";
