@@ -130,10 +130,6 @@
 }
 
 @theme {
-  /* Temporary: removed once no page uses them (SIG-69). */
-  --color-success: light-dark(#1d7a3a, #6fd28f);
-  --color-warning-bg: light-dark(#fff4d6, #3a3010);
-  --color-destructive-bg: light-dark(#fde7e5, #3d1714);
   --animate-flow: flow 0.6s linear infinite;
 
   @keyframes flow {
