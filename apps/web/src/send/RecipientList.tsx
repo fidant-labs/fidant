@@ -73,7 +73,7 @@ function RecipientRow({ recipient, fileSize, onRemove }: RowProps) {
     }
   };
 
-  const shareable = status === "waiting" || status === "failed";
+  const shareable = status === "waiting" || status === "declined" || status === "failed";
 
   return (
     <li>

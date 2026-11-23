@@ -235,7 +235,7 @@ test("refuses used, unknown and malformed links", async ({ demo, leaks, canary, 
   ).toHaveCount(0);
 });
 
-test("a declined offer puts the recipient back to waiting, and can be reopened", async ({
+test("a declined offer shows as declined, and the link can be reopened", async ({
   demo,
   leaks,
   canary,
@@ -252,8 +252,11 @@ test("a declined offer puts the recipient back to waiting, and can be reopened",
   await recipient.getByRole("button", { name: "Decline" }).click();
   await expect(recipient.getByText("You declined the file")).toBeVisible();
   await expect(
-    recipientRow(sender, name).getByText(`Waiting for ${name}'s link to be opened`),
+    recipientRow(sender, name).getByText(
+      `${name}'s link was opened and the file declined. The link still works.`,
+    ),
   ).toBeVisible();
+  await expect(sender.getByRole("button", { name: `Copy link for ${name}` })).toBeVisible();
 
   await recipient.getByRole("button", { name: "Show the file again" }).click();
   await expect(recipient.getByRole("button", { name: "Download" })).toBeVisible();

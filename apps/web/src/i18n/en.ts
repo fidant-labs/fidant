@@ -115,6 +115,8 @@ export const en = {
       waiting: (name: string) => `Waiting for ${name}'s link to be opened`,
       connecting: (name: string) => `Connecting through ${name}'s link…`,
       offered: (name: string) => `${name}'s link has been opened`,
+      declined: (name: string) =>
+        `${name}'s link was opened and the file declined. The link still works.`,
       receiving: (name: string) => `Sending through ${name}'s link`,
       delivered: (name: string) => `Delivered through ${name}'s link`,
       failed: (name: string) =>
