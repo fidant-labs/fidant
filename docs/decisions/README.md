@@ -8,4 +8,5 @@ A decision record captures one decision that shapes more than one issue: the con
   - `Date:` the day of the last status change, as `YYYY-MM-DD`.
   - `Linear:` the issue key, for example `SIG-38`.
 - Sections, in order: Context, Options considered, Decision, Consequences.
-- A Proposed record may change freely. Once Accepted, a record is never rewritten. To change a decision, write a new record and set the old one's status to Superseded by the new number. That status line is the only edit allowed.
+- A record counts as accepted when its pull request merges. Until then it may change, even if its status already reads Accepted.
+- A Proposed record may change freely. Once Accepted and merged, a record is never rewritten. To change a decision, write a new record and set the old one's status to Superseded by the new number. That status line is the only edit allowed.
