@@ -1,6 +1,7 @@
 // Pieces shared by the send and receive pages.
 
 import type { ComponentChildren } from "preact";
+import { FILE_DATA, LOGS, passedOn, type Relayed } from "./lib/server-facts.ts";
 
 const ICONS = {
   computer: (
@@ -119,6 +120,40 @@ export function TechDetails({
         ))}
       </dl>
     </details>
+  );
+}
+
+export function ServerPanel({
+  sees,
+  holds,
+  relayed,
+  afterwards,
+}: {
+  sees: string;
+  holds: string;
+  relayed: Relayed;
+  afterwards: string;
+}) {
+  const rows: ReadonlyArray<readonly [string, string]> = [
+    ["Sees", sees],
+    ["Holds", holds],
+    ["Passed on", passedOn(relayed)],
+    ["File data", FILE_DATA],
+    ["Logs", LOGS],
+    ["Afterwards", afterwards],
+  ];
+  return (
+    <section class="server-panel" aria-labelledby="server-panel-heading">
+      <h2 id="server-panel-heading">What our server has right now</h2>
+      <dl>
+        {rows.map(([term, value]) => (
+          <div key={term}>
+            <dt>{term}</dt>
+            <dd>{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
   );
 }
 
