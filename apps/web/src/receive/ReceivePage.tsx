@@ -24,6 +24,7 @@
 // The secret stays in this tab (it is never stripped from the address bar in
 // this demo). The file name and size are shown, never logged or sent anywhere.
 
+import { cn } from "cn";
 import type { ComponentChildren } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { Button, buttonVariants } from "#components/ui/button";
@@ -584,7 +585,8 @@ function SaveLink({ blob, name }: { blob: Blob; name: string }) {
   useEffect(() => anchor.current?.click(), [url]);
   useEffect(() => () => URL.revokeObjectURL(url), [url]);
   return (
-    <a ref={anchor} class={buttonVariants({ variant: "outline" })} href={url} download={name}>
+    // cn drops the base `border-transparent`, which would otherwise hide the outline's border.
+    <a ref={anchor} class={cn(buttonVariants({ variant: "outline" }))} href={url} download={name}>
       Save file
     </a>
   );
