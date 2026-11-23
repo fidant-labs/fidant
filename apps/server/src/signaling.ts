@@ -77,7 +77,13 @@ const STATUS_TEXT = {
 
 function rejectUpgrade(socket: Duplex, status: keyof typeof STATUS_TEXT): void {
   const text = STATUS_TEXT[status];
-  socket.end(`HTTP/1.1 ${status} ${text}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
+  // Node drops its own error listener on 'upgrade' and ws adds one only in handleUpgrade, so a
+  // reset here would crash the process. Destroy once flushed: a client that never sends its FIN
+  // would otherwise keep the socket open past the caps.
+  socket.on("error", () => socket.destroy());
+  socket.end(`HTTP/1.1 ${status} ${text}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`, () =>
+    socket.destroy(),
+  );
 }
 
 /** Maps an IPv4-mapped IPv6 address to IPv4 and drops an IPv6 zone. */

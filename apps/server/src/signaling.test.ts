@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
-import { createServer, request } from "node:http";
-import type { AddressInfo } from "node:net";
+import { createServer, request, type Server } from "node:http";
+import { type AddressInfo, connect as tcpConnect } from "node:net";
 import { after, before, test } from "node:test";
 import {
   CONNECTION_PATHS,
@@ -428,7 +428,7 @@ test("keys clients by address, trusting X-Forwarded-For only from loopback", () 
 async function limitedServer(
   t: { after(fn: () => void): void },
   limits: { sockets?: number; socketsPerAddress?: number },
-): Promise<{ host: string; port: number }> {
+): Promise<{ host: string; port: number; server: Server }> {
   const limited = createServer();
   const limitedSignaling = attachSignaling(limited, { log: () => {}, limits });
   t.after(() => {
@@ -436,7 +436,7 @@ async function limitedServer(
     limited.close();
   });
   await new Promise<void>((done) => limited.listen(0, "127.0.0.1", done));
-  return { host: "127.0.0.1", port: (limited.address() as AddressInfo).port };
+  return { host: "127.0.0.1", port: (limited.address() as AddressInfo).port, server: limited };
 }
 
 /** Retries an upgrade until the server has noticed a close and freed the slot. */
@@ -586,4 +586,56 @@ test("drops nothing to a socket that keeps reading", async (t) => {
   }
   assert.equal(relay.received(), 201);
   assert.ok(!relay.events.includes("relay-dropped"));
+});
+
+const rawUpgrade = (path: string) =>
+  `GET ${path} HTTP/1.1\r\nHost: localhost\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n` +
+  `Sec-WebSocket-Key: ${randomBytes(16).toString("base64")}\r\nSec-WebSocket-Version: 13\r\n\r\n`;
+
+test("survives clients that reset during a rejected upgrade", async (t) => {
+  const limited = await limitedServer(t, { socketsPerAddress: 1 });
+  const crashes: Error[] = [];
+  const onCrash = (error: Error) => crashes.push(error);
+  process.on("uncaughtException", onCrash);
+  t.after(() => process.off("uncaughtException", onCrash));
+  await connect(`ws://127.0.0.1:${limited.port}/signal`);
+  for (let i = 0; i < 10; i += 1) {
+    for (const path of ["/nope", "/signal"]) {
+      const socket = tcpConnect(limited);
+      socket.on("error", () => {});
+      socket.write(rawUpgrade(path));
+      socket.resetAndDestroy();
+    }
+  }
+  await new Promise((done) => setTimeout(done, 100));
+  assert.deepEqual(crashes, []);
+  assert.equal(await upgradeStatus("/signal", { "x-forwarded-for": "198.51.100.1" }, limited), 101);
+});
+
+test("closes the server side of a rejected upgrade the client never ends", async (t) => {
+  const limited = await limitedServer(t, { socketsPerAddress: 1 });
+  await connect(`ws://127.0.0.1:${limited.port}/signal`);
+  const connections = () =>
+    new Promise<number>((done, fail) =>
+      limited.server.getConnections((error, count) => (error ? fail(error) : done(count))),
+    );
+  for (const path of ["/nope", "/signal"]) {
+    // A client that gets its answer but never sends its own FIN.
+    const socket = tcpConnect({ host: limited.host, port: limited.port, allowHalfOpen: true });
+    socket.on("error", () => {});
+    const answered = new Promise((done) => socket.once("data", done));
+    socket.resume();
+    socket.write(rawUpgrade(path));
+    try {
+      await answered;
+      // Only the open WebSocket may remain once the server has dropped its side.
+      const deadline = Date.now() + 1000;
+      while ((await connections()) > 1) {
+        assert.ok(Date.now() < deadline, `${path} stayed open on the server`);
+        await new Promise((done) => setTimeout(done, 10));
+      }
+    } finally {
+      socket.destroy();
+    }
+  }
 });
