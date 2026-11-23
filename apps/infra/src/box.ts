@@ -3,18 +3,25 @@ import { readFileSync } from "node:fs";
 import { CfnOutput, Stack, type StackProps } from "aws-cdk-lib";
 import * as lightsail from "aws-cdk-lib/aws-lightsail";
 import type { Construct } from "constructs";
-import { primaryDomain } from "./config.ts";
+import { primaryDomain, siteNames } from "./config.ts";
+
+const root = new URL("../../../", import.meta.url);
+const nodeMajor = readFileSync(new URL(".node-version", root), "utf8").trim();
+const pnpmVersion = JSON.parse(
+  readFileSync(new URL("package.json", root), "utf8"),
+).packageManager.replace(/^pnpm@/, "");
 
 export class BoxStack extends Stack {
   constructor(scope: Construct, id: string, props: StackProps) {
     super(scope, id, props);
 
-    const userData = readFileSync(
-      new URL("../box/user-data.sh", import.meta.url),
-      "utf8",
-    ).replaceAll("@DOMAIN@", primaryDomain);
+    const userData = readFileSync(new URL("../box/user-data.sh", import.meta.url), "utf8")
+      .replaceAll("@NODE_MAJOR@", nodeMajor)
+      .replaceAll("@PNPM_VERSION@", pnpmVersion)
+      .replaceAll("@REDIRECT_NAMES@", siteNames.filter((name) => name !== primaryDomain).join(", "))
+      .replaceAll("@DOMAIN@", primaryDomain);
     const box = new lightsail.CfnInstance(this, "Box", {
-      // A new user data replaces the instance, and CloudFormation creates the new one before deleting the old.
+      // Lightsail updates user data in place without re-running it; a new name forces a fresh box.
       instanceName: `fidant-app-${createHash("sha256").update(userData).digest("hex").slice(0, 8)}`,
       availabilityZone: `${this.region}a`,
       blueprintId: "ubuntu_24_04",
