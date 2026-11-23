@@ -1,3 +1,4 @@
+import { isUtf8 } from "node:buffer";
 import { decodeViews } from "./decode.ts";
 import { minWindow } from "./needles.ts";
 import { type Capture, context, type Finding } from "./scan.ts";
@@ -22,7 +23,7 @@ export interface MaskedCaptures {
 }
 
 /** Carriers shorter than this are refused: masking short values could hide real leaks. */
-export const minCarrierBytes = 16;
+const minCarrierBytes = 16;
 
 /**
  * Masks carriers at allowed points and reports them everywhere else.
@@ -131,11 +132,7 @@ function encodings(values: Buffer[]): Buffer[] {
 
 /** The value as text, or undefined when it is not valid UTF-8. */
 function utf8(value: Buffer): string | undefined {
-  try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(value);
-  } catch {
-    return undefined;
-  }
+  return isUtf8(value) ? value.toString("utf8") : undefined;
 }
 
 const filler = 0x2e; // "."

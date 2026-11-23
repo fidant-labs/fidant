@@ -1,3 +1,4 @@
+import { isUtf8 } from "node:buffer";
 import { hash } from "node:crypto";
 import {
   brotliDecompressSync,
@@ -36,14 +37,14 @@ export interface DecodeOptions {
 
 export interface Decoded {
   views: View[];
-  /** True when the byte budget stopped decoding, so some views are missing. */
+  /** True when the byte budget or a decompression cap cut decoding short, so some views are missing or partial. */
   truncated: boolean;
 }
 
 /** base64 and base64url runs this long or longer are decoded: 22 characters carry 16 bytes. */
-export const minBase64Run = 22;
+const minBase64Run = 22;
 /** Hex runs this long or longer are decoded: 32 characters carry 16 bytes. */
-export const minHexRun = 32;
+const minHexRun = 32;
 /** UTF-16 runs of this many characters or more are decoded. */
 const minUtf16Run = 8;
 /** Decoded runs shorter than this cannot hold a needle window. */
@@ -72,7 +73,12 @@ const encodedWords = /=\?([^?\s]+)\?([BbQq])\?([^?\s]*)\?=(?:\s+(?==\?[^?\s]+\?[
  * Decodes a view into child views. Each child is one form of all or part of the parent. `text` is
  * the view as latin1, one char per byte. `regions` are the parts that text transforms apply to.
  */
-type Decoder = (view: View, text: string, regions: string[]) => { name: string; bytes: Buffer }[];
+type Decoder = (
+  view: View,
+  text: string,
+  regions: string[],
+  room: number,
+) => { name: string; bytes: Buffer; limited?: boolean }[];
 
 /**
  * Every view of `blob` the detector searches: the raw bytes plus, recursively up to `maxDepth`:
@@ -95,6 +101,8 @@ export function decodeViews(
   const seen = new Set([digest(rawBytes)]);
   let used = rawBytes.length;
   let truncated = false;
+  // A decompressor hit its output cap: the views made are partial, but decoding goes on.
+  let limited = false;
   for (let i = 0; i < views.length && !truncated; i++) {
     const view = views[i] as View;
     if (view.depth >= maxDepth) continue;
@@ -102,7 +110,8 @@ export function decodeViews(
     const regions = textRegions(view.bytes, text);
     const decoders = view.depth === 0 ? [...allDecoders, hinted(hints)] : allDecoders;
     for (const decoder of decoders) {
-      for (const child of decoder(view, text, regions)) {
+      for (const child of decoder(view, text, regions, maxBytes - used)) {
+        if (child.limited) limited = true;
         if (child.bytes.length < minViewBytes) continue;
         const key = digest(child.bytes);
         if (seen.has(key)) continue;
@@ -118,12 +127,17 @@ export function decodeViews(
       if (truncated) break;
     }
   }
-  return { views, truncated };
+  return { views, truncated: truncated || limited };
 }
 
 const digest = (bytes: Buffer) => hash("sha256", bytes, "base64");
 
-const one = (name: string, bytes: Buffer | undefined) => (bytes ? [{ name, bytes }] : []);
+const one = (name: string, result: Inflated | Buffer | undefined) => {
+  if (!result) return [];
+  return Buffer.isBuffer(result)
+    ? [{ name, bytes: result }]
+    : [{ name, bytes: result.bytes, limited: result.limited }];
+};
 
 const printableRun = run("[\\t\\n\\r\\x20-\\x7e]", 16);
 
@@ -133,12 +147,7 @@ const printableRun = run("[\\t\\n\\r\\x20-\\x7e]", 16);
  * Applied to a whole binary view, a stray `%41` would only copy it.
  */
 function textRegions(bytes: Buffer, text: string): string[] {
-  if (!hasControlChar(bytes)) {
-    try {
-      new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-      return [text];
-    } catch {}
-  }
+  if (!hasControlChar(bytes) && isUtf8(bytes)) return [text];
   return matches(text, printableRun);
 }
 
@@ -163,7 +172,7 @@ const json = textual((text) => (jsonEscape.test(text) ? one("json", unescapeJson
 
 const percent = textual((text) => {
   if (!percentEscape.test(text)) return [];
-  const children = one("percent", decodePercent(text, false));
+  const children: ReturnType<Decoder> = one("percent", decodePercent(text, false));
   // Form encoding writes a space as `+`, which base64 also uses, so it gets a view of its own.
   if (text.includes("+") && text.includes("="))
     children.push(...one("form", decodePercent(text, true)));
@@ -198,12 +207,8 @@ const rfc2047 = textual((text) => {
 
 /** UTF-8 text whose characters are all below 256, as when JS sends a binary string. */
 const latin1: Decoder = (view) => {
-  let text: string;
-  try {
-    text = new TextDecoder("utf-8", { fatal: true }).decode(view.bytes);
-  } catch {
-    return [];
-  }
+  if (!isUtf8(view.bytes)) return [];
+  const text = view.bytes.toString("utf8");
   return /[\u0080-ÿ]/.test(text) && !/[^\0-ÿ]/.test(text)
     ? one("latin1", Buffer.from(text, "latin1"))
     : [];
@@ -244,35 +249,35 @@ const hex: Decoder = (_view, text) => [
   })),
 ];
 
-const compressed: Decoder = (view) => {
-  const children: { name: string; bytes: Buffer }[] = [];
+const compressed: Decoder = (view, _text, _regions, room) => {
+  const children: ReturnType<Decoder> = [];
   const bytes = view.bytes;
   for (const at of indexesOf(bytes, gzipMagic)) {
     // Raw inflate of the member's body ignores whatever follows the member; gunzip would not.
     const body = gzipBody(bytes.subarray(at));
-    if (body) children.push(...one("gzip", inflate(inflateRawSync, body)));
+    if (body) children.push(...one("gzip", inflate(inflateRawSync, body, room)));
   }
   for (const at of indexesOf(bytes, zstdMagic)) {
-    children.push(...one("zstd", inflate(zstdDecompressSync, bytes.subarray(at))));
+    children.push(...one("zstd", inflate(zstdDecompressSync, bytes.subarray(at), room)));
   }
   // The zlib header is two common bytes, so it is only tried at the start.
   const first = bytes[0] ?? 0;
   if ((first & 0x0f) === 8 && bytes.length > 2 && bytes.readUInt16BE(0) % 31 === 0) {
-    children.push(...one("deflate", inflate(inflateSync, bytes)));
+    children.push(...one("deflate", inflate(inflateSync, bytes, room)));
   }
   return children;
 };
 
 const hinted =
   (hints: DecodeHints): Decoder =>
-  (view) => {
+  (view, _text, _regions, room) => {
     const encodings = (hints.contentEncoding ?? "").toLowerCase().split(",");
     return encodings.flatMap((encoding) => {
       switch (encoding.trim()) {
         case "br":
-          return one("br", inflate(brotliDecompressSync, view.bytes));
+          return one("br", inflate(brotliDecompressSync, view.bytes, room));
         case "deflate":
-          return one("deflate-raw", inflate(inflateRawSync, view.bytes));
+          return one("deflate-raw", inflate(inflateRawSync, view.bytes, room));
         default:
           // gzip, zstd and zlib deflate are found by their magic bytes anyway.
           return [];
@@ -298,17 +303,46 @@ const maxInflated = 64 * 1024 * 1024;
 
 type Inflater = (data: Buffer, options: object) => Buffer;
 
-/** Decompresses what it can. A stream cut short still yields the bytes before the cut. */
-function inflate(inflater: Inflater, data: Buffer): Buffer | undefined {
-  try {
-    return inflater(data, {
-      maxOutputLength: maxInflated,
+/** What a decompressor gave: `limited` when the output hit the cap and `bytes` is only its start. */
+interface Inflated {
+  bytes: Buffer;
+  limited: boolean;
+}
+
+/**
+ * Decompresses what it can, up to `min(maxInflated, room)` bytes. A stream cut short still yields
+ * the bytes before the cut. A stream that would inflate past the cap yields the longest prefix of
+ * it that fits, marked `limited`, so a secret early in a bomb is still found and the caller can
+ * report that the rest was not scanned. Corrupt data yields nothing: it is mostly a false magic.
+ */
+function inflate(inflater: Inflater, data: Buffer, room: number): Inflated | undefined {
+  const cap = Math.min(maxInflated, room);
+  const attempt = (input: Buffer) =>
+    inflater(input, {
+      maxOutputLength: Math.max(cap, 1),
       finishFlush: constants.Z_SYNC_FLUSH,
       ...(inflater === brotliDecompressSync && { finishFlush: constants.BROTLI_OPERATION_FLUSH }),
     });
-  } catch {
-    return undefined;
+  try {
+    return { bytes: attempt(data), limited: false };
+  } catch (error) {
+    if ((error as { code?: string }).code !== "ERR_BUFFER_TOO_LARGE") return undefined;
   }
+  // Output grows with the input prefix, so binary search the longest prefix that fits.
+  let best: Buffer = Buffer.alloc(0);
+  let low = 0;
+  let high = data.length;
+  while (low < high) {
+    const mid = (low + high + 1) >>> 1;
+    try {
+      best = attempt(data.subarray(0, mid));
+      low = mid;
+    } catch (error) {
+      if ((error as { code?: string }).code === "ERR_BUFFER_TOO_LARGE") high = mid - 1;
+      else low = mid;
+    }
+  }
+  return { bytes: best, limited: true };
 }
 
 /** The deflate stream inside a gzip member, after its header (RFC 1952). */

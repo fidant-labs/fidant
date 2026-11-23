@@ -136,7 +136,8 @@ test.describe("the detector catches", () => {
       class: "C",
       label: "file#1",
       field: "request.body",
-      view: /^base64@\d$/,
+      // Base64 text needles (0001) now catch this directly, so the raw view matches too.
+      view: /^(raw|base64@\d)$/,
     });
   });
 
@@ -173,16 +174,18 @@ test.describe("the detector catches", () => {
     leaks.expectLeaks();
     const file = leaks.watch(canaryFile(canary.fork("file"), fileOptions));
     await open(page);
-    await page.evaluate(
-      (name) => fetch(`/files/${encodeURIComponent(name.normalize("NFD"))}`),
-      file.name,
-    );
+    await page.evaluate((name) => {
+      // Every byte is escaped, ASCII included, so the raw view cannot contain the name's token.
+      const bytes = new TextEncoder().encode(name.normalize("NFD"));
+      const path = Array.from(bytes, (b) => `%${b.toString(16).padStart(2, "0")}`).join("");
+      return fetch(`/files/${path}`);
+    }, file.name);
     const findings = await leaks.scan();
     expectFinding(findings, {
       class: "M",
       label: "file#1 name",
       field: "request.url",
-      view: /^(raw|percent)$/,
+      view: /^percent$/,
     });
   });
 
@@ -191,15 +194,15 @@ test.describe("the detector catches", () => {
     const key = canaryKey(canary.fork("key"));
     leaks.watchKey("fragment secret", key);
     await open(page);
-    // Offset 5 is off the key's 3-byte base64 groups, so the text of the window shares nothing
-    // with the key's text: only the decoded bytes can match.
+    // Offset 5 is off the key's 3-byte base64 groups. Base64 text needles (0001) now catch the
+    // window directly, so the raw view matches too.
     const window = key.bytes.subarray(5, 5 + 16).toString("base64url");
     await page.evaluate((window) => fetch(`/?k=${window}`), window);
     expectFinding(await leaks.scan(), {
       class: "K",
       label: "fragment secret",
       field: "request.url",
-      view: /^base64/,
+      view: /^(raw|base64@\d)$/,
     });
   });
 
@@ -242,18 +245,19 @@ test.describe("the detector catches", () => {
       class: "C",
       label: "file#1",
       field: "request.body",
-      view: /^gzip>base64@\d$/,
+      view: /^gzip(>base64@\d)?$/,
     });
   });
 });
 
 test.describe("the detector stays quiet on", () => {
-  test("a 15-byte window of a key", async ({ page, leaks, canary }) => {
+  test("a 13-byte window of a key", async ({ page, leaks, canary }) => {
     const key = canaryKey(canary.fork("key"));
     leaks.watchKey("fragment secret", key);
     await open(page);
-    // One byte short of the 16-byte window (0001). Same offset as the 16-byte case.
-    const window = key.bytes.subarray(5, 5 + 15).toString("base64url");
+    // Too short for 20 fully determined base64 characters at any alignment (13 bytes give at
+    // most 17), so 0001 does not count it. Same offset as the 16-byte case.
+    const window = key.bytes.subarray(5, 5 + 13).toString("base64url");
     await page.evaluate((window) => fetch(`/?k=${window}`), window);
     expect(await leaks.scan()).toEqual([]);
   });
@@ -291,15 +295,19 @@ test.describe("the detector stays quiet on", () => {
     await relay(page, link, otherKey.text);
     await postGzip(page, other.bytes.toString("base64"));
     expect(await leaks.scan()).toEqual([]);
+    expect(await leaks.check()).toBeUndefined();
   });
 });
 
 test("a leak fails the test by default", async ({ page, leaks, canary }) => {
-  // Expected to fail: without expectLeaks, the leak check after the test fails it. A test marked
-  // `test.fail()` is left out of the run-level sweep, so this leak does not fail the run.
-  test.fail();
   const key = canaryKey(canary.fork("key"));
   leaks.watchKey("fragment secret", key);
   await open(page);
   await page.evaluate((text) => fetch(`/?k=${text}`), key.text);
+  // check() is the verdict the teardown throws when expectLeaks() was not called.
+  const report = await leaks.check();
+  expect(report).toMatch(/Leak check failed/);
+  expect(report).toContain("fragment secret");
+  // Now the deliberate leak is expected: the teardown passes and the sweep skips this test.
+  leaks.expectLeaks();
 });

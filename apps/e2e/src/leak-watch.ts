@@ -1,7 +1,13 @@
 import { readFile, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
 import type { CanaryFile, CanaryKey } from "./leaks/canary.ts";
-import { type LogSlice, logCaptures, logSlice, recordCaptures } from "./leaks/captures.ts";
+import {
+  bodyLimits,
+  type LogSlice,
+  logCaptures,
+  logSlice,
+  recordCaptures,
+} from "./leaks/captures.ts";
 import {
   buildNeedles,
   fileSecrets,
@@ -27,6 +33,11 @@ export interface Leaks {
   watchKey(label: string, key: Uint8Array | string | CanaryKey, cls?: "K" | "S"): void;
   /** Scans everything observed so far in this test. Never throws for a leak. */
   scan(): Promise<Finding[]>;
+  /**
+   * The report the teardown throws for this test so far (undefined when clean). Call it before
+   * `expectLeaks()`: after that it reports only server stdout violations, as the teardown does.
+   */
+  check(): Promise<string | undefined>;
   /**
    * For a test that leaks on purpose: its teardown does not fail on findings, and the run-level
    * sweep skips its secrets. Server stdout violations still fail it.
@@ -91,16 +102,16 @@ export class LeakWatch implements Leaks {
   }
 
   async scan(): Promise<Finding[]> {
-    if (this.#secrets.length === 0) return [];
-    const { captures } = await this.#observe();
-    return scan(captures, this.#compiled());
+    const { captures, limits } = await this.#observe();
+    return [...limits, ...(this.#secrets.length === 0 ? [] : scan(captures, this.#compiled()))];
   }
 
   /** The failure message for this test's findings and stdout violations, or undefined. */
   async check(): Promise<string | undefined> {
-    const { captures, stdout } = await this.#observe();
-    const findings =
-      this.#secrets.length === 0 || this.#expectLeaks ? [] : scan(captures, this.#compiled());
+    const { captures, limits, stdout } = await this.#observe();
+    const findings = this.#expectLeaks
+      ? []
+      : [...limits, ...(this.#secrets.length === 0 ? [] : scan(captures, this.#compiled()))];
     const violations = logViolations(point(serverStdoutLog), stdout);
     return formatLeakReport(findings, violations, process.env.SIGILL_E2E_SEED);
   }
@@ -119,11 +130,14 @@ export class LeakWatch implements Leaks {
   }
 
   /** This test's records so far, plus what the server logged since the test began. */
-  async #observe(): Promise<{ captures: Capture[]; stdout: LogSlice }> {
+  async #observe(): Promise<{ captures: Capture[]; limits: Finding[]; stdout: LogSlice }> {
     const captures: Capture[] = [];
+    const limits: Finding[] = [];
     for (const recorder of this.recorders.values()) {
       const file = point(join(observationsDir, this.#test, `${recorder.actor}.jsonl`));
-      captures.push(...recordCaptures(file, await recorder.records()));
+      const records = await recorder.records();
+      captures.push(...recordCaptures(file, records));
+      limits.push(...bodyLimits(file, records));
     }
     const slices = await Promise.all(
       logs.map(async (path, index) =>
@@ -133,7 +147,7 @@ export class LeakWatch implements Leaks {
     logs.forEach((path, index) => {
       captures.push(...logCaptures(point(path), slices[index] as LogSlice));
     });
-    return { captures, stdout: slices[0] as LogSlice };
+    return { captures, limits, stdout: slices[0] as LogSlice };
   }
 }
 

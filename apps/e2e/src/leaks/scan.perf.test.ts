@@ -55,7 +55,7 @@ test("indexes a canary and scans a haystack quickly", (t) => {
   );
   assert.deepEqual(
     base64Findings.map((f) => `${f.label} @ ${f.view}`),
-    ["file#1 @ base64@0"],
+    ["file#1 @ raw"],
   );
   // Generous bounds: they catch an accidental quadratic, not a slow machine.
   assert.ok(buildMs < (full ? 20_000 : 5_000), `index took ${buildMs} ms`);

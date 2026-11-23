@@ -1,6 +1,11 @@
 import type { LogSlice } from "./captures.ts";
 import { type Finding, formatFinding } from "./scan.ts";
-import { checkServerLog, type LogAllowlist, serverLogAllowlist } from "./server-log.ts";
+import {
+  checkServerLog,
+  formatLogViolation,
+  type LogAllowlist,
+  serverLogAllowlist,
+} from "./server-log.ts";
 
 /** Violations of the stdout allowlist in a log slice, as `<file>:<line>: <rule>: …` lines. */
 export function logViolations(
@@ -8,10 +13,8 @@ export function logViolations(
   slice: LogSlice,
   allowlist: LogAllowlist = serverLogAllowlist,
 ): string[] {
-  return checkServerLog(slice.lines, allowlist).map(
-    (violation) =>
-      `${file}:${slice.firstLine + violation.line - 1}: ${violation.rule}: ` +
-      `${violation.message}: ${violation.excerpt}`,
+  return checkServerLog(slice.lines, allowlist).map((violation) =>
+    formatLogViolation(violation, `${file}:${slice.firstLine + violation.line - 1}`),
   );
 }
 

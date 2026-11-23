@@ -45,7 +45,10 @@ test("finds a key in base64 and base64url, padded or not, at every alignment", (
         let text = Buffer.concat([random.bytes(prefix), key.bytes]).toString(encoding);
         text = pad ? text.padEnd(Math.ceil(text.length / 4) * 4, "=") : text.replace(/=+$/, "");
         const result = found(`{"v":"${text}"}`);
-        assert.ok(result.includes("K fragment @ base64@0"), `${encoding} ${prefix} ${pad}`);
+        assert.ok(
+          result.some((line) => line.startsWith("K fragment @")),
+          `${encoding} ${prefix} ${pad}`,
+        );
       }
     }
   }
@@ -62,7 +65,7 @@ test("finds the literal fragment secret", () => {
 test("finds content in JSON in base64 in JSON", () => {
   const inner = JSON.stringify({ chunk: file.bytes.subarray(0, 64).toString("base64") });
   const outer = JSON.stringify({ data: Buffer.from(inner).toString("base64url") });
-  assert.deepEqual(found(outer), ["C file#1 @ base64@0>base64@0"]);
+  assert.deepEqual(found(outer), ["C file#1 @ base64@0"]);
 });
 
 test("finds content in a gzip body", () => {
@@ -80,13 +83,13 @@ test("finds the SHA-256 of the content, the name and a key", () => {
     "C file#1 sha256 @ hex@0",
   ]);
   assert.deepEqual(found(`{"h":"${sha256(file.bytes).toString("base64")}"}`), [
-    "C file#1 sha256 @ base64@0",
+    "C file#1 sha256 @ raw",
   ]);
   assert.deepEqual(found(`n=${sha256(file.name.normalize("NFD")).toString("hex")}`), [
     "M file#1 name sha256 @ hex@0",
   ]);
   assert.deepEqual(found(`k=${sha256(key.bytes).toString("base64url")}`), [
-    "K fragment sha256 @ base64@0",
+    "K fragment sha256 @ raw",
   ]);
 });
 
@@ -118,14 +121,15 @@ test("finds the name and type in UTF-16 of either byte order", () => {
   assert.match(beFinding ?? "", /^M file#1 type @ utf16(le|be)$/);
 });
 
-test("finds a 16-byte partial window of a key, but not 15 bytes", () => {
+test("finds a 16-byte partial window of a key, but not 15", () => {
   const window = key.bytes.subarray(9, 25);
   assert.deepEqual(found(Buffer.concat([junk, window, junk])), ["K fragment @ raw"]);
   assert.deepEqual(found(Buffer.concat([junk, window.subarray(1), junk])), []);
   // Off the 3-byte grid, so the base64url is not also a slice of the fragment secret's text.
   const shifted = key.bytes.subarray(10, 26);
-  assert.deepEqual(found(`p=${shifted.toString("base64url")}`), ["K fragment @ base64@0"]);
-  assert.deepEqual(found(`p=${shifted.subarray(1).toString("base64url")}`), []);
+  assert.deepEqual(found(`p=${shifted.toString("base64url")}`), ["K fragment @ raw"]);
+  // 13 bytes are 17 fully determined characters, fewer than the 20 of a 16-byte window.
+  assert.deepEqual(found(`p=${shifted.subarray(3).toString("base64url")}`), []);
 });
 
 test("finds the size as a whole decimal or hex number", () => {
@@ -230,4 +234,60 @@ test("checks the size only when asked", () => {
   const size = { class: "M" as const, label: "n", size: 123_457 };
   assert.deepEqual(findSize(Buffer.from("n=123457"), size), { offset: 2, length: 6 });
   assert.equal(findSize(Buffer.from("n=1234567"), size), undefined);
+});
+
+test("finds a size in a header, JSON, a URL or glued to a word or unit", () => {
+  const size = { class: "M" as const, label: "n", size: 1_234_567 };
+  const texts = ['{"size":1234567}', "x-size: 1234567\r\n", "?n=1234567&x=1", "1234567"];
+  for (const text of [...texts, "1234567B", "size1234567", "len:1234567b", "n1234567"]) {
+    assert.ok(findSize(Buffer.from(text), size), text);
+  }
+});
+
+test("ignores a size-like digit run inside a long hex or base64 token", () => {
+  const size = { class: "M" as const, label: "n", size: 1_234_567 };
+  const hex = random.fork("hex").bytes(32).toString("hex");
+  const base64 = random.fork("b64").bytes(48).toString("base64");
+  for (const body of [hex, base64]) {
+    const text = `${body.slice(0, 12)}g1234567g${body.slice(12)}`;
+    assert.equal(findSize(Buffer.from(text), size), undefined, text);
+  }
+  assert.equal(findSize(Buffer.from("deadbeefdeadbeef1234567deadbeefdeadbeef"), size), undefined);
+});
+
+test("finds a size in a path, query pair or snake_case name", () => {
+  const size = { class: "M" as const, label: "n", size: 1_234_567 };
+  const uuid = random.fork("uuid").bytes(16).toString("hex");
+  const dashed = `${uuid.slice(0, 8)}-${uuid.slice(8, 12)}-${uuid.slice(12, 16)}-${uuid.slice(16, 20)}-${uuid.slice(20)}`;
+  const texts = [
+    "GET /api/transfers/upload/1234567 HTTP/1.1",
+    "/api/transfers/chunks/1234567",
+    `/t/${dashed}/size/1234567`,
+    `/t/${uuid}/1234567`,
+    "?originalFileSize=1234567",
+    "?original_file_size=1234567",
+    "?upload_content_length=1234567",
+    "x-sigill-original-size=1234567",
+    "SIZE_1234567_BYTES_UPLOADED",
+    // Pin rule (b): a one-case run is no base64 blob, and glue on one side is not enough.
+    "/api/transfers/chunk1234567x/next",
+    "/Api/Transfers/chunk1234567/next",
+  ];
+  for (const text of texts) assert.ok(findSize(Buffer.from(text), size), text);
+});
+
+test("ignores a size-like digit run inside a long base64url token", () => {
+  const size = { class: "M" as const, label: "n", size: 1_234_567 };
+  const body = random.fork("b64url").bytes(48).toString("base64url");
+  const text = `${body.slice(0, 12)}g1234567g${body.slice(12)}`;
+  assert.equal(findSize(Buffer.from(text), size), undefined, text);
+});
+
+test("reports a decompression bomb as a limit and still scans what came out", () => {
+  const MiB = 1024 * 1024;
+  const body = gzipSync(Buffer.concat([key.bytes, Buffer.alloc(65 * MiB)]));
+  const result = found(body);
+  assert.ok(result.includes("K fragment @ gzip"), result.join());
+  const limit = findings(body).find((finding) => finding.class === "limit");
+  assert.ok(limit);
 });

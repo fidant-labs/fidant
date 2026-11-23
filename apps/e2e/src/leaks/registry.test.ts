@@ -34,7 +34,9 @@ test("reads back every secret, tagged with its test, and skips exempt tests", as
   registerSecrets(dir, "test-c", leaky);
   exemptTest(dir, "test-c");
 
-  assert.deepEqual(await readRegistry(dir), [...named("test-a", file), ...named("test-b", key)]);
+  const { secrets, exempt } = await readRegistry(dir);
+  assert.deepEqual(secrets, [...named("test-a", file), ...named("test-b", key)]);
+  assert.deepEqual([...exempt], ["test-c"]);
   assert.ok(file.some((secret) => "size" in secret));
   assert.ok(file.some((secret) => "caseInsensitive" in secret && secret.window === 12));
   assert.deepEqual(await readdir(dir), [`${process.pid}.jsonl`]);

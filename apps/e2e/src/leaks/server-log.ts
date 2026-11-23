@@ -115,9 +115,9 @@ export function checkServerLog(lines: string[], allowlist: LogAllowlist): LogVio
   return violations;
 }
 
-/** One line per violation, for test failures and logs. */
-export function formatLogViolation(violation: LogViolation): string {
-  return `line ${violation.line}: ${violation.rule}: ${violation.message}: ${violation.excerpt}`;
+/** One line per violation, `<location>: <rule>: <message>: <excerpt>`, for test failures and logs. */
+export function formatLogViolation(violation: LogViolation, location: string): string {
+  return `${location}: ${violation.rule}: ${violation.message}: ${violation.excerpt}`;
 }
 
 function excerpt(text: string): string {

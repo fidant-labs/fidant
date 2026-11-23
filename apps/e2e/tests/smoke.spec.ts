@@ -30,7 +30,9 @@ test("the app loads for a sender and a recipient", async ({
   }
 });
 
-test("request bodies are recorded", async ({ page, observed, baseURL }) => {
+test("request bodies are recorded", async ({ page, observed, baseURL, leaks }) => {
+  // The empty POST has no visible body, which is a leak-check limit finding by design.
+  leaks.expectLeaks();
   await page.goto("/");
   await page.evaluate(async () => {
     await fetch("/text", { method: "POST", body: "a text body" });

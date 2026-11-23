@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ObservationRecord } from "../observations.ts";
-import { logCaptures, logSlice, recordCaptures } from "./captures.ts";
+import { bodyLimits, logCaptures, logSlice, recordCaptures } from "./captures.ts";
 
 const time = "2026-11-23T00:00:00.000Z";
 const url = "https://localhost:51234/a?b=c";
@@ -105,4 +105,39 @@ test("names each log line by file and line number", () => {
     "observations/run/server.stdout.log:2 = two",
     "observations/run/server.stdout.log:3 = three",
   ]);
+});
+
+test("keeps an unterminated last line when the log is complete", () => {
+  const stopped = Buffer.from("one\ntwo\nkey=SECRET");
+  assert.deepEqual(logSlice(stopped, 0, { complete: true }), {
+    lines: ["one", "two", "key=SECRET"],
+    firstLine: 1,
+  });
+  assert.deepEqual(logSlice(stopped), { lines: ["one", "two"], firstLine: 1 });
+  assert.deepEqual(logSlice(Buffer.from("a\n\n"), 0, { complete: true }).lines, ["a", ""]);
+  assert.deepEqual(logSlice(Buffer.from("a\nb\n"), 0, { complete: true }).lines, ["a", "b"]);
+  assert.deepEqual(logSlice(stopped, 4, { complete: true }), {
+    lines: ["two", "key=SECRET"],
+    firstLine: 2,
+  });
+  assert.deepEqual(
+    shown(logCaptures("run/server.stdout.log", logSlice(stopped, 8, { complete: true }))),
+    ["run/server.stdout.log:3 = key=SECRET"],
+  );
+});
+
+test("reports a limit finding for each request whose body was not visible", () => {
+  const records: ObservationRecord[] = [
+    { type: "request", time, method: "POST", url, headers: {}, bodyMissing: true },
+    { type: "request", time, method: "GET", url, headers: {} },
+    { type: "request", time, method: "PUT", url, headers: {}, bodyMissing: true },
+  ];
+  assert.deepEqual(
+    bodyLimits(file, records).map(({ class: cls, label, point }) => ({ cls, label, point })),
+    [
+      { cls: "limit", label: "request body not visible", point: `${file}#1 request.body` },
+      { cls: "limit", label: "request body not visible", point: `${file}#3 request.body` },
+    ],
+  );
+  assert.deepEqual(bodyLimits(file, [records[1] as ObservationRecord]), []);
 });

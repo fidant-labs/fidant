@@ -165,3 +165,61 @@ test("matches text in NFC and NFD", () => {
   }
   assert.equal(matches(secrets, Buffer.from(label.slice(0, -1))).length, 0);
 });
+
+test("finds any 20 to 28 character base64 or base64url fragment of a 32-byte key", () => {
+  const key = random.fork("b64 key").bytes(32);
+  const secrets: ByteSecret[] = [{ class: "K", label: "key", bytes: key }];
+  const missed: string[] = [];
+  for (const encoding of ["base64", "base64url"] as const) {
+    // The key alone, and after 1 and 2 other bytes, so every alignment in a stream.
+    for (const shift of [0, 1, 2]) {
+      const text = Buffer.concat([random.bytes(shift), key, random.bytes(5)])
+        .toString(encoding)
+        .replaceAll("=", "");
+      // Characters that hold bits of the key only: from the first whole one to the last.
+      const first = Math.ceil((8 * shift) / 6);
+      const last = Math.floor((8 * (shift + key.length)) / 6);
+      for (let length = 20; length <= 28; length++) {
+        for (let at = first; at + length <= last; at++) {
+          const fragment = text.slice(at, at + length);
+          if (matches(secrets, Buffer.from(`"${fragment}"`)).length === 0) {
+            missed.push(`${encoding} shift ${shift} at ${at} length ${length}`);
+          }
+        }
+      }
+    }
+    // The key's own encoding, whose last character is partial, down to its final 20 characters.
+    const own = key.toString(encoding).replaceAll("=", "");
+    for (let length = 20; length <= 28; length++) {
+      for (let at = 0; at + length <= own.length; at++) {
+        if (matches(secrets, Buffer.from(own.slice(at, at + length))).length === 0) {
+          missed.push(`${encoding} own at ${at} length ${length}`);
+        }
+      }
+    }
+  }
+  assert.deepEqual(missed, []);
+  // 19 fully determined characters are only 114 bits: not a match.
+  assert.equal(matches(secrets, Buffer.from(key.toString("base64").slice(4, 23))).length, 0);
+});
+
+test("finds 12 characters of a name token in base64 at every alignment", () => {
+  const file = canaryFile(random.fork("b64 token"), { size: 1000 });
+  const secrets = fileSecrets("file#1", file);
+  for (const encoding of ["base64", "base64url"] as const) {
+    for (let start = 0; start + 12 <= file.token.length; start++) {
+      for (let shift = 0; shift < 3; shift++) {
+        const bytes = Buffer.concat([
+          random.bytes(shift),
+          Buffer.from(file.token.slice(start, start + 12)),
+        ]);
+        const found = matches(secrets, Buffer.from(bytes.toString(encoding).replaceAll("=", "")));
+        assert.deepEqual(
+          found.map((match) => match.secret.label),
+          ["file#1 name"],
+          `${encoding} from ${start} shift ${shift}`,
+        );
+      }
+    }
+  }
+});

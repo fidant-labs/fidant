@@ -66,8 +66,6 @@ export const test = base.extend<Fixtures>({
     async ({}, use, testInfo) => {
       const watch = await LeakWatch.start(testDirName(testInfo), process.env.SIGILL_E2E_REGISTRY);
       await use(watch);
-      // A test expected to fail may leak on purpose, so the sweep does not check its secrets.
-      if (testInfo.expectedStatus === "failed") watch.exempt();
       const report = await watch.check();
       if (report) throw new Error(report);
     },

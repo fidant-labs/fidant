@@ -13,6 +13,7 @@ import type { ByteSecret, Secret, SecretClass } from "./needles.ts";
 
 type Entry =
   | {
+      /** The test's observations directory name: the sweep matches exempt tests by it. */
       test: string;
       class: SecretClass;
       label: string;
@@ -21,7 +22,7 @@ type Entry =
       caseInsensitive?: true;
     }
   | { test: string; class: "M"; label: string; size: number }
-  /** The test leaks on purpose, or is expected to fail: the sweep skips its secrets. */
+  /** The test registered as leaking on purpose (`leaks.expectLeaks()`): the sweep skips its secrets. */
   | { test: string; exempt: true };
 
 /** Appends one test's secrets. `test` names the test in sweep findings, such as its directory. */
@@ -50,10 +51,12 @@ export function exemptTest(dir: string, test: string): void {
 }
 
 /**
- * Every registered secret of tests that are not exempt. Labels gain the test's name in brackets,
- * so a sweep finding says which test's canary leaked.
+ * Every registered secret of tests that are not exempt, and the names of the exempt tests. Labels
+ * gain the test's name in brackets, so a sweep finding says which test's canary leaked.
  */
-export async function readRegistry(dir: string): Promise<Secret[]> {
+export async function readRegistry(
+  dir: string,
+): Promise<{ secrets: Secret[]; exempt: Set<string> }> {
   const entries: Entry[] = [];
   for (const name of (await readdir(dir)).sort()) {
     if (!name.endsWith(".jsonl")) continue;
@@ -80,7 +83,7 @@ export async function readRegistry(dir: string): Promise<Secret[]> {
     if (entry.caseInsensitive) secret.caseInsensitive = true;
     secrets.push(secret);
   }
-  return secrets;
+  return { secrets, exempt };
 }
 
 /** Synchronous, so a secret is on disk before the test can leak it, even if the worker dies. */

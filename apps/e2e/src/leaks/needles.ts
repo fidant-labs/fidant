@@ -126,6 +126,54 @@ function tokenSecret(cls: SecretClass, label: string, token: string): ByteSecret
   };
 }
 
+/**
+ * The base64 characters fully determined by `window` bytes, however they are aligned in a base64
+ * stream: the fewest over the 3 alignments. 16 bytes give 20 characters (120 bits, as 0001 says);
+ * the 12 characters of a name token give 15 (90 bits, about 2^-90 per position by chance).
+ */
+/** How many leading bytes of a secret get base64 text forms. */
+const base64MaxBytes = 64 * 1024;
+
+const base64Window = (window: number) =>
+  Math.min(
+    ...[0, 1, 2].map(
+      (shift) => Math.floor((8 * (shift + window)) / 6) - Math.ceil((8 * shift) / 6),
+    ),
+  );
+
+/**
+ * The secret as base64 and base64url text, with padding stripped, at each of the 3 alignments it
+ * can have in a base64 stream. The haystack decoder cannot find a secret that is only a short
+ * base64 fragment (fewer than 22 characters), so the needle side does. At alignment `shift` the
+ * secret follows `shift` bytes of something else, so the text starts at the first character that
+ * holds secret bits only; the last character may hold fewer bits and is kept for a secret at the
+ * end of a stream. Any `base64Window(window)` characters in a row match, case-sensitively.
+ */
+function base64Secrets(secret: ByteSecret): ByteSecret[] {
+  const { class: cls, label } = secret;
+  // Text forms are about 1.3 times as long, six of them, and each needs index space: for a large
+  // canary only the first 64 KiB gets them. The rest is found by the haystack decoder, which
+  // decodes any base64 run of 22 or more characters.
+  const bytes = secret.bytes.subarray(0, base64MaxBytes);
+  const w = Math.min(secret.window ?? defaultWindow, bytes.length);
+  const secrets: ByteSecret[] = [];
+  const seen = new Set<string>();
+  for (const shift of [0, 1, 2]) {
+    const padded = Buffer.concat([Buffer.alloc(shift), bytes]);
+    for (const encoding of ["base64", "base64url"] as const) {
+      const text = padded
+        .toString(encoding)
+        .replaceAll("=", "")
+        .slice(Math.ceil((8 * shift) / 6));
+      const textWindow = Math.min(base64Window(w), text.length);
+      if (textWindow < minWindow || seen.has(text)) continue;
+      seen.add(text);
+      secrets.push({ class: cls, label, bytes: Buffer.from(text), window: textWindow });
+    }
+  }
+  return secrets;
+}
+
 const caseOption = (options: { caseInsensitive?: boolean }) =>
   options.caseInsensitive ? { caseInsensitive: true } : {};
 
@@ -152,14 +200,13 @@ interface Segment {
 }
 
 /**
- * Compiled secrets. Each secret contributes 8-byte anchors taken every `stride` bytes, where
+ * Compiled secrets. Each byte secret also contributes its base64 and base64url text (see `base64Secrets`). Each text or byte form contributes 8-byte anchors taken every `stride` bytes, where
  * `stride + 7 <= window`, so every window of a secret contains a whole anchor. Matching looks up
  * the 8 bytes at each view position, whatever the number of secrets, and grows a hit both ways to
  * the full run of matching bytes. Case-insensitive secrets have a table of their own, keyed on
  * lowercase, so the large table of content stays free of folded lookups.
  */
 export class Needles {
-  readonly secrets: readonly Secret[];
   readonly sizes: readonly SizeSecret[];
   #store: Buffer;
   #segments: Segment[] = [];
@@ -168,9 +215,10 @@ export class Needles {
   #folded: AnchorTable;
 
   constructor(secrets: readonly Secret[]) {
-    this.secrets = secrets;
     this.sizes = secrets.filter((secret): secret is SizeSecret => "size" in secret);
-    const byteSecrets = secrets.filter((secret): secret is ByteSecret => "bytes" in secret);
+    const byteSecrets = secrets
+      .filter((secret): secret is ByteSecret => "bytes" in secret)
+      .flatMap((secret) => [secret, ...base64Secrets(secret)]);
     const anchors = { exact: 0, folded: 0 };
     let offset = 0;
     for (const secret of byteSecrets) {

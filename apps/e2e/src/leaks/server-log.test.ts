@@ -109,7 +109,7 @@ test("reports every broken rule with its line number", () => {
   );
   const [first] = violations;
   assert.ok(first);
-  assert.match(formatLogViolation(first), /^line 3: key: unknown key "extra": \{/);
+  assert.match(formatLogViolation(first, "out.log:3"), /^out\.log:3: key: unknown key "extra": \{/);
 });
 
 test("cuts long excerpts", () => {
