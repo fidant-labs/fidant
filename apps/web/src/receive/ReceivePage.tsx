@@ -25,7 +25,7 @@
 // this demo). The file name and size are shown, never logged or sent anywhere.
 
 import type { ComponentChildren, VNode } from "preact";
-import { useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { useEffect, useMemo, useReducer, useRef, useState } from "preact/hooks";
 import { displayName, formatBytes, formatProgress, toHex } from "../lib/format.ts";
 import { deriveSignalKey } from "../lib/keys.ts";
 import { parseRecipientLocation } from "../lib/link.ts";
@@ -136,7 +136,7 @@ export function ReceivePage() {
   const link = useMemo(() => parseRecipientLocation(location), []);
   const [view, setView] = useState<View>({ s: "connecting" });
   const [picking, setPicking] = useState(false);
-  const [relayed, setRelayed] = useState(NO_RELAYS);
+  const [relayed, countRelay] = useReducer(addRelay, NO_RELAYS);
   const [reachedServer, setReachedServer] = useState(false);
   const [tie, setTie] = useState<Tie>("closed");
   const attemptRef = useRef<Attempt | undefined>(undefined);
@@ -167,9 +167,7 @@ export function ReceivePage() {
       release(previous);
     }
 
-    const signaling = connectSignaling({
-      onRelay: (bytes) => setRelayed((r) => addRelay(r, bytes)),
-    });
+    const signaling = connectSignaling({ onRelay: countRelay });
     const attempt: Attempt = {
       abort: new AbortController(),
       signaling,
