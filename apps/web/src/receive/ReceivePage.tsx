@@ -601,7 +601,7 @@ function SaveLink({ blob, name }: { blob: Blob; name: string }) {
   return (
     <a
       ref={anchor}
-      class={`${buttonBase} border border-primary bg-transparent px-4 py-[0.55rem] text-primary no-underline`}
+      class={`${buttonBase} border border-primary px-4 py-[0.55rem] text-primary no-underline`}
       href={url}
       download={name}
     >

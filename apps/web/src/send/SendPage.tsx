@@ -65,7 +65,7 @@ const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 const field = "flex flex-1 flex-col gap-1";
 const input =
-  "rounded-lg border border-border bg-card px-[0.7rem] py-[0.55rem] text-foreground aria-invalid:border-destructive";
+  "rounded-lg border border-border bg-card px-[0.7rem] py-[0.55rem] text-foreground placeholder:text-muted-foreground aria-invalid:border-destructive";
 const fieldError = "mt-1 mb-0 text-destructive";
 const hint = "text-[0.9rem] text-muted-foreground";
 
