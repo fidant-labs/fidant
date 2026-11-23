@@ -24,7 +24,7 @@
 // The secret stays in this tab (it is never stripped from the address bar in
 // this demo). The file name and size are shown, never logged or sent anywhere.
 
-import type { ComponentChildren } from "preact";
+import type { ComponentChildren, VNode } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { displayName, formatBytes, formatProgress, toHex } from "../lib/format.ts";
 import { deriveSignalKey } from "../lib/keys.ts";
@@ -435,25 +435,18 @@ export function ReceivePage() {
     />
   ) : null;
 
+  let body: VNode;
   switch (view.s) {
     case "connecting":
-      return (
-        <Page>
-          <h1>Connecting to the sender…</h1>
-          {panel}
-        </Page>
-      );
+      body = <h1>Connecting to the sender…</h1>;
+      break;
     case "refused":
-      return (
-        <Page>
-          <Problem {...view.message} />
-          {panel}
-        </Page>
-      );
+      body = <Problem {...view.message} />;
+      break;
     case "offer": {
       const { offer } = view;
-      return (
-        <Page>
+      body = (
+        <>
           <h1>
             {offer.from ? `${offer.from} wants to send you a file` : "You've been sent a file"}
           </h1>
@@ -473,14 +466,14 @@ export function ReceivePage() {
             Encrypted, never stored on a server.
           </p>
           <OfferDetails offer={offer} />
-          {panel}
-        </Page>
+        </>
       );
+      break;
     }
     case "receiving": {
       const { offer, bytes } = view;
-      return (
-        <Page>
+      body = (
+        <>
           <h1>Downloading…</h1>
           <FileCard name={offer.name} size={formatBytes(offer.size)} />
           <div class="progress-row">
@@ -495,14 +488,14 @@ export function ReceivePage() {
           <p class="caption">
             Receiving directly from the sender. Keep this tab open until it's done.
           </p>
-          {panel}
-        </Page>
+        </>
       );
+      break;
     }
     case "done": {
       const { offer, blob, sha256 } = view;
-      return (
-        <Page>
+      body = (
+        <>
           <div class="success">
             <Icon name="check" />
             <h1>Download complete</h1>
@@ -522,13 +515,13 @@ export function ReceivePage() {
             Sent straight from the sender's computer to yours. Encrypted the whole way.
           </p>
           <OfferDetails offer={offer} sha256={sha256} />
-          {panel}
-        </Page>
+        </>
       );
+      break;
     }
     case "declined":
-      return (
-        <Page>
+      body = (
+        <>
           <h1>You declined the file</h1>
           <p>
             You can close this tab. If you change your mind, the link still works while the sender's
@@ -537,21 +530,27 @@ export function ReceivePage() {
           <button type="button" class="link" onClick={start}>
             Show the file again
           </button>
-          {panel}
-        </Page>
+        </>
       );
+      break;
     case "failed":
-      return (
-        <Page>
+      body = (
+        <>
           <Problem {...view.message} />
           <button type="button" onClick={start}>
             Try again
           </button>
           {view.message.detail && <TechDetails rows={[["What happened", view.message.detail]]} />}
-          {panel}
-        </Page>
+        </>
       );
+      break;
   }
+  return (
+    <Page>
+      {body}
+      {panel}
+    </Page>
+  );
 }
 
 function OfferDetails({ offer, sha256 }: { offer: FileOffer; sha256?: string }) {
