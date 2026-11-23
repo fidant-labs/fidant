@@ -7,12 +7,7 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": [
-      "**",
-      "!!.agents",
-      "!!.claude/skills/vercel-react-best-practices",
-      "!!skills-lock.json"
-    ]
+    "includes": ["**", "!!.agents", "!!skills-lock.json"]
   },
   "formatter": {
     "indentStyle": "space",
