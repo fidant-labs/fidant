@@ -5,6 +5,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer, type Server } from "node:https";
 import { isIP } from "node:net";
 import { extname, join, resolve, sep } from "node:path";
+import { attachSignaling, type Logger } from "./signaling.ts";
 
 const contentTypes: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -93,11 +94,14 @@ export function startServer(options: {
   root: string;
   certDir: string;
   hosts: string[];
+  log?: Logger;
 }): Promise<Server> {
   const server = createServer(
     ensureCert(options.certDir, options.hosts),
     serveStatic(options.root),
   );
+  const signaling = attachSignaling(server, { log: options.log ?? (() => {}) });
+  server.on("close", () => signaling.close());
   return new Promise((done, fail) => {
     server.once("error", fail);
     server.listen(options.port, () => done(server));

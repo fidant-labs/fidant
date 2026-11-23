@@ -1,0 +1,261 @@
+:root {
+  color-scheme: light dark;
+  --bg: light-dark(#f7f7f5, #141414);
+  --surface: light-dark(#ffffff, #1e1e1e);
+  --text: light-dark(#1b1b1b, #ececec);
+  --muted: light-dark(#5c5c5c, #a8a8a8);
+  --border: light-dark(#d9d9d6, #3a3a3a);
+  --accent: light-dark(#1f5fbf, #7fb0ff);
+  --accent-text: light-dark(#ffffff, #0d1a2e);
+  --ok: light-dark(#1d7a3a, #6fd28f);
+  --error: light-dark(#b3261e, #ff8a80);
+  --warn-bg: light-dark(#fff4d6, #3a3010);
+  --error-bg: light-dark(#fde7e5, #3d1714);
+  --radius: 8px;
+  font-family: system-ui, sans-serif;
+  line-height: 1.5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+main {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 2rem 1rem 4rem;
+}
+
+h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.75rem;
+}
+
+h2 {
+  font-size: 1.15rem;
+  margin: 2rem 0 0.75rem;
+}
+
+.lede,
+.hint {
+  color: var(--muted);
+}
+
+.hint {
+  font-size: 0.9rem;
+  margin: 0.5rem 0;
+}
+
+.notice {
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+
+.notice.warning {
+  background: var(--warn-bg);
+}
+
+.notice.error {
+  background: var(--error-bg);
+  color: var(--text);
+  border-color: var(--error);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1;
+}
+
+label {
+  font-weight: 600;
+}
+
+input[type="text"] {
+  font: inherit;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+}
+
+input[type="file"] {
+  font: inherit;
+}
+
+input[aria-invalid="true"] {
+  border-color: var(--error);
+}
+
+.field-error {
+  color: var(--error);
+  margin: 0.25rem 0 0;
+}
+
+button {
+  font: inherit;
+  padding: 0.5rem 0.9rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-text);
+  cursor: pointer;
+}
+
+button.secondary {
+  background: transparent;
+  color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.add-recipient {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.file-info p {
+  margin: 0.25rem 0;
+}
+
+.file-name {
+  overflow-wrap: anywhere;
+}
+
+.hash code {
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.recipients {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.recipient {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.recipient-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.recipient-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.recipient-status {
+  color: var(--muted);
+}
+
+.status-delivered .recipient-status {
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.status-failed .recipient-status {
+  color: var(--error);
+  font-weight: 600;
+}
+
+.link {
+  display: block;
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+  user-select: all;
+  padding: 0.4rem 0.5rem;
+  border-radius: 4px;
+  background: var(--bg);
+}
+
+.progress-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+progress {
+  flex: 1;
+  min-width: 10rem;
+  accent-color: var(--accent);
+}
+
+.progress-text {
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.recipient-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.copy-note {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.brand {
+  margin: 0;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.notice.ok {
+  border-color: var(--ok);
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.offer-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin: 1rem 0;
+}
+
+a.button {
+  display: inline-block;
+  padding: 0.5rem 0.9rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-text);
+  text-decoration: none;
+}
