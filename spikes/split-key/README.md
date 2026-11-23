@@ -74,3 +74,66 @@ through, so with the self-signed certificate the sink reports "unsupported".
 The e2e harness (`apps/e2e`) currently sets `serviceWorkers: "block"`, so a
 service worker download in the app would need that changed, and the
 recorder may not see requests a service worker answers.
+
+## Fragment handoff check
+
+`/handoff.html` on the bench server checks whether a link fragment survives
+the channels people send links through. It makes a probe link with a dummy F
+(random per link, never a real key):
+
+```text
+<origin>/handoff.html?probe=1#k=<43 chars of F>.<8 chars of check>
+```
+
+The check is the first 6 bytes of SHA-256(F) in base64url, so the landing page
+can verify F without knowing it in advance. `probe=1` marks a landing even when
+the fragment is lost and shows whether the query was rewritten. Share (where
+the browser has `navigator.share`), Email (`mailto:`) and Copy send the link.
+Open the page on the LAN address (`https://<LAN address>:8451/handoff.html`)
+so the receiving device can reach it.
+
+Opening a probe link reports one verdict:
+
+| Verdict     | Meaning                                                                  |
+| ----------- | ------------------------------------------------------------------------ |
+| `intact`    | the fragment arrived exactly, or percent-encoded and decoded once        |
+| `trailing`  | F and the check verify, but characters follow (an autolinker's `)`, `.`) |
+| `truncated` | a clean prefix of the fragment arrived                                   |
+| `altered`   | wrong prefix, separator or characters, or the check does not match F     |
+| `missing`   | no fragment, or one without `k=`                                         |
+
+It also shows which part failed (prefix, length, charset, check), the length
+that arrived, whether it was percent-encoded, whether the path or query
+changed (for example by a link scanner such as Outlook Safe Links), and
+whether the fragment was moved into the query. It shows lengths only, never
+the fragment text. After reading the fragment it removes it from the address
+bar with `history.replaceState`, as the real receive page should. "Check a
+pasted link" runs the same check on a link copied out of a message, for
+channels whose links cannot reach the bench server. The page sends nothing
+and logs nothing.
+
+Percent-encoded fragments are accepted after one `decodeURIComponent`: F and
+the check use only base64url characters, so decoding cannot make two
+different fragments equal.
+
+### Results (human runs)
+
+Send a fresh link per row. Open it on the receiving device by tapping or
+clicking it in the channel, not by copying it into a browser, unless the row
+says so.
+
+| Channel                         | Sender → receiver | Verdict | Path/query changed | Notes |
+| ------------------------------- | ----------------- | ------- | ------------------ | ----- |
+| Gmail web → Gmail web           |                   |         |                    |       |
+| Outlook (Safe Links on)         |                   |         |                    |       |
+| Outlook (Safe Links off)        |                   |         |                    |       |
+| Apple Mail (macOS, iOS)         |                   |         |                    |       |
+| iMessage                        |                   |         |                    |       |
+| WhatsApp                        |                   |         |                    |       |
+| Signal                          |                   |         |                    |       |
+| Slack                           |                   |         |                    |       |
+| Microsoft Teams                 |                   |         |                    |       |
+| SMS (Android)                   |                   |         |                    |       |
+| Link at the end of a sentence   |                   |         |                    |       |
+| Link in parentheses             |                   |         |                    |       |
+| Copy and paste into the browser |                   |         |                    |       |

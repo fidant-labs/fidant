@@ -8,7 +8,10 @@ import { resolve } from "node:path";
 import { defineConfig } from "vite";
 
 const root = import.meta.dirname;
-const pages = { index: resolve(root, "index.html") };
+const pages = {
+  index: resolve(root, "index.html"),
+  handoff: resolve(root, "handoff.html"),
+};
 
 export default defineConfig({
   root,
