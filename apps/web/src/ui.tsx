@@ -55,6 +55,11 @@ export function Icon({ name, class: cls }: { name: IconName; class?: string }) {
   );
 }
 
+export const lede = "mt-2 mb-6 text-[1.05rem] text-muted-foreground";
+
+/** Add the colors: `border-border bg-warning-bg` or `border-destructive bg-destructive-bg`. */
+export const notice = "rounded-lg border px-4 py-3";
+
 export const buttonBase =
   "inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg disabled:cursor-not-allowed disabled:opacity-50";
 

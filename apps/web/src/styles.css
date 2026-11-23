@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import "./legacy.css" layer(components);
 
 @theme {
   --color-background: light-dark(#f7f7f5, #141414);

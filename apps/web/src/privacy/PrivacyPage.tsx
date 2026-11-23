@@ -1,5 +1,9 @@
 import { LOGS } from "../lib/server-facts.ts";
-import { Page } from "../ui.tsx";
+import { lede, notice, Page } from "../ui.tsx";
+
+const section = "mt-10";
+const h2 = "mb-3 text-[1.25rem] font-bold";
+const h3 = "mt-6 mb-2 font-bold";
 
 // Written for people who aren't technical. Keep every sentence true of what the
 // code does today: server-facts.ts and apps/server/src/signaling.ts are the source.
@@ -28,11 +32,11 @@ const SEES: ReadonlyArray<readonly [string, string]> = [
 
 function Facts({ rows }: { rows: ReadonlyArray<readonly [string, string]> }) {
   return (
-    <dl class="facts">
+    <dl class="divide-y divide-border rounded-lg border border-border bg-card">
       {rows.map(([term, value]) => (
-        <div key={term}>
-          <dt>{term}</dt>
-          <dd>{value}</dd>
+        <div key={term} class="px-4 py-3">
+          <dt class="font-semibold">{term}</dt>
+          <dd class="mt-[0.15rem] text-muted-foreground">{value}</dd>
         </div>
       ))}
     </dl>
@@ -43,15 +47,17 @@ export function PrivacyPage() {
   return (
     <Page current="privacy">
       <h1>Privacy</h1>
-      <p class="lede">
+      <p class={lede}>
         Your file goes straight from your browser to the browser of the person you send it to. It's
         locked before it leaves your computer, and only the person with the link can unlock it. We
         never get the file, its name or the key.
       </p>
 
-      <section class="prose" aria-labelledby="how-heading">
-        <h2 id="how-heading">How sending works</h2>
-        <ol class="steps">
+      <section class={section} aria-labelledby="how-heading">
+        <h2 class={h2} id="how-heading">
+          How sending works
+        </h2>
+        <ol class="list-decimal pl-6 [&>li]:my-[0.6rem]">
           <li>
             <strong>You pick a file and add the people to send it to.</strong> The file stays on
             your computer. Nothing is uploaded.
@@ -80,8 +86,10 @@ export function PrivacyPage() {
         </p>
       </section>
 
-      <section class="prose" aria-labelledby="travel-heading">
-        <h2 id="travel-heading">How the file travels</h2>
+      <section class={section} aria-labelledby="travel-heading">
+        <h2 class={h2} id="travel-heading">
+          How the file travels
+        </h2>
         <p>
           Think of it as handing someone a locked box in person. There is no post office in between
           that holds on to it, and only someone with the key can open it.
@@ -91,18 +99,20 @@ export function PrivacyPage() {
           send that part to any website, ours included. That is why we can't unlock your file even
           if we wanted to.
         </p>
-        <p class="notice warning">
+        <p class={`${notice} border-border bg-warning-bg`}>
           Anyone who has the link can open the file. Send each link only to the person it is for.
         </p>
       </section>
 
-      <section class="prose" aria-labelledby="server-heading">
-        <h2 id="server-heading">What our server knows</h2>
-        <h3>Never</h3>
+      <section class={section} aria-labelledby="server-heading">
+        <h2 class={h2} id="server-heading">
+          What our server knows
+        </h2>
+        <h3 class={h3}>Never</h3>
         <Facts rows={NEVER} />
-        <h3>Only what it needs to connect you</h3>
+        <h3 class={h3}>Only what it needs to connect you</h3>
         <Facts rows={SEES} />
-        <h3>What we keep</h3>
+        <h3 class={h3}>What we keep</h3>
         <p>
           We have no accounts, no database, no cookies and no tracking. Apart from the log lines
           above, nothing is saved once the transfer is over.

@@ -45,7 +45,7 @@ import {
   senderHolds,
 } from "../lib/server-facts.ts";
 import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
-import { button, FileCard, Icon, Page, ServerPanel, TechDetails } from "../ui.tsx";
+import { button, FileCard, Icon, lede, notice, Page, ServerPanel, TechDetails } from "../ui.tsx";
 import { RecipientList } from "./RecipientList.tsx";
 
 type Hash =
@@ -68,7 +68,6 @@ const input =
   "rounded-lg border border-border bg-card px-[0.7rem] py-[0.55rem] text-foreground aria-invalid:border-destructive";
 const fieldError = "mt-1 mb-0 text-destructive";
 const hint = "text-[0.9rem] text-muted-foreground";
-const notice = "rounded-lg border px-4 py-3";
 
 export function SendPage() {
   const [file, setFile] = useState<File | undefined>(undefined);
@@ -368,7 +367,7 @@ export function SendPage() {
   return (
     <Page current="send">
       <h1>Send a file</h1>
-      <p class="mt-2 mb-6 text-[1.05rem] text-muted-foreground">
+      <p class={lede}>
         Your file goes straight from this browser to the people you choose. It's encrypted on the
         way and never uploaded or stored.
       </p>
