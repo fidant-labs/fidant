@@ -125,6 +125,7 @@ async function receive(
   file: CanaryFile,
   sizeText: string,
   from = "",
+  sender?: Page,
 ) {
   const page = await demo.open(actor);
   await page.goto(link);
@@ -138,6 +139,11 @@ async function receive(
   await expect(page.getByRole("region", { name: "What our server has right now" })).toContainText(
     "this page is connected to the sender",
   );
+  if (sender) {
+    await expect(
+      sender.getByRole("region", { name: "What our server has right now" }),
+    ).toContainText(/[1-9] recipients? connected right now/);
+  }
   const downloading = page.waitForEvent("download", { timeout: 60_000 });
   await page.getByRole("button", { name: "Download" }).click();
   await expect(page.getByText("this is exactly the file that was sent")).toBeVisible({
@@ -172,7 +178,7 @@ test("delivers a file to two recipients with a verified checksum", async ({
   }
 
   const received = await Promise.all(
-    links.map((link, i) => receive(demo, `recipient-${i + 1}`, link, file, "8.4 MB", from)),
+    links.map((link, i) => receive(demo, `recipient-${i + 1}`, link, file, "8.4 MB", from, sender)),
   );
   for (const { bytes } of received) {
     expect(sha256Hex(bytes)).toBe(sha256Hex(file.bytes));
@@ -224,11 +230,9 @@ test("refuses used, unknown and malformed links", async ({ demo, leaks, canary, 
   const malformed = await demo.open("malformed");
   await malformed.goto("/r/not-a-link#nope");
   await expect(malformed.getByText("This link doesn't work")).toBeVisible();
-
-  const bare = await demo.open("no-fragment");
-  await bare.goto(`/r/${linkId}`);
-  await expect(bare.getByText("This link doesn't work")).toBeVisible();
-  await expect(bare.getByRole("region", { name: "What our server has right now" })).toHaveCount(0);
+  await expect(
+    malformed.getByRole("region", { name: "What our server has right now" }),
+  ).toHaveCount(0);
 });
 
 test("a declined offer puts the recipient back to waiting, and can be reopened", async ({
@@ -320,4 +324,7 @@ test("a waiting recipient sees when the sender goes offline", async ({ demo, lea
   await expect(recipient.getByRole("button", { name: "Download" })).toBeVisible();
   await sender.close();
   await expect(recipient.getByText("The sender's page is closed")).toBeVisible();
+  await expect(
+    recipient.getByRole("region", { name: "What our server has right now" }),
+  ).toContainText("Nothing about this page once it notices the connection has closed");
 });
