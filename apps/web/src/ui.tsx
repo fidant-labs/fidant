@@ -4,6 +4,8 @@ import type { ComponentChildren } from "preact";
 import { Alert, AlertDescription, AlertTitle } from "#components/ui/alert";
 import { buttonVariants } from "#components/ui/button";
 import { Card, CardContent } from "#components/ui/card";
+import { useI18n } from "./i18n/I18n.tsx";
+import { LANGUAGE_NAMES } from "./i18n/language.ts";
 import { FILE_DATA, LOGS, passedOn, type Relayed } from "./lib/server-facts.ts";
 
 const ICONS = {
@@ -62,9 +64,9 @@ export const lede = "mt-2 mb-6 text-[1.05rem] text-muted-foreground";
 
 type Section = "send" | "privacy";
 
-const MENU: ReadonlyArray<readonly [Section, string, string]> = [
-  ["send", "/", "Send a file"],
-  ["privacy", "/privacy", "Privacy"],
+const MENU: ReadonlyArray<readonly [Section, string]> = [
+  ["send", "/"],
+  ["privacy", "/privacy"],
 ];
 
 /**
@@ -72,16 +74,18 @@ const MENU: ReadonlyArray<readonly [Section, string, string]> = [
  * menu opens a new tab instead of leaving the page.
  */
 function Menu({ current }: { current: Section | undefined }) {
+  const { lang, t, setLang } = useI18n();
   const newTab = current !== "privacy";
+  const other = lang === "sv" ? "en" : "sv";
   return (
-    <nav aria-label="Main">
+    <nav aria-label={t.menu.label}>
       <ul class="flex gap-1">
-        {MENU.map(([section, href, label]) => (
+        {MENU.map(([section, href]) => (
           <li key={section}>
             {section === current ? (
               // Not a link: following it would reload the page and drop a transfer in progress.
               <span aria-current="page" class={buttonVariants({ variant: "secondary" })}>
-                {label}
+                {t.menu[section]}
               </span>
             ) : (
               <a
@@ -90,23 +94,34 @@ function Menu({ current }: { current: Section | undefined }) {
                 rel="noopener"
                 class={buttonVariants({ variant: "ghost" })}
               >
-                {label}
-                {newTab && <span class="sr-only"> (opens in a new tab)</span>}
+                {t.menu[section]}
+                {newTab && <span class="sr-only"> {t.menu.newTab}</span>}
               </a>
             )}
           </li>
         ))}
+        <li>
+          <button
+            type="button"
+            lang={other}
+            onClick={() => setLang(other)}
+            class={buttonVariants({ variant: "ghost" })}
+          >
+            {LANGUAGE_NAMES[other]}
+          </button>
+        </li>
       </ul>
     </nav>
   );
 }
 
 export function Page({ children, current }: { children: ComponentChildren; current?: Section }) {
+  const { t } = useI18n();
   return (
     <>
       <header class="mx-auto flex max-w-xl flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border px-4 pt-4 pb-3">
         <p class="m-0 flex items-center gap-[0.4rem] font-bold text-muted-foreground">
-          <Icon name="lock" /> Sigill
+          <Icon name="lock" /> {t.product}
         </p>
         <Menu current={current} />
       </header>

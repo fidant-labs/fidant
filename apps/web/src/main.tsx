@@ -1,4 +1,5 @@
 import { render } from "preact";
+import { I18nProvider, useI18n } from "./i18n/I18n.tsx";
 import { PrivacyPage } from "./privacy/PrivacyPage.tsx";
 import { ReceivePage } from "./receive/ReceivePage.tsx";
 import { SendPage } from "./send/SendPage.tsx";
@@ -10,12 +11,10 @@ function hasSecureCrypto(): boolean {
 }
 
 function InsecurePage() {
+  const { t } = useI18n();
   return (
     <Page>
-      <Problem
-        title="This page needs a secure connection"
-        body="Files are encrypted in your browser, which only works over a secure connection. Open this page with an address that starts with https://."
-      />
+      <Problem title={t.insecure.title} body={t.insecure.body} />
     </Page>
   );
 }
@@ -55,5 +54,10 @@ window.addEventListener("drop", ignoreStrayDrop);
 
 const root = document.getElementById("app");
 if (root) {
-  render(<App />, root);
+  render(
+    <I18nProvider>
+      <App />
+    </I18nProvider>,
+    root,
+  );
 }
