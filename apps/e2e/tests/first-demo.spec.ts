@@ -299,6 +299,7 @@ test("the sender's name must fit with the file name, and stray drops are ignored
 
   const from = makeName(leaks, canary, "Al");
   await page.getByLabel("Your name").fill(from);
+  await expect(page.getByText("Your name and the file name are too long together")).toHaveCount(0);
   const link = await addRecipient(leaks, page, name);
   await expect(page.getByLabel("Your name")).toBeDisabled();
 
