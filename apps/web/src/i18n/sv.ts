@@ -276,6 +276,7 @@ export const sv: Messages = {
         bytes: "meddelandens storlek",
         reason: "varför en länk eller anslutning nekades",
         code: "felkoder",
+        path: "om varje anslutning gick direkt, via vårt relä eller misslyckades",
         port: "porten servern lyssnar på",
       } satisfies Record<keyof LogFields, string>),
     )}. Aldrig namn, nycklar, filinnehåll eller IP-adresser.`,

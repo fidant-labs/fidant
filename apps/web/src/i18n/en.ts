@@ -283,6 +283,7 @@ export const en = {
         bytes: "message sizes",
         reason: "why a link or connection was refused",
         code: "error codes",
+        path: "whether each connection was direct, went through our relay or failed",
         port: "the port it listens on",
       } satisfies Record<keyof LogFields, string>),
     )}. Never names, keys, file data or IP addresses.`,

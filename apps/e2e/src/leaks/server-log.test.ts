@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ERROR_CODES, REFUSE_REASONS, UPGRADE_REJECT_REASONS } from "@sigill/protocol";
+import {
+  CONNECTION_PATHS,
+  ERROR_CODES,
+  REFUSE_REASONS,
+  UPGRADE_REJECT_REASONS,
+} from "@sigill/protocol";
 import { canaryKey, SeededRandom } from "./canary.ts";
 import {
   checkServerLog,
@@ -27,18 +32,20 @@ test("passes the lines the server writes", () => {
     line({ event: "refused", link: "abcdef", reason: "busy" }),
     line({ event: "relay", link: "abcdef", bytes: 0 }),
     line({ event: "error", code: "not-on-link" }),
+    line({ event: "path", path: "relay" }),
     "",
     "   ",
   ];
   assert.deepEqual(checkServerLog(lines, serverLogAllowlist), []);
 });
 
-test("passes every reason and code that @sigill/protocol defines", () => {
+test("passes every reason, code and path that @sigill/protocol defines", () => {
   const lines = [
     ...[...REFUSE_REASONS, ...UPGRADE_REJECT_REASONS].map((reason) =>
       line({ event: "refused", reason }),
     ),
     ...ERROR_CODES.map((code) => line({ event: "error", code })),
+    ...CONNECTION_PATHS.map((path) => line({ event: "path", path })),
   ];
   assert.deepEqual(checkServerLog(lines, serverLogAllowlist), []);
 });
@@ -93,6 +100,12 @@ test("fails an unknown reason or code", () => {
   assert.deepEqual(rules(line({ event: "refused", reason: "full" })), ["reason"]);
   assert.deepEqual(rules(line({ event: "error", code: "oops" })), ["code"]);
   assert.deepEqual(rules(line({ event: "error", code: null })), ["code"]);
+});
+
+test("fails an unknown path", () => {
+  assert.deepEqual(rules(line({ event: "path", path: "turn" })), ["path"]);
+  assert.deepEqual(rules(line({ event: "path", path: "10.0.0.1" })), ["path"]);
+  assert.deepEqual(rules(line({ event: "path", path: 1 })), ["path"]);
 });
 
 test("reports every broken rule with its line number", () => {
