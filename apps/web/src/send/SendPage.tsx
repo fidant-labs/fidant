@@ -359,7 +359,7 @@ export function SendPage() {
   const unfinished = sender.recipients.some((r) => r.status !== "delivered");
 
   return (
-    <Page>
+    <Page current="send">
       <h1>Send a file</h1>
       <p class="lede">
         Your file goes straight from this browser to the people you choose. It's encrypted on the
