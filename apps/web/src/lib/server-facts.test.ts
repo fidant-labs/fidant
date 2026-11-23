@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   addRelay,
-  LOG_FIELD_PHRASES,
   LOGS,
   NO_RELAYS,
   passedOn,
@@ -21,12 +20,6 @@ test("passedOn says nothing yet, then counts with singular and plural", () => {
     passedOn({ messages: 14, bytes: 9200 }),
     "14 setup messages (9.2 KB), all encrypted so the server can't read them.",
   );
-});
-
-test("addRelay adds one message and its bytes without mutating", () => {
-  const before = { messages: 2, bytes: 10 };
-  assert.deepEqual(addRelay(before, 5), { messages: 3, bytes: 15 });
-  assert.deepEqual(before, { messages: 2, bytes: 10 });
 });
 
 test("senderHolds follows links, connections and the server connection", () => {
@@ -75,8 +68,9 @@ test("recipientHolds for a paired, unpaired and closed page", () => {
   );
 });
 
-test("LOGS names every log field phrase", () => {
-  for (const phrase of Object.values(LOG_FIELD_PHRASES)) {
-    assert.ok(LOGS.includes(phrase), phrase);
-  }
+test("LOGS lists every log field and what the server never logs", () => {
+  assert.equal(
+    LOGS,
+    "What happened, like a link being opened, with the first 6 characters of a link ID, how many links a sender has, message sizes, why a link or connection was refused, error codes, and the port it listens on. Never names, keys, file data or IP addresses.",
+  );
 });

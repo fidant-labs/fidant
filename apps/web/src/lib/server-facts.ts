@@ -48,7 +48,7 @@ export function recipientHolds(tie: Tie): string {
   }
 }
 
-export const LOG_FIELD_PHRASES = {
+const LOG_FIELD_PHRASES = {
   link: "the first 6 characters of a link ID",
   links: "how many links a sender has",
   bytes: "message sizes",
