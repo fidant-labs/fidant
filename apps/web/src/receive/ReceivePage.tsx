@@ -24,8 +24,10 @@
 // The secret stays in this tab (it is never stripped from the address bar in
 // this demo). The file name and size are shown, never logged or sent anywhere.
 
+import { cn } from "cn";
 import type { ComponentChildren, VNode } from "preact";
 import { useEffect, useMemo, useReducer, useRef, useState } from "preact/hooks";
+import { Button, buttonVariants } from "#components/ui/button";
 import { displayName, formatBytes, formatProgress, toHex } from "../lib/format.ts";
 import { deriveSignalKey } from "../lib/keys.ts";
 import { parseRecipientLocation } from "../lib/link.ts";
@@ -42,18 +44,7 @@ import {
 } from "../lib/server-facts.ts";
 import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
 import { createSink, isPickerCancel, type Sink } from "../lib/sink.ts";
-import {
-  button,
-  buttonBase,
-  Direct,
-  FileCard,
-  Icon,
-  linkButton,
-  Page,
-  Problem,
-  ServerPanel,
-  TechDetails,
-} from "../ui.tsx";
+import { Direct, FileCard, Icon, Page, Problem, ServerPanel, TechDetails } from "../ui.tsx";
 
 const caption = "text-[0.9rem] text-muted-foreground";
 
@@ -473,17 +464,12 @@ export function ReceivePage() {
           )}
           <FileCard name={offer.name} size={formatBytes(offer.size)} />
           <div class="mt-6 mb-8 flex flex-col items-start gap-2">
-            <button
-              type="button"
-              class={`${buttonBase} border border-primary bg-primary px-7 py-[0.8rem] text-[1.15rem] font-semibold text-primary-foreground`}
-              onClick={onAccept}
-              disabled={picking}
-            >
-              <Icon name="download" /> Download
-            </button>
-            <button type="button" class={linkButton} onClick={onDecline} disabled={picking}>
+            <Button type="button" size="lg" onClick={onAccept} disabled={picking}>
+              <Icon name="download" class="size-4" /> Download
+            </Button>
+            <Button type="button" variant="link" onClick={onDecline} disabled={picking}>
               Decline
-            </button>
+            </Button>
           </div>
           <Direct from={offer.from || "Sender"} to="You" state="ready" />
           <p class={caption}>
@@ -524,7 +510,7 @@ export function ReceivePage() {
       const { offer, blob, sha256 } = view;
       body = (
         <>
-          <div class="flex items-center gap-[0.6rem] text-success">
+          <div class="flex items-center gap-[0.6rem] text-primary">
             <Icon name="check" class="size-8 stroke-[2.5]" />
             <h1 class="m-0">Download complete</h1>
           </div>
@@ -555,9 +541,9 @@ export function ReceivePage() {
             You can close this tab. If you change your mind, the link still works while the sender's
             page is open.
           </p>
-          <button type="button" class={linkButton} onClick={start}>
+          <Button type="button" variant="link" onClick={start}>
             Show the file again
-          </button>
+          </Button>
         </>
       );
       break;
@@ -565,9 +551,9 @@ export function ReceivePage() {
       body = (
         <>
           <Problem {...view.message} />
-          <button type="button" class={button} onClick={start}>
+          <Button type="button" onClick={start}>
             Try again
-          </button>
+          </Button>
           {view.message.detail && <TechDetails rows={[["What happened", view.message.detail]]} />}
         </>
       );
@@ -603,12 +589,8 @@ function SaveLink({ blob, name }: { blob: Blob; name: string }) {
   useEffect(() => anchor.current?.click(), [url]);
   useEffect(() => () => URL.revokeObjectURL(url), [url]);
   return (
-    <a
-      ref={anchor}
-      class={`${buttonBase} border border-primary px-4 py-[0.55rem] text-primary no-underline`}
-      href={url}
-      download={name}
-    >
+    // cn drops the base `border-transparent`, which would otherwise hide the outline's border.
+    <a ref={anchor} class={cn(buttonVariants({ variant: "outline" }))} href={url} download={name}>
       Save file
     </a>
   );

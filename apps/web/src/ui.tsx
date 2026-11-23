@@ -1,6 +1,9 @@
 // Pieces shared by the pages.
 
 import type { ComponentChildren } from "preact";
+import { Alert, AlertDescription, AlertTitle } from "#components/ui/alert";
+import { buttonVariants } from "#components/ui/button";
+import { Card, CardContent } from "#components/ui/card";
 import { FILE_DATA, LOGS, passedOn, type Relayed } from "./lib/server-facts.ts";
 
 const ICONS = {
@@ -57,20 +60,7 @@ export function Icon({ name, class: cls }: { name: IconName; class?: string }) {
 
 export const lede = "mt-2 mb-6 text-[1.05rem] text-muted-foreground";
 
-/** Add the colors: `border-border bg-warning-bg` or `border-destructive bg-destructive-bg`. */
-export const notice = "rounded-lg border px-4 py-3";
-
-export const buttonBase =
-  "inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg disabled:cursor-not-allowed disabled:opacity-50";
-
-export const button = `${buttonBase} border border-primary bg-primary px-4 py-[0.55rem] text-primary-foreground`;
-
-/** A button that looks like a link. */
-export const linkButton = `${buttonBase} p-1 text-primary underline`;
-
 type Section = "send" | "privacy";
-
-const menuItem = "block rounded-lg px-[0.7rem] py-[0.35rem] text-foreground no-underline";
 
 const MENU: ReadonlyArray<readonly [Section, string, string]> = [
   ["send", "/", "Send a file"],
@@ -90,10 +80,7 @@ function Menu({ current }: { current: Section | undefined }) {
           <li key={section}>
             {section === current ? (
               // Not a link: following it would reload the page and drop a transfer in progress.
-              <span
-                aria-current="page"
-                class={`${menuItem} bg-card font-semibold inset-ring inset-ring-border`}
-              >
+              <span aria-current="page" class={buttonVariants({ variant: "secondary" })}>
                 {label}
               </span>
             ) : (
@@ -101,7 +88,7 @@ function Menu({ current }: { current: Section | undefined }) {
                 href={href}
                 target={newTab ? "_blank" : undefined}
                 rel="noopener"
-                class={`${menuItem} hover:bg-card hover:underline`}
+                class={buttonVariants({ variant: "ghost" })}
               >
                 {label}
                 {newTab && <span class="sr-only"> (opens in a new tab)</span>}
@@ -135,7 +122,7 @@ const DIRECT_LINE: Record<DirectState, string> = {
     "bg-[image:repeating-linear-gradient(90deg,var(--color-border)_0_6px,transparent_6px_12px)]",
   active:
     "bg-[image:repeating-linear-gradient(90deg,var(--color-primary)_0_6px,transparent_6px_12px)] bg-[length:12px_2px] animate-flow motion-reduce:animate-none",
-  done: "bg-success",
+  done: "bg-primary",
 };
 
 /** Hidden from screen readers, so always pair it with a sentence that says the same. */
@@ -160,7 +147,7 @@ export function Direct({
       </span>
       <span class={`mb-5 flex h-0.5 flex-1 items-center justify-center ${DIRECT_LINE[state]}`}>
         <span
-          class={`inline-flex rounded-[50%] border bg-background p-[0.35rem] ${done ? "border-success text-success" : "border-border text-primary"}`}
+          class={`inline-flex rounded-[50%] border bg-background p-[0.35rem] ${done ? "border-primary" : "border-border"} text-primary`}
         >
           <Icon name={done ? "check" : "lock"} />
         </span>
@@ -175,13 +162,15 @@ export function Direct({
 
 export function FileCard({ name, size }: { name: string; size: string }) {
   return (
-    <div class="my-4 flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3">
-      <Icon name="file" class="size-8 text-muted-foreground" />
-      <div>
-        <p class="m-0 font-semibold wrap-anywhere">{name}</p>
-        <p class="m-0 text-muted-foreground">{size}</p>
-      </div>
-    </div>
+    <Card className="my-4">
+      <CardContent className="flex items-center gap-3">
+        <Icon name="file" class="size-8 text-muted-foreground" />
+        <div>
+          <p class="m-0 font-semibold wrap-anywhere">{name}</p>
+          <p class="m-0 text-muted-foreground">{size}</p>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -242,15 +231,13 @@ export function ServerPanel({
 
 export function Problem({ title, body }: { title: string; body: string }) {
   return (
-    <div
-      class="mb-4 flex gap-3 rounded-lg border border-destructive bg-destructive-bg p-4"
-      role="alert"
-    >
-      <Icon name="alert" class="size-7 text-destructive" />
-      <div>
-        <h1 class="mt-0 mb-1 text-[1.2rem]">{title}</h1>
-        <p class="m-0">{body}</p>
-      </div>
-    </div>
+    <Alert variant="destructive" className="mb-4">
+      <Icon name="alert" class="size-4" />
+      <AlertTitle>
+        {/* The page heading: the receive page moves focus to `main h1` after each step. */}
+        <h1 class="m-0 text-[length:inherit] font-[weight:inherit] leading-[inherit]">{title}</h1>
+      </AlertTitle>
+      <AlertDescription>{body}</AlertDescription>
+    </Alert>
   );
 }
