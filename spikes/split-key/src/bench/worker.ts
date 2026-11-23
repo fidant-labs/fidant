@@ -2,12 +2,12 @@
 // main thread, so timings are not skewed by rendering and the page stays
 // responsive. One request runs at a time; the page waits for the result.
 
-import type { WorkerRequest, WorkerResponse, WorkerScope } from "./messages.ts";
+import type { SwReply, SwRequest, WorkerRequest, WorkerResponse, WorkerScope } from "./messages.ts";
 import { type Progress, runMicro } from "./micro.ts";
 import { clearBenchDir, hasSyncAccessHandle } from "./opfs.ts";
 import { runPipeline } from "./pipeline.ts";
 import { readStorage } from "./results.ts";
-import { workerSinkSupport } from "./sinks.ts";
+import { type SwBridge, type SwOffer, UnsupportedSinkError, workerSinkSupport } from "./sinks.ts";
 
 const scope = self as unknown as WorkerScope;
 
@@ -26,11 +26,43 @@ function progressFor(id: number): Progress {
   };
 }
 
-function send(message: WorkerResponse): void {
-  scope.postMessage(message);
+function send(message: WorkerResponse, transfer: Transferable[] = []): void {
+  scope.postMessage(message, transfer);
 }
 
-async function handle(request: WorkerRequest): Promise<WorkerResponse> {
+/** Questions to the page that wait for its SwReply, by sequence number. */
+const swWaiting = new Map<number, { resolve: () => void; reject: (error: Error) => void }>();
+let nextSwSeq = 1;
+
+function askPage(id: number, step: SwRequest["step"], transfer: Transferable[]): Promise<void> {
+  const seq = nextSwSeq++;
+  return new Promise((resolve, reject) => {
+    swWaiting.set(seq, { resolve, reject });
+    send({ type: "sw-request", id, seq, step }, transfer);
+  });
+}
+
+function settleSw(reply: SwReply): void {
+  const waiting = swWaiting.get(reply.seq);
+  swWaiting.delete(reply.seq);
+  if (!reply.error) {
+    waiting?.resolve();
+  } else if (reply.error.unsupported) {
+    waiting?.reject(new UnsupportedSinkError(reply.error.message));
+  } else {
+    waiting?.reject(new Error(reply.error.message));
+  }
+}
+
+/** The sw sink's way to the page, which owns the service worker registration. */
+function swBridgeFor(id: number): SwBridge {
+  return {
+    prepare: () => askPage(id, { kind: "prepare" }, []),
+    start: (offer: SwOffer) => askPage(id, { kind: "start", ...offer }, [offer.body]),
+  };
+}
+
+async function handle(request: Exclude<WorkerRequest, SwReply>): Promise<WorkerResponse> {
   switch (request.type) {
     case "micro": {
       const results = await runMicro(
@@ -41,7 +73,10 @@ async function handle(request: WorkerRequest): Promise<WorkerResponse> {
       return { type: "micro-result", id: request.id, results };
     }
     case "pipeline": {
-      const { result, output } = await runPipeline(request, progressFor(request.id));
+      const { result, output } = await runPipeline(
+        { ...request, swBridge: swBridgeFor(request.id) },
+        progressFor(request.id),
+      );
       return output
         ? { type: "pipeline-result", id: request.id, result, output }
         : { type: "pipeline-result", id: request.id, result };
@@ -61,6 +96,10 @@ async function handle(request: WorkerRequest): Promise<WorkerResponse> {
 
 scope.onmessage = (event) => {
   const request = event.data;
+  if (request.type === "sw-reply") {
+    settleSw(request);
+    return;
+  }
   handle(request).then(send, (error: unknown) => {
     send({
       type: "error",

@@ -55,3 +55,22 @@ report: the results and the environment block (user agent, core count, device
 memory, cross-origin isolation, `storage.estimate()`, and which memory and file
 APIs exist). The report has no keys, file names or file content; keys are
 random per run and never leave the worker.
+
+### Service worker sink
+
+The `sw` sink streams decrypted plaintext from the bench worker through the
+page into a service worker (`src/bench/sw.ts`, built to `/sw.js`), which
+answers a hidden iframe's navigation to `/spike-dl/<random id>` with an
+attachment response. The download never touches the network, and its name
+(`bench-output.bin`) is set in the browser. The run's JSON records
+`delivery: "sw-stream"` and `swTransport`: `transferable-stream` where the
+engine can transfer a `ReadableStream` with `postMessage`, otherwise
+`message-port` (one chunk per pull over a `MessagePort`).
+
+Service workers need a secure context. `http://127.0.0.1` is one. On the LAN
+address the certificate must be trusted: Chromium and Safari refuse to
+register a service worker on a page whose certificate error was clicked
+through, so with the self-signed certificate the sink reports "unsupported".
+The e2e harness (`apps/e2e`) currently sets `serviceWorkers: "block"`, so a
+service worker download in the app would need that changed, and the
+recorder may not see requests a service worker answers.

@@ -1,7 +1,8 @@
 // Builds the bench into dist/, which serve.ts serves. Pages are listed in
 // `pages`; the worker is bundled from its `new Worker(new URL(...))` call.
-// A service worker needs a fixed URL for its scope, so when one is added it
-// becomes an entry here and entryFileNames maps it to a name without a hash.
+// The service worker needs a fixed URL for its scope, so it is an entry of
+// its own and entryFileNames maps it to /sw.js without a hash. It imports
+// types only, so its bundle is one classic script with no shared chunks.
 
 import { resolve } from "node:path";
 import { defineConfig } from "vite";
@@ -20,8 +21,10 @@ export default defineConfig({
     // Every browser the bench targets supports modulepreload natively.
     modulePreload: { polyfill: false },
     rolldownOptions: {
-      input: pages,
-      output: { entryFileNames: "assets/[name]-[hash].js" },
+      input: { ...pages, sw: resolve(root, "src/bench/sw.ts") },
+      output: {
+        entryFileNames: (chunk) => (chunk.name === "sw" ? "sw.js" : "assets/[name]-[hash].js"),
+      },
     },
   },
   worker: { format: "es" },

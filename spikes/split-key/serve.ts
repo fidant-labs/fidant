@@ -9,6 +9,12 @@
 // The page must be cross-origin isolated (COOP + COEP) so browsers expose
 // precise timers and performance.measureUserAgentSpecificMemory(). Nothing is
 // logged per request; the bench sends no data to the server anyway.
+//
+// /sw.js, the service worker of the sw sink, is served like every other file:
+// a JavaScript MIME type (required for registration), no-store (so a rebuilt
+// worker is picked up), and the same COOP, COEP, CORP and CSP headers. Its
+// downloads under /spike-dl/ never reach this server; requests for them that
+// do (no service worker yet) get a 404.
 
 import { readFile, stat } from "node:fs/promises";
 import {

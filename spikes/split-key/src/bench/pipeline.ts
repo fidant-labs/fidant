@@ -68,7 +68,13 @@ import {
   readMemory,
   readStorage,
 } from "./results.ts";
-import { type BenchSink, openSink, type SinkOutput, UnsupportedSinkError } from "./sinks.ts";
+import {
+  type BenchSink,
+  openSink,
+  type SinkOutput,
+  type SwBridge,
+  UnsupportedSinkError,
+} from "./sinks.ts";
 
 /** The name in META. Never the picked file's name. */
 export const DUMMY_NAME = "bench.bin";
@@ -81,6 +87,8 @@ export type PipelineInput = {
   file?: File | undefined;
   /** From showSaveFilePicker on the page, when params.sink is "fsa". */
   saveHandle?: FileSystemFileHandle | undefined;
+  /** The page's side of the service worker download, when params.sink is "sw". */
+  swBridge?: SwBridge | undefined;
 };
 
 export type PipelineOutput = { result: PipelineResult; output?: SinkOutput };
@@ -180,7 +188,11 @@ export async function runPipeline(
     const size = params.source.kind === "file" ? (input.file?.size ?? 0) : params.size;
     const padded = paddedLength(size, chunkSize);
     result.paddedLength = padded;
-    sink = await openSink(params.sink, input.saveHandle);
+    sink = await openSink(params.sink, {
+      saveHandle: input.saveHandle,
+      size,
+      swBridge: input.swBridge,
+    });
 
     // 1. hash
     begin("hash");

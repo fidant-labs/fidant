@@ -7,7 +7,9 @@
 // page can wait on it and read #json. A pipeline run whose sink the engine
 // lacks ends "done" with outcome "unsupported" in its JSON; a run that fails
 // ends "error". For sinks that leave a file in OPFS or a Blob, the page starts
-// the download of bench-output.bin before it sets "done".
+// the download of bench-output.bin before it sets "done". For the sw sink the
+// download starts during decryption, and "done" waits until the browser has
+// read the whole download body from the service worker.
 
 import {
   DEFAULT_MICRO_BYTES,
@@ -16,6 +18,7 @@ import {
   PIPELINE_CHUNK_SIZES,
   PIPELINE_SIZES,
   type StageResult,
+  type SwRequest,
   type WorkerRequest,
   type WorkerResponse,
 } from "./messages.ts";
@@ -31,10 +34,19 @@ import {
   type SinkKind,
 } from "./results.ts";
 import type { SinkOutput, SinkSupport } from "./sinks.ts";
+import {
+  prepareSwDownload,
+  type SwDownload,
+  SwUnsupportedError,
+  startSwDownload,
+  withTimeout,
+} from "./sw-client.ts";
 
 const MIB = 1024 * 1024;
 /** A download's blob: URL is revoked this long after the click, or at the next run. */
 const REVOKE_AFTER_MS = 60_000;
+/** How long the service worker may take to flush the last chunks after the worker closed the sink. */
+const SW_FINISH_TIMEOUT_MS = 60_000;
 
 type Environment = Record<string, unknown>;
 
@@ -83,6 +95,8 @@ const report: Report = { bench: "sigill-split-key", version: 1, environment: {},
 const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
 let nextId = 1;
 let downloadUrl: string | undefined;
+/** The service worker download of the running pipeline, once started. */
+let swDownload: SwDownload | undefined;
 
 type Pending = {
   resolve: (response: WorkerResponse) => void;
@@ -104,8 +118,31 @@ function call(request: WorkerRequest): Promise<WorkerResponse> {
   });
 }
 
+/** Does what the worker's sw sink asks and replies, so its prepare() or start() settles. */
+async function answerSw(request: SwRequest): Promise<void> {
+  const reply: WorkerRequest = { type: "sw-reply", id: request.id, seq: request.seq };
+  try {
+    if (request.step.kind === "prepare") {
+      await prepareSwDownload();
+    } else {
+      const { kind: _, ...offer } = request.step;
+      swDownload = await startSwDownload(offer);
+    }
+  } catch (error) {
+    reply.error = {
+      unsupported: error instanceof SwUnsupportedError,
+      message: error instanceof SwUnsupportedError ? error.message : describe(error),
+    };
+  }
+  worker.postMessage(reply);
+}
+
 worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
   const message = event.data;
+  if (message.type === "sw-request") {
+    void answerSw(message);
+    return;
+  }
   const waiting = pending.get(message.id);
   if (!waiting) {
     return;
@@ -192,7 +229,11 @@ async function probeSinks(): Promise<SinkSupport | string> {
   if (response.type !== "probe-result") {
     return response.type === "error" ? `probe failed: ${response.message}` : "probe failed";
   }
-  return { ...response.sinks, fsa: response.sinks.fsa && "showSaveFilePicker" in window };
+  return {
+    ...response.sinks,
+    fsa: response.sinks.fsa && "showSaveFilePicker" in window,
+    sw: response.sinks.sw && window.isSecureContext && "serviceWorker" in navigator,
+  };
 }
 
 // --- Microbenchmarks ---
@@ -273,6 +314,18 @@ async function deliver(output: SinkOutput, run: PipelineRun): Promise<void> {
       download(output.blob);
       run.delivery = "blob-url-memory";
       return;
+    case "sw-download": {
+      run.delivery = "sw-stream";
+      run.swTransport = output.transport;
+      if (!swDownload) {
+        throw new Error("the service worker download never started");
+      }
+      const bytes = await withTimeout(swDownload.finished, SW_FINISH_TIMEOUT_MS, "the download");
+      if (bytes !== run.result?.outputBytes) {
+        throw new Error(`the download got ${bytes} bytes, the sink ${run.result?.outputBytes}`);
+      }
+      return;
+    }
   }
 }
 
@@ -313,6 +366,7 @@ async function runPipeline(params: PipelineParams): Promise<void> {
   }
   // "running" before the first await, so a driver never sees the last run's state.
   revokeDownload();
+  swDownload = undefined;
   setBusy(true);
   setState("running", "Starting…");
   const run: PipelineRun = {

@@ -5,7 +5,7 @@
 // No crypto imports here, so the page can use this without pulling the
 // pipeline into its bundle.
 
-/** Where decrypted plaintext goes. "sw" is the service worker download, commit #7. */
+/** Where decrypted plaintext goes. */
 export type SinkKind = "fsa" | "fsa-opfs" | "opfs" | "blob" | "sw";
 
 export const SINK_LABELS: Record<SinkKind, string> = {
@@ -13,8 +13,11 @@ export const SINK_LABELS: Record<SinkKind, string> = {
   "fsa-opfs": "FileSystemWritableFileStream on an OPFS handle (no picker, for automation)",
   opfs: "OPFS sync access handle, then blob: URL download of the disk-backed File",
   blob: "In-memory Blob, then blob: URL download",
-  sw: "Service worker streaming download (not implemented yet)",
+  sw: "Service worker streaming download from a synthetic /spike-dl/ URL",
 };
+
+/** How plaintext reaches the service worker. Kept here so the page needs no sinks.ts import. */
+export type SwTransport = "transferable-stream" | "message-port";
 
 export type SourceParams = { kind: "seeded"; seed: number } | { kind: "file" };
 
@@ -78,9 +81,12 @@ export type PipelineRun = {
   /**
    * How the page handed the output to the user: written straight to the
    * picked file, downloaded from a blob: URL of a disk-backed OPFS File or of
-   * an in-memory Blob, or nothing (failed or unsupported runs).
+   * an in-memory Blob, streamed through the service worker, or nothing
+   * (failed or unsupported runs).
    */
-  delivery: "picked-file" | "blob-url-disk" | "blob-url-memory" | "none";
+  delivery: "picked-file" | "blob-url-disk" | "blob-url-memory" | "sw-stream" | "none";
+  /** For the sw sink: how plaintext reached the service worker. */
+  swTransport?: SwTransport;
   environment: { storageBefore: StorageReading; memoryBefore: MemoryReading };
   result?: PipelineResult;
 };
