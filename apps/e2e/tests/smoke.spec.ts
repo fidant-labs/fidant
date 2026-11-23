@@ -21,6 +21,25 @@ test("the app loads for a sender and a recipient", async ({ actor, observed, bas
   }
 });
 
+test("request bodies are recorded", async ({ page, observed, baseURL }) => {
+  await page.goto("/");
+  await page.evaluate(async () => {
+    await fetch("/text", { method: "POST", body: "a text body" });
+    await fetch("/blob", { method: "PUT", body: new Blob([new Uint8Array([0, 1, 254, 255])]) });
+    await fetch("/empty", { method: "POST" });
+  });
+  const requests = (await observed("default").records()).filter(
+    (record) => record.type === "request",
+  );
+  const at = (path: string) =>
+    requests.find((record) => record.url === new URL(path, baseURL).href);
+  expect(at("/text")?.body).toBe(Buffer.from("a text body").toString("base64"));
+  expect(at("/blob")?.body).toBe("AAH+/w==");
+  // Chromium does not say whether a POST without an exposed body was empty, so it is marked.
+  expect(at("/empty")).toMatchObject({ bodyMissing: true });
+  expect(at("/empty")?.body).toBeUndefined();
+});
+
 test.describe("the blocker", () => {
   test.use({ allowBlocked: true });
 

@@ -6,6 +6,7 @@ import {
   type BlockedRecord,
   type Headers,
   type ObservationRecord,
+  type RequestBody,
   stripFragment,
 } from "./observations.ts";
 
@@ -103,13 +104,34 @@ export class Recorder {
 
 async function requestRecord(request: Request): Promise<ObservationRecord> {
   const time = now();
+  const body = request.postDataBuffer();
+  const method = request.method();
+  const headers = await headersOf(request.allHeaders(), request.headers());
   return {
     type: "request",
     time,
-    method: request.method(),
+    method,
     url: stripFragment(request.url()),
-    headers: await headersOf(request.allHeaders(), request.headers()),
+    headers,
+    ...requestBody(method, headers, body),
   };
+}
+
+/** Methods whose requests carry no body. */
+const bodiless = new Set(["GET", "HEAD", "OPTIONS"]);
+
+/**
+ * The body fields of a request record: the body as base64 when Playwright exposed one.
+ * Otherwise `bodyMissing` marks a request that may have had a body the scan cannot see.
+ *
+ * Chromium exposes string, buffer, Blob, File and FormData bodies, but not streamed ones, and
+ * its request headers carry no Content-Length to tell an empty body from a hidden one. So any
+ * request whose method allows a body, with none exposed, is marked unless it says length 0.
+ */
+export function requestBody(method: string, headers: Headers, body: Buffer | null): RequestBody {
+  if (body && body.length > 0) return { body: body.toString("base64") };
+  if (bodiless.has(method.toUpperCase()) || headers["content-length"] === "0") return {};
+  return { bodyMissing: true };
 }
 
 async function responseRecord(response: Response): Promise<ObservationRecord> {
