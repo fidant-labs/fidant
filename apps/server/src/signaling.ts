@@ -14,6 +14,7 @@ import {
   type ClientMessage,
   type ConnectionPath,
   type ErrorCode,
+  type IceServer,
   type LogFields,
   parseClientMessage,
   type RefuseReason,
@@ -135,9 +136,15 @@ function sameOrigin(req: IncomingMessage): boolean {
 
 export function attachSignaling(
   server: HttpServer | HttpsServer,
-  options: { log: Logger; heartbeatMs?: number; limits?: Partial<typeof LIMITS> },
+  options: {
+    log: Logger;
+    heartbeatMs?: number;
+    limits?: Partial<typeof LIMITS>;
+    /** Minted once per pairing, so TURN credentials are fresh. Never logged. */
+    iceServers?: () => IceServer[];
+  },
 ): { close(): void } {
-  const { log } = options;
+  const { log, iceServers = () => [] } = options;
   const limits = { ...LIMITS, ...options.limits };
   const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
   const peers = new Map<WebSocket, Peer>();
@@ -304,7 +311,11 @@ export function attachSignaling(
     peer.joined = link;
     peer.attempt = attempt;
     log("joined", { link: short(link) });
-    send(hostSocket, { t: "joined", link, attempt });
+    // The guest's ack goes first, so its peer exists before the host's offer can arrive on the
+    // same ordered socket.
+    const joined: ServerMessage = { t: "joined", link, attempt, iceServers: iceServers() };
+    send(socket, joined);
+    send(hostSocket, joined);
   }
 
   function relay(socket: WebSocket, peer: Peer, link: string, data: string): void {

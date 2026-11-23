@@ -13,6 +13,13 @@ export const MAX_LINKS = 256;
 /** The longest relay payload, in base64url characters. */
 export const MAX_RELAY_DATA = 16384;
 
+/** The most ICE servers, URLs per server, and characters per string a `joined` may carry. */
+export const MAX_ICE_SERVERS = 4;
+export const MAX_ICE_URLS = 4;
+export const MAX_ICE_STRING = 256;
+
+const ICE_URL_PATTERN = /^(turn|turns|stun):/;
+
 const BASE64URL_PATTERN = /^[A-Za-z0-9_-]+$/;
 
 /** Why a sender turns a recipient away. */
@@ -72,8 +79,17 @@ export type PathMessage = { t: "path"; link: string; path: ConnectionPath };
 
 export type ClientMessage = HostMessage | JoinMessage | RelayMessage | RefuseMessage | PathMessage;
 
-/** Tells the sender that a recipient joined a link, and with which attempt. */
-export type JoinedMessage = { t: "joined"; link: string; attempt: string };
+/**
+ * A STUN or TURN server for RTCPeerConnection. For TURN, `username` and `credential` are
+ * short-lived credentials the server minted; the shared secret behind them never leaves it.
+ */
+export type IceServer = { urls: string[]; username: string; credential: string };
+
+/**
+ * Pairs a recipient with the sender on a link: sent to the recipient first (its join ack), then
+ * to the sender. Both get the ICE servers to use for this one connection.
+ */
+export type JoinedMessage = { t: "joined"; link: string; attempt: string; iceServers: IceServer[] };
 /** Tells the sender that the recipient on a link went away. */
 export type LeftMessage = { t: "left"; link: string };
 /** Tells a recipient why it cannot connect. */
@@ -132,6 +148,40 @@ function isConnectionPath(value: unknown): value is ConnectionPath {
 
 function isErrorCode(value: unknown): value is ErrorCode {
   return (ERROR_CODES as readonly unknown[]).includes(value);
+}
+
+function isIceString(value: unknown): value is string {
+  return typeof value === "string" && value.length <= MAX_ICE_STRING;
+}
+
+function parseIceServer(value: unknown): IceServer | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+  const fields = value as Fields;
+  if (!hasKeys(fields, ["urls", "username", "credential"])) {
+    return undefined;
+  }
+  const { urls, username, credential } = fields;
+  if (!Array.isArray(urls) || urls.length === 0 || urls.length > MAX_ICE_URLS) {
+    return undefined;
+  }
+  if (!urls.every((url) => isIceString(url) && ICE_URL_PATTERN.test(url))) {
+    return undefined;
+  }
+  if (!isIceString(username) || !isIceString(credential)) {
+    return undefined;
+  }
+  return { urls: [...urls], username, credential };
+}
+
+/** Parses a list of ICE servers. Returns undefined if any entry is invalid or there are too many. */
+export function parseIceServers(value: unknown): IceServer[] | undefined {
+  if (!Array.isArray(value) || value.length > MAX_ICE_SERVERS) {
+    return undefined;
+  }
+  const servers = value.map(parseIceServer);
+  return servers.every((server) => server !== undefined) ? servers : undefined;
 }
 
 function parseRelay(value: Fields): RelayMessage | undefined {
@@ -205,14 +255,16 @@ export function parseServerMessage(raw: string): ServerMessage | undefined {
     return undefined;
   }
   switch (value.t) {
-    case "joined":
-      if (!hasKeys(value, ["t", "link", "attempt"])) {
+    case "joined": {
+      if (!hasKeys(value, ["t", "link", "attempt", "iceServers"])) {
         return undefined;
       }
-      if (!isLinkId(value.link) || !isLinkId(value.attempt)) {
+      const iceServers = parseIceServers(value.iceServers);
+      if (!isLinkId(value.link) || !isLinkId(value.attempt) || !iceServers) {
         return undefined;
       }
-      return { t: "joined", link: value.link, attempt: value.attempt };
+      return { t: "joined", link: value.link, attempt: value.attempt, iceServers };
+    }
     case "left":
       if (!hasKeys(value, ["t", "link"]) || !isLinkId(value.link)) {
         return undefined;

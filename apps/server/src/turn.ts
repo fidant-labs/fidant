@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import type { IceServer } from "@sigill/protocol";
 
 export type IceConfig = { urls: string[]; secret: string };
 
@@ -17,13 +18,18 @@ export function turnCredentials(
   return { username, credential };
 }
 
+/** The ICE servers for one pairing: none without TURN, else TURN with fresh credentials. */
+export function iceServersFor(ice: IceConfig | undefined, nowMs: number): IceServer[] {
+  return ice ? [{ urls: ice.urls, ...turnCredentials(ice.secret, nowMs) }] : [];
+}
+
 export function serveIceServers(ice: IceConfig | undefined, headers: Record<string, string>) {
   return (req: IncomingMessage, res: ServerResponse): void => {
     if (req.method !== "GET") {
       res.writeHead(405, { allow: "GET", ...headers }).end();
       return;
     }
-    const iceServers = ice ? [{ urls: ice.urls, ...turnCredentials(ice.secret, Date.now()) }] : [];
+    const iceServers = iceServersFor(ice, Date.now());
     res.writeHead(200, {
       "content-type": "application/json",
       "cache-control": "no-store",

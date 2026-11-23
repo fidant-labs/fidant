@@ -6,7 +6,7 @@ import { createServer, type Server } from "node:https";
 import { isIP } from "node:net";
 import { extname, join, resolve, sep } from "node:path";
 import { attachSignaling, type Logger } from "./signaling.ts";
-import { type IceConfig, serveIceServers } from "./turn.ts";
+import { type IceConfig, iceServersFor, serveIceServers } from "./turn.ts";
 
 const contentTypes: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -116,7 +116,10 @@ export function startServer(options: {
     ensureCert(options.certDir, options.hosts),
     serveApp(options.root, options.ice),
   );
-  const signaling = attachSignaling(server, { log: options.log ?? (() => {}) });
+  const signaling = attachSignaling(server, {
+    log: options.log ?? (() => {}),
+    iceServers: () => iceServersFor(options.ice, Date.now()),
+  });
   server.on("close", () => signaling.close());
   return new Promise((done, fail) => {
     server.once("error", fail);

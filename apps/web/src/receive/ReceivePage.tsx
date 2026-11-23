@@ -2,10 +2,13 @@
 // the file once its checksum is verified.
 //
 // One attempt (see lib/peer.ts and lib/receive-file.ts):
-// - Connect to the signaling server, derive the link's signal key, create the
-//   recipient peer, and only then send `join`, so the sender's offer always
-//   finds a peer to answer it. Each attempt joins with a fresh random attempt
-//   ID, so a sender's late refusal of an earlier attempt cannot end this one.
+// - Connect to the signaling server, derive the link's signal key, and send
+//   `join`. The server answers with `joined`, carrying this pairing's ICE
+//   servers, before it tells the sender; the recipient peer is created
+//   synchronously on it, so the sender's offer, which comes later on the same
+//   socket, always finds a peer to answer it. Each attempt joins with a fresh
+//   random attempt ID, so a sender's late refusal of an earlier attempt cannot
+//   end this one.
 // - `relay` goes to the peer. `refused` ends the attempt with the matching
 //   message, and so does `host-gone` until the file starts arriving. A
 //   transfer under way no longer needs the server (the sender may only have
@@ -35,7 +38,7 @@ import { encodeBase64url } from "../lib/base64url.ts";
 import { displayName, formatBytes, formatProgress, toHex } from "../lib/format.ts";
 import { deriveSignalKey } from "../lib/keys.ts";
 import { LINK_ID_BYTES, parseRecipientLocation } from "../lib/link.ts";
-import { createRecipientPeer, fetchIceServers, type Peer } from "../lib/peer.ts";
+import { createRecipientPeer, type Peer } from "../lib/peer.ts";
 import type { FileOffer } from "../lib/receive-file.ts";
 import { ReceiveError, receiveFile } from "../lib/receive-file.ts";
 import { addRelay, NO_RELAYS, type Tie } from "../lib/server-facts.ts";
@@ -170,8 +173,43 @@ export function ReceivePage() {
       }
       finish({ s: "failed", problem: attempt.channelOpen ? lostMessage() : "server" });
     });
+    // Set before `join` is sent, so it is there when `joined` arrives.
+    let signalKey: CryptoKey | undefined;
     signaling.subscribe((message) => {
       switch (message.t) {
+        case "joined":
+          if (
+            !current() ||
+            attempt.peer ||
+            !signalKey ||
+            message.link !== linkId ||
+            message.attempt !== attemptId
+          ) {
+            break;
+          }
+          setTie("paired");
+          try {
+            attempt.peer = createRecipientPeer({
+              signaling,
+              linkId,
+              attempt: attemptId,
+              signalKey,
+              iceServers: message.iceServers,
+              onOpen: (channel, info) => {
+                // A short transfer can end before the path resolves; it still went through the relay.
+                void info.path.then((path) => {
+                  if (path === "relay" && attemptRef.current === attempt) {
+                    setViaRelay(true);
+                  }
+                });
+                onOpen(channel, info.maxMessageSize);
+              },
+              onClose: () => lost(),
+            });
+          } catch {
+            finish({ s: "failed", problem: "server" });
+          }
+          break;
         case "relay":
           attempt.heardSender = true;
           void attempt.peer?.handleRelay(message.data);
@@ -277,34 +315,11 @@ export function ReceivePage() {
         if (current()) {
           setTie("unpaired");
         }
-        const [signalKey, iceServers] = await Promise.all([
-          deriveSignalKey(secret, linkId),
-          fetchIceServers(),
-        ]);
+        signalKey = await deriveSignalKey(secret, linkId);
         if (!current()) {
           return;
         }
-        attempt.peer = createRecipientPeer({
-          signaling,
-          linkId,
-          attempt: attemptId,
-          signalKey,
-          iceServers,
-          onOpen: (channel, info) => {
-            // A short transfer can end before the path resolves; it still went through the relay.
-            void info.path.then((path) => {
-              if (path === "relay" && attemptRef.current === attempt) {
-                setViaRelay(true);
-              }
-            });
-            onOpen(channel, info.maxMessageSize);
-          },
-          onClose: () => lost(),
-        });
-        if (signaling.send({ t: "join", link: linkId, attempt: attemptId })) {
-          // ponytail: paired as soon as join is sent; the server sends no ack, so a refused join over-claims for one round trip
-          setTie("paired");
-        }
+        signaling.send({ t: "join", link: linkId, attempt: attemptId });
       } catch {
         finish({ s: "failed", problem: "server" });
       }

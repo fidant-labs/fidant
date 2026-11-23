@@ -5,7 +5,8 @@
 // - On mount, connect to the signaling server and host every link ID on the
 //   list; re-host the full list after every add or remove.
 // - Server `joined` → reducer `joined`, whose `start` effect derives the
-//   link's signal key and creates a sender peer. `relay` goes to that peer.
+//   link's signal key and creates a sender peer with the ICE servers from
+//   `joined`. `relay` goes to that peer.
 //   `left` → reducer `left`, which only matters before the channel opens.
 // - When the data channel opens, sendFile runs the transfer and reports
 //   accepted, progress, declined and receipt back to the reducer.
@@ -21,7 +22,7 @@
 // gets link IDs, attempt IDs, opaque sealed signals, refusal reasons and
 // connection paths.
 
-import { type ConnectionPath, MAX_LINKS } from "@sigill/protocol";
+import { type ConnectionPath, type IceServer, MAX_LINKS } from "@sigill/protocol";
 import { useEffect, useReducer, useRef, useState } from "preact/hooks";
 import { Alert, AlertDescription } from "#components/ui/alert";
 import { Button } from "#components/ui/button";
@@ -33,7 +34,7 @@ import { formatBytes, toHex } from "../lib/format.ts";
 import { hasForbiddenCharacters, MAX_FROM_LENGTH, metaFits } from "../lib/frames.ts";
 import { deriveSignalKey } from "../lib/keys.ts";
 import { createLink } from "../lib/link.ts";
-import { createSenderPeer, fetchIceServers, type Peer } from "../lib/peer.ts";
+import { createSenderPeer, type Peer } from "../lib/peer.ts";
 import { hashFile, sendFile } from "../lib/send-file.ts";
 import {
   findRecipient,
@@ -121,7 +122,7 @@ export function SendPage() {
     }
   };
 
-  const startConnection = async (linkId: string, attempt: string) => {
+  const startConnection = async (linkId: string, attempt: string, iceServers: IceServer[]) => {
     const recipient = findRecipient(senderRef.current, linkId);
     const signaling = signalingRef.current;
     if (!recipient || !signaling) {
@@ -141,12 +142,8 @@ export function SendPage() {
     }, SETUP_TIMEOUT_MS);
 
     let signalKey: CryptoKey;
-    let iceServers: RTCIceServer[];
     try {
-      [signalKey, iceServers] = await Promise.all([
-        deriveSignalKey(recipient.secret, linkId),
-        fetchIceServers(),
-      ]);
+      signalKey = await deriveSignalKey(recipient.secret, linkId);
     } catch {
       dispatch({ type: "dropped", linkId });
       return;
@@ -217,7 +214,7 @@ export function SendPage() {
   const runEffect = (effect: SenderEffect) => {
     switch (effect.type) {
       case "start":
-        void startConnection(effect.linkId, effect.attempt);
+        void startConnection(effect.linkId, effect.attempt, effect.iceServers);
         break;
       case "close":
         closeConnection(effect.linkId);
@@ -271,7 +268,12 @@ export function SendPage() {
     signaling.subscribe((message) => {
       switch (message.t) {
         case "joined":
-          dispatch({ type: "joined", linkId: message.link, attempt: message.attempt });
+          dispatch({
+            type: "joined",
+            linkId: message.link,
+            attempt: message.attempt,
+            iceServers: message.iceServers,
+          });
           break;
         case "left":
           dispatch({ type: "left", linkId: message.link });

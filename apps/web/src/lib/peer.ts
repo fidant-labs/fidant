@@ -4,7 +4,8 @@
 // Message flow for one link:
 //
 //   recipient → server   join {link, attempt}
-//   server → sender      joined {link, attempt}   (sender: createSenderPeer)
+//   server → recipient   joined {link, attempt, iceServers}   (recipient: createRecipientPeer)
+//   server → sender      joined {link, attempt, iceServers}   (sender: createSenderPeer)
 //   sender → recipient   relay seal_s({kind:"offer", sdp})
 //   recipient → sender   relay seal_r({kind:"answer", sdp})
 //   both directions      relay seal({kind:"ice", candidate})   (trickle; null = end)
@@ -38,9 +39,6 @@ export const DEFAULT_MAX_MESSAGE_SIZE = 65536;
 /** How long to wait before reading a "stun" path again (see readPath). */
 const PATH_RECHECK_MS = 1000;
 
-/** How long to wait for /ice-servers before going on without a relay. */
-const ICE_FETCH_TIMEOUT_MS = 5000;
-
 export type PeerCloseReason =
   /** The data channel closed (the other side went away or closed it). */
   | "channel-closed"
@@ -73,7 +71,7 @@ export type PeerOptions = {
   attempt: string;
   /** From deriveSignalKey(secret, linkId). */
   signalKey: CryptoKey;
-  /** From fetchIceServers(), fresh for each peer: TURN credentials expire. */
+  /** From this pairing's `joined`, fresh for each peer: TURN credentials expire. */
   iceServers: RTCIceServer[];
   /** The channel is open, ordered, reliable, binaryType "arraybuffer". */
   onOpen(channel: RTCDataChannel, info: PeerOpenInfo): void;
@@ -226,59 +224,6 @@ export function connectionPath(
     return "stun";
   }
   return "direct";
-}
-
-/** The `iceServers` of a /ice-servers response, or undefined if it has the wrong shape. */
-export function parseIceServers(value: unknown): RTCIceServer[] | undefined {
-  if (typeof value !== "object" || value === null) {
-    return undefined;
-  }
-  const list = (value as { iceServers?: unknown }).iceServers;
-  if (!Array.isArray(list)) {
-    return undefined;
-  }
-  const servers: RTCIceServer[] = [];
-  for (const entry of list) {
-    if (typeof entry !== "object" || entry === null) {
-      return undefined;
-    }
-    const { urls, username, credential } = entry as Record<string, unknown>;
-    const validUrls =
-      typeof urls === "string" ||
-      (Array.isArray(urls) && urls.length > 0 && urls.every((u) => typeof u === "string"));
-    if (
-      !validUrls ||
-      (username !== undefined && typeof username !== "string") ||
-      (credential !== undefined && typeof credential !== "string")
-    ) {
-      return undefined;
-    }
-    const server: RTCIceServer = { urls: urls as string | string[] };
-    if (username !== undefined) {
-      server.username = username as string;
-    }
-    if (credential !== undefined) {
-      server.credential = credential as string;
-    }
-    servers.push(server);
-  }
-  return servers;
-}
-
-/**
- * Fetches ICE servers from the app server. Never rejects: on any error or bad
- * response it returns [], and browsers on one network still connect directly.
- */
-export async function fetchIceServers(): Promise<RTCIceServer[]> {
-  try {
-    const response = await fetch("/ice-servers", {
-      cache: "no-store",
-      signal: AbortSignal.timeout(ICE_FETCH_TIMEOUT_MS),
-    });
-    return (response.ok && parseIceServers(await response.json())) || [];
-  } catch {
-    return [];
-  }
 }
 
 class PeerError extends Error {

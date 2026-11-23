@@ -7,6 +7,8 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
+import { parseServerMessage } from "@sigill/protocol";
+import { WebSocket as WsClient } from "ws";
 import { ensureCert, serveApp, startServer } from "./server.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "sigill-server-"));
@@ -130,3 +132,79 @@ test("serves fresh TURN credentials without the secret", async () => {
     app.close();
   }
 });
+
+/** Opens a /signal socket on a TLS server and returns its raw text frames as they arrive. */
+async function rawSocket(port: number): Promise<{ socket: WsClient; next(): Promise<string> }> {
+  const socket = new WsClient(`wss://localhost:${port}/signal`, { rejectUnauthorized: false });
+  const frames: string[] = [];
+  const waiting: ((frame: string) => void)[] = [];
+  socket.on("message", (data) => {
+    const frame = String(data);
+    const waiter = waiting.shift();
+    if (waiter) {
+      waiter(frame);
+    } else {
+      frames.push(frame);
+    }
+  });
+  await new Promise((done, fail) => socket.once("open", done).once("error", fail));
+  return {
+    socket,
+    next: () => {
+      const frame = frames.shift();
+      return frame ? Promise.resolve(frame) : new Promise((done) => waiting.push(done));
+    },
+  };
+}
+
+for (const turn of [false, true]) {
+  test(`hands ${turn ? "fresh TURN" : "no"} ICE servers to both ends in joined`, async () => {
+    const secret = "test-secret-do-not-leak";
+    const urls = ["turn:127.0.0.1:3478?transport=udp", "turns:127.0.0.1:5349"];
+    const logs: string[] = [];
+    const server = await startServer({
+      port: 0,
+      root,
+      certDir: join(dir, "certs"),
+      hosts: ["localhost"],
+      ice: turn ? { urls, secret } : undefined,
+      log: (event, fields) => logs.push(JSON.stringify({ event, fields })),
+    });
+    const { port } = server.address() as AddressInfo;
+    const host = await rawSocket(port);
+    const guest = await rawSocket(port);
+    try {
+      const link = "AAAAAAAAAAAAAAAAAAAAAA";
+      const attempt = "ZZZZZZZZZZZZZZZZZZZZZZ";
+      host.socket.send(JSON.stringify({ t: "host", links: [link] }));
+      // A round trip on the host's socket proves the link is registered.
+      host.socket.send(JSON.stringify({ t: "relay", link: attempt, data: "x" }));
+      await host.next();
+      guest.socket.send(JSON.stringify({ t: "join", link, attempt }));
+      for (const frame of [await guest.next(), await host.next()]) {
+        assert.ok(!frame.includes(secret));
+        const message = parseServerMessage(frame);
+        assert.ok(message?.t === "joined", frame);
+        assert.equal(message.link, link);
+        assert.equal(message.attempt, attempt);
+        if (!turn) {
+          assert.deepEqual(message.iceServers, []);
+          continue;
+        }
+        assert.equal(message.iceServers.length, 1);
+        const [ice] = message.iceServers;
+        assert.deepEqual(ice?.urls, urls);
+        const expiry = Number(ice?.username) - Date.now() / 1000;
+        assert.ok(expiry > 12 * 3600 - 60 && expiry <= 12 * 3600, String(expiry));
+        assert.match(ice?.credential ?? "", /^[A-Za-z0-9+/]{27}=$/);
+        for (const line of logs) {
+          assert.ok(!line.includes(secret) && !line.includes(ice?.credential ?? ""), line);
+        }
+      }
+    } finally {
+      host.socket.terminate();
+      guest.socket.terminate();
+      server.close();
+    }
+  });
+}

@@ -51,7 +51,7 @@ test("does not count other messages, invalid frames or sends on a closed socket"
   fake.readyState = 1;
   client.send({ t: "host", links: [LINK] });
   client.send({ t: "join", link: LINK, attempt: LINK });
-  receive({ t: "joined", link: LINK, attempt: LINK });
+  receive({ t: "joined", link: LINK, attempt: LINK, iceServers: [] });
   fake.dispatchEvent(Object.assign(new Event("message"), { data: "not json" }));
   fake.readyState = 3;
   client.send({ t: "relay", link: LINK, data: "abc" });

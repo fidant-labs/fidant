@@ -111,12 +111,13 @@ async function hostFor(...links: string[]): Promise<Client> {
   return host;
 }
 
-/** Joins a fresh guest to a link with a fresh attempt ID and waits until the host hears of it. */
+/** Joins a fresh guest to a link with a fresh attempt ID and waits until both ends hear of it. */
 async function joinAs(link: string, host: Client): Promise<Client & { attempt: string }> {
   const guest = await connect();
   const attempt = randomBytes(16).toString("base64url");
   guest.send({ t: "join", link, attempt });
-  assert.deepEqual(await host.next(), { t: "joined", link, attempt });
+  assert.deepEqual(await guest.next(), { t: "joined", link, attempt, iceServers: [] });
+  assert.deepEqual(await host.next(), { t: "joined", link, attempt, iceServers: [] });
   return Object.assign(guest, { attempt });
 }
 
@@ -149,7 +150,8 @@ test("refuses a second concurrent guest as busy and frees the link when the firs
   // A refused guest may try again once the link is free.
   const attempt = linkId();
   second.send({ t: "join", link, attempt });
-  assert.deepEqual(await host.next(), { t: "joined", link, attempt });
+  assert.deepEqual(await second.next(), { t: "joined", link, attempt, iceServers: [] });
+  assert.deepEqual(await host.next(), { t: "joined", link, attempt, iceServers: [] });
 });
 
 test("forwards the sender's refusal to the guest and unbinds it", async () => {
@@ -393,7 +395,7 @@ test("terminates a guest that never answers pings and tells the host it left", a
   const guest = new WsClient(url, { autoPong: false });
   const attempt = linkId();
   guest.on("open", () => guest.send(JSON.stringify({ t: "join", link, attempt })));
-  assert.deepEqual(await host.next(), { t: "joined", link, attempt });
+  assert.deepEqual(await host.next(), { t: "joined", link, attempt, iceServers: [] });
   const joinedAt = performance.now();
   assert.deepEqual(await host.next(), { t: "left", link });
   assert.ok(performance.now() - joinedAt < 200, "the silent guest outlived two heartbeats");
@@ -549,7 +551,7 @@ async function bufferedRelay(t: { after(fn: () => void): void }) {
   });
   const attempt = linkId();
   guest.on("open", () => guest.send(JSON.stringify({ t: "join", link, attempt })));
-  assert.deepEqual(await host.next(), { t: "joined", link, attempt });
+  assert.deepEqual(await host.next(), { t: "joined", link, attempt, iceServers: [] });
   const data = "A".repeat(MAX_RELAY_DATA);
   return {
     events,
@@ -578,9 +580,10 @@ test("drops relays to a socket that stops reading and keeps the sender open", as
 test("drops nothing to a socket that keeps reading", async (t) => {
   const relay = await bufferedRelay(t);
   await relay.flood(10);
-  for (let wait = 0; wait < 200 && relay.received() < 200; wait += 1) {
+  // The guest's joined ack, then 200 relays.
+  for (let wait = 0; wait < 200 && relay.received() < 201; wait += 1) {
     await new Promise((done) => setTimeout(done, 5));
   }
-  assert.equal(relay.received(), 200);
+  assert.equal(relay.received(), 201);
   assert.ok(!relay.events.includes("relay-dropped"));
 });

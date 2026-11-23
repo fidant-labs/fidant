@@ -2,15 +2,24 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   isLinkId,
+  MAX_ICE_SERVERS,
+  MAX_ICE_STRING,
+  MAX_ICE_URLS,
   MAX_LINKS,
   MAX_RELAY_DATA,
   parseClientMessage,
+  parseIceServers,
   parseServerMessage,
 } from "./signaling.ts";
 
 const link = "AAAAAAAAAAAAAAAAAAAAAA";
 const other = "abcdefghijklmnopqrstu-";
 const attempt = "ZZZZZZZZZZZZZZZZZZZZZZ";
+const turn = {
+  urls: ["turn:127.0.0.1:3478?transport=udp", "turns:relay.example:5349", "stun:127.0.0.1:3478"],
+  username: "1700000000",
+  credential: "hmac",
+};
 
 function linkIds(count: number): string[] {
   return Array.from({ length: count }, (_, i) => i.toString(36).padStart(22, "_"));
@@ -64,11 +73,14 @@ test("accepts the maximum number of links and relay data size", () => {
 });
 
 test("parses valid server messages", () => {
-  assert.deepEqual(parseServerMessage(JSON.stringify({ t: "joined", link, attempt })), {
-    t: "joined",
-    link,
-    attempt,
-  });
+  assert.deepEqual(
+    parseServerMessage(JSON.stringify({ t: "joined", link, attempt, iceServers: [] })),
+    { t: "joined", link, attempt, iceServers: [] },
+  );
+  assert.deepEqual(
+    parseServerMessage(JSON.stringify({ t: "joined", link, attempt, iceServers: [turn] })),
+    { t: "joined", link, attempt, iceServers: [turn] },
+  );
   assert.deepEqual(parseServerMessage(JSON.stringify({ t: "left", link })), { t: "left", link });
   assert.deepEqual(parseServerMessage(JSON.stringify({ t: "relay", link, data: "xyz" })), {
     t: "relay",
@@ -144,11 +156,11 @@ test("rejects bad link IDs and attempt IDs", () => {
     );
     assert.equal(parseClientMessage(JSON.stringify({ t: "host", links: [value] })), undefined);
     assert.equal(
-      parseServerMessage(JSON.stringify({ t: "joined", link: value, attempt })),
+      parseServerMessage(JSON.stringify({ t: "joined", link: value, attempt, iceServers: [] })),
       undefined,
     );
     assert.equal(
-      parseServerMessage(JSON.stringify({ t: "joined", link, attempt: value })),
+      parseServerMessage(JSON.stringify({ t: "joined", link, attempt: value, iceServers: [] })),
       undefined,
     );
   }
@@ -198,7 +210,7 @@ test("rejects extra fields", () => {
     assert.equal(parseClientMessage(JSON.stringify(message)), undefined, message.t);
   }
   const server = [
-    { t: "joined", link, attempt, ...extra },
+    { t: "joined", link, attempt, iceServers: [], ...extra },
     { t: "left", link, ...extra },
     { t: "relay", link, data: "x", ...extra },
     { t: "refused", reason: "busy", ...extra },
@@ -231,6 +243,7 @@ test("rejects missing fields", () => {
   const server = [
     { t: "joined" },
     { t: "joined", link },
+    { t: "joined", link, attempt },
     { t: "left" },
     { t: "relay", link },
     { t: "refused" },
@@ -244,4 +257,43 @@ test("rejects missing fields", () => {
 test("does not let __proto__ smuggle fields past the key check", () => {
   const raw = `{"t":"join","link":"${link}","attempt":"${attempt}","__proto__":{"x":1}}`;
   assert.equal(parseClientMessage(raw), undefined);
+});
+
+test("accepts the maximum number and size of ICE servers", () => {
+  const url = `turn:${"a".repeat(MAX_ICE_STRING - 5)}`;
+  const long = "x".repeat(MAX_ICE_STRING);
+  const server = { urls: Array(MAX_ICE_URLS).fill(url), username: long, credential: long };
+  const servers = Array(MAX_ICE_SERVERS).fill(server);
+  assert.deepEqual(parseIceServers(servers), servers);
+});
+
+test("rejects malformed or oversized ICE servers", () => {
+  const bad: unknown[] = [
+    null,
+    {},
+    turn,
+    [null],
+    ["turn:a"],
+    Array(MAX_ICE_SERVERS + 1).fill(turn),
+    [{ ...turn, urls: [] }],
+    [{ ...turn, urls: "turn:a" }],
+    [{ ...turn, urls: Array(MAX_ICE_URLS + 1).fill("turn:a") }],
+    [{ ...turn, urls: [`turn:${"a".repeat(MAX_ICE_STRING)}`] }],
+    [{ ...turn, urls: ["http://a"] }],
+    [{ ...turn, urls: ["127.0.0.1:3478"] }],
+    [{ ...turn, urls: [" turn:a"] }],
+    [{ ...turn, urls: ["turn:a", 1] }],
+    [{ ...turn, username: 1 }],
+    [{ ...turn, username: "x".repeat(MAX_ICE_STRING + 1) }],
+    [{ ...turn, credential: {} }],
+    [{ urls: turn.urls, username: turn.username }],
+    [{ ...turn, secret: "x" }],
+  ];
+  for (const iceServers of bad) {
+    assert.equal(parseIceServers(iceServers), undefined, JSON.stringify(iceServers));
+    assert.equal(
+      parseServerMessage(JSON.stringify({ t: "joined", link, attempt, iceServers })),
+      undefined,
+    );
+  }
 });
