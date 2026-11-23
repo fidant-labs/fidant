@@ -1,8 +1,9 @@
 // One card per recipient: status, progress, link, copy and remove.
 //
 // Only the status sentence sits in the polite live region, so screen readers
-// hear "Sending to Anna", "Delivered through Anna's link" and so on, not every progress
-// tick.
+// hear "Sending through Anna's link", "Delivered through Anna's link" and so on,
+// not every progress tick. Each status names the link, not the person, because
+// whoever opens a link may not be the person it was made for.
 
 import { useEffect, useRef, useState } from "preact/hooks";
 import { Button } from "#components/ui/button";
@@ -72,7 +73,7 @@ function RecipientRow({ recipient, fileSize, onRemove }: RowProps) {
     }
   };
 
-  const shareable = status === "waiting" || status === "failed";
+  const shareable = status === "waiting" || status === "declined" || status === "failed";
 
   return (
     <li>
@@ -113,6 +114,12 @@ function RecipientRow({ recipient, fileSize, onRemove }: RowProps) {
               variant="link"
               aria-label={t.send.removeFor(name)}
               data-remove={linkId}
+              // Focus moves to the next Remove button, so a held Enter would remove it too.
+              onKeyDown={(event) => {
+                if (event.repeat) {
+                  event.preventDefault();
+                }
+              }}
               onClick={() => onRemove(linkId)}
             >
               {t.send.remove}

@@ -148,13 +148,15 @@ export const en = {
     keepOpen: "Keep this tab open until everyone has the file. It's sent from here.",
     recipients: "Recipients",
     status: {
-      waiting: (name: string) => `Waiting for ${name} to open the link`,
-      connecting: (name: string) => `Connecting to ${name}…`,
+      waiting: (name: string) => `Waiting for ${name}'s link to be opened`,
+      connecting: (name: string) => `Connecting through ${name}'s link…`,
       offered: (name: string) => `${name}'s link has been opened`,
-      receiving: (name: string) => `Sending to ${name}`,
+      declined: (name: string) =>
+        `${name}'s link was opened and the file declined. The link still works.`,
+      receiving: (name: string) => `Sending through ${name}'s link`,
       delivered: (name: string) => `Delivered through ${name}'s link`,
       failed: (name: string) =>
-        `The file didn't arrive intact for ${name}. They can open the link again to retry.`,
+        `The file didn't arrive intact through ${name}'s link. The link can be opened again to retry.`,
     },
     progressFor: (name: string) => `Progress for ${name}`,
     copy: "Copy link",
@@ -216,6 +218,10 @@ export const en = {
       offline: {
         title: "The sender's page is closed",
         body: "The file comes straight from their browser, so it has to stay open. Ask them for a new link.",
+      },
+      offlineReceiving: {
+        title: "The sender's page is closed",
+        body: "The file comes straight from their browser, so it has to stay open. The file may not have been saved. Ask them for a new link.",
       },
       lost: {
         title: "The connection to the sender was lost",
