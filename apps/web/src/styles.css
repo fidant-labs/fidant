@@ -230,3 +230,32 @@ progress {
   font-size: 0.85rem;
   color: var(--muted);
 }
+
+.brand {
+  margin: 0;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.notice.ok {
+  border-color: var(--ok);
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.offer-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin: 1rem 0;
+}
+
+a.button {
+  display: inline-block;
+  padding: 0.5rem 0.9rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-text);
+  text-decoration: none;
+}

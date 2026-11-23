@@ -1,4 +1,5 @@
 import { render } from "preact";
+import { ReceivePage } from "./receive/ReceivePage.tsx";
 import { SendPage } from "./send/SendPage.tsx";
 
 /** Encryption needs Web Crypto, which browsers only offer on HTTPS or localhost. */
@@ -18,18 +19,9 @@ function InsecurePage() {
   );
 }
 
-function ReceivePlaceholder() {
-  return (
-    <main>
-      <h1>Sigill</h1>
-      <p>Receiving is not available yet.</p>
-    </main>
-  );
-}
-
 function App() {
   if (!hasSecureCrypto()) return <InsecurePage />;
-  if (location.pathname.startsWith("/r/")) return <ReceivePlaceholder />;
+  if (location.pathname.startsWith("/r/")) return <ReceivePage />;
   return <SendPage />;
 }
 

@@ -22,13 +22,13 @@ import {
   encodeEnd,
   encodeInit,
   encodeMeta,
-  type Frame,
   FrameReader,
   FrameWriter,
   MAX_CHUNK_BYTES,
   RecipientKind,
   SenderKind,
 } from "./frames.ts";
+import { createInbox } from "./inbox.ts";
 import { createTransferId, deriveFileKey } from "./keys.ts";
 import { assertFrameFits } from "./peer.ts";
 import { Sha256 } from "./sha256.ts";
@@ -151,82 +151,6 @@ export async function sendFile(options: SendFileOptions): Promise<SendResult> {
     inbox.stop();
     abort.abort();
   }
-}
-
-type Inbox = {
-  /** Starts decrypting with `reader`. Messages that arrived earlier are queued, not lost. */
-  start(reader: FrameReader): void;
-  /** The next decrypted frame. Rejects on abort or on any bad frame. */
-  next(): Promise<Frame>;
-  stop(): void;
-};
-
-/**
- * Decrypts incoming messages one at a time, in arrival order, and hands them
- * out through next(). The first failure is permanent.
- */
-function createInbox(channel: FrameChannel, signal: AbortSignal): Inbox {
-  const frames: Frame[] = [];
-  const raw: unknown[] = [];
-  let reader: FrameReader | undefined;
-  let waiter: { resolve(frame: Frame): void; reject(error: unknown): void } | undefined;
-  let failure: { error: unknown } | undefined;
-  let queue: Promise<void> = Promise.resolve();
-
-  const fail = (error: unknown) => {
-    if (failure) return;
-    failure = { error };
-    waiter?.reject(error);
-    waiter = undefined;
-  };
-  const onAbort = () => fail(signal.reason);
-
-  const enqueue = (data: unknown) => {
-    queue = queue
-      .then(async () => {
-        if (failure || !reader) return;
-        if (!(data instanceof ArrayBuffer)) throw new Error("unexpected text message");
-        const frame = await reader.decrypt(new Uint8Array(data));
-        if (failure) return;
-        if (waiter) {
-          const w = waiter;
-          waiter = undefined;
-          w.resolve(frame);
-        } else {
-          frames.push(frame);
-        }
-      })
-      .catch(fail);
-  };
-
-  const onMessage = (event: MessageEvent) => {
-    if (reader) enqueue(event.data);
-    else raw.push(event.data);
-  };
-
-  channel.addEventListener("message", onMessage);
-  signal.addEventListener("abort", onAbort, { once: true });
-  if (signal.aborted) onAbort();
-
-  return {
-    start(next) {
-      reader = next;
-      for (const data of raw.splice(0)) enqueue(data);
-    },
-    next() {
-      if (failure) return Promise.reject(failure.error);
-      const frame = frames.shift();
-      if (frame) return Promise.resolve(frame);
-      return new Promise((resolve, reject) => {
-        waiter = { resolve, reject };
-      });
-    },
-    stop() {
-      channel.removeEventListener("message", onMessage);
-      signal.removeEventListener("abort", onAbort);
-      fail(new Error("inbox stopped"));
-    },
-  };
 }
 
 /** Waits for the channel's "bufferedamountlow" event. */
