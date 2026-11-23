@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { App, Stack } from "aws-cdk-lib";
 import { Match, Template } from "aws-cdk-lib/assertions";
 import { addStacks } from "./app.ts";
-import { siteNames } from "./config.ts";
+import { boxAddress, primaryDomain, siteNames } from "./config.ts";
 import { DnsStack } from "./dns.ts";
 import { SiteStack } from "./site.ts";
 
@@ -13,7 +13,7 @@ const pocAccount = "333333333333";
 
 function synth() {
   const app = new App();
-  const dns = new DnsStack(app, "Dns", {
+  const dnsProps = {
     env: { account, region: "eu-north-1" },
     mail: {
       apexTxt: ["verify=1", "v=spf1 include:mail.example ~all"],
@@ -23,12 +23,18 @@ function synth() {
     },
     certificateValidation: [{ name: "_a.www.fidant.eu.", value: "_b.acm-validations.aws." }],
     distributionDomain: "d111.cloudfront.net",
-  });
+  };
+  const dns = new DnsStack(app, "Dns", { ...dnsProps, boxAddress: undefined });
+  const boxDns = new DnsStack(app, "BoxDns", { ...dnsProps, boxAddress: "192.0.2.10" });
   const site = new SiteStack(app, "Site", { env: { account, region: "us-east-1" } });
-  return { dns: Template.fromStack(dns), site: Template.fromStack(site) };
+  return {
+    dns: Template.fromStack(dns),
+    boxDns: Template.fromStack(boxDns),
+    site: Template.fromStack(site),
+  };
 }
 
-const { dns, site } = synth();
+const { dns, boxDns, site } = synth();
 
 function zoneRef(zoneName: string): { Ref: string } {
   const [id] = Object.entries(dns.findResources("AWS::Route53::HostedZone")).find(
@@ -58,13 +64,14 @@ test("the fidant-dns account gets the protected DNS stack and the CI stack", () 
   );
 });
 
-test("the fidant-poc account gets the site stack and the CI stack, in us-east-1", () => {
+test("the fidant-poc account gets the site, CI and app box stacks", () => {
   const stacks = stacksFor(pocAccount);
   assert.deepEqual(
     stacks.map((stack) => [stack.stackName, stack.region]),
     [
       ["FidantSite", "us-east-1"],
       ["FidantCi", "us-east-1"],
+      ["FidantApp", "eu-north-1"],
     ],
   );
   Template.fromStack(stacks[0] as Stack);
@@ -145,6 +152,9 @@ test("the committed config keeps the certificate valid and every site name point
       },
       1,
     );
+    if (name === primaryDomain && boxAddress !== undefined) {
+      continue;
+    }
     for (const type of ["A", "AAAA"]) {
       committed.hasResourceProperties(recordSet, {
         Name: `${name}.`,
@@ -153,6 +163,42 @@ test("the committed config keeps the certificate valid and every site name point
       });
     }
   }
+  if (boxAddress !== undefined) {
+    assert.match(boxAddress, /^\d{1,3}(\.\d{1,3}){3}$/);
+    committed.hasResourceProperties(recordSet, {
+      Name: `${primaryDomain}.`,
+      Type: "A",
+      ResourceRecords: [boxAddress],
+    });
+  }
+});
+
+test("with a box address, fidant.se points at the box over IPv4 only and www keeps CloudFront", () => {
+  boxDns.hasResourceProperties(recordSet, {
+    Name: "fidant.se.",
+    Type: "A",
+    ResourceRecords: ["192.0.2.10"],
+  });
+  boxDns.resourcePropertiesCountIs(recordSet, { Name: "fidant.se.", Type: "AAAA" }, 0);
+  boxDns.hasResourceProperties(recordSet, {
+    Name: "www.fidant.se.",
+    Type: "A",
+    AliasTarget: Match.objectLike({ DNSName: "d111.cloudfront.net" }),
+  });
+});
+
+test("the app box is open only on 80 and 443, and on 22 only to Lightsail's browser SSH", () => {
+  const stack = stacksFor(pocAccount).find((child) => child.stackName === "FidantApp");
+  const box = Template.fromStack(stack as Stack);
+  const [instance] = Object.values(box.findResources("AWS::Lightsail::Instance"));
+  assert.deepEqual(instance?.Properties.Networking.Ports, [
+    { Protocol: "tcp", FromPort: 80, ToPort: 80, Cidrs: ["0.0.0.0/0"], Ipv6Cidrs: ["::/0"] },
+    { Protocol: "tcp", FromPort: 443, ToPort: 443, Cidrs: ["0.0.0.0/0"], Ipv6Cidrs: ["::/0"] },
+    { Protocol: "tcp", FromPort: 22, ToPort: 22, CidrListAliases: ["lightsail-connect"] },
+  ]);
+  box.hasResourceProperties("AWS::Lightsail::StaticIp", { AttachedTo: "fidant-app" });
+  assert.match(instance?.Properties.UserData, /^fidant\.se \{$/m);
+  assert.doesNotMatch(instance?.Properties.UserData, /@DOMAIN@/);
 });
 
 test("the committed config keeps fidant.se's Proton mail records", () => {

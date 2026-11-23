@@ -8,6 +8,7 @@ export type DnsStackProps = StackProps & {
   mail: Mail;
   certificateValidation: DnsRecord[];
   distributionDomain: string | undefined;
+  boxAddress: string | undefined;
 };
 
 function inZone(name: string, zoneName: string): boolean {
@@ -80,6 +81,14 @@ export class DnsStack extends Stack {
           }),
         });
         for (const recordName of [zoneName, `www.${zoneName}`]) {
+          if (recordName === primaryDomain && props.boxAddress !== undefined) {
+            new route53.ARecord(zone, `${recordName} A`, {
+              zone,
+              recordName,
+              target: route53.RecordTarget.fromIpAddresses(props.boxAddress),
+            });
+            continue;
+          }
           new route53.ARecord(zone, `${recordName} A`, { zone, recordName, target });
           new route53.AaaaRecord(zone, `${recordName} AAAA`, { zone, recordName, target });
         }

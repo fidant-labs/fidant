@@ -68,3 +68,5 @@ export const certificateValidation: DnsRecord[] = [
   },
 ];
 export const distributionDomain: string | undefined = "d35v2c7or676fa.cloudfront.net";
+// Copied by hand from the PublicIp output of FidantApp, which deploys to another account.
+export const boxAddress: string | undefined = undefined;
