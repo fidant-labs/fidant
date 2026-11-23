@@ -42,7 +42,20 @@ import {
 } from "../lib/server-facts.ts";
 import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
 import { createSink, isPickerCancel, type Sink } from "../lib/sink.ts";
-import { Direct, FileCard, Icon, Page, Problem, ServerPanel, TechDetails } from "../ui.tsx";
+import {
+  button,
+  buttonBase,
+  Direct,
+  FileCard,
+  Icon,
+  linkButton,
+  Page,
+  Problem,
+  ServerPanel,
+  TechDetails,
+} from "../ui.tsx";
+
+const caption = "text-[0.9rem] text-muted-foreground";
 
 type Message = { title: string; body: string; detail?: string };
 
@@ -455,18 +468,25 @@ export function ReceivePage() {
           <h1>
             {offer.from ? `${offer.from} wants to send you a file` : "You've been sent a file"}
           </h1>
-          {offer.from && <p class="muted">Name typed by the sender, not verified.</p>}
+          {offer.from && (
+            <p class="text-muted-foreground">Name typed by the sender, not verified.</p>
+          )}
           <FileCard name={offer.name} size={formatBytes(offer.size)} />
-          <div class="offer-actions">
-            <button type="button" class="big" onClick={onAccept} disabled={picking}>
+          <div class="mt-6 mb-8 flex flex-col items-start gap-2">
+            <button
+              type="button"
+              class={`${buttonBase} border border-primary bg-primary px-7 py-[0.8rem] text-[1.15rem] font-semibold text-primary-foreground`}
+              onClick={onAccept}
+              disabled={picking}
+            >
               <Icon name="download" /> Download
             </button>
-            <button type="button" class="link" onClick={onDecline} disabled={picking}>
+            <button type="button" class={linkButton} onClick={onDecline} disabled={picking}>
               Decline
             </button>
           </div>
           <Direct from={offer.from || "Sender"} to="You" state="ready" />
-          <p class="caption">
+          <p class={caption}>
             Sent straight from {offer.from ? `${offer.from}'s` : "the sender's"} computer to yours.
             Encrypted, never stored on a server.
           </p>
@@ -481,16 +501,19 @@ export function ReceivePage() {
         <>
           <h1>Downloading…</h1>
           <FileCard name={offer.name} size={formatBytes(offer.size)} />
-          <div class="progress-row">
+          <div class="my-3 flex flex-wrap items-center gap-3">
             <progress
+              class="min-w-40 flex-1 accent-primary"
               aria-label="Download progress"
               max={Math.max(offer.size, 1)}
               value={offer.size === 0 ? 0 : bytes}
             />
-            <span class="progress-text">{formatProgress(bytes, offer.size)}</span>
+            <span class="text-[0.85rem] text-muted-foreground tabular-nums">
+              {formatProgress(bytes, offer.size)}
+            </span>
           </div>
           <Direct from="Sender" to="You" state="active" />
-          <p class="caption">
+          <p class={caption}>
             Receiving directly from the sender. Keep this tab open until it's done.
           </p>
         </>
@@ -501,22 +524,22 @@ export function ReceivePage() {
       const { offer, blob, sha256 } = view;
       body = (
         <>
-          <div class="success">
-            <Icon name="check" />
-            <h1>Download complete</h1>
+          <div class="flex items-center gap-[0.6rem] text-success">
+            <Icon name="check" class="size-8 stroke-[2.5]" />
+            <h1 class="m-0">Download complete</h1>
           </div>
           <FileCard name={offer.name} size={formatBytes(offer.size)} />
           <p>We checked it: this is exactly the file that was sent.</p>
           {blob ? (
-            <div class="save-row">
-              <p class="muted">Your download should start by itself.</p>
+            <div class="flex flex-wrap items-center gap-4">
+              <p class="text-muted-foreground">Your download should start by itself.</p>
               <SaveLink blob={blob} name={offer.name} />
             </div>
           ) : (
-            <p class="muted">It's saved where you chose.</p>
+            <p class="text-muted-foreground">It's saved where you chose.</p>
           )}
           <Direct from="Sender" to="You" state="done" />
-          <p class="caption">
+          <p class={caption}>
             Sent straight from the sender's computer to yours. Encrypted the whole way.
           </p>
           <OfferDetails offer={offer} sha256={sha256} />
@@ -532,7 +555,7 @@ export function ReceivePage() {
             You can close this tab. If you change your mind, the link still works while the sender's
             page is open.
           </p>
-          <button type="button" class="link" onClick={start}>
+          <button type="button" class={linkButton} onClick={start}>
             Show the file again
           </button>
         </>
@@ -542,7 +565,7 @@ export function ReceivePage() {
       body = (
         <>
           <Problem {...view.message} />
-          <button type="button" onClick={start}>
+          <button type="button" class={button} onClick={start}>
             Try again
           </button>
           {view.message.detail && <TechDetails rows={[["What happened", view.message.detail]]} />}
@@ -580,7 +603,12 @@ function SaveLink({ blob, name }: { blob: Blob; name: string }) {
   useEffect(() => anchor.current?.click(), [url]);
   useEffect(() => () => URL.revokeObjectURL(url), [url]);
   return (
-    <a ref={anchor} class="button secondary" href={url} download={name}>
+    <a
+      ref={anchor}
+      class={`${buttonBase} border border-primary px-4 py-[0.55rem] text-primary no-underline`}
+      href={url}
+      download={name}
+    >
       Save file
     </a>
   );
