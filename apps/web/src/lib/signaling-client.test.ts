@@ -44,7 +44,8 @@ test("counts relay messages it sends and receives, by data length", () => {
   assert.deepEqual(seen, [3, 6]);
 });
 
-test("does not count other messages, invalid frames or sends on a closed socket", () => {
+test("does not count other messages, invalid frames or sends on a closed socket", (t) => {
+  const warn = t.mock.method(console, "warn", () => {});
   const seen: number[] = [];
   const client = connectSignaling({ url: "wss://x/signal", onRelay: (b) => seen.push(b) });
   fake.readyState = 1;
@@ -56,4 +57,5 @@ test("does not count other messages, invalid frames or sends on a closed socket"
   client.send({ t: "relay", link: LINK, data: "abc" });
   assert.deepEqual(seen, []);
   assert.equal(fake.sent.length, 2);
+  assert.equal(warn.mock.callCount(), 1);
 });
