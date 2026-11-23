@@ -593,17 +593,20 @@ progress {
   color: var(--muted);
 }
 
-.facts {
+.tech dl,
+.server-panel dl {
   margin: 0.75rem 0 0;
   display: grid;
   gap: 0.5rem;
 }
 
-.facts dt {
+.tech dt,
+.server-panel dt {
   color: var(--muted);
 }
 
-.facts dd {
+.tech dd,
+.server-panel dd {
   margin: 0;
   overflow-wrap: anywhere;
 }

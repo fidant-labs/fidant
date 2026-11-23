@@ -138,9 +138,15 @@ export function FileCard({ name, size }: { name: string; size: string }) {
   );
 }
 
-function Facts({ rows }: { rows: ReadonlyArray<readonly [string, ComponentChildren]> }) {
+export function Facts({
+  rows,
+  class: className,
+}: {
+  rows: ReadonlyArray<readonly [string, ComponentChildren]>;
+  class?: string;
+}) {
   return (
-    <dl class="facts">
+    <dl class={className}>
       {rows.map(([term, value]) => (
         <div key={term}>
           <dt>{term}</dt>

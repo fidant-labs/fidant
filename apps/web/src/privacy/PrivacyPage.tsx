@@ -1,5 +1,5 @@
 import { LOGS } from "../lib/server-facts.ts";
-import { Page } from "../ui.tsx";
+import { Facts, Page } from "../ui.tsx";
 
 // Written for people who aren't technical. Keep every sentence true of what the
 // code does today: server-facts.ts and apps/server/src/signaling.ts are the source.
@@ -25,19 +25,6 @@ const SEES: ReadonlyArray<readonly [string, string]> = [
   ],
   ["Log lines", LOGS],
 ];
-
-function Facts({ rows }: { rows: ReadonlyArray<readonly [string, string]> }) {
-  return (
-    <dl class="facts">
-      {rows.map(([term, value]) => (
-        <div key={term}>
-          <dt>{term}</dt>
-          <dd>{value}</dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
 
 export function PrivacyPage() {
   return (
@@ -103,9 +90,9 @@ export function PrivacyPage() {
       <section class="prose" aria-labelledby="server-heading">
         <h2 id="server-heading">What our server knows</h2>
         <h3>Never</h3>
-        <Facts rows={NEVER} />
+        <Facts class="facts" rows={NEVER} />
         <h3>Only what it needs to connect you</h3>
-        <Facts rows={SEES} />
+        <Facts class="facts" rows={SEES} />
         <h3>What we keep</h3>
         <p>
           We have no accounts, no database, no cookies and no tracking. Apart from the log lines
