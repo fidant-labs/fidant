@@ -45,4 +45,4 @@ export const certificateValidation: DnsRecord[] = [
     value: "_8b294111155dcd659581ad2c02003c36.wzccmgtwzk.acm-validations.aws.",
   },
 ];
-export const distributionDomain: string | undefined = undefined;
+export const distributionDomain: string | undefined = "d35v2c7or676fa.cloudfront.net";
