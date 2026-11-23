@@ -11,7 +11,7 @@ Name the trade-off in every finding: what the change gains, what it gives up, an
 
 ## What to check in Sigill
 
-The system today is a pnpm monorepo: `apps/web` is a Preact client built by Vite, and `apps/server` is a dependency-free Node HTTPS server that serves the built client. Planned: browser-side encryption with WebCrypto, peer-to-peer transfer over WebRTC, BankID identity, signed receipts, a tamper-evident audit log, and Postgres later.
+The system today is a pnpm monorepo: `apps/web` is a Preact client built by Vite, and `apps/server` is a dependency-free Node HTTPS server that serves the built client. Planned: browser-side encryption with WebCrypto, peer-to-peer transfer over WebRTC, BankID identity, signed receipts, a tamper-evident audit log, and DynamoDB as the one store (`docs/decisions/0004-one-store-dynamodb.md`).
 
 - The trust boundary is the architecture. Encryption happens in the browser, so a design that needs the server, a relay, a database or email to see file content, file names, file metadata or keys breaks the product. The one exception is the BankID receipt text, which names the file.
 - Keys live only in the URL fragment or in browser memory. A design that persists, transmits or derives them anywhere else is a finding.

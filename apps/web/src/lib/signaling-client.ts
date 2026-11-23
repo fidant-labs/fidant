@@ -37,7 +37,16 @@ export function defaultSignalingUrl(): string {
   return `wss://${location.host}/signal`;
 }
 
-export function connectSignaling(url: string = defaultSignalingUrl()): SignalingClient {
+export type SignalingOptions = {
+  url?: string;
+  /** Called with the data length of each relay message sent or received. */
+  onRelay?: (bytes: number) => void;
+};
+
+export function connectSignaling({
+  url = defaultSignalingUrl(),
+  onRelay,
+}: SignalingOptions = {}): SignalingClient {
   const socket = new WebSocket(url);
   const messageListeners = new Set<(message: ServerMessage) => void>();
   const closeListeners = new Set<(info: SignalingClose) => void>();
@@ -57,6 +66,9 @@ export function connectSignaling(url: string = defaultSignalingUrl()): Signaling
     if (!message) {
       console.warn("sigill: ignored an invalid signaling message");
       return;
+    }
+    if (message.t === "relay") {
+      onRelay?.(message.data.length);
     }
     for (const listener of [...messageListeners]) {
       listener(message);
@@ -83,6 +95,9 @@ export function connectSignaling(url: string = defaultSignalingUrl()): Signaling
         return false;
       }
       socket.send(JSON.stringify(message));
+      if (message.t === "relay") {
+        onRelay?.(message.data.length);
+      }
       return true;
     },
     subscribe(listener) {

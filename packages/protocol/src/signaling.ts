@@ -36,6 +36,16 @@ export type UpgradeRejectReason = (typeof UPGRADE_REJECT_REASONS)[number];
 /** Every value the server may write in a log line's `reason` field. */
 export type LogReason = RefuseReason | UpgradeRejectReason;
 
+/** The only fields a log line may carry. `link` is cut to its first 6 characters. */
+export type LogFields = {
+  link?: string;
+  links?: number;
+  bytes?: number;
+  reason?: LogReason;
+  code?: ErrorCode;
+  port?: number;
+};
+
 /** The sender announces its full list of link IDs. Re-sent whenever the list changes. */
 export type HostMessage = { t: "host"; links: string[] };
 /** A recipient asks to be connected to the sender hosting a link. */

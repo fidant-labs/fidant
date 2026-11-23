@@ -5,12 +5,13 @@ import type { AddressInfo } from "node:net";
 import { after, before, test } from "node:test";
 import {
   ERROR_CODES,
+  type LogFields,
   parseServerMessage,
   REFUSE_REASONS,
   type ServerMessage,
   UPGRADE_REJECT_REASONS,
 } from "@sigill/protocol";
-import { attachSignaling, type LogFields } from "./signaling.ts";
+import { attachSignaling } from "./signaling.ts";
 
 const logLines: { event: string; fields: LogFields | undefined }[] = [];
 const server = createServer((_req, res) => res.writeHead(404).end());
