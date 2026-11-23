@@ -25,12 +25,12 @@ These are inputs, not decisions of this record:
 - **Repeat downloads.** The sender chooses per transfer whether recipients may download again until expiry. Every download is logged.
 - **What counts as a download.** Only a download whose checksum the recipient's browser confirms against the original file. Until then the recipient can retry, even when repeat downloads are off. Every attempt is logged.
 - **No sender signature in the POC.** It is planned for production. The POC records the logged-in sender.
-- **The receipt names the file.** This is the one deliberate exception in AGENTS.md: Sigill's server and BankID see the file name when the recipient signs.
+- **The receipt names the file.** This is the one deliberate exception in AGENTS.md: Fidant's server and BankID see the file name when the recipient signs.
 - **Language.** Swedish or English, following the recipient's language. The evidence records which wording was signed.
 
 The issue also has a draft receipt text and a proposal for the checksums:
 
-> Kvittens från Sigill
+> Kvittens från Fidant
 > Jag bekräftar att jag har tagit emot filen rapport-Q3.pdf (2,4 MB) från Anna Andersson.
 > Skickad 23 november 2026 kl. 14.02.
 > Kontrollsumma: 3f9a…c21e
@@ -103,7 +103,7 @@ If the signature XML embeds the IP, every evidence package carries it, whatever 
 4. **Naming the file before signing.** The recipient signs before the server half is released. Under today's keys everything after INIT, META included, is under one file key. Once that key needs the server half, the recipient's browser cannot read the file name it must put in the receipt.
 5. **The declared checksum.** The issue's "sender's declared checksum of the original file" must be the salted commitment of exception (c), not a plain hash. META carries neither the salt nor the commitment today.
 6. **Plain checksums in END and RECEIPT.** They are allowed inside the encrypted channel, but the verified flow needs one value compared everywhere.
-7. **Draft wording.** The draft time has no time zone, and the organisation line states something Sigill has not checked.
+7. **Draft wording.** The draft time has no time zone, and the organisation line states something Fidant has not checked.
 8. **Recipient labels.** In P2P, the labels a sender types for recipients are class M, so the audit log cannot name recipients by those labels.
 9. **Size formatting.** `formatBytes` is English only, while the receipt is Swedish or English.
 10. **Who confirms a download.** The confirmation comes from the recipient's browser. The server can only compare it with what it knows.
@@ -180,8 +180,8 @@ BankID receives `endUserIp` with every request whichever option is chosen.
 
 | Option                                    | For                                    | Against                                            |
 | ----------------------------------------- | -------------------------------------- | -------------------------------------------------- |
-| Show it as the sender states it           | Matches the issue's draft              | The recipient signs a claim Sigill has not checked |
-| Omit it until checked                     | The text states only what Sigill knows | The recipient does not see the organisation        |
+| Show it as the sender states it           | Matches the issue's draft              | The recipient signs a claim Fidant has not checked |
+| Omit it until checked                     | The text states only what Fidant knows | The recipient does not see the organisation        |
 | Show it labelled "uppgiven av avsändaren" | Informative and honest                 | Longer text; unchecked data in the evidence        |
 
 ## Decision
@@ -193,7 +193,7 @@ The recipient signs one of these two texts. The file name, sender, time and chec
 Swedish, template `receipt-sv-1`:
 
 ```text
-Kvittens från Sigill
+Kvittens från Fidant
 
 Jag bekräftar att jag har tagit emot filen ”rapport-Q3.pdf” från Anna Andersson.
 Filen skickades 23 november 2026 kl. 14.02 svensk tid.
@@ -203,7 +203,7 @@ Kontrollsumma: 3f9a…c21e
 English, template `receipt-en-1`:
 
 ```text
-Receipt from Sigill
+Receipt from Fidant
 
 I confirm that I have received the file "rapport-Q3.pdf" from Anna Andersson.
 The file was sent on 23 November 2026 at 14:02 Swedish time.
@@ -221,7 +221,7 @@ Rules:
 - **Time.** Swedish local time (Europe/Stockholm), 24-hour clock, two-digit hour and minute: "14.02" in Swedish, "14:02" in English. The minute is truncated, not rounded. The text says "svensk tid" or "Swedish time". This takes the option "Swedish local time, labelled". The hidden data holds the exact UTC time, which also settles the repeated hour when summer time ends.
 - **"Sent".** The server's time of the `transfer.created` event, in both modes. It is the moment the sender created the transfer, not when the recipient's copy arrived.
 - **Sender.** The name of the logged-in sender, as BankID returned it when they logged in. There is no sender signature in the POC.
-- **No organisation line.** The POC omits it until SIG-36 adds the sender signature or Sigill can check the organisation. This takes the option "Omit it until checked": the recipient signs only what Sigill knows.
+- **No organisation line.** The POC omits it until SIG-36 adds the sender signature or Fidant can check the organisation. This takes the option "Omit it until checked": the recipient signs only what Fidant knows.
 - **Visible checksum.** The first 4 and the last 4 lowercase hex characters of `C`, joined by … (U+2026). This takes the option "Shortened `C`": it is the same value a verifier recomputes from the file and the salt.
 - **Template IDs.** `receipt-sv-1` and `receipt-en-1`. Any change to the wording, the date or time format, or the rules above gets a new ID. Old templates stay, so old receipts can still be checked.
 
@@ -246,7 +246,7 @@ The sign request carries `userNonVisibleData`: base64 of canonical JSON (UTF-8, 
   "sentAt": "2026-11-23T13:02:41Z",
   "template": "receipt-sv-1",
   "transfer": "<transfer ID>",
-  "type": "sigill-receipt",
+  "type": "fidant-receipt",
   "v": 1
 }
 ```
@@ -348,7 +348,7 @@ Why this much and no more:
 - **Data minimisation.** GDPR Art. 5(1)(c) allows only the personal data needed for the purpose. The purpose is to show who sent, who received, and when. A reference that resolves through `parties` does that.
 - **Personnummer.** Dataskyddslagen (2018:218) 3 kap. 10 § allows personnummer only where clearly justified, for example for secure identification. BankID identification is that case. The personnummer is stored once, in `parties`, and nowhere else.
 - **Erasure.** An append-only chain cannot honour erasure or end of retention. So it holds nothing directly identifying. Deleting a `parties` row leaves only references. Anyone with the pepper can still resolve a reference by trying every personnummer, so the references stay personal data (pseudonymous, not anonymous) until the pepper is destroyed. SIG-29 decides when that happens.
-- **Transparency.** This table feeds SIG-31, the public page that lists every piece of data Sigill stores.
+- **Transparency.** This table feeds SIG-31, the public page that lists every piece of data Fidant stores.
 
 ## Consequences
 
