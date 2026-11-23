@@ -39,7 +39,7 @@ Planning lives in Linear: workspace `sigill`, team `SIG`, issue keys like `SIG-2
 ## Invariants
 
 - Never send file content, file names, file metadata or keys to the server or any other infrastructure, and never log them. The one deliberate exception: the BankID receipt text names the file.
-- Keys live only in the URL fragment or in browser memory.
+- Keys live only in the URL fragment or in browser memory. The one exception: the server-held half of a verified transfer's split key, which the server stores and releases only after the receipt is signed (see `docs/decisions/0001-e2e-tests-and-leak-model.md`).
 - What counts as a leak, concretely, is defined in `docs/decisions/0001-e2e-tests-and-leak-model.md`.
 - This repository is public. Never commit secrets, real personal data or customer data. The pre-commit hook runs gitleaks.
 - The project must run fully local for tests and demos, with no internet. Add infrastructure (database, storage, relay) only when a feature needs it.
