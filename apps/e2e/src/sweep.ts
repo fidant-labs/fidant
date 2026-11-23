@@ -40,7 +40,9 @@ async function allCaptures(
   const captures: Capture[] = [];
   const limits: Finding[] = [];
   for (const entry of await readdir(observationsDir, { withFileTypes: true, recursive: true })) {
-    if (!entry.isFile()) continue;
+    if (!entry.isFile()) {
+      continue;
+    }
     const path = join(entry.parentPath, entry.name);
     const point = relative(e2eDir, path);
     const bytes = await readFile(path);
@@ -54,7 +56,9 @@ async function allCaptures(
         .map((line) => JSON.parse(line) as ObservationRecord);
       captures.push(...recordCaptures(point, records));
       const test = relative(observationsDir, path).split(sep)[0] as string;
-      if (!exempt.has(test)) limits.push(...bodyLimits(point, records));
+      if (!exempt.has(test)) {
+        limits.push(...bodyLimits(point, records));
+      }
     } else {
       // Nothing else is written there today; scan anything new as it is.
       captures.push({ point, bytes });

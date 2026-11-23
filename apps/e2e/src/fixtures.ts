@@ -67,7 +67,9 @@ export const test = base.extend<Fixtures>({
       const watch = await LeakWatch.start(testDirName(testInfo), process.env.SIGILL_E2E_REGISTRY);
       await use(watch);
       const report = await watch.check();
-      if (report) throw new Error(report);
+      if (report) {
+        throw new Error(report);
+      }
     },
     { auto: true },
   ],
@@ -79,7 +81,9 @@ export const test = base.extend<Fixtures>({
   // biome-ignore lint/correctness/noEmptyPattern: Playwright reads dependencies from the pattern.
   canary: async ({}, use, testInfo) => {
     const seed = process.env.SIGILL_E2E_SEED;
-    if (!seed) throw new Error("SIGILL_E2E_SEED is not set. Run the suite through global setup.");
+    if (!seed) {
+      throw new Error("SIGILL_E2E_SEED is not set. Run the suite through global setup.");
+    }
     const path = [testInfo.project.name, ...testInfo.titlePath];
     await use(new SeededRandom(runSeed(seed)).fork(JSON.stringify(path)));
   },

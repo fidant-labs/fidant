@@ -98,7 +98,9 @@ export class LeakWatch implements Leaks {
 
   /** Keeps this test's secrets out of the run-level sweep. */
   exempt(): void {
-    if (this.#registry) exemptTest(this.#registry, this.#test);
+    if (this.#registry) {
+      exemptTest(this.#registry, this.#test);
+    }
   }
 
   async scan(): Promise<Finding[]> {
@@ -118,7 +120,9 @@ export class LeakWatch implements Leaks {
 
   #add(secrets: Secret[]): void {
     // Registered first, so the sweep knows the secret even if the worker dies mid-test.
-    if (this.#registry) registerSecrets(this.#registry, this.#test, secrets);
+    if (this.#registry) {
+      registerSecrets(this.#registry, this.#test, secrets);
+    }
     this.#secrets.push(...secrets);
   }
 

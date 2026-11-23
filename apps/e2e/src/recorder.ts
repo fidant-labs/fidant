@@ -133,8 +133,12 @@ const bodiless = new Set(["GET", "HEAD", "OPTIONS"]);
  * allows a body, with none exposed, is marked unless its headers say `content-length: 0`.
  */
 export function requestBody(method: string, headers: Headers, body: Buffer | null): RequestBody {
-  if (body && body.length > 0) return { body: body.toString("base64") };
-  if (bodiless.has(method.toUpperCase()) || headers["content-length"] === "0") return {};
+  if (body && body.length > 0) {
+    return { body: body.toString("base64") };
+  }
+  if (bodiless.has(method.toUpperCase()) || headers["content-length"] === "0") {
+    return {};
+  }
   return { bodyMissing: true };
 }
 

@@ -49,7 +49,9 @@ export function recordCaptures(file: string, records: readonly ObservationRecord
 export function bodyLimits(file: string, records: readonly ObservationRecord[]): Finding[] {
   const findings: Finding[] = [];
   records.forEach((record, index) => {
-    if (record.type !== "request" || !record.bodyMissing) return;
+    if (record.type !== "request" || !record.bodyMissing) {
+      return;
+    }
     findings.push({
       class: "limit",
       label: "request body not visible",
