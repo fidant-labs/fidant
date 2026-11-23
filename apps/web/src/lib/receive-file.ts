@@ -5,7 +5,7 @@
 //   sender → recipient   INIT(transferId)                     plaintext
 //   sender → recipient   META{name, size, type, chunkSize}    → onOffer, user decides
 //   recipient → sender   ACCEPT  (or DECLINE: stop here)
-//   sender → recipient   CHUNK × n                            verified, written to the sink
+//   sender → recipient   CHUNK × n                            verified, file bytes to the sink
 //   sender → recipient   END(sha256, size)                    checked against what arrived
 //   recipient → sender   RECEIPT(sha256 the recipient computed)
 //
@@ -20,6 +20,7 @@
 import {
   decodeInit,
   decodeMeta,
+  type Frame,
   FrameReader,
   FrameWriter,
   ReceiveVerifier,
@@ -98,6 +99,16 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
     const verifier = new ReceiveVerifier();
     verifier.meta(meta);
 
+    // The sender may send nothing more until it has our answer, so any frame
+    // that arrives before ACCEPT or DECLINE has gone out is a protocol error.
+    // Wait for the next frame alongside the decision; once the answer is sent,
+    // that frame is the first CHUNK or END.
+    const firstAfterAnswer = inbox.next();
+    firstAfterAnswer.catch(() => {});
+    const early = firstAfterAnswer.then(() => {
+      throw new Error("sender sent a frame before the recipient answered");
+    });
+
     const decision = options.onOffer({ name: meta.name, size: meta.size, type: meta.type });
     // A sink that arrives after the transfer ended is discarded.
     decision.then(
@@ -106,21 +117,25 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
       },
       () => {},
     );
-    const chosen = await abortable(decision, signal);
-    if (!chosen) {
-      send(await writer.encrypt(RecipientKind.DECLINE, new Uint8Array()));
-      return { type: "declined" };
-    }
+    const answer = async (): Promise<Sink | undefined> => {
+      const chosen = await abortable(decision, signal);
+      const kind = chosen ? RecipientKind.ACCEPT : RecipientKind.DECLINE;
+      send(await writer.encrypt(kind, new Uint8Array()));
+      return chosen;
+    };
+    const chosen = await Promise.race([answer(), early]);
+    if (!chosen) return { type: "declined" };
     sink = chosen;
-    send(await writer.encrypt(RecipientKind.ACCEPT, new Uint8Array()));
 
     let reportedAt = 0;
     let sha256: Uint8Array | undefined;
+    let pending: Promise<Frame> | undefined = firstAfterAnswer;
     while (!sha256) {
-      const frame = await inbox.next();
+      const frame = await (pending ?? inbox.next());
+      pending = undefined;
       if (frame.kind === SenderKind.CHUNK) {
-        verifier.chunk(frame.body);
-        await abortable(sink.write(frame.body), signal);
+        const data = verifier.chunk(frame.body);
+        if (data.length > 0) await abortable(sink.write(data), signal);
         const now = Date.now();
         if (now - reportedAt >= PROGRESS_INTERVAL_MS) {
           reportedAt = now;

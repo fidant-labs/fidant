@@ -18,6 +18,7 @@
 import { MAX_LINKS } from "@sigill/protocol";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { formatBytes, toHex } from "../lib/format.ts";
+import { metaFits } from "../lib/frames.ts";
 import { deriveSignalKey } from "../lib/keys.ts";
 import { createLink } from "../lib/link.ts";
 import { createSenderPeer, type Peer } from "../lib/peer.ts";
@@ -50,6 +51,7 @@ export function SendPage() {
   const [sender, setSender] = useState<SenderState>(initialSenderState);
   const [lostServer, setLostServer] = useState(false);
   const [nameError, setNameError] = useState("");
+  const [fileError, setFileError] = useState("");
 
   // Mutable state used from network callbacks, outside render.
   const senderRef = useRef<SenderState>(initialSenderState);
@@ -204,8 +206,12 @@ export function SendPage() {
     const chosen = input.files?.[0];
     hashAbortRef.current?.abort(new Error("a different file was chosen"));
     hashAbortRef.current = undefined;
-    setFile(chosen);
-    if (!chosen) {
+    const fits = !chosen || metaFits(chosen);
+    setFileError(fits ? "" : "This file name is too long to send. Rename the file and try again.");
+    setFile(fits ? chosen : undefined);
+    // Clear the input so it does not show a file that will not be sent.
+    if (!fits) input.value = "";
+    if (!chosen || !fits) {
       fileRef.current = undefined;
       setHash({ status: "none" });
       return;
@@ -285,9 +291,15 @@ export function SendPage() {
             type="file"
             onChange={onFileChange}
             disabled={hasRecipients}
-            aria-describedby="file-hint"
+            aria-invalid={fileError ? "true" : "false"}
+            aria-describedby={fileError ? "file-error file-hint" : "file-hint"}
           />
         </div>
+        {fileError && (
+          <p id="file-error" class="field-error">
+            {fileError}
+          </p>
+        )}
         <p id="file-hint" class="hint">
           {hasRecipients
             ? "Remove all recipients to choose a different file."

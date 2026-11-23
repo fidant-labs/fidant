@@ -14,6 +14,11 @@ import {
   FrameWriter,
   HEADER_BYTES,
   MAX_CHUNK_BYTES,
+  MAX_PADDABLE_SIZE,
+  META_PADDED_BYTES,
+  MetaTooLargeError,
+  metaFits,
+  paddedLength,
   ReceiveVerifier,
   RecipientKind,
   SenderKind,
@@ -38,13 +43,15 @@ function flip(frame: Uint8Array, index: number): Uint8Array {
   return out;
 }
 
-/** Encrypts a whole file as the sender would: META, CHUNKs, END. */
+/** Encrypts a whole file as the sender would: META, zero-padded CHUNKs, END. */
 async function encryptFile(key: CryptoKey, file: Uint8Array, chunkSize = MAX_CHUNK_BYTES) {
   const writer = new FrameWriter(key, "s");
   const meta = { name: "report.bin", size: file.length, type: "", chunkSize };
   const frames = [await writer.encrypt(META, encodeMeta(meta))];
-  for (let o = 0; o < file.length; o += chunkSize) {
-    frames.push(await writer.encrypt(CHUNK, file.subarray(o, o + chunkSize)));
+  for (let o = 0; o < paddedLength(file.length, chunkSize); o += chunkSize) {
+    const body = new Uint8Array(chunkSize);
+    body.set(file.subarray(o, o + chunkSize));
+    frames.push(await writer.encrypt(CHUNK, body));
   }
   frames.push(await writer.encrypt(END, encodeEnd(sha256(file), file.length)));
   return frames;
@@ -58,10 +65,8 @@ async function receiveFile(key: CryptoKey, frames: Uint8Array[]) {
   for (const frame of frames) {
     const { kind, body } = await reader.decrypt(frame);
     if (kind === META) verifier.meta(decodeMeta(body));
-    else if (kind === CHUNK) {
-      verifier.chunk(body);
-      parts.push(body);
-    } else if (kind === END) verifier.end(body);
+    else if (kind === CHUNK) parts.push(verifier.chunk(body));
+    else if (kind === END) verifier.end(body);
   }
   return { digest: verifier.finish(), data: Buffer.concat(parts) };
 }
@@ -105,10 +110,83 @@ test("a file round trips through INIT, META, CHUNKs and END", async () => {
   assert.ok(!Buffer.from(frames[1] as Uint8Array).includes(file.subarray(0, 64)));
 });
 
-test("an empty file round trips", async () => {
+test("an empty file round trips as one chunk of padding", async () => {
   const { key } = await setup();
-  const { digest } = await receiveFile(key, await encryptFile(key, new Uint8Array(0)));
+  const frames = await encryptFile(key, new Uint8Array(0));
+  assert.equal(frames.length, 3);
+  const { digest, data } = await receiveFile(key, frames);
+  assert.equal(data.length, 0);
   assert.deepEqual(digest, sha256(new Uint8Array(0)));
+});
+
+test("every CHUNK frame has the same size whatever the file size", async () => {
+  const { key } = await setup();
+  const c = 1000;
+  for (const size of [0, 1, c - 1, c, c + 1, 9 * c + 1]) {
+    const file = randomBytes(size);
+    const frames = await encryptFile(key, file, c);
+    const chunks = frames.slice(1, -1);
+    assert.equal(chunks.length, paddedLength(size, c) / c, `size ${size}`);
+    for (const frame of chunks) assert.equal(frame.length, HEADER_BYTES + c + 16, `size ${size}`);
+    const { digest, data } = await receiveFile(key, frames);
+    assert.deepEqual(data, file, `size ${size}`);
+    assert.deepEqual(digest, sha256(file), `size ${size}`);
+  }
+});
+
+test("paddedLength: Padmé rounding, then whole chunks", () => {
+  // With a chunk size of 1 it is plain Padmé (0 counts as 1).
+  const padme: [number, number][] = [
+    [0, 1],
+    [1, 1],
+    [2, 2],
+    [3, 3],
+    [5, 5],
+    [8, 8],
+    [9, 10],
+    [100, 104],
+    [1000, 1024],
+    [1025, 1088],
+    [2 ** 20 + 1, 2 ** 20 + 2 ** 15],
+    [2 ** 32 + 1, 2 ** 32 + 2 ** 26],
+    [2 ** 40 - 1, 2 ** 40],
+    [MAX_PADDABLE_SIZE, MAX_PADDABLE_SIZE],
+  ];
+  for (const [n, expected] of padme) assert.equal(paddedLength(n, 1), expected, `n ${n}`);
+
+  assert.equal(paddedLength(0), MAX_CHUNK_BYTES);
+  assert.equal(paddedLength(1), MAX_CHUNK_BYTES);
+  assert.equal(paddedLength(MAX_CHUNK_BYTES), MAX_CHUNK_BYTES);
+  assert.equal(paddedLength(MAX_CHUNK_BYTES + 1), 2 * MAX_CHUNK_BYTES);
+  assert.equal(paddedLength(2 ** 20), 22 * MAX_CHUNK_BYTES);
+
+  assert.throws(() => paddedLength(-1), /size/);
+  assert.throws(() => paddedLength(1.5), /size/);
+  assert.throws(() => paddedLength(MAX_PADDABLE_SIZE + 1), /size/);
+  assert.throws(() => paddedLength(10, 0), /chunk size/);
+  assert.throws(() => paddedLength(10, MAX_CHUNK_BYTES + 1), /chunk size/);
+});
+
+test("paddedLength is monotonic, at least n and a whole number of chunks", () => {
+  const sizes: number[] = [];
+  for (let n = 0; n < 5000; n++) sizes.push(n);
+  for (let n = 1; n < 2 ** 52; n = Math.ceil(n * 1.37) + 1) sizes.push(n - 1, n, n + 1);
+  sizes.push(2 ** 32 - 1, 2 ** 32, 2 ** 32 + 1, 2 ** 33 + 12345, MAX_PADDABLE_SIZE);
+  sizes.sort((a, b) => a - b);
+  for (const chunkSize of [1, 1000, 16 * 1024 - 64, MAX_CHUNK_BYTES]) {
+    let previous = 0;
+    for (const n of sizes) {
+      if (n > MAX_PADDABLE_SIZE) continue;
+      const padded = paddedLength(n, chunkSize);
+      assert.ok(Number.isSafeInteger(padded), `n ${n}`);
+      assert.ok(padded >= Math.max(n, 1), `n ${n}`);
+      assert.ok(padded >= previous, `n ${n} monotonic`);
+      assert.equal(padded % chunkSize, 0, `n ${n} chunk ${chunkSize}`);
+      // Padmé adds at most 12 %; whole chunks add less than one chunk.
+      assert.ok(padded < Math.max(n, 1) * 1.12 + chunkSize, `n ${n} overhead`);
+      previous = padded;
+    }
+  }
 });
 
 test("recipient frames round trip and seq starts at 0 in each direction", async () => {
@@ -251,14 +329,13 @@ function meta(size: number) {
 
 test("META and END bodies encode and decode", () => {
   const m = { name: "Årsrapport 2026.pdf", size: 2 ** 40, type: "application/pdf", chunkSize: 4 };
+  assert.equal(encodeMeta(m).length, META_PADDED_BYTES);
   assert.deepEqual(decodeMeta(encodeMeta(m)), m);
   assert.throws(() => encodeMeta({ ...m, name: "" }));
-  assert.throws(() => encodeMeta({ ...m, name: "x".repeat(1025) }));
   assert.throws(() => encodeMeta({ ...m, size: -1 }));
+  assert.throws(() => encodeMeta({ ...m, size: MAX_PADDABLE_SIZE + 1 }));
+  assert.throws(() => encodeMeta({ ...m, type: "x".repeat(256) }));
   assert.throws(() => encodeMeta({ ...m, chunkSize: MAX_CHUNK_BYTES + 1 }));
-  const enc = new TextEncoder();
-  assert.throws(() => decodeMeta(enc.encode(JSON.stringify({ ...m, extra: 1 }))));
-  assert.throws(() => decodeMeta(enc.encode("not json")));
 
   const hash = randomBytes(32);
   assert.deepEqual(decodeEnd(encodeEnd(hash, 12345)), {
@@ -268,40 +345,149 @@ test("META and END bodies encode and decode", () => {
   assert.throws(() => decodeEnd(new Uint8Array(39)));
 });
 
+/** A META body with this JSON text, padded the way encodeMeta pads. */
+function rawMeta(json: string, length = META_PADDED_BYTES): Uint8Array {
+  const text = new TextEncoder().encode(json);
+  const body = new Uint8Array(length);
+  new DataView(body.buffer).setUint16(0, text.length);
+  body.set(text, 2);
+  return body;
+}
+
+test("META is always the same size, so it does not reveal the name length", async () => {
+  const { key } = await setup();
+  const writer = new FrameWriter(key, "s");
+  const short = { name: "a", size: 1, type: "", chunkSize: MAX_CHUNK_BYTES };
+  const long = {
+    name: `${"å".repeat(300)}.pdf`,
+    size: 2 ** 40,
+    type: "application/pdf",
+    chunkSize: 4,
+  };
+  const a = await writer.encrypt(META, encodeMeta(short));
+  const b = await writer.encrypt(META, encodeMeta(long));
+  assert.equal(a.length, b.length);
+  assert.equal(a.length, HEADER_BYTES + META_PADDED_BYTES + 16);
+
+  // A META body of any other length is refused before decryption, and by decodeMeta.
+  await assert.rejects(writer.encrypt(META, encodeMeta(short).subarray(1)), /out of range/);
+  assert.throws(() => decodeMeta(encodeMeta(short).subarray(1)), /wrong length/);
+});
+
+test("META that does not fit throws MetaTooLargeError, and metaFits says so", () => {
+  const fits = { name: "x".repeat(900), type: "application/pdf", size: 2 ** 40 };
+  assert.equal(metaFits(fits), true);
+  assert.deepEqual(decodeMeta(encodeMeta({ ...fits, chunkSize: MAX_CHUNK_BYTES })).name, fits.name);
+  const tooLong = { ...fits, name: "x".repeat(1000) };
+  assert.equal(metaFits(tooLong), false);
+  assert.throws(() => encodeMeta({ ...tooLong, chunkSize: 4 }), MetaTooLargeError);
+  // Escaped and multi-byte characters count by their encoded length.
+  assert.equal(metaFits({ ...fits, name: "\u0001".repeat(170) }), false);
+  assert.equal(metaFits({ ...fits, name: "å".repeat(400) }), true);
+  assert.equal(metaFits({ ...fits, name: "å".repeat(500) }), false);
+  assert.equal(metaFits({ ...fits, name: "" }), false);
+});
+
+test("decodeMeta rejects malformed padding and JSON", () => {
+  const json = JSON.stringify(meta(10));
+  assert.deepEqual(decodeMeta(rawMeta(json)), meta(10));
+
+  const tampered = rawMeta(json);
+  tampered[META_PADDED_BYTES - 1] = 1;
+  assert.throws(() => decodeMeta(tampered), /padding/);
+  const space = rawMeta(json);
+  space[2 + json.length] = 0x20;
+  assert.throws(() => decodeMeta(space), /padding/);
+
+  // A length prefix that covers less or more than the JSON.
+  const shorter = rawMeta(json);
+  new DataView(shorter.buffer).setUint16(0, json.length - 1);
+  assert.throws(() => decodeMeta(shorter));
+  const longer = rawMeta(json);
+  new DataView(longer.buffer).setUint16(0, json.length + 1);
+  assert.throws(() => decodeMeta(longer));
+  const huge = rawMeta(json);
+  new DataView(huge.buffer).setUint16(0, META_PADDED_BYTES - 1);
+  assert.throws(() => decodeMeta(huge), /length out of range/);
+
+  assert.throws(() => decodeMeta(rawMeta(JSON.stringify({ ...meta(10), extra: 1 }))));
+  assert.throws(() => decodeMeta(rawMeta("not json")));
+  assert.throws(() => decodeMeta(rawMeta("")));
+});
+
+// meta(10) has chunkSize 4: paddedLength(10, 4) = 12, so three chunks, the
+// last one with two bytes of file and two of padding.
+function chunksOf(file: Uint8Array, chunkSize = 4, padded = 12): Uint8Array[] {
+  const out: Uint8Array[] = [];
+  for (let o = 0; o < padded; o += chunkSize) {
+    const body = new Uint8Array(chunkSize);
+    body.set(file.subarray(o, o + chunkSize));
+    out.push(body);
+  }
+  return out;
+}
+
 test("verifier: a complete transfer finishes with the checksum", () => {
   const file = randomBytes(10);
   const v = new ReceiveVerifier();
   v.meta(meta(10));
-  v.chunk(file.subarray(0, 4));
-  v.chunk(file.subarray(4));
+  const data = chunksOf(file).map((c) => v.chunk(c));
+  assert.deepEqual(
+    data.map((d) => d.length),
+    [4, 4, 2],
+  );
+  assert.deepEqual(Buffer.concat(data), file);
   assert.equal(v.bytesReceived, 10);
   assert.deepEqual(v.end(encodeEnd(sha256(file), 10)), sha256(file));
   assert.deepEqual(v.finish(), sha256(file));
 });
 
+test("verifier: padding chunks carry no file bytes and must be zeros", () => {
+  // paddedLength(9, 1) = 10: one byte of padding after nine bytes of file.
+  const file = randomBytes(9);
+  const v = new ReceiveVerifier();
+  v.meta({ size: 9, chunkSize: 1 });
+  for (let i = 0; i < 9; i++) v.chunk(file.subarray(i, i + 1));
+  assert.equal(v.chunk(new Uint8Array(1)).length, 0);
+  assert.equal(v.bytesReceived, 9);
+  assert.deepEqual(v.end(encodeEnd(sha256(file), 9)), sha256(file));
+
+  const dirty = new ReceiveVerifier();
+  dirty.meta(meta(10));
+  const chunks = chunksOf(randomBytes(10));
+  dirty.chunk(chunks[0] as Uint8Array);
+  dirty.chunk(chunks[1] as Uint8Array);
+  const last = (chunks[2] as Uint8Array).slice();
+  last[3] = 7;
+  assert.throws(() => dirty.chunk(last), /padding/);
+  assert.throws(() => dirty.finish());
+});
+
 test("verifier: truncation makes finish() throw", () => {
   const file = randomBytes(10);
+  const chunks = chunksOf(file);
 
   const missingEnd = new ReceiveVerifier();
   missingEnd.meta(meta(10));
-  missingEnd.chunk(file);
+  for (const c of chunks) missingEnd.chunk(c);
   assert.throws(() => missingEnd.finish(), /incomplete/);
 
-  const fewerBytes = new ReceiveVerifier();
-  fewerBytes.meta(meta(10));
-  fewerBytes.chunk(file.subarray(0, 6));
-  assert.throws(() => fewerBytes.end(encodeEnd(sha256(file), 10)), /bytes received/);
-  assert.throws(() => fewerBytes.finish());
+  const fewerChunks = new ReceiveVerifier();
+  fewerChunks.meta(meta(10));
+  fewerChunks.chunk(chunks[0] as Uint8Array);
+  fewerChunks.chunk(chunks[1] as Uint8Array);
+  assert.throws(() => fewerChunks.end(encodeEnd(sha256(file), 10)), /all chunks/);
+  assert.throws(() => fewerChunks.finish());
 
   const endSizeLies = new ReceiveVerifier();
   endSizeLies.meta(meta(10));
-  endSizeLies.chunk(file.subarray(0, 6));
+  for (const c of chunks) endSizeLies.chunk(c);
   assert.throws(() => endSizeLies.end(encodeEnd(sha256(file.subarray(0, 6)), 6)), /META size/);
   assert.throws(() => endSizeLies.finish());
 
   const wrongHash = new ReceiveVerifier();
   wrongHash.meta(meta(10));
-  wrongHash.chunk(file);
+  for (const c of chunks) wrongHash.chunk(c);
   assert.throws(() => wrongHash.end(encodeEnd(randomBytes(32), 10)), /checksum/);
   assert.throws(() => wrongHash.finish());
 
@@ -309,31 +495,52 @@ test("verifier: truncation makes finish() throw", () => {
   assert.throws(() => nothing.finish());
 });
 
-test("verifier: rejects out-of-order kinds and excess bytes", () => {
+test("verifier: rejects out-of-order kinds, short chunks and excess chunks", () => {
   const file = randomBytes(10);
+  const chunks = chunksOf(file);
 
   const endFirst = new ReceiveVerifier();
   assert.throws(() => endFirst.end(encodeEnd(sha256(file), 10)), /END before META/);
 
   const chunkFirst = new ReceiveVerifier();
-  assert.throws(() => chunkFirst.chunk(file), /CHUNK before META/);
+  assert.throws(() => chunkFirst.chunk(chunks[0] as Uint8Array), /CHUNK before META/);
+
+  const short = new ReceiveVerifier();
+  short.meta(meta(10));
+  short.chunk(chunks[0] as Uint8Array);
+  assert.throws(() => short.chunk(file.subarray(4, 7)), /chunk size/);
+  assert.throws(() => short.chunk(chunks[1] as Uint8Array), /has failed/);
+
+  const unpadded = new ReceiveVerifier();
+  unpadded.meta(meta(10));
+  unpadded.chunk(chunks[0] as Uint8Array);
+  unpadded.chunk(chunks[1] as Uint8Array);
+  assert.throws(() => unpadded.chunk(file.subarray(8)), /chunk size/);
+
+  const tooLong = new ReceiveVerifier();
+  tooLong.meta(meta(10));
+  tooLong.chunk(chunks[0] as Uint8Array);
+  assert.throws(() => tooLong.chunk(new Uint8Array(5)), /chunk size/);
 
   const tooMany = new ReceiveVerifier();
   tooMany.meta(meta(10));
-  tooMany.chunk(file);
-  assert.throws(() => tooMany.chunk(randomBytes(1)), /more bytes/);
+  for (const c of chunks) tooMany.chunk(c);
+  assert.throws(() => tooMany.chunk(new Uint8Array(4)), /more chunks/);
   assert.throws(() => tooMany.end(encodeEnd(sha256(file), 10)), /has failed/);
 
   const chunkAfterEnd = new ReceiveVerifier();
   chunkAfterEnd.meta(meta(10));
-  chunkAfterEnd.chunk(file);
+  for (const c of chunks) chunkAfterEnd.chunk(c);
   chunkAfterEnd.end(encodeEnd(sha256(file), 10));
-  assert.throws(() => chunkAfterEnd.chunk(new Uint8Array(0)), /CHUNK after END/);
+  assert.throws(() => chunkAfterEnd.chunk(new Uint8Array(4)), /CHUNK after END/);
   assert.throws(() => chunkAfterEnd.finish(), "failed verifier does not finish");
 
   const metaTwice = new ReceiveVerifier();
   metaTwice.meta(meta(10));
   assert.throws(() => metaTwice.meta(meta(10)), /twice/);
+
+  const badChunkSize = new ReceiveVerifier();
+  assert.throws(() => badChunkSize.meta({ size: 10, chunkSize: 0 }), /chunk size/);
 });
 
 test("dropping the END frame in transit is detected as truncation", async () => {

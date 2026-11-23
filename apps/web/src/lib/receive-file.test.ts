@@ -1,7 +1,17 @@
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
 import { test } from "node:test";
-import { HEADER_BYTES, RecipientKind, SenderKind } from "./frames.ts";
+import {
+  encodeEnd,
+  encodeInit,
+  encodeMeta,
+  FrameWriter,
+  HEADER_BYTES,
+  MAX_CHUNK_BYTES,
+  RecipientKind,
+  SenderKind,
+} from "./frames.ts";
+import { createTransferId, deriveFileKey } from "./keys.ts";
 import { createLink } from "./link.ts";
 import { type FileOffer, type ReceiveFileOptions, receiveFile } from "./receive-file.ts";
 import { type FrameChannel, type SendResult, sendFile } from "./send-file.ts";
@@ -277,3 +287,51 @@ test("rejects when aborted during the offer and discards a late sink", async () 
   r.pair.close();
   await assert.rejects(r.sending);
 });
+
+for (const early of ["CHUNK", "END"] as const) {
+  test(`fails when the sender sends ${early} before the recipient answers`, async () => {
+    const { secret } = createLink("https://localhost");
+    const pair = channelPair();
+    const sent: number[] = [];
+    pair.sender.addEventListener("message", (event) => {
+      sent.push(new Uint8Array((event as MessageEvent).data)[1] as number);
+    });
+    let offered = false;
+    let decide: ((sink: Sink | undefined) => void) | undefined;
+    const receiving = receiveFile({
+      channel: pair.recipient,
+      maxMessageSize: 65536,
+      secret,
+      signal: new AbortController().signal,
+      onOffer: () => {
+        offered = true;
+        return new Promise((resolve) => {
+          decide = resolve;
+        });
+      },
+      onProgress: () => {},
+    });
+
+    // A sender that does not wait for ACCEPT.
+    const transferId = createTransferId();
+    const writer = new FrameWriter(await deriveFileKey(secret, transferId), "s");
+    const meta = { name: "a.bin", size: 1, type: "", chunkSize: MAX_CHUNK_BYTES };
+    pair.sender.send(encodeInit(transferId));
+    pair.sender.send(await writer.encrypt(SenderKind.META, encodeMeta(meta)));
+    pair.sender.send(
+      early === "CHUNK"
+        ? await writer.encrypt(SenderKind.CHUNK, new Uint8Array(MAX_CHUNK_BYTES))
+        : await writer.encrypt(SenderKind.END, encodeEnd(sha256(new Uint8Array(1)), 1)),
+    );
+
+    await assert.rejects(receiving, /before the recipient answered/);
+    assert.equal(offered, true);
+    // Accepting afterwards changes nothing: no answer is sent and the sink is discarded.
+    const late = new RecordingSink();
+    decide?.(late);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    assert.deepEqual(sent, []);
+    assert.equal(late.aborted, true);
+    assert.equal(late.writes, 0);
+  });
+}

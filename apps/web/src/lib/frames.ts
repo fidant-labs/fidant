@@ -12,12 +12,23 @@
 // | kind | name    | dir | plaintext body                                   |
 // |------|---------|-----|--------------------------------------------------|
 // |    0 | INIT    |  s  | transferId (16), in clear, seq 0, see below      |
-// |    1 | META    |  s  | UTF-8 JSON {name, size, type, chunkSize}, ≤ 8 KiB |
-// |    2 | CHUNK   |  s  | 1 to 48 KiB of file bytes                        |
+// |    1 | META    |  s  | exactly 1024 bytes: length(2, u16 big-endian) || |
+// |      |         |     | UTF-8 JSON {name, size, type, chunkSize} || zeros |
+// |    2 | CHUNK   |  s  | exactly chunkSize bytes: file bytes, then zeros  |
+// |      |         |     | after the end of the file (see Padding)          |
 // |    3 | END     |  s  | sha256(32) || size(8, u64 big-endian)            |
 // |   16 | ACCEPT  |  r  | empty (proves the recipient holds the key)       |
 // |   17 | RECEIPT |  r  | sha256(32) the recipient computed                |
 // |   18 | DECLINE |  r  | empty                                            |
+//
+// Padding: anyone who can see frame sizes (the network, a TURN relay) learns
+// only paddedLength(size, chunkSize) of the file, never its exact size, and
+// META always has the same length whatever the file name and type. The sender
+// sends paddedLength / chunkSize CHUNK frames, all exactly chunkSize bytes; the
+// bytes after the end of the file are zeros. The exact size travels only inside
+// the encrypted META and END. The recipient keeps only the first `size` bytes
+// and checks that the padding is zeros. chunkSize and so the CHUNK frame size
+// depends on the data channel's max message size, which observers see anyway.
 //
 // Sequence numbers: INIT carries the transferId that the file key is derived
 // from, so it has to be sent before either side has the key. It sits outside
@@ -37,8 +48,18 @@ export const FRAME_VERSION = 1;
 export const HEADER_BYTES = 10;
 export const TAG_BYTES = 16;
 export const MAX_CHUNK_BYTES = 48 * 1024;
-export const MAX_META_BYTES = 8 * 1024;
-export const MAX_NAME_LENGTH = 1024;
+/** Largest file size whose padded length is still a safe integer (2^52 bytes, 4 PiB). */
+export const MAX_PADDABLE_SIZE = 2 ** 52;
+
+/** Every META body is padded to exactly this many bytes. */
+export const META_PADDED_BYTES = 1024;
+/** META's length prefix. */
+const META_LENGTH_BYTES = 2;
+/**
+ * Longest MIME type META accepts. The file name has no separate limit: name
+ * and type together must fit in META_PADDED_BYTES (see metaFits).
+ */
+export const MAX_TYPE_LENGTH = 255;
 
 export const SenderKind = { INIT: 0, META: 1, CHUNK: 2, END: 3 } as const;
 export const RecipientKind = { ACCEPT: 16, RECEIPT: 17, DECLINE: 18 } as const;
@@ -53,7 +74,7 @@ export type Frame = { kind: EncryptedKind; body: Uint8Array };
 
 /** Allowed body size range per encrypted kind, and which direction sends it. */
 const RULES: Record<EncryptedKind, { dir: Direction; min: number; max: number }> = {
-  [SenderKind.META]: { dir: "s", min: 2, max: MAX_META_BYTES },
+  [SenderKind.META]: { dir: "s", min: META_PADDED_BYTES, max: META_PADDED_BYTES },
   [SenderKind.CHUNK]: { dir: "s", min: 1, max: MAX_CHUNK_BYTES },
   [SenderKind.END]: { dir: "s", min: 40, max: 40 },
   [RecipientKind.ACCEPT]: { dir: "r", min: 0, max: 0 },
@@ -199,19 +220,63 @@ export type FileMeta = { name: string; size: number; type: string; chunkSize: nu
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
 
+/** Thrown by encodeMeta when the file name and type do not fit in META_PADDED_BYTES. */
+export class MetaTooLargeError extends Error {
+  constructor() {
+    super("file metadata does not fit in the META frame");
+    this.name = "MetaTooLargeError";
+  }
+}
+
+/**
+ * Encodes META as exactly META_PADDED_BYTES bytes: the JSON's byte length as
+ * a u16 big-endian, the UTF-8 JSON, then zeros. Throws MetaTooLargeError if the
+ * JSON does not fit, and a plain Error if the metadata is invalid.
+ */
 export function encodeMeta(meta: FileMeta): Uint8Array<ArrayBuffer> {
   const checked = parseMeta(meta);
   if (!checked) throw new Error("invalid file metadata");
-  const body = encoder.encode(JSON.stringify(checked));
-  if (body.length > MAX_META_BYTES) throw new Error("file metadata too large");
+  const json = encoder.encode(JSON.stringify(checked));
+  if (json.length > META_PADDED_BYTES - META_LENGTH_BYTES) throw new MetaTooLargeError();
+  const body = new Uint8Array(META_PADDED_BYTES);
+  new DataView(body.buffer).setUint16(0, json.length);
+  body.set(json, META_LENGTH_BYTES);
   return body;
 }
 
-/** Parses a decrypted META body. Throws if it is not valid metadata. */
+/**
+ * Whether a file with this name, type and size can be offered: its META fits
+ * for any chunk size. Check it when the file is chosen.
+ */
+export function metaFits(file: { name: string; type: string; size: number }): boolean {
+  try {
+    encodeMeta({ name: file.name, type: file.type, size: file.size, chunkSize: MAX_CHUNK_BYTES });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Parses a decrypted META body. Throws unless it is exactly META_PADDED_BYTES
+ * long, the length prefix fits, the bytes after the JSON are all zeros and the
+ * JSON is valid metadata.
+ */
 export function decodeMeta(body: Uint8Array): FileMeta {
-  const meta = parseMeta(JSON.parse(decoder.decode(body)));
+  if (body.length !== META_PADDED_BYTES) throw new Error("META body has the wrong length");
+  const length = new DataView(body.buffer, body.byteOffset, META_LENGTH_BYTES).getUint16(0);
+  if (length > META_PADDED_BYTES - META_LENGTH_BYTES) throw new Error("META length out of range");
+  const end = META_LENGTH_BYTES + length;
+  if (!isZero(body.subarray(end))) throw new Error("META padding is not zeros");
+  const meta = parseMeta(JSON.parse(decoder.decode(body.subarray(META_LENGTH_BYTES, end))));
   if (!meta) throw new Error("invalid file metadata");
   return meta;
+}
+
+function isZero(bytes: Uint8Array): boolean {
+  let bits = 0;
+  for (const byte of bytes) bits |= byte;
+  return bits === 0;
 }
 
 function parseMeta(value: unknown): FileMeta | undefined {
@@ -219,11 +284,9 @@ function parseMeta(value: unknown): FileMeta | undefined {
   const keys = Object.keys(value).sort().join(",");
   if (keys !== "chunkSize,name,size,type") return undefined;
   const { name, size, type, chunkSize } = value as Record<string, unknown>;
-  if (typeof name !== "string" || name.length === 0 || name.length > MAX_NAME_LENGTH) {
-    return undefined;
-  }
+  if (typeof name !== "string" || name.length === 0) return undefined;
   if (typeof size !== "number" || !Number.isSafeInteger(size) || size < 0) return undefined;
-  if (typeof type !== "string" || type.length > 255) return undefined;
+  if (typeof type !== "string" || type.length > MAX_TYPE_LENGTH) return undefined;
   if (
     typeof chunkSize !== "number" ||
     !Number.isInteger(chunkSize) ||
@@ -232,7 +295,49 @@ function parseMeta(value: unknown): FileMeta | undefined {
   ) {
     return undefined;
   }
+  // The padded transfer length must stay a safe integer too.
+  if (size > MAX_PADDABLE_SIZE) return undefined;
   return { name, size, type, chunkSize };
+}
+
+/**
+ * How many bytes of CHUNK data carry a file of `size` bytes: the size rounded
+ * up with Padmé (Nikitin et al., "Reducing Metadata Leakage from Encrypted
+ * Files and Communication with PURBs", 2019), which leaks O(log log size) bits
+ * and adds at most 12 % (less for bigger files), then rounded up to a
+ * whole number of chunks so every CHUNK frame has the same size. An empty file
+ * is padded like a 1-byte file, to one full chunk, so it looks like any other
+ * small file.
+ *
+ * Interim: SIG-7 owns the final padding function. Keep it this one exported
+ * function so the sender and the recipient always agree.
+ */
+export function paddedLength(size: number, chunkSize: number = MAX_CHUNK_BYTES): number {
+  if (!Number.isSafeInteger(size) || size < 0 || size > MAX_PADDABLE_SIZE) {
+    throw new Error("size out of range");
+  }
+  if (!Number.isInteger(chunkSize) || chunkSize < 1 || chunkSize > MAX_CHUNK_BYTES) {
+    throw new Error("chunk size out of range");
+  }
+  const padded = padme(Math.max(size, 1));
+  return Math.ceil(padded / chunkSize) * chunkSize;
+}
+
+/** Padmé for L ≥ 1, in floating-point arithmetic that stays exact up to 2^53. */
+function padme(length: number): number {
+  if (length < 2) return length;
+  const e = floorLog2(length);
+  const s = floorLog2(e) + 1;
+  const step = 2 ** (e - s);
+  return Math.ceil(length / step) * step;
+}
+
+/** floor(log2(n)) for a safe integer n ≥ 1, corrected for Math.log2 rounding. */
+function floorLog2(n: number): number {
+  let e = Math.floor(Math.log2(n));
+  while (2 ** e > n) e--;
+  while (2 ** (e + 1) <= n) e++;
+  return e;
 }
 
 export function encodeEnd(sha256: Uint8Array, size: number): Uint8Array<ArrayBuffer> {
@@ -257,50 +362,63 @@ function equalBytes(a: Uint8Array, b: Uint8Array): boolean {
 }
 
 /**
- * Checks that a received file is complete. Feed it the decrypted META size,
- * every CHUNK body and the END body, in order. It hashes the chunks itself.
- * `finish()` throws unless an END arrived whose size matches META and the
- * bytes received and whose checksum matches the bytes received; anything
- * short of that counts as truncation. Any error leaves it failed for good.
+ * Checks that a received file is complete. Feed it the decrypted META, every
+ * CHUNK body and the END body, in order. It hashes the file bytes itself.
+ * Every CHUNK must be exactly META's chunkSize, and the chunks must add up to
+ * exactly paddedLength(size, chunkSize); chunk() returns the part of each that
+ * is file content, and the rest must be zeros. `finish()` throws unless an END
+ * arrived whose size matches META and whose checksum matches the file bytes
+ * received; anything short of that counts as truncation. Any error leaves it
+ * failed for good.
  */
 export class ReceiveVerifier {
   private size: number | undefined;
+  private chunkSize = 0;
+  private expected = 0;
   private received = 0;
   private readonly hash = new Sha256();
   private digest: Uint8Array | undefined;
   private failed = false;
 
-  /** Bytes of file content accepted so far. */
+  /** Bytes of file content accepted so far, not counting padding. */
   get bytesReceived(): number {
-    return this.received;
+    return this.size === undefined ? 0 : Math.min(this.received, this.size);
   }
 
-  meta(meta: { size: number }): void {
+  meta(meta: { size: number; chunkSize: number }): void {
     this.step(() => {
       if (this.size !== undefined) throw new Error("META received twice");
-      if (!Number.isSafeInteger(meta.size) || meta.size < 0) throw new Error("invalid size");
+      this.expected = paddedLength(meta.size, meta.chunkSize);
+      this.chunkSize = meta.chunkSize;
       this.size = meta.size;
     });
   }
 
-  chunk(body: Uint8Array): void {
-    this.step(() => {
+  /** Checks one CHUNK body and returns the file bytes in it (a view, possibly empty). */
+  chunk(body: Uint8Array): Uint8Array {
+    return this.step(() => {
       if (this.size === undefined) throw new Error("CHUNK before META");
       if (this.digest) throw new Error("CHUNK after END");
-      if (this.received + body.length > this.size) throw new Error("more bytes than META size");
+      if (body.length !== this.chunkSize) throw new Error("CHUNK is not the chunk size");
+      if (this.received + body.length > this.expected)
+        throw new Error("more chunks than META size");
+      const fileBytes = Math.max(0, Math.min(body.length, this.size - this.received));
+      if (!isZero(body.subarray(fileBytes))) throw new Error("CHUNK padding is not zeros");
       this.received += body.length;
-      this.hash.update(body);
+      const data = body.subarray(0, fileBytes);
+      this.hash.update(data);
+      return data;
     });
   }
 
-  /** Checks the END body. Returns the checksum of the received bytes. */
+  /** Checks the END body. Returns the checksum of the received file bytes. */
   end(endBody: Uint8Array): Uint8Array {
     return this.step(() => {
       if (this.size === undefined) throw new Error("END before META");
       if (this.digest) throw new Error("END received twice");
       const end = decodeEnd(endBody);
       if (end.size !== this.size) throw new Error("END size differs from META size");
-      if (end.size !== this.received) throw new Error("END size differs from bytes received");
+      if (this.received !== this.expected) throw new Error("END before all chunks were received");
       const digest = this.hash.digest();
       if (!equalBytes(digest, end.sha256)) throw new Error("checksum mismatch");
       this.digest = digest;

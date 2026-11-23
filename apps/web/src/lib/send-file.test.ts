@@ -7,9 +7,13 @@ import {
   type FileMeta,
   FrameReader,
   FrameWriter,
+  HEADER_BYTES,
+  MAX_CHUNK_BYTES,
+  paddedLength,
   ReceiveVerifier,
   RecipientKind,
   SenderKind,
+  TAG_BYTES,
 } from "./frames.ts";
 import { deriveFileKey } from "./keys.ts";
 import { createLink } from "./link.ts";
@@ -23,7 +27,11 @@ type Behaviour = "accept" | "decline" | "bad-receipt" | "close-after-meta" | "wr
  */
 function fakeChannel(secret: string, behaviour: Behaviour) {
   const target = new EventTarget();
-  const received: { meta?: FileMeta; bytes: number; frames: number } = { bytes: 0, frames: 0 };
+  const received: { meta?: FileMeta; bytes: number; frames: number; chunkFrames: number[] } = {
+    bytes: 0,
+    frames: 0,
+    chunkFrames: [],
+  };
   let readyState: RTCDataChannelState = "open";
   let incoming: Promise<void> = Promise.resolve();
   let reader: FrameReader | undefined;
@@ -54,6 +62,7 @@ function fakeChannel(secret: string, behaviour: Behaviour) {
       return;
     }
     const frame = await reader.decrypt(data);
+    if (frame.kind === SenderKind.CHUNK) received.chunkFrames.push(data.length);
     if (frame.kind === SenderKind.META) {
       received.meta = decodeMeta(frame.body);
       verifier.meta(received.meta);
@@ -61,8 +70,7 @@ function fakeChannel(secret: string, behaviour: Behaviour) {
       else if (behaviour === "decline") await reply(RecipientKind.DECLINE, new Uint8Array());
       else await reply(RecipientKind.ACCEPT, new Uint8Array());
     } else if (frame.kind === SenderKind.CHUNK) {
-      verifier.chunk(frame.body);
-      received.bytes += frame.body.length;
+      received.bytes += verifier.chunk(frame.body).length;
     } else if (frame.kind === SenderKind.END) {
       const sha = verifier.end(frame.body);
       if (behaviour === "bad-receipt") sha[0] = (sha[0] as number) ^ 1;
@@ -142,6 +150,26 @@ test("sends an empty file", async () => {
   const fake = fakeChannel(secret, "accept");
   const result = await sendFile(options(fake.channel, secret, new Uint8Array()).value);
   assert.deepEqual(result, { type: "receipt", match: true });
+});
+
+test("every CHUNK frame is full size, so the exact file size stays hidden", async () => {
+  const c = MAX_CHUNK_BYTES;
+  for (const size of [0, 1, c - 1, c, c + 1, 3 * c + 7]) {
+    const { secret } = createLink("https://localhost");
+    const fake = fakeChannel(secret, "accept");
+    const bytes = new Uint8Array(randomBytes(size));
+    const o = options(fake.channel, secret, bytes);
+    assert.deepEqual(await sendFile(o.value), { type: "receipt", match: true }, `size ${size}`);
+    await fake.done();
+    assert.equal(fake.received.bytes, size);
+    assert.equal(fake.received.chunkFrames.length, paddedLength(size) / c, `size ${size}`);
+    assert.ok(fake.received.chunkFrames.length >= 1);
+    for (const length of fake.received.chunkFrames) {
+      assert.equal(length, HEADER_BYTES + c + TAG_BYTES, `size ${size}`);
+    }
+    assert.equal(o.progress.at(-1) ?? 0, size);
+    assert.ok(o.progress.every((n) => n <= size));
+  }
 });
 
 test("reports a declined offer without sending chunks", async () => {

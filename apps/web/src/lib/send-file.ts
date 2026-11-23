@@ -6,7 +6,7 @@
 //   sender → recipient   INIT(transferId)                     plaintext
 //   sender → recipient   META{name, size, type, chunkSize}    encrypted
 //   recipient → sender   ACCEPT  (or DECLINE: stop here)
-//   sender → recipient   CHUNK × n                            backpressured
+//   sender → recipient   CHUNK × n                            all chunkSize, zero-padded
 //   sender → recipient   END(sha256, size)
 //   recipient → sender   RECEIPT(sha256 the recipient computed)
 //
@@ -25,6 +25,7 @@ import {
   FrameReader,
   FrameWriter,
   MAX_CHUNK_BYTES,
+  paddedLength,
   RecipientKind,
   SenderKind,
 } from "./frames.ts";
@@ -115,12 +116,13 @@ export async function sendFile(options: SendFileOptions): Promise<SendResult> {
     if (answer.kind !== RecipientKind.ACCEPT) throw new Error("expected ACCEPT or DECLINE");
     options.onAccepted();
 
-    // Progress counts file bytes handed to the channel minus what is still
-    // buffered, so it follows what has actually gone out.
+    // Progress counts bytes handed to the channel minus what is still
+    // buffered, so it follows what has actually gone out. Padding counts as
+    // sent bytes, but progress never goes past the file size.
     let sent = 0;
     let reported = -1;
     const report = () => {
-      const value = Math.max(0, sent - channel.bufferedAmount);
+      const value = Math.min(file.size, Math.max(0, sent - channel.bufferedAmount));
       if (value !== reported) {
         reported = value;
         options.onProgress(value);
@@ -128,10 +130,16 @@ export async function sendFile(options: SendFileOptions): Promise<SendResult> {
     };
     progressTimer = setInterval(report, PROGRESS_INTERVAL_MS);
 
-    for (let offset = 0; offset < file.size; offset += chunkSize) {
+    // Every CHUNK is exactly chunkSize bytes, and there are as many as the
+    // padded length needs; the bytes past the end of the file are zeros.
+    const total = paddedLength(file.size, chunkSize);
+    for (let offset = 0; offset < total; offset += chunkSize) {
       if (channel.bufferedAmount > BUFFER_HIGH_BYTES) await bufferLow(channel, signal);
-      const end = Math.min(offset + chunkSize, file.size);
-      const body = new Uint8Array(await abortable(file.slice(offset, end).arrayBuffer(), signal));
+      const body = new Uint8Array(chunkSize);
+      if (offset < file.size) {
+        const end = Math.min(offset + chunkSize, file.size);
+        body.set(new Uint8Array(await abortable(file.slice(offset, end).arrayBuffer(), signal)));
+      }
       send(await writer.encrypt(SenderKind.CHUNK, body));
       sent += body.length;
     }
