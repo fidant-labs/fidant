@@ -25,7 +25,7 @@
 // this demo). The file name and size are shown, never logged or sent anywhere.
 
 import { cn } from "cn";
-import type { ComponentChildren, VNode } from "preact";
+import { type ComponentChildren, Fragment, type VNode } from "preact";
 import { useEffect, useMemo, useReducer, useRef, useState } from "preact/hooks";
 import { Button, buttonVariants } from "#components/ui/button";
 import type { Messages } from "../i18n/en.ts";
@@ -516,7 +516,8 @@ export function ReceivePage() {
   }
   return (
     <Page>
-      {body}
+      {/* A new key per step makes its heading a new node, so moving focus there is announced. */}
+      <Fragment key={view.s}>{body}</Fragment>
       {panel}
     </Page>
   );

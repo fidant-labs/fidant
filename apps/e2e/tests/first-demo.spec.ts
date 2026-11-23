@@ -257,8 +257,18 @@ test("a declined offer shows as declined, and the link can be reopened", async (
   await recipient.goto(link);
   const opened = recipientRow(sender, name).getByText(`${name}'s link has been opened`);
   await expect(opened).toBeVisible();
-  await recipient.getByRole("button", { name: "Decline" }).click();
-  await expect(recipient.getByText("You declined the file")).toBeVisible();
+  const decline = recipient.getByRole("button", { name: "Decline" });
+  await expect(decline).toBeVisible();
+  const offerHeading = await recipient.locator("#receive h1").elementHandle();
+  // From the keyboard, so the browser would show a focus ring on the next focused element.
+  await decline.focus();
+  await recipient.keyboard.press("Enter");
+  const declined = recipient.getByRole("heading", { name: "You declined the file" });
+  await expect(declined).toBeFocused();
+  // Script moved focus there to announce the step; a heading isn't a control, so no ring.
+  await expect(declined).toHaveCSS("outline-style", "none");
+  // A new heading node, not the offer's heading with new text, so screen readers announce it.
+  expect(await offerHeading.evaluate((h) => h.isConnected)).toBe(false);
   await expect(
     recipientRow(sender, name).getByText(
       `${name}'s link was opened and the file declined. The link still works.`,
