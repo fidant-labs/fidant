@@ -20,6 +20,10 @@
 
 import { MAX_LINKS } from "@sigill/protocol";
 import { useEffect, useRef, useState } from "preact/hooks";
+import { Alert, AlertDescription } from "#components/ui/alert";
+import { Button } from "#components/ui/button";
+import { Input } from "#components/ui/input";
+import { Label } from "#components/ui/label";
 import { formatBytes, toHex } from "../lib/format.ts";
 import { hasForbiddenCharacters, MAX_FROM_LENGTH, metaFits } from "../lib/frames.ts";
 import { deriveSignalKey } from "../lib/keys.ts";
@@ -45,7 +49,7 @@ import {
   senderHolds,
 } from "../lib/server-facts.ts";
 import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
-import { button, FileCard, Icon, lede, notice, Page, ServerPanel, TechDetails } from "../ui.tsx";
+import { FileCard, Icon, lede, Page, ServerPanel, TechDetails } from "../ui.tsx";
 import { RecipientList } from "./RecipientList.tsx";
 
 type Hash =
@@ -64,8 +68,6 @@ type Connection = {
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 const field = "flex flex-1 flex-col gap-1";
-const input =
-  "rounded-lg border border-border bg-card px-[0.7rem] py-[0.55rem] text-foreground placeholder:text-muted-foreground aria-invalid:border-destructive";
 const fieldError = "mt-1 mb-0 text-destructive";
 const hint = "text-[0.9rem] text-muted-foreground";
 
@@ -373,27 +375,30 @@ export function SendPage() {
       </p>
 
       {isLocalhost && (
-        <p class={`${notice} border-border bg-warning-bg`}>
-          This page is open on localhost, so the links won't work on other computers. Open the
-          network address the server printed instead.
-        </p>
+        <Alert role="note" className="my-4">
+          <AlertDescription>
+            This page is open on localhost, so the links won't work on other computers. Open the
+            network address the server printed instead.
+          </AlertDescription>
+        </Alert>
       )}
       {lostServer && (
-        <p class={`${notice} border-destructive bg-destructive-bg`} role="alert">
-          Lost the connection to the server. Files already on their way can finish, but nobody new
-          can connect. Reload the page to start again.
-        </p>
+        <Alert variant="destructive" className="my-4">
+          <AlertDescription>
+            Lost the connection to the server. Files already on their way can finish, but nobody new
+            can connect. Reload the page to start again.
+          </AlertDescription>
+        </Alert>
       )}
 
       <div class={`${field} my-4`}>
-        <label for="from" class="font-semibold">
+        <Label htmlFor="from">
           Your name <span class="font-normal text-muted-foreground">(optional)</span>
-        </label>
-        <input
+        </Label>
+        <Input
           id="from"
           type="text"
-          class={input}
-          autocomplete="name"
+          autoComplete="name"
           maxLength={MAX_FROM_LENGTH}
           value={from}
           onInput={(event) => setFrom(event.currentTarget.value)}
@@ -466,25 +471,22 @@ export function SendPage() {
 
       <form class="mt-8 flex flex-wrap items-end gap-2" onSubmit={onAdd} noValidate>
         <div class={field}>
-          <label for="recipient-name" class="font-semibold">
-            Who is it for?
-          </label>
-          <input
+          <Label htmlFor="recipient-name">Who is it for?</Label>
+          <Input
             id="recipient-name"
             name="name"
             type="text"
-            class={input}
             placeholder="Their name"
-            autocomplete="off"
+            autoComplete="off"
             maxLength={100}
             disabled={!file || full}
             aria-invalid={nameError ? "true" : "false"}
             aria-describedby={nameError ? "name-error recipient-hint" : "recipient-hint"}
           />
         </div>
-        <button type="submit" class={button} disabled={!file || full}>
+        <Button type="submit" disabled={!file || full}>
           Add
-        </button>
+        </Button>
       </form>
       {nameError && (
         <p id="name-error" class={fieldError}>

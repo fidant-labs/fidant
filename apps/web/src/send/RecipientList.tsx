@@ -5,12 +5,13 @@
 // tick.
 
 import { useEffect, useRef, useState } from "preact/hooks";
+import { Button } from "#components/ui/button";
+import { Card, CardContent } from "#components/ui/card";
 import { formatProgress } from "../lib/format.ts";
 import type { Recipient, RecipientStatus } from "../lib/sender-state.ts";
-import { button, Direct, Icon, linkButton } from "../ui.tsx";
+import { Direct, Icon } from "../ui.tsx";
 
 const STATUS_COLOR: Partial<Record<RecipientStatus, string>> = {
-  delivered: "text-success",
   failed: "text-destructive",
 };
 
@@ -78,58 +79,62 @@ function RecipientRow({ recipient, fileSize, onRemove }: RowProps) {
   const shareable = status === "waiting" || status === "failed";
 
   return (
-    <li class="rounded-lg border border-border bg-card px-4 py-3">
-      <p
-        class={`m-0 flex items-center gap-[0.4rem] font-semibold wrap-anywhere ${STATUS_COLOR[status] ?? ""}`}
-        aria-live="polite"
-      >
-        {status === "delivered" && <Icon name="check" />}
-        {status === "failed" && <Icon name="alert" />}
-        <span>{STATUS_TEXT[status](name)}</span>
-      </p>
-      {status === "receiving" && (
-        <>
-          <Direct from="You" to={name} state="active" class="mt-3" />
-          <div class="my-3 flex flex-wrap items-center gap-3">
-            <progress
-              class="min-w-40 flex-1 accent-primary"
-              aria-label={`Progress for ${name}`}
-              max={Math.max(fileSize, 1)}
-              value={fileSize > 0 ? bytesSent : 0}
-            />
-            <span class="text-[0.85rem] text-muted-foreground tabular-nums">
-              {formatProgress(bytesSent, fileSize)}
+    <li>
+      <Card>
+        <CardContent>
+          <p
+            class={`m-0 flex items-center gap-[0.4rem] font-semibold wrap-anywhere ${STATUS_COLOR[status] ?? ""}`}
+            aria-live="polite"
+          >
+            {status === "delivered" && <Icon name="check" />}
+            {status === "failed" && <Icon name="alert" />}
+            <span>{STATUS_TEXT[status](name)}</span>
+          </p>
+          {status === "receiving" && (
+            <>
+              <Direct from="You" to={name} state="active" class="mt-3" />
+              <div class="my-3 flex flex-wrap items-center gap-3">
+                <progress
+                  class="min-w-40 flex-1 accent-primary"
+                  aria-label={`Progress for ${name}`}
+                  max={Math.max(fileSize, 1)}
+                  value={fileSize > 0 ? bytesSent : 0}
+                />
+                <span class="text-[0.85rem] text-muted-foreground tabular-nums">
+                  {formatProgress(bytesSent, fileSize)}
+                </span>
+              </div>
+            </>
+          )}
+          <div class="mt-3 flex flex-wrap items-center gap-3">
+            {shareable && (
+              <Button type="button" aria-label={`Copy link for ${name}`} onClick={copy}>
+                Copy link
+              </Button>
+            )}
+            <Button
+              type="button"
+              variant="link"
+              aria-label={`Remove ${name}`}
+              data-remove={linkId}
+              onClick={() => onRemove(linkId)}
+            >
+              Remove
+            </Button>
+            <span class="text-[0.85rem] text-muted-foreground" role="status">
+              {copyNote}
             </span>
           </div>
-        </>
-      )}
-      <div class="mt-3 flex flex-wrap items-center gap-3">
-        {shareable && (
-          <button type="button" class={button} aria-label={`Copy link for ${name}`} onClick={copy}>
-            Copy link
-          </button>
-        )}
-        <button
-          type="button"
-          class={linkButton}
-          aria-label={`Remove ${name}`}
-          data-remove={linkId}
-          onClick={() => onRemove(linkId)}
-        >
-          Remove
-        </button>
-        <span class="text-[0.85rem] text-muted-foreground" role="status">
-          {copyNote}
-        </span>
-      </div>
-      {shareable && (
-        <output
-          class="mt-2 block font-mono text-[0.8rem] text-muted-foreground wrap-anywhere select-all"
-          aria-label={`Link for ${name}`}
-        >
-          {url}
-        </output>
-      )}
+          {shareable && (
+            <output
+              class="mt-2 block font-mono text-[0.8rem] text-muted-foreground wrap-anywhere select-all"
+              aria-label={`Link for ${name}`}
+            >
+              {url}
+            </output>
+          )}
+        </CardContent>
+      </Card>
     </li>
   );
 }
