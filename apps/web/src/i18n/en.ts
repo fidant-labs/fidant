@@ -7,10 +7,50 @@ import type { Tie } from "../lib/server-facts.ts";
 export const en = {
   product: "Fidant",
   menu: {
+    language: "Language",
+    theme: "Theme",
+    themes: { system: "System", light: "Light", dark: "Dark" },
     label: "Main",
     send: "Send a file",
     privacy: "Privacy",
-    newTab: "(opens in a new tab)",
+  },
+  landing: {
+    eyebrow: "Private file transfer",
+    title: ["Send files only ", "they", " can open"],
+    lede: "Fidant encrypts your file in your browser and sends it straight to the person you choose. No uploads, no accounts, and nothing stored on a server.",
+    cta: "Send a file",
+    how: "How it works",
+    noAccount: "No account needed",
+    featuresHeading: "Why Fidant",
+    features: [
+      [
+        "Encrypted before it leaves",
+        "Your file is locked in your own browser. The key travels in the link you share, never through our servers.",
+      ],
+      [
+        "Straight to the recipient",
+        "The file goes directly from your computer to theirs. It is never uploaded or kept in the cloud.",
+      ],
+      [
+        "Nothing left behind",
+        "When the transfer is done, there is no copy anywhere but on their computer.",
+      ],
+    ],
+    stepsHeading: "Three steps",
+    steps: [
+      ["Choose a file", "Drop it on the page. It stays on your computer."],
+      ["Add who it's for", "Each person gets their own link that works once."],
+      ["Share the link", "When they open it, the file arrives encrypted, straight from you."],
+    ],
+    closingTitle: "Ready to send something private?",
+    closingBody: "It takes less than a minute. Keep the tab open until it has arrived.",
+    art: {
+      you: "You",
+      them: "Anna",
+      file: "contract.pdf",
+      encrypted: "Encrypted",
+      received: "Received",
+    },
   },
   insecure: {
     title: "This page needs a secure connection",
@@ -29,6 +69,10 @@ export const en = {
     progress: (percent: string, done: string, total: string) => `${percent} · ${done} of ${total}`,
   },
   send: {
+    fileHeading: "Your file",
+    recipientsHeading: "Recipients",
+    continue: "Continue",
+    back: "Back to the file",
     title: "Send a file",
     lede: "Your file goes straight from this browser to the people you choose. It's encrypted on the way and never uploaded or stored.",
     localhost:

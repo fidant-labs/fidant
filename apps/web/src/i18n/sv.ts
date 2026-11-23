@@ -7,10 +7,50 @@ import type { Messages } from "./en.ts";
 export const sv: Messages = {
   product: "Fidant",
   menu: {
+    language: "Språk",
+    theme: "Tema",
+    themes: { system: "System", light: "Ljust", dark: "Mörkt" },
     label: "Huvudmeny",
     send: "Skicka en fil",
     privacy: "Integritet",
-    newTab: "(öppnas i en ny flik)",
+  },
+  landing: {
+    eyebrow: "Privat filöverföring",
+    title: ["Skicka filer som bara ", "mottagaren", " kan öppna"],
+    lede: "Fidant krypterar filen i din webbläsare och skickar den direkt till den du väljer. Ingen uppladdning, inget konto och inget sparas på någon server.",
+    cta: "Skicka en fil",
+    how: "Så fungerar det",
+    noAccount: "Inget konto behövs",
+    featuresHeading: "Varför Fidant",
+    features: [
+      [
+        "Krypterad innan den lämnar dig",
+        "Filen låses i din egen webbläsare. Nyckeln följer med länken du delar, aldrig via våra servrar.",
+      ],
+      [
+        "Direkt till mottagaren",
+        "Filen går direkt från din dator till deras. Den laddas aldrig upp och sparas inte i molnet.",
+      ],
+      [
+        "Inget blir kvar",
+        "När överföringen är klar finns ingen kopia någon annanstans än hos mottagaren.",
+      ],
+    ],
+    stepsHeading: "Tre steg",
+    steps: [
+      ["Välj en fil", "Släpp den på sidan. Den stannar på din dator."],
+      ["Lägg till vem den är till", "Varje person får en egen länk som fungerar en gång."],
+      ["Dela länken", "När de öppnar den kommer filen krypterad, direkt från dig."],
+    ],
+    closingTitle: "Redo att skicka något privat?",
+    closingBody: "Det tar mindre än en minut. Låt fliken vara öppen tills filen har kommit fram.",
+    art: {
+      you: "Du",
+      them: "Anna",
+      file: "avtal.pdf",
+      encrypted: "Krypterad",
+      received: "Mottagen",
+    },
   },
   insecure: {
     title: "Sidan behöver en säker anslutning",
@@ -29,6 +69,10 @@ export const sv: Messages = {
     progress: (percent: string, done: string, total: string) => `${percent} · ${done} av ${total}`,
   },
   send: {
+    fileHeading: "Din fil",
+    recipientsHeading: "Mottagare",
+    continue: "Fortsätt",
+    back: "Tillbaka till filen",
     title: "Skicka en fil",
     lede: "Din fil går direkt från den här webbläsaren till dem du väljer. Den krypteras på vägen och laddas aldrig upp eller sparas.",
     localhost:
