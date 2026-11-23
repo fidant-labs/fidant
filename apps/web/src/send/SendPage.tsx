@@ -12,13 +12,15 @@
 // - A peer that closes or fails before delivery → `dropped`; a data channel
 //   that has not opened SETUP_TIMEOUT_MS after the join → `timeout`. Both
 //   refuse the joiner so the server unbinds it (see sender-state.ts).
+// - Each connection reports its path to the server once: direct, stun or
+//   relay when the channel opens, failed on an ICE failure or a timeout.
 // - Effects run outside render: `close` tears the peer down, `refuse` tells
 //   the server to refuse the joiner.
 //
 // Names, the file and link secrets stay in this tab. The server only ever
-// gets link IDs, opaque sealed signals and refusal reasons.
+// gets link IDs, opaque sealed signals, refusal reasons and connection paths.
 
-import { MAX_LINKS } from "@sigill/protocol";
+import { type ConnectionPath, MAX_LINKS } from "@sigill/protocol";
 import { useEffect, useReducer, useRef, useState } from "preact/hooks";
 import { Alert, AlertDescription } from "#components/ui/alert";
 import { Button } from "#components/ui/button";
@@ -30,7 +32,7 @@ import { formatBytes, toHex } from "../lib/format.ts";
 import { hasForbiddenCharacters, MAX_FROM_LENGTH, metaFits } from "../lib/frames.ts";
 import { deriveSignalKey } from "../lib/keys.ts";
 import { createLink } from "../lib/link.ts";
-import { createSenderPeer, type Peer } from "../lib/peer.ts";
+import { createSenderPeer, fetchIceServers, type Peer } from "../lib/peer.ts";
 import { hashFile, sendFile } from "../lib/send-file.ts";
 import {
   findRecipient,
@@ -59,6 +61,8 @@ type Connection = {
   peer?: Peer;
   /** Fires `timeout` if the data channel has not opened in time. */
   deadline?: ReturnType<typeof setTimeout>;
+  /** Set once the connection's path went to the server. */
+  pathSent?: boolean;
 };
 
 // Errors are kept as keys and turned into text in render, so they follow a language switch.
@@ -77,6 +81,7 @@ export function SendPage() {
   const [sender, setSender] = useState<SenderState>(initialSenderState);
   const [lostServer, setLostServer] = useState(false);
   const [relayed, countRelay] = useReducer(addRelay, NO_RELAYS);
+  const [viaRelay, setViaRelay] = useState(false);
   const [nameError, setNameError] = useState<ErrorOf<"nameError">>("");
   const [fileError, setFileError] = useState<ErrorOf<"fileError">>("");
   const [from, setFrom] = useState("");
@@ -108,6 +113,13 @@ export function SendPage() {
     connection.peer?.close();
   };
 
+  const sendPath = (linkId: string, connection: Connection, path: ConnectionPath) => {
+    if (!connection.pathSent) {
+      connection.pathSent = true;
+      signalingRef.current?.send({ t: "path", link: linkId, path });
+    }
+  };
+
   const startConnection = async (linkId: string) => {
     const recipient = findRecipient(senderRef.current, linkId);
     const signaling = signalingRef.current;
@@ -122,13 +134,18 @@ export function SendPage() {
     // silent; the reducer then refuses them so the link is free again.
     connection.deadline = setTimeout(() => {
       if (connectionsRef.current.get(linkId) === connection) {
+        sendPath(linkId, connection, "failed");
         dispatch({ type: "timeout", linkId });
       }
     }, SETUP_TIMEOUT_MS);
 
     let signalKey: CryptoKey;
+    let iceServers: RTCIceServer[];
     try {
-      signalKey = await deriveSignalKey(recipient.secret, linkId);
+      [signalKey, iceServers] = await Promise.all([
+        deriveSignalKey(recipient.secret, linkId),
+        fetchIceServers(),
+      ]);
     } catch {
       dispatch({ type: "dropped", linkId });
       return;
@@ -141,8 +158,20 @@ export function SendPage() {
       signaling,
       linkId,
       signalKey,
+      iceServers,
       onOpen(channel, info) {
         clearTimeout(connection.deadline);
+        // The path may come after a short transfer already closed the
+        // connection; send it while the link is still hosted.
+        void info.path.then((path) => {
+          if (findRecipient(senderRef.current, linkId)) {
+            sendPath(linkId, connection, path);
+            // ponytail: sticky for the page, since the relay's log lines stay after the transfer
+            if (path === "relay") {
+              setViaRelay(true);
+            }
+          }
+        });
         dispatch({ type: "channel-open", linkId });
         const chosen = fileRef.current;
         if (!chosen) {
@@ -174,7 +203,10 @@ export function SendPage() {
           },
         );
       },
-      onClose() {
+      onClose(reason) {
+        if (reason === "connection-failed") {
+          sendPath(linkId, connection, "failed");
+        }
         dispatch({ type: "dropped", linkId });
       },
     });
@@ -530,6 +562,7 @@ export function SendPage() {
           })}
           relayed={relayed}
           afterwards={t.server.senderAfterwards(!lostServer)}
+          viaRelay={viaRelay}
         />
       </div>
 

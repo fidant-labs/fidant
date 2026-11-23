@@ -19,6 +19,13 @@ const BASE64URL_PATTERN = /^[A-Za-z0-9_-]+$/;
 export const REFUSE_REASONS = ["used", "busy", "unknown"] as const;
 export type RefuseReason = (typeof REFUSE_REASONS)[number];
 
+/**
+ * How a sender's connection to a recipient ended up: directly, directly through a STUN-found
+ * address, through our TURN relay, or not at all.
+ */
+export const CONNECTION_PATHS = ["direct", "stun", "relay", "failed"] as const;
+export type ConnectionPath = (typeof CONNECTION_PATHS)[number];
+
 /** Protocol errors the server reports in an `error` message. */
 export const ERROR_CODES = [
   "bad-message",
@@ -44,6 +51,7 @@ export type LogFields = {
   reason?: LogReason;
   code?: ErrorCode;
   port?: number;
+  path?: ConnectionPath;
 };
 
 /** The sender announces its full list of link IDs. Re-sent whenever the list changes. */
@@ -55,7 +63,10 @@ export type RelayMessage = { t: "relay"; link: string; data: string };
 /** The sender turns away the recipient on a link. */
 export type RefuseMessage = { t: "refuse"; link: string; reason: RefuseReason };
 
-export type ClientMessage = HostMessage | JoinMessage | RelayMessage | RefuseMessage;
+/** The sender reports how its connection on a link ended up. */
+export type PathMessage = { t: "path"; link: string; path: ConnectionPath };
+
+export type ClientMessage = HostMessage | JoinMessage | RelayMessage | RefuseMessage | PathMessage;
 
 /** Tells the sender that a recipient joined a link. */
 export type JoinedMessage = { t: "joined"; link: string };
@@ -111,6 +122,10 @@ function isRefuseReason(value: unknown): value is RefuseReason {
   return (REFUSE_REASONS as readonly unknown[]).includes(value);
 }
 
+function isConnectionPath(value: unknown): value is ConnectionPath {
+  return (CONNECTION_PATHS as readonly unknown[]).includes(value);
+}
+
 function isErrorCode(value: unknown): value is ErrorCode {
   return (ERROR_CODES as readonly unknown[]).includes(value);
 }
@@ -163,6 +178,14 @@ export function parseClientMessage(raw: string): ClientMessage | undefined {
         return undefined;
       }
       return { t: "refuse", link: value.link, reason: value.reason };
+    case "path":
+      if (!hasKeys(value, ["t", "link", "path"])) {
+        return undefined;
+      }
+      if (!isLinkId(value.link) || !isConnectionPath(value.path)) {
+        return undefined;
+      }
+      return { t: "path", link: value.link, path: value.path };
     default:
       return undefined;
   }

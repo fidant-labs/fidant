@@ -33,7 +33,7 @@ import { useI18n } from "../i18n/I18n.tsx";
 import { displayName, formatBytes, formatProgress, toHex } from "../lib/format.ts";
 import { deriveSignalKey } from "../lib/keys.ts";
 import { parseRecipientLocation } from "../lib/link.ts";
-import { createRecipientPeer, type Peer } from "../lib/peer.ts";
+import { createRecipientPeer, fetchIceServers, type Peer } from "../lib/peer.ts";
 import type { FileOffer } from "../lib/receive-file.ts";
 import { ReceiveError, receiveFile } from "../lib/receive-file.ts";
 import { addRelay, NO_RELAYS, type Tie } from "../lib/server-facts.ts";
@@ -87,6 +87,7 @@ export function ReceivePage() {
   const [relayed, countRelay] = useReducer(addRelay, NO_RELAYS);
   const [reachedServer, setReachedServer] = useState(false);
   const [tie, setTie] = useState<Tie>("closed");
+  const [viaRelay, setViaRelay] = useState(false);
   const attemptRef = useRef<Attempt | undefined>(undefined);
 
   /** Closes everything an attempt holds. `linger` keeps the peer up for a moment. */
@@ -272,7 +273,10 @@ export function ReceivePage() {
         if (current()) {
           setTie("unpaired");
         }
-        const signalKey = await deriveSignalKey(secret, linkId);
+        const [signalKey, iceServers] = await Promise.all([
+          deriveSignalKey(secret, linkId),
+          fetchIceServers(),
+        ]);
         if (!current()) {
           return;
         }
@@ -280,7 +284,16 @@ export function ReceivePage() {
           signaling,
           linkId,
           signalKey,
-          onOpen: (channel, info) => onOpen(channel, info.maxMessageSize),
+          iceServers,
+          onOpen: (channel, info) => {
+            // A short transfer can end before the path resolves; it still went through the relay.
+            void info.path.then((path) => {
+              if (path === "relay" && attemptRef.current === attempt) {
+                setViaRelay(true);
+              }
+            });
+            onOpen(channel, info.maxMessageSize);
+          },
           onClose: () => lost(),
         });
         if (signaling.send({ t: "join", link: linkId })) {
@@ -382,6 +395,7 @@ export function ReceivePage() {
       holds={t.server.recipientHolds(tie)}
       relayed={relayed}
       afterwards={t.server.afterwardsRecipient}
+      viaRelay={viaRelay}
     />
   ) : null;
 

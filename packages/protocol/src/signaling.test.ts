@@ -37,6 +37,13 @@ test("parses valid client messages", () => {
       reason,
     });
   }
+  for (const path of ["direct", "stun", "relay", "failed"] as const) {
+    assert.deepEqual(parseClientMessage(JSON.stringify({ t: "path", link, path })), {
+      t: "path",
+      link,
+      path,
+    });
+  }
 });
 
 test("accepts the maximum number of links and relay data size", () => {
@@ -83,7 +90,7 @@ test("rejects unknown message types", () => {
   for (const t of ["hello", "joined", "host-gone", "", 1, null]) {
     assert.equal(parseClientMessage(JSON.stringify({ t, link })), undefined, String(t));
   }
-  for (const t of ["host", "join", "refuse", "nope"]) {
+  for (const t of ["host", "join", "refuse", "path", "nope"]) {
     assert.equal(parseServerMessage(JSON.stringify({ t, link })), undefined, t);
   }
   assert.equal(parseClientMessage(JSON.stringify({ link })), undefined);
@@ -113,6 +120,10 @@ test("rejects bad link IDs", () => {
       parseClientMessage(JSON.stringify({ t: "refuse", link: value, reason: "used" })),
       undefined,
     );
+    assert.equal(
+      parseClientMessage(JSON.stringify({ t: "path", link: value, path: "relay" })),
+      undefined,
+    );
     assert.equal(parseClientMessage(JSON.stringify({ t: "host", links: [value] })), undefined);
     assert.equal(parseServerMessage(JSON.stringify({ t: "joined", link: value })), undefined);
   }
@@ -133,10 +144,13 @@ test("rejects too many, duplicate or non-array links", () => {
   assert.equal(parseClientMessage(JSON.stringify({ t: "host", links: { 0: link } })), undefined);
 });
 
-test("rejects unknown refuse reasons and error codes", () => {
+test("rejects unknown refuse reasons, connection paths and error codes", () => {
   for (const reason of ["gone", "", "USED", 1, null]) {
     assert.equal(parseClientMessage(JSON.stringify({ t: "refuse", link, reason })), undefined);
     assert.equal(parseServerMessage(JSON.stringify({ t: "refused", reason })), undefined);
+  }
+  for (const path of ["turn", "", "RELAY", "10.0.0.1", 1, null]) {
+    assert.equal(parseClientMessage(JSON.stringify({ t: "path", link, path })), undefined);
   }
   for (const code of ["", "Bad", "has space", "no-such-code", 3, null, "x".repeat(65)]) {
     assert.equal(parseServerMessage(JSON.stringify({ t: "error", code })), undefined);
@@ -150,6 +164,7 @@ test("rejects extra fields", () => {
     { t: "join", link, ...extra },
     { t: "relay", link, data: "x", ...extra },
     { t: "refuse", link, reason: "used", ...extra },
+    { t: "path", link, path: "relay", ...extra },
   ];
   for (const message of client) {
     assert.equal(parseClientMessage(JSON.stringify(message)), undefined, message.t);
@@ -175,6 +190,8 @@ test("rejects missing fields", () => {
     { t: "relay", data: "x" },
     { t: "refuse", link },
     { t: "refuse", reason: "used" },
+    { t: "path", link },
+    { t: "path", path: "relay" },
   ];
   for (const message of client) {
     assert.equal(parseClientMessage(JSON.stringify(message)), undefined, JSON.stringify(message));

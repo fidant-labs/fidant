@@ -11,6 +11,7 @@ import type { Server as HttpsServer } from "node:https";
 import type { Duplex } from "node:stream";
 import {
   type ClientMessage,
+  type ConnectionPath,
   type ErrorCode,
   type LogFields,
   parseClientMessage,
@@ -130,6 +131,9 @@ export function attachSignaling(
       case "refuse":
         refuse(socket, peer, message.link, message.reason);
         return;
+      case "path":
+        reportPath(socket, peer, message.link, message.path);
+        return;
     }
   }
 
@@ -235,6 +239,19 @@ export function attachSignaling(
     }
     log("refused", { link: short(link), reason });
     send(guest, { t: "refused", reason });
+  }
+
+  /**
+   * Logs how a sender's connection ended up. Only the path is logged, never the link, so the
+   * line cannot be tied to a transfer. Each report is one line; the server keeps no counts.
+   */
+  function reportPath(socket: WebSocket, peer: Peer, link: string, path: ConnectionPath): void {
+    if (!peer.hosted.has(link)) {
+      error(socket, "not-on-link");
+      return;
+    }
+    // ponytail: no dedup, the sender reports once per connection; a repeat is one more line.
+    log("path", { path });
   }
 
   function disconnect(socket: WebSocket, peer: Peer): void {
