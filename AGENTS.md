@@ -22,6 +22,7 @@ Planning lives in Linear: workspace `sigill`, team `SIG`, issue keys like `SIG-2
 
 - `apps/*`: things we run or ship. `apps/web` is the Preact client, built by Vite into `apps/web/dist`. `apps/server` is the Node process that serves it.
 - `packages/*`: code used by more than one app. Create a package only when a second consumer exists.
+- `docs/decisions/`: decision records. See its README for the format.
 - Workspace packages export TypeScript source directly (`"exports": { ".": "./src/index.ts" }`). Internal packages have no build step.
 - Every package with TypeScript has a `typecheck` script (`tsc --noEmit -p .`) and, if it has tests, a `test` script. The root scripts run them recursively.
 
@@ -39,5 +40,6 @@ Planning lives in Linear: workspace `sigill`, team `SIG`, issue keys like `SIG-2
 
 - Never send file content, file names, file metadata or keys to the server or any other infrastructure, and never log them. The one deliberate exception: the BankID receipt text names the file.
 - Keys live only in the URL fragment or in browser memory.
+- What counts as a leak, concretely, is defined in `docs/decisions/0001-e2e-tests-and-leak-model.md`.
 - This repository is public. Never commit secrets, real personal data or customer data. The pre-commit hook runs gitleaks.
 - The project must run fully local for tests and demos, with no internet. Add infrastructure (database, storage, relay) only when a feature needs it.
