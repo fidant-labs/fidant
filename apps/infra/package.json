@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "cdk": "cdk",
+    "cdk": "CDK_DISABLE_VERSION_CHECK=1 cdk",
     "typecheck": "tsc --noEmit -p .",
     "test": "node --test"
   },
