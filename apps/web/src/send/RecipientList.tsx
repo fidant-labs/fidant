@@ -1,7 +1,7 @@
 // One card per recipient: status, progress, link, copy and remove.
 //
 // Only the status sentence sits in the polite live region, so screen readers
-// hear "Sending to Anna", "Anna has the file" and so on, not every progress
+// hear "Sending to Anna", "Delivered through Anna's link" and so on, not every progress
 // tick.
 
 import { useEffect, useRef, useState } from "preact/hooks";

@@ -25,9 +25,14 @@ function App() {
   return <SendPage />;
 }
 
-/** Only the file input takes drops. Anywhere else the browser would open the file and lose the page. */
+/** Only inputs take drops (text into text fields, files into the file input). Elsewhere the browser would open the file and lose the page. */
 function ignoreStrayDrop(event: DragEvent) {
-  if ((event.target as Element | null)?.id === "file") return;
+  const target = event.target;
+  if (
+    target instanceof HTMLInputElement &&
+    (target.type === "file" || !event.dataTransfer?.types.includes("Files"))
+  )
+    return;
   event.preventDefault();
   if (event.dataTransfer) event.dataTransfer.dropEffect = "none";
 }

@@ -185,6 +185,12 @@ test("the sender's name must fit with the file name, and stray drops are ignored
     mimeType: "application/octet-stream",
     buffer: Buffer.from("hello"),
   });
+  const fileDrop = `(() => {
+    const drop = new DragEvent("drop", { bubbles: true, cancelable: true });
+    document.getElementById("file").dispatchEvent(drop);
+    return drop.defaultPrevented;
+  })()`;
+  expect(await page.evaluate(fileDrop)).toBe(false);
   const name = `Anna-${randomTag()}`;
   await page.getByLabel("Who is it for?").fill(name);
   await page.getByRole("button", { name: "Add", exact: true }).click();
