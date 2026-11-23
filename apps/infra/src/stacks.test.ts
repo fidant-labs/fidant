@@ -147,6 +147,7 @@ test("the app box is open only on 80 and 443, and on 22 only to Lightsail's brow
   ]);
   const [instanceId] = Object.keys(box.findResources("AWS::Lightsail::Instance"));
   box.hasResourceProperties("AWS::Lightsail::StaticIp", { AttachedTo: { Ref: instanceId } });
+  box.hasResource("AWS::Lightsail::StaticIp", { DeletionPolicy: "Retain" });
   assert.match(instance?.Properties.InstanceName, /^fidant-app-[0-9a-f]{8}$/);
   assert.match(instance?.Properties.UserData, /^fidant\.se \{$/m);
   assert.match(

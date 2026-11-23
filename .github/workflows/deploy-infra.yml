@@ -5,7 +5,9 @@ on:
     branches: [main]
     paths:
       - apps/infra/**
+      - package.json
       - pnpm-lock.yaml
+      - pnpm-workspace.yaml
       - .node-version
       - .github/workflows/deploy-infra.yml
 

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { CfnOutput, Stack, type StackProps } from "aws-cdk-lib";
+import { CfnOutput, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
 import * as lightsail from "aws-cdk-lib/aws-lightsail";
 import type { Construct } from "constructs";
 import { primaryDomain, siteNames } from "./config.ts";
@@ -46,6 +46,7 @@ export class BoxStack extends Stack {
       staticIpName: "fidant-app-ip",
       attachedTo: box.ref,
     });
+    address.applyRemovalPolicy(RemovalPolicy.RETAIN);
 
     new CfnOutput(this, "PublicIp", { value: address.attrIpAddress });
   }
