@@ -22,7 +22,7 @@
 // No DOM or UI here, and nothing about files or names: the data channel
 // carries only encrypted frames (frames.ts), and its label is fixed.
 
-import type { ClientMessage } from "@sigill/protocol";
+import type { ClientMessage, ConnectionPath } from "@sigill/protocol";
 import { type Direction, openSignal, sealSignal } from "./keys.ts";
 
 /** The data channel label. Fixed and neutral: never a file or recipient name. */
@@ -33,6 +33,9 @@ export const CHANNEL_LABEL = "sigill";
  * says 64 KiB when the remote SDP has no max-message-size attribute.
  */
 export const DEFAULT_MAX_MESSAGE_SIZE = 65536;
+
+/** How long to wait before reading a "stun" path again (see readPath). */
+const PATH_RECHECK_MS = 1000;
 
 /** How long to wait for /ice-servers before going on without a relay. */
 const ICE_FETCH_TIMEOUT_MS = 5000;
@@ -54,6 +57,11 @@ export type PeerCloseReason =
 export type PeerOpenInfo = {
   /** Largest message the channel accepts, in bytes. Check frames with assertFrameFits. */
   maxMessageSize: number;
+  /**
+   * How the browsers reached each other, from the selected candidate pair.
+   * Resolves shortly after the channel opens; never rejects.
+   */
+  path: Promise<Exclude<ConnectionPath, "failed">>;
 };
 
 export type PeerOptions = {
@@ -175,6 +183,46 @@ export function maxMessageSizeOf(pc: RTCPeerConnection): number {
   const size = pc.sctp?.maxMessageSize;
   // 0 or a missing value means the browser did not say; Infinity means no limit.
   return size !== undefined && size > 0 ? size : DEFAULT_MAX_MESSAGE_SIZE;
+}
+
+type StatsEntry = {
+  type?: string;
+  selectedCandidatePairId?: string;
+  nominated?: boolean;
+  state?: string;
+  localCandidateId?: string;
+  remoteCandidateId?: string;
+  candidateType?: string;
+};
+
+/**
+ * How a connection runs, from an RTCStatsReport (or any Map of stats): "relay"
+ * if either side of the selected candidate pair is a TURN relay candidate,
+ * "stun" if either is server- or peer-reflexive, else "direct". Reads only
+ * candidate types, never addresses or ports.
+ */
+export function connectionPath(
+  stats: ReadonlyMap<string, StatsEntry>,
+): Exclude<ConnectionPath, "failed"> {
+  const entries = [...stats.values()];
+  const pairId = entries.find(
+    (s) => s.type === "transport" && s.selectedCandidatePairId,
+  )?.selectedCandidatePairId;
+  const pair =
+    (pairId ? stats.get(pairId) : undefined) ??
+    entries.find((s) => s.type === "candidate-pair" && s.nominated && s.state === "succeeded");
+  // ponytail: no pair found (an old browser's stats) counts as direct; the
+  // data channel is open, so ICE did connect, and direct is the common case.
+  const types = [pair?.localCandidateId, pair?.remoteCandidateId].map((id) =>
+    id ? stats.get(id)?.candidateType : undefined,
+  );
+  if (types.includes("relay")) {
+    return "relay";
+  }
+  if (types.includes("srflx") || types.includes("prflx")) {
+    return "stun";
+  }
+  return "direct";
 }
 
 /** The `iceServers` of a /ice-servers response, or undefined if it has the wrong shape. */
@@ -324,11 +372,26 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
     channel = next;
     next.binaryType = "arraybuffer";
     next.onopen = () => {
+      // onOpen must not wait for the path: the other side may send at once,
+      // and messages that arrive before onmessage is set are lost.
       if (!closed) {
-        options.onOpen(next, { maxMessageSize: maxMessageSizeOf(pc) });
+        options.onOpen(next, { maxMessageSize: maxMessageSizeOf(pc), path: readPath() });
       }
     };
     next.onclose = () => fail("channel-closed");
+  }
+
+  async function readPath(): Promise<Exclude<ConnectionPath, "failed">> {
+    const read = () => pc.getStats().then(connectionPath, () => "direct" as const);
+    const first = await read();
+    if (first !== "stun" || closed) {
+      return first;
+    }
+    // A remote candidate shows as peer-reflexive while its trickled signal is
+    // still being opened, even on one network. The browser corrects the type
+    // once the candidate is added, so read again a moment later.
+    await new Promise((resolve) => setTimeout(resolve, PATH_RECHECK_MS));
+    return closed ? first : read();
   }
 
   async function addCandidate(candidate: SignalCandidate | null): Promise<void> {

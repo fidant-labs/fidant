@@ -12,13 +12,15 @@
 // - A peer that closes or fails before delivery → `dropped`; a data channel
 //   that has not opened SETUP_TIMEOUT_MS after the join → `timeout`. Both
 //   refuse the joiner so the server unbinds it (see sender-state.ts).
+// - Each connection reports its path to the server once: direct, stun or
+//   relay when the channel opens, failed on an ICE failure or a timeout.
 // - Effects run outside render: `close` tears the peer down, `refuse` tells
 //   the server to refuse the joiner.
 //
 // Names, the file and link secrets stay in this tab. The server only ever
-// gets link IDs, opaque sealed signals and refusal reasons.
+// gets link IDs, opaque sealed signals, refusal reasons and connection paths.
 
-import { MAX_LINKS } from "@sigill/protocol";
+import { type ConnectionPath, MAX_LINKS } from "@sigill/protocol";
 import { useEffect, useReducer, useRef, useState } from "preact/hooks";
 import { Alert, AlertDescription } from "#components/ui/alert";
 import { Button } from "#components/ui/button";
@@ -59,6 +61,8 @@ type Connection = {
   peer?: Peer;
   /** Fires `timeout` if the data channel has not opened in time. */
   deadline?: ReturnType<typeof setTimeout>;
+  /** Set once the connection's path went to the server. */
+  pathSent?: boolean;
 };
 
 // Errors are kept as keys and turned into text in render, so they follow a language switch.
@@ -108,6 +112,13 @@ export function SendPage() {
     connection.peer?.close();
   };
 
+  const sendPath = (linkId: string, connection: Connection, path: ConnectionPath) => {
+    if (!connection.pathSent) {
+      connection.pathSent = true;
+      signalingRef.current?.send({ t: "path", link: linkId, path });
+    }
+  };
+
   const startConnection = async (linkId: string) => {
     const recipient = findRecipient(senderRef.current, linkId);
     const signaling = signalingRef.current;
@@ -122,6 +133,7 @@ export function SendPage() {
     // silent; the reducer then refuses them so the link is free again.
     connection.deadline = setTimeout(() => {
       if (connectionsRef.current.get(linkId) === connection) {
+        sendPath(linkId, connection, "failed");
         dispatch({ type: "timeout", linkId });
       }
     }, SETUP_TIMEOUT_MS);
@@ -148,6 +160,13 @@ export function SendPage() {
       iceServers,
       onOpen(channel, info) {
         clearTimeout(connection.deadline);
+        // The path may come after a short transfer already closed the
+        // connection; send it while the link is still hosted.
+        void info.path.then((path) => {
+          if (findRecipient(senderRef.current, linkId)) {
+            sendPath(linkId, connection, path);
+          }
+        });
         dispatch({ type: "channel-open", linkId });
         const chosen = fileRef.current;
         if (!chosen) {
@@ -179,7 +198,10 @@ export function SendPage() {
           },
         );
       },
-      onClose() {
+      onClose(reason) {
+        if (reason === "connection-failed") {
+          sendPath(linkId, connection, "failed");
+        }
         dispatch({ type: "dropped", linkId });
       },
     });

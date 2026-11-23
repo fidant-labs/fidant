@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { assertFrameFits, parseIceServers, parseSignalPayload } from "./peer.ts";
+import { assertFrameFits, connectionPath, parseIceServers, parseSignalPayload } from "./peer.ts";
 
 const candidate = {
   candidate: "candidate:1 1 udp 2122260223 192.168.1.2 54400 typ host",
@@ -97,4 +97,51 @@ test("parseIceServers rejects anything else", () => {
   ]) {
     assert.equal(parseIceServers(value), undefined, JSON.stringify(value));
   }
+});
+
+function statsWith(local: string, remote: string, selected = true): Map<string, object> {
+  return new Map<string, object>([
+    ["T1", { type: "transport", ...(selected ? { selectedCandidatePairId: "P1" } : {}) }],
+    [
+      "P0",
+      {
+        type: "candidate-pair",
+        nominated: false,
+        state: "failed",
+        localCandidateId: "L0",
+        remoteCandidateId: "R0",
+      },
+    ],
+    [
+      "P1",
+      {
+        type: "candidate-pair",
+        nominated: true,
+        state: "succeeded",
+        localCandidateId: "L1",
+        remoteCandidateId: "R1",
+      },
+    ],
+    ["L0", { type: "local-candidate", candidateType: "relay" }],
+    ["R0", { type: "remote-candidate", candidateType: "relay" }],
+    ["L1", { type: "local-candidate", candidateType: local }],
+    ["R1", { type: "remote-candidate", candidateType: remote }],
+  ]);
+}
+
+test("connectionPath reads the selected candidate pair's types", () => {
+  assert.equal(connectionPath(statsWith("host", "host")), "direct");
+  assert.equal(connectionPath(statsWith("srflx", "host")), "stun");
+  assert.equal(connectionPath(statsWith("host", "prflx")), "stun");
+  assert.equal(connectionPath(statsWith("host", "relay")), "relay");
+  assert.equal(connectionPath(statsWith("relay", "srflx")), "relay");
+});
+
+test("connectionPath falls back to the nominated succeeded pair", () => {
+  assert.equal(connectionPath(statsWith("relay", "host", false)), "relay");
+  assert.equal(connectionPath(statsWith("host", "host", false)), "direct");
+});
+
+test("connectionPath says direct when no pair is found", () => {
+  assert.equal(connectionPath(new Map()), "direct");
 });
