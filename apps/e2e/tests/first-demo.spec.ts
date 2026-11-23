@@ -38,21 +38,30 @@ const test = harness.extend<{ demo: Demo }>({
       },
     });
 
-    const frames: { type: string; payload: string }[] = [];
+    const frames: { type: string; text: string }[] = [];
     for (const name of names) {
       for (const record of await observed(name).records()) {
-        if (record.type === "frame-sent" || record.type === "frame-received") frames.push(record);
+        if (record.type !== "frame-sent" && record.type !== "frame-received") continue;
+        // Binary frames are recorded as base64.
+        const text = record.base64
+          ? Buffer.from(record.payload, "base64").toString()
+          : record.payload;
+        frames.push({ type: record.type, text });
       }
     }
-    const sdp = frames.flatMap(({ type, payload }) =>
-      sdpMarkers.filter((marker) => payload.includes(marker)).map((m) => `${m} in ${type}`),
+    const sdp = frames.flatMap(({ type, text }) =>
+      sdpMarkers.filter((marker) => text.includes(marker)).map((m) => `${m} in ${type}`),
     );
     expect(sdp, "plaintext SDP over signaling").toEqual([]);
-    if (names.length > 0) {
-      // Guards the checks above and the leak scan against a recorder that saw no signaling.
-      expect(frames.some((f) => f.type === "frame-sent")).toBe(true);
-      expect(frames.some((f) => f.type === "frame-received")).toBe(true);
-    }
+    // Guards the checks above and the leak scan against a recorder that saw no signaling.
+    expect(
+      frames.some((f) => f.type === "frame-sent"),
+      "captured sent frames",
+    ).toBe(true);
+    expect(
+      frames.some((f) => f.type === "frame-received"),
+      "captured received frames",
+    ).toBe(true);
     expect(pageErrors, "uncaught page errors").toEqual([]);
   },
 });

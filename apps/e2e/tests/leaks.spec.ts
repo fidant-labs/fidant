@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Page } from "@playwright/test";
 import { canaryFile, canaryKey, expect, test } from "../src/fixtures.ts";
+import { base32Token } from "../src/leaks/canary.ts";
 import type { Finding } from "../src/leaks/scan.ts";
 
 // The detector's self-test: each case leaks a canary from the page to the real stack on purpose
@@ -246,6 +247,21 @@ test.describe("the detector catches", () => {
     expectFinding(await leaks.scan(), {
       class: "K",
       label: "fragment secret text",
+      field: "frame-sent.payload",
+      view: /^raw$/,
+    });
+  });
+
+  test("a recipient name in a websocket frame to /signal", async ({ page, leaks, canary }) => {
+    leaks.expectLeaks();
+    const name = `Anna-${base32Token(canary.fork("name"), 8)}`;
+    leaks.watchText("recipient name", name);
+    const link = canary.fork("link").bytes(16).toString("base64url");
+    await open(page);
+    await relay(page, link, name);
+    expectFinding(await leaks.scan(), {
+      class: "M",
+      label: "recipient name",
       field: "frame-sent.payload",
       view: /^raw$/,
     });
