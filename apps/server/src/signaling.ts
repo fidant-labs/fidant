@@ -27,10 +27,14 @@ export const SIGNAL_PATH = "/signal";
 
 export const HEARTBEAT_MS = 30_000;
 
-/** Caps on open sockets. Tests lower them through the `limits` option. */
+/** Caps on open sockets and incoming messages. Tests lower them through the `limits` option. */
 const LIMITS = {
   sockets: 1000,
   socketsPerAddress: 32,
+  // ponytail: fixed window reset by the heartbeat, so a socket can send twice this across a
+  // window boundary; a token bucket if that burst ever matters.
+  /** Messages one socket may send per heartbeat window, counting ones that fail to parse. */
+  messagesPerWindow: 1000,
 };
 
 /** WebSocket close code for a protocol violation. */
@@ -43,6 +47,8 @@ type Peer = {
   /** The link this socket is bound to as a guest. */
   joined: string | undefined;
   alive: boolean;
+  /** Messages received in the current heartbeat window. */
+  messages: number;
   /** The client address this socket counts against. Never logged. */
   address: string;
 };
@@ -174,6 +180,7 @@ export function attachSignaling(
       hosted: new Set(),
       joined: undefined,
       alive: true,
+      messages: 0,
       address,
     };
     peers.set(socket, peer);
@@ -182,6 +189,16 @@ export function attachSignaling(
       peer.alive = true;
     });
     socket.on("message", (data: RawData, isBinary: boolean) => {
+      // ws still emits messages that arrive after close(); they are dropped unread.
+      if (socket.readyState !== WebSocket.OPEN) {
+        return;
+      }
+      peer.messages += 1;
+      if (peer.messages > limits.messagesPerWindow) {
+        log("rate-limited");
+        socket.close(POLICY_VIOLATION);
+        return;
+      }
       const text = isBinary ? undefined : data.toString();
       const message = text === undefined ? undefined : parseClientMessage(text);
       if (!message) {
@@ -362,6 +379,7 @@ export function attachSignaling(
 
   const heartbeat = setInterval(() => {
     for (const [socket, peer] of peers) {
+      peer.messages = 0;
       if (!peer.alive) {
         socket.terminate();
         continue;

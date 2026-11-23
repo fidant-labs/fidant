@@ -27,6 +27,7 @@ test("passes the lines the server writes", () => {
   const lines = [
     line({ event: "listening", port: 8443 }),
     line({ event: "upgrade-rejected", reason: "origin" }),
+    line({ event: "rate-limited" }),
     line({ event: "host", links: 3 }),
     line({ event: "joined", link: "aZ09_-" }),
     line({ event: "refused", link: "abcdef", reason: "busy" }),

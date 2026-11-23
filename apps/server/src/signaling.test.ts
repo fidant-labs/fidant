@@ -442,3 +442,47 @@ test("rejects upgrades with 429 once one address holds its share of sockets", as
   await first.closed;
   assert.equal(await upgradeAfterClose(limited), 101);
 });
+
+/** A signaling server with a low message limit and a short window, and the events it logs. */
+async function rateLimitedServer(t: { after(fn: () => void): void }) {
+  const events: string[] = [];
+  const limited = createServer();
+  const limitedSignaling = attachSignaling(limited, {
+    log: (event) => events.push(event),
+    heartbeatMs: 20,
+    limits: { messagesPerWindow: 5 },
+  });
+  t.after(() => {
+    limitedSignaling.close();
+    limited.close();
+  });
+  await new Promise<void>((done) => limited.listen(0, done));
+  return { events, url: `ws://localhost:${(limited.address() as AddressInfo).port}/signal` };
+}
+
+test("closes a socket with 1008 once it sends too many messages and logs it once", async (t) => {
+  const { events, url } = await rateLimitedServer(t);
+  const client = await connect(url);
+  for (let i = 0; i < 50; i += 1) {
+    client.send({ t: "relay", link: linkId(), data: "flood" });
+  }
+  assert.equal(await client.closed, 1008);
+  await new Promise((done) => setTimeout(done, 50));
+  assert.equal(events.filter((event) => event === "rate-limited").length, 1);
+});
+
+test("keeps a socket under the message limit open across window resets", async (t) => {
+  const { events, url } = await rateLimitedServer(t);
+  const client = await connect(url);
+  for (let round = 0; round < 3; round += 1) {
+    for (let i = 0; i < 4; i += 1) {
+      client.send({ t: "relay", link: linkId(), data: "sync" });
+    }
+    for (let i = 0; i < 4; i += 1) {
+      assert.deepEqual(await client.next(), { t: "error", code: "not-on-link" });
+    }
+    await new Promise((done) => setTimeout(done, 50));
+  }
+  assert.equal(client.socket.readyState, WebSocket.OPEN);
+  assert.ok(!events.includes("rate-limited"));
+});
