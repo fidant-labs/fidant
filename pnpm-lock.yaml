@@ -40,6 +40,9 @@ importers:
         specifier: ^11.2.0
         version: 11.2.0
     devDependencies:
+      '@types/node':
+        specifier: ^24.19.2
+        version: 24.19.2
       vite:
         specifier: ^8.3.8
         version: 8.3.8(@types/node@24.19.2)
