@@ -60,17 +60,23 @@ export function maskCarriers(
     if (allowedPoints(capture.point)) {
       const bytes = Buffer.from(capture.bytes);
       for (const carrier of prepared) {
-        for (const form of carrier.encoded) fill(bytes, form);
+        for (const form of carrier.encoded) {
+          fill(bytes, form);
+        }
       }
       return { ...capture, bytes };
     }
-    if (prepared.length === 0) return capture;
+    if (prepared.length === 0) {
+      return capture;
+    }
     const { views } = decodeViews(capture.bytes, capture.hints);
     for (const carrier of prepared) {
       found: for (const view of views) {
         for (const value of carrier.values) {
           const offset = view.bytes.indexOf(value);
-          if (offset === -1) continue;
+          if (offset === -1) {
+            continue;
+          }
           misplaced.push({
             class: "M",
             label: `carrier ${carrier.name}`,
@@ -91,7 +97,9 @@ export function maskCarriers(
 
 /** The carrier's bytes: once for binary, NFC and NFD UTF-8 for text. */
 function carrierValues(carrier: Carrier): Buffer[] {
-  if (typeof carrier.value !== "string") return [Buffer.from(carrier.value)];
+  if (typeof carrier.value !== "string") {
+    return [Buffer.from(carrier.value)];
+  }
   const forms = new Set([carrier.value.normalize("NFC"), carrier.value.normalize("NFD")]);
   return [...forms].map((form) => Buffer.from(form));
 }
@@ -101,7 +109,9 @@ function encodings(values: Buffer[]): Buffer[] {
   const forms = new Map<string, Buffer>();
   const add = (form: Buffer | string) => {
     const bytes = typeof form === "string" ? Buffer.from(form) : form;
-    if (bytes.length >= minWindow) forms.set(bytes.toString("hex"), bytes);
+    if (bytes.length >= minWindow) {
+      forms.set(bytes.toString("hex"), bytes);
+    }
   };
   for (const value of values) {
     add(value);
@@ -112,7 +122,9 @@ function encodings(values: Buffer[]): Buffer[] {
     add(value.toString("hex"));
     add(value.toString("hex").toUpperCase());
     const text = utf8(value);
-    if (text === undefined) continue;
+    if (text === undefined) {
+      continue;
+    }
     const percent = encodeURIComponent(text);
     for (const form of [percent, percent.replaceAll("%20", "+")]) {
       add(form);

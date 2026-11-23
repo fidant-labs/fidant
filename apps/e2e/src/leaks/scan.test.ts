@@ -273,7 +273,9 @@ test("finds a size in a path, query pair or snake_case name", () => {
     "/api/transfers/chunk1234567x/next",
     "/Api/Transfers/chunk1234567/next",
   ];
-  for (const text of texts) assert.ok(findSize(Buffer.from(text), size), text);
+  for (const text of texts) {
+    assert.ok(findSize(Buffer.from(text), size), text);
+  }
 });
 
 test("ignores a size-like digit run inside a long base64url token", () => {

@@ -74,7 +74,9 @@ const allowedKeys = new Set(["event", "link", "reason", "code", ...counts]);
 export function checkServerLog(lines: string[], allowlist: LogAllowlist): LogViolation[] {
   const violations: LogViolation[] = [];
   lines.forEach((text, index) => {
-    if (text.trim() === "") return;
+    if (text.trim() === "") {
+      return;
+    }
     const report = (rule: LogRule, message: string) =>
       violations.push({ line: index + 1, rule, message, excerpt: excerpt(text) });
     let entry: unknown;
@@ -90,7 +92,9 @@ export function checkServerLog(lines: string[], allowlist: LogAllowlist): LogVio
     }
     const fields = entry as Record<string, unknown>;
     for (const key of Object.keys(fields)) {
-      if (!allowedKeys.has(key)) report("key", `unknown key ${quote(key)}`);
+      if (!allowedKeys.has(key)) {
+        report("key", `unknown key ${quote(key)}`);
+      }
     }
     const { event, link, reason, code } = fields;
     if (typeof event !== "string" || !allowlist.events.has(event)) {

@@ -58,14 +58,18 @@ export function connectSignaling(url: string = defaultSignalingUrl()): Signaling
       console.warn("sigill: ignored an invalid signaling message");
       return;
     }
-    for (const listener of [...messageListeners]) listener(message);
+    for (const listener of [...messageListeners]) {
+      listener(message);
+    }
   });
 
   socket.addEventListener(
     "close",
     (event: CloseEvent) => {
       const info: SignalingClose = { code: event.code, byClient: closedByClient };
-      for (const listener of [...closeListeners]) listener(info);
+      for (const listener of [...closeListeners]) {
+        listener(info);
+      }
       messageListeners.clear();
       closeListeners.clear();
     },
@@ -75,7 +79,9 @@ export function connectSignaling(url: string = defaultSignalingUrl()): Signaling
   return {
     ready,
     send(message) {
-      if (socket.readyState !== WebSocket.OPEN) return false;
+      if (socket.readyState !== WebSocket.OPEN) {
+        return false;
+      }
       socket.send(JSON.stringify(message));
       return true;
     },

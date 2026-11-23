@@ -163,7 +163,9 @@ test("decodes nested JSON in base64 in JSON", () => {
 
 test("stops at the depth limit", () => {
   let encoded = secret.toString("base64");
-  for (let i = 0; i < 3; i++) encoded = Buffer.from(encoded).toString("base64");
+  for (let i = 0; i < 3; i++) {
+    encoded = Buffer.from(encoded).toString("base64");
+  }
   assert.deepEqual(pathsWith(encoded, secret), []);
   const views = decodeViews(Buffer.from(encoded), {}, { maxDepth: 4 }).views;
   assert.ok(views.some((view) => view.bytes.includes(secret) && view.depth === 4));

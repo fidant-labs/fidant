@@ -50,7 +50,9 @@ function short(link: string): string {
 }
 
 function send(socket: WebSocket, message: ServerMessage): void {
-  if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
+  if (socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify(message));
+  }
 }
 
 function rejectUpgrade(socket: Duplex, status: 403 | 404): void {
@@ -61,7 +63,9 @@ function rejectUpgrade(socket: Duplex, status: 403 | 404): void {
 /** True if the request has no Origin header or one whose host matches the Host header. */
 function sameOrigin(req: IncomingMessage): boolean {
   const origin = req.headers.origin;
-  if (origin === undefined) return true;
+  if (origin === undefined) {
+    return true;
+  }
   try {
     return new URL(origin).host === req.headers.host;
   } catch {
@@ -153,8 +157,14 @@ export function attachSignaling(
     }
     peer.role = "host";
     const next = new Set(links);
-    for (const link of peer.hosted) if (!next.has(link)) unhost(link);
-    for (const link of next) hosts.set(link, socket);
+    for (const link of peer.hosted) {
+      if (!next.has(link)) {
+        unhost(link);
+      }
+    }
+    for (const link of next) {
+      hosts.set(link, socket);
+    }
     peer.hosted = next;
     log("host", { links: next.size });
   }
@@ -163,10 +173,14 @@ export function attachSignaling(
   function unhost(link: string): void {
     hosts.delete(link);
     const guest = guests.get(link);
-    if (!guest) return;
+    if (!guest) {
+      return;
+    }
     guests.delete(link);
     const guestPeer = peers.get(guest);
-    if (guestPeer) guestPeer.joined = undefined;
+    if (guestPeer) {
+      guestPeer.joined = undefined;
+    }
     log("host-gone", { link: short(link) });
     send(guest, { t: "host-gone" });
   }
@@ -196,9 +210,11 @@ export function attachSignaling(
 
   function relay(socket: WebSocket, peer: Peer, link: string, data: string): void {
     let target: WebSocket | undefined;
-    if (peer.hosted.has(link)) target = guests.get(link);
-    else if (peer.joined === link) target = hosts.get(link);
-    else {
+    if (peer.hosted.has(link)) {
+      target = guests.get(link);
+    } else if (peer.joined === link) {
+      target = hosts.get(link);
+    } else {
       error(socket, "not-on-link");
       return;
     }
@@ -217,10 +233,14 @@ export function attachSignaling(
       return;
     }
     const guest = guests.get(link);
-    if (!guest) return;
+    if (!guest) {
+      return;
+    }
     guests.delete(link);
     const guestPeer = peers.get(guest);
-    if (guestPeer) guestPeer.joined = undefined;
+    if (guestPeer) {
+      guestPeer.joined = undefined;
+    }
     log("refused", { link: short(link), reason });
     send(guest, { t: "refused", reason });
   }
@@ -229,7 +249,9 @@ export function attachSignaling(
     peers.delete(socket);
     if (peer.hosted.size > 0) {
       log("host-closed", { links: peer.hosted.size });
-      for (const link of peer.hosted) unhost(link);
+      for (const link of peer.hosted) {
+        unhost(link);
+      }
       peer.hosted.clear();
     }
     const link = peer.joined;
@@ -238,7 +260,9 @@ export function attachSignaling(
       peer.joined = undefined;
       log("left", { link: short(link) });
       const hostSocket = hosts.get(link);
-      if (hostSocket) send(hostSocket, { t: "left", link });
+      if (hostSocket) {
+        send(hostSocket, { t: "left", link });
+      }
     }
   }
 
@@ -260,7 +284,9 @@ export function attachSignaling(
     close() {
       clearInterval(heartbeat);
       server.off("upgrade", onUpgrade);
-      for (const socket of peers.keys()) socket.terminate();
+      for (const socket of peers.keys()) {
+        socket.terminate();
+      }
       wss.close();
     },
   };

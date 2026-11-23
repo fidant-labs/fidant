@@ -41,7 +41,9 @@ const test = harness.extend<{ demo: Demo }>({
     const frames: { type: string; text: string }[] = [];
     for (const name of names) {
       for (const record of await observed(name).records()) {
-        if (record.type !== "frame-sent" && record.type !== "frame-received") continue;
+        if (record.type !== "frame-sent" && record.type !== "frame-received") {
+          continue;
+        }
         // Binary frames are recorded as base64.
         const text = record.base64
           ? Buffer.from(record.payload, "base64").toString()
@@ -141,12 +143,16 @@ test("delivers a file to two recipients with a verified checksum", async ({
   const sender = await openSender(demo, file);
   const names = [makeName(leaks, canary, "Anna"), makeName(leaks, canary, "Erik")];
   const links: string[] = [];
-  for (const name of names) links.push(await addRecipient(leaks, sender, name));
+  for (const name of names) {
+    links.push(await addRecipient(leaks, sender, name));
+  }
 
   const received = await Promise.all(
     links.map((link, i) => receive(demo, `recipient-${i + 1}`, link, file, "8.4 MB")),
   );
-  for (const { bytes } of received) expect(sha256Hex(bytes)).toBe(sha256Hex(file.bytes));
+  for (const { bytes } of received) {
+    expect(sha256Hex(bytes)).toBe(sha256Hex(file.bytes));
+  }
 
   for (const name of names) {
     await expect(

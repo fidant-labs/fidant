@@ -24,7 +24,9 @@ type Props = {
 };
 
 export function RecipientList({ recipients, fileSize, onRemove }: Props) {
-  if (recipients.length === 0) return null;
+  if (recipients.length === 0) {
+    return null;
+  }
   return (
     <ul class="recipients" aria-label="Recipients">
       {recipients.map((recipient) => (
@@ -56,7 +58,9 @@ function RecipientRow({ recipient, fileSize, onRemove }: RowProps) {
 
   const copy = async () => {
     try {
-      if (!navigator.clipboard) throw new Error("no clipboard");
+      if (!navigator.clipboard) {
+        throw new Error("no clipboard");
+      }
       await navigator.clipboard.writeText(url);
       showNote("Copied");
     } catch {

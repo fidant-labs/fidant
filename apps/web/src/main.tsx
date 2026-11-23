@@ -20,10 +20,16 @@ function InsecurePage() {
 }
 
 function App() {
-  if (!hasSecureCrypto()) return <InsecurePage />;
-  if (location.pathname.startsWith("/r/")) return <ReceivePage />;
+  if (!hasSecureCrypto()) {
+    return <InsecurePage />;
+  }
+  if (location.pathname.startsWith("/r/")) {
+    return <ReceivePage />;
+  }
   return <SendPage />;
 }
 
 const root = document.getElementById("app");
-if (root) render(<App />, root);
+if (root) {
+  render(<App />, root);
+}

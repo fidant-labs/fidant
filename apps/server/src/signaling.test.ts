@@ -25,7 +25,9 @@ before(async () => {
   port = (server.address() as AddressInfo).port;
 });
 after(() => {
-  for (const client of clients) client.socket.close();
+  for (const client of clients) {
+    client.socket.close();
+  }
   signaling.close();
   server.close();
 });
@@ -56,8 +58,11 @@ async function connect(): Promise<Client> {
     const message = parseServerMessage(String(event.data));
     assert.ok(message, `server sent an invalid message: ${event.data}`);
     const waiter = waiting.shift();
-    if (waiter) waiter(message);
-    else queue.push(message);
+    if (waiter) {
+      waiter(message);
+    } else {
+      queue.push(message);
+    }
   });
   const closed = new Promise<number>((done) =>
     socket.addEventListener("close", (event) => done(event.code)),
@@ -71,7 +76,9 @@ async function connect(): Promise<Client> {
     send: (message) => socket.send(typeof message === "string" ? message : JSON.stringify(message)),
     next: () => {
       const message = queue.shift();
-      if (message) return Promise.resolve(message);
+      if (message) {
+        return Promise.resolve(message);
+      }
       return new Promise((done, fail) => {
         const timer = setTimeout(() => {
           waiting.splice(waiting.indexOf(waiter), 1);
@@ -285,9 +292,15 @@ test("logs only allowlisted fields and never relay payloads", async () => {
     assert.ok(!text.includes(link), `full link ID leaked into the log: ${text}`);
     for (const [key, value] of Object.entries(line.fields ?? {})) {
       assert.ok(allowed.has(key), `field ${key} is not allowlisted`);
-      if (key === "link") assert.match(String(value), /^[A-Za-z0-9_-]{6}$/);
-      if (key === "reason") assert.ok(logReasons.includes(value), `unknown reason ${value}`);
-      if (key === "code") assert.ok(errorCodes.includes(value), `unknown code ${value}`);
+      if (key === "link") {
+        assert.match(String(value), /^[A-Za-z0-9_-]{6}$/);
+      }
+      if (key === "reason") {
+        assert.ok(logReasons.includes(value), `unknown reason ${value}`);
+      }
+      if (key === "code") {
+        assert.ok(errorCodes.includes(value), `unknown code ${value}`);
+      }
     }
   }
 });

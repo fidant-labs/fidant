@@ -67,7 +67,9 @@ export const test = base.extend<Fixtures>({
       const watch = await LeakWatch.start(testDirName(testInfo), process.env.SIGILL_E2E_REGISTRY);
       await use(watch);
       const report = await watch.check();
-      if (report) throw new Error(report);
+      if (report) {
+        throw new Error(report);
+      }
     },
     { auto: true },
   ],
@@ -79,7 +81,9 @@ export const test = base.extend<Fixtures>({
   // biome-ignore lint/correctness/noEmptyPattern: Playwright reads dependencies from the pattern.
   canary: async ({}, use, testInfo) => {
     const seed = process.env.SIGILL_E2E_SEED;
-    if (!seed) throw new Error("SIGILL_E2E_SEED is not set. Run the suite through global setup.");
+    if (!seed) {
+      throw new Error("SIGILL_E2E_SEED is not set. Run the suite through global setup.");
+    }
     const path = [testInfo.project.name, ...testInfo.titlePath];
     await use(new SeededRandom(runSeed(seed)).fork(JSON.stringify(path)));
   },
@@ -93,8 +97,12 @@ export const test = base.extend<Fixtures>({
       _leakWatch.recorders = recorders;
       await use(recorders);
       const dir = join(observationsDir, testDirName(testInfo));
-      for (const recorder of recorders.values()) await recorder.write(dir);
-      if (allowBlocked) return;
+      for (const recorder of recorders.values()) {
+        await recorder.write(dir);
+      }
+      if (allowBlocked) {
+        return;
+      }
       const blocked = [...recorders.values()].flatMap((recorder) =>
         recorder.blocked.map(({ kind, url }) => `  ${recorder.actor} (${kind}): ${url}`),
       );
@@ -115,7 +123,9 @@ export const test = base.extend<Fixtures>({
       await use(undefined);
       const recorded = new Set([..._recorders.values()].map((recorder) => recorder.context));
       const unrecorded = browser.contexts().filter((context) => !recorded.has(context));
-      if (unrecorded.length === 0) return;
+      if (unrecorded.length === 0) {
+        return;
+      }
       await Promise.all(unrecorded.map((context) => context.close()));
       throw new Error(
         `${unrecorded.length} browser context(s) in this test had no traffic recorder. ` +
@@ -202,21 +212,29 @@ export const test = base.extend<Fixtures>({
     const opened: BrowserContext[] = [];
     await use(async (name) => {
       assertActorName(name);
-      if (name === "default") throw new Error('The actor name "default" is the built-in context.');
-      if (_recorders.has(name)) throw new Error(`The actor "${name}" already exists.`);
+      if (name === "default") {
+        throw new Error('The actor name "default" is the built-in context.');
+      }
+      if (_recorders.has(name)) {
+        throw new Error(`The actor "${name}" already exists.`);
+      }
       const context = await browser.newContext(_actorContextOptions);
       opened.push(context);
       await record(_recorders, name, context);
       return { context, page: await context.newPage() };
     });
     // `_recorders` writes the records once these have closed.
-    for (const context of opened) await context.close();
+    for (const context of opened) {
+      await context.close();
+    }
   },
 
   observed: async ({ _recorders }, use) => {
     await use((name) => {
       const recorder = _recorders.get(name);
-      if (!recorder) throw new Error(`No actor named "${name}" in this test.`);
+      if (!recorder) {
+        throw new Error(`No actor named "${name}" in this test.`);
+      }
       return { blocked: recorder.blocked, records: () => recorder.records() };
     });
   },

@@ -43,7 +43,9 @@ export function scan(
     const found = new Set<string>();
     const report = (finding: Omit<Finding, "point">) => {
       const key = `${finding.class} ${finding.label}`;
-      if (found.has(key)) return;
+      if (found.has(key)) {
+        return;
+      }
       found.add(key);
       findings.push({ ...finding, point: capture.point });
     };
@@ -53,7 +55,9 @@ export function scan(
       );
       for (const size of needles.sizes) {
         const at = findSize(view.bytes, size);
-        if (at) report(finding(size.class, size.label, view, at.offset, at.length));
+        if (at) {
+          report(finding(size.class, size.label, view, at.offset, at.length));
+        }
       }
     }
     if (truncated) {
@@ -114,9 +118,13 @@ export function context(bytes: Buffer, offset: number, length: number): string {
 function escapeText(bytes: Buffer): string {
   let text = "";
   for (const byte of bytes) {
-    if (byte === 0x5c) text += "\\\\";
-    else if (byte >= 0x20 && byte < 0x7f) text += String.fromCharCode(byte);
-    else text += `\\x${byte.toString(16).padStart(2, "0")}`;
+    if (byte === 0x5c) {
+      text += "\\\\";
+    } else if (byte >= 0x20 && byte < 0x7f) {
+      text += String.fromCharCode(byte);
+    } else {
+      text += `\\x${byte.toString(16).padStart(2, "0")}`;
+    }
   }
   return text;
 }
@@ -151,22 +159,36 @@ const blobRun = 24;
 
 function insideBlob(bytes: Buffer, start: number, end: number): boolean {
   const alnumFrom = (from: number) => {
-    while (from > 0 && end - from < blobRun && isAlphanumeric(bytes[from - 1])) from--;
+    while (from > 0 && end - from < blobRun && isAlphanumeric(bytes[from - 1])) {
+      from--;
+    }
     return from;
   };
   const alnumTo = (to: number) => {
-    while (to < bytes.length && to - start < blobRun && isAlphanumeric(bytes[to])) to++;
+    while (to < bytes.length && to - start < blobRun && isAlphanumeric(bytes[to])) {
+      to++;
+    }
     return to;
   };
   const a = alnumFrom(start);
   const b = alnumTo(end);
-  if (b - a >= blobRun) return true;
-  if (!isAlphanumeric(bytes[start - 1]) || !isAlphanumeric(bytes[end])) return false;
+  if (b - a >= blobRun) {
+    return true;
+  }
+  if (!isAlphanumeric(bytes[start - 1]) || !isAlphanumeric(bytes[end])) {
+    return false;
+  }
   let from = start;
-  while (from > 0 && end - from < blobRun && isTokenByte(bytes[from - 1])) from--;
+  while (from > 0 && end - from < blobRun && isTokenByte(bytes[from - 1])) {
+    from--;
+  }
   let to = end;
-  while (to < bytes.length && to - from < blobRun && isTokenByte(bytes[to])) to++;
-  if (to - from < blobRun) return false;
+  while (to < bytes.length && to - from < blobRun && isTokenByte(bytes[to])) {
+    to++;
+  }
+  if (to - from < blobRun) {
+    return false;
+  }
   const run = bytes.subarray(from, to);
   return run.some((c) => c >= 0x41 && c <= 0x5a) && run.some((c) => c >= 0x61 && c <= 0x7a);
 }
@@ -195,7 +217,9 @@ export function findSize(
       at = bytes.indexOf(text, at + 1, "latin1")
     ) {
       let start = at;
-      while (bytes[start - 1] === 0x30) start--;
+      while (bytes[start - 1] === 0x30) {
+        start--;
+      }
       const end = at + text.length;
       const before = bytes[start - 1];
       const hexPrefix =
@@ -206,8 +230,9 @@ export function findSize(
         (hexPrefix || !bounds(before)) &&
         !bounds(bytes[end]) &&
         !(bounds === isDigit && insideBlob(bytes, start, end))
-      )
+      ) {
         return { offset: start, length: end - start };
+      }
     }
   }
   return undefined;
