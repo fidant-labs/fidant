@@ -1,0 +1,13 @@
+pre-commit:
+  parallel: true
+  jobs:
+    - name: biome
+      run: pnpm exec biome check --write --no-errors-on-unmatched --files-ignore-unknown=true {staged_files}
+      stage_fixed: true
+    - name: gitleaks
+      run: gitleaks git --pre-commit --staged --redact --no-banner
+
+pre-push:
+  jobs:
+    - name: check
+      run: pnpm check
