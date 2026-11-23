@@ -1,0 +1,35 @@
+#link {
+  display: block;
+  overflow-wrap: anywhere;
+  padding: 0.5rem;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+#landing td {
+  text-align: left;
+}
+
+#verdict {
+  font-size: 1.25rem;
+  font-weight: bold;
+}
+
+#verdict[data-verdict="intact"] {
+  color: #1e8449;
+}
+
+#verdict[data-verdict="trailing"] {
+  color: #b9770e;
+}
+
+#verdict[data-verdict="truncated"],
+#verdict[data-verdict="altered"],
+#verdict[data-verdict="missing"] {
+  color: #c0392b;
+}

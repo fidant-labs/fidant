@@ -1,0 +1,2523 @@
+{
+  "bench": "sigill-split-key-runner",
+  "version": 1,
+  "engine": "firefox",
+  "browserVersion": "159.0",
+  "startedAt": "2026-11-23T19:12:08.233Z",
+  "args": {
+    "sizes": [67108864, 1073741824, 5368709120],
+    "sinks": ["opfs", "fsa-opfs", "blob", "sw"],
+    "chunks": [262144, 1048576, 49152],
+    "seed": 1,
+    "microBytes": 268435456,
+    "headed": false
+  },
+  "runs": [
+    {
+      "sink": "opfs",
+      "size": 67108864,
+      "chunkSize": 262144,
+      "wallMs": 5761.358750000003,
+      "pageErrors": [],
+      "page": {
+        "kind": "pipeline",
+        "startedAt": "2026-11-23T19:12:16.337Z",
+        "params": {
+          "size": 67108864,
+          "chunkSize": 262144,
+          "source": {
+            "kind": "seeded",
+            "seed": 1
+          },
+          "sink": "opfs"
+        },
+        "sinkLabel": "OPFS sync access handle, then blob: URL download of the disk-backed File",
+        "delivery": "blob-url-disk",
+        "environment": {
+          "storageBefore": {
+            "usage": 0,
+            "quota": 10737418240
+          },
+          "memoryBefore": null
+        },
+        "result": {
+          "outcome": "ok",
+          "phases": [
+            {
+              "phase": "hash",
+              "ms": 1661,
+              "bytes": 67108864,
+              "mbPerSecond": 40.40268753762793,
+              "storage": {
+                "usage": 491520,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "encrypt",
+              "ms": 1768.2000000000007,
+              "bytes": 67117137,
+              "mbPerSecond": 37.95788768238886,
+              "storage": {
+                "usage": 67608657,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "release",
+              "ms": 0.019999999998617568,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 67608657,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "decrypt",
+              "ms": 1991.960000000001,
+              "bytes": 67117137,
+              "mbPerSecond": 33.694018454185816,
+              "storage": {
+                "usage": 134717521,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "cleanup",
+              "ms": 6.420000000000073,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 67600384,
+                "quota": 10737418240
+              },
+              "memory": null
+            }
+          ],
+          "paddedLength": 67108864,
+          "containerBytes": 67117137,
+          "outputBytes": 67108864,
+          "commitmentVerified": true
+        }
+      },
+      "rss": {
+        "baselineBytes": 1567408128,
+        "peakBytes": 1580220416,
+        "maxProcesses": 7,
+        "samples": 24
+      },
+      "download": {
+        "suggestedFilename": "bench-output.bin",
+        "verification": {
+          "sizeMatches": true,
+          "size": 67108864,
+          "sha256Matches": true,
+          "ms": 29.189916000002995
+        }
+      }
+    },
+    {
+      "sink": "opfs",
+      "size": 67108864,
+      "chunkSize": 1048576,
+      "wallMs": 5404.0844579999975,
+      "pageErrors": [],
+      "page": {
+        "kind": "pipeline",
+        "startedAt": "2026-11-23T19:12:22.387Z",
+        "params": {
+          "size": 67108864,
+          "chunkSize": 1048576,
+          "source": {
+            "kind": "seeded",
+            "seed": 1
+          },
+          "sink": "opfs"
+        },
+        "sinkLabel": "OPFS sync access handle, then blob: URL download of the disk-backed File",
+        "delivery": "blob-url-disk",
+        "environment": {
+          "storageBefore": {
+            "usage": 491520,
+            "quota": 10737418240
+          },
+          "memoryBefore": null
+        },
+        "result": {
+          "outcome": "ok",
+          "phases": [
+            {
+              "phase": "hash",
+              "ms": 1662.460000000001,
+              "bytes": 67108864,
+              "mbPerSecond": 40.367205225990375,
+              "storage": {
+                "usage": 491520,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "encrypt",
+              "ms": 1761.9999999999982,
+              "bytes": 67112145,
+              "mbPerSecond": 38.08861804767314,
+              "storage": {
+                "usage": 67603665,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "release",
+              "ms": 0,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 67603665,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "decrypt",
+              "ms": 1673,
+              "bytes": 67112145,
+              "mbPerSecond": 40.1148505678422,
+              "storage": {
+                "usage": 134712529,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "cleanup",
+              "ms": 16.18000000000029,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 67600384,
+                "quota": 10737418240
+              },
+              "memory": null
+            }
+          ],
+          "paddedLength": 67108864,
+          "containerBytes": 67112145,
+          "outputBytes": 67108864,
+          "commitmentVerified": true
+        }
+      },
+      "rss": {
+        "baselineBytes": 1373257728,
+        "peakBytes": 1464074240,
+        "maxProcesses": 7,
+        "samples": 23
+      },
+      "download": {
+        "suggestedFilename": "bench-output.bin",
+        "verification": {
+          "sizeMatches": true,
+          "size": 67108864,
+          "sha256Matches": true,
+          "ms": 27.42437500000233
+        }
+      }
+    },
+    {
+      "sink": "fsa-opfs",
+      "size": 67108864,
+      "chunkSize": 262144,
+      "wallMs": 5148.601666000002,
+      "pageErrors": [],
+      "page": {
+        "kind": "pipeline",
+        "startedAt": "2026-11-23T19:12:28.108Z",
+        "params": {
+          "size": 67108864,
+          "chunkSize": 262144,
+          "source": {
+            "kind": "seeded",
+            "seed": 1
+          },
+          "sink": "fsa-opfs"
+        },
+        "sinkLabel": "FileSystemWritableFileStream on an OPFS handle (no picker, for automation)",
+        "delivery": "blob-url-disk",
+        "environment": {
+          "storageBefore": {
+            "usage": 491520,
+            "quota": 10737418240
+          },
+          "memoryBefore": null
+        },
+        "result": {
+          "outcome": "ok",
+          "phases": [
+            {
+              "phase": "hash",
+              "ms": 1586.5999999999985,
+              "bytes": 67108864,
+              "mbPerSecond": 42.297279717635234,
+              "storage": {
+                "usage": 491520,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "encrypt",
+              "ms": 1645.4599999999991,
+              "bytes": 67117137,
+              "mbPerSecond": 40.78928506314346,
+              "storage": {
+                "usage": 67608657,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "release",
+              "ms": 0,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 67608657,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "decrypt",
+              "ms": 1628.2000000000007,
+              "bytes": 67117137,
+              "mbPerSecond": 41.22167854071979,
+              "storage": {
+                "usage": 134717521,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "cleanup",
+              "ms": 4.459999999999127,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 67600384,
+                "quota": 10737418240
+              },
+              "memory": null
+            }
+          ],
+          "paddedLength": 67108864,
+          "containerBytes": 67117137,
+          "outputBytes": 67108864,
+          "commitmentVerified": true
+        }
+      },
+      "rss": {
+        "baselineBytes": 1461698560,
+        "peakBytes": 1477951488,
+        "maxProcesses": 8,
+        "samples": 23
+      },
+      "download": {
+        "suggestedFilename": "bench-output.bin",
+        "verification": {
+          "sizeMatches": true,
+          "size": 67108864,
+          "sha256Matches": true,
+          "ms": 27.45179199999984
+        }
+      }
+    },
+    {
+      "sink": "fsa-opfs",
+      "size": 67108864,
+      "chunkSize": 1048576,
+      "wallMs": 5395.716582999994,
+      "pageErrors": [],
+      "page": {
+        "kind": "pipeline",
+        "startedAt": "2026-11-23T19:12:33.558Z",
+        "params": {
+          "size": 67108864,
+          "chunkSize": 1048576,
+          "source": {
+            "kind": "seeded",
+            "seed": 1
+          },
+          "sink": "fsa-opfs"
+        },
+        "sinkLabel": "FileSystemWritableFileStream on an OPFS handle (no picker, for automation)",
+        "delivery": "blob-url-disk",
+        "environment": {
+          "storageBefore": {
+            "usage": 491520,
+            "quota": 10737418240
+          },
+          "memoryBefore": null
+        },
+        "result": {
+          "outcome": "ok",
+          "phases": [
+            {
+              "phase": "hash",
+              "ms": 1677.0600000000013,
+              "bytes": 67108864,
+              "mbPerSecond": 40.01577999594525,
+              "storage": {
+                "usage": 491520,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "encrypt",
+              "ms": 1695.8199999999997,
+              "bytes": 67112145,
+              "mbPerSecond": 39.57504039343799,
+              "storage": {
+                "usage": 67603665,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "release",
+              "ms": 0.020000000000436557,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 67603665,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "decrypt",
+              "ms": 1662.4799999999996,
+              "bytes": 67112145,
+              "mbPerSecond": 40.36869315721093,
+              "storage": {
+                "usage": 134712529,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "cleanup",
+              "ms": 6.119999999998981,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 67600384,
+                "quota": 10737418240
+              },
+              "memory": null
+            }
+          ],
+          "paddedLength": 67108864,
+          "containerBytes": 67112145,
+          "outputBytes": 67108864,
+          "commitmentVerified": true
+        }
+      },
+      "rss": {
+        "baselineBytes": 1445789696,
+        "peakBytes": 1464745984,
+        "maxProcesses": 7,
+        "samples": 23
+      },
+      "download": {
+        "suggestedFilename": "bench-output.bin",
+        "verification": {
+          "sizeMatches": true,
+          "size": 67108864,
+          "sha256Matches": true,
+          "ms": 28.382291999994777
+        }
+      }
+    },
+    {
+      "sink": "blob",
+      "size": 67108864,
+      "chunkSize": 262144,
+      "wallMs": 5383.591458000003,
+      "pageErrors": [],
+      "page": {
+        "kind": "pipeline",
+        "startedAt": "2026-11-23T19:12:39.241Z",
+        "params": {
+          "size": 67108864,
+          "chunkSize": 262144,
+          "source": {
+            "kind": "seeded",
+            "seed": 1
+          },
+          "sink": "blob"
+        },
+        "sinkLabel": "In-memory Blob, then blob: URL download",
+        "delivery": "blob-url-memory",
+        "environment": {
+          "storageBefore": {
+            "usage": 491520,
+            "quota": 10737418240
+          },
+          "memoryBefore": null
+        },
+        "result": {
+          "outcome": "ok",
+          "phases": [
+            {
+              "phase": "hash",
+              "ms": 1669.2400000000016,
+              "bytes": 67108864,
+              "mbPerSecond": 40.203244590352455,
+              "storage": {
+                "usage": 491520,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "encrypt",
+              "ms": 1741.880000000001,
+              "bytes": 67117137,
+              "mbPerSecond": 38.53143557535534,
+              "storage": {
+                "usage": 67608657,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "release",
+              "ms": 0,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 67608657,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "decrypt",
+              "ms": 1626,
+              "bytes": 67117137,
+              "mbPerSecond": 41.2774520295203,
+              "storage": {
+                "usage": 67608657,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "cleanup",
+              "ms": 4.760000000002037,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 491520,
+                "quota": 10737418240
+              },
+              "memory": null
+            }
+          ],
+          "paddedLength": 67108864,
+          "containerBytes": 67117137,
+          "outputBytes": 67108864,
+          "commitmentVerified": true
+        }
+      },
+      "rss": {
+        "baselineBytes": 1418772480,
+        "peakBytes": 1610022912,
+        "maxProcesses": 7,
+        "samples": 23
+      },
+      "download": {
+        "suggestedFilename": "bench-output.bin",
+        "verification": {
+          "sizeMatches": true,
+          "size": 67108864,
+          "sha256Matches": true,
+          "ms": 27.67479199999798
+        }
+      }
+    },
+    {
+      "sink": "blob",
+      "size": 67108864,
+      "chunkSize": 1048576,
+      "wallMs": 5354.612250000006,
+      "pageErrors": [],
+      "page": {
+        "kind": "pipeline",
+        "startedAt": "2026-11-23T19:12:44.934Z",
+        "params": {
+          "size": 67108864,
+          "chunkSize": 1048576,
+          "source": {
+            "kind": "seeded",
+            "seed": 1
+          },
+          "sink": "blob"
+        },
+        "sinkLabel": "In-memory Blob, then blob: URL download",
+        "delivery": "blob-url-memory",
+        "environment": {
+          "storageBefore": {
+            "usage": 491520,
+            "quota": 10737418240
+          },
+          "memoryBefore": null
+        },
+        "result": {
+          "outcome": "ok",
+          "phases": [
+            {
+              "phase": "hash",
+              "ms": 1623.6599999999962,
+              "bytes": 67108864,
+              "mbPerSecond": 41.33184533707806,
+              "storage": {
+                "usage": 491520,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "encrypt",
+              "ms": 1732.1800000000003,
+              "bytes": 67112145,
+              "mbPerSecond": 38.74432507014282,
+              "storage": {
+                "usage": 67603665,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "release",
+              "ms": 0,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 67603665,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "decrypt",
+              "ms": 1654.5,
+              "bytes": 67112145,
+              "mbPerSecond": 40.56339981867633,
+              "storage": {
+                "usage": 67603665,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "cleanup",
+              "ms": 5.440000000002328,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 491520,
+                "quota": 10737418240
+              },
+              "memory": null
+            }
+          ],
+          "paddedLength": 67108864,
+          "containerBytes": 67112145,
+          "outputBytes": 67108864,
+          "commitmentVerified": true
+        }
+      },
+      "rss": {
+        "baselineBytes": 1517043712,
+        "peakBytes": 1603256320,
+        "maxProcesses": 8,
+        "samples": 22
+      },
+      "download": {
+        "suggestedFilename": "bench-output.bin",
+        "verification": {
+          "sizeMatches": true,
+          "size": 67108864,
+          "sha256Matches": true,
+          "ms": 28.653916999996
+        }
+      }
+    },
+    {
+      "sink": "sw",
+      "size": 67108864,
+      "chunkSize": 262144,
+      "wallMs": 5388.593207999991,
+      "pageErrors": [],
+      "page": {
+        "kind": "pipeline",
+        "startedAt": "2026-11-23T19:12:50.575Z",
+        "params": {
+          "size": 67108864,
+          "chunkSize": 262144,
+          "source": {
+            "kind": "seeded",
+            "seed": 1
+          },
+          "sink": "sw"
+        },
+        "sinkLabel": "Service worker streaming download from a synthetic /spike-dl/ URL",
+        "delivery": "sw-stream",
+        "environment": {
+          "storageBefore": {
+            "usage": 491520,
+            "quota": 10737418240
+          },
+          "memoryBefore": null
+        },
+        "result": {
+          "outcome": "ok",
+          "phases": [
+            {
+              "phase": "hash",
+              "ms": 1623.7200000000012,
+              "bytes": 67108864,
+              "mbPerSecond": 41.33031803512918,
+              "storage": {
+                "usage": 608259,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "encrypt",
+              "ms": 1732.520000000004,
+              "bytes": 67117137,
+              "mbPerSecond": 38.73960300602582,
+              "storage": {
+                "usage": 67725396,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "release",
+              "ms": 0.01999999999679858,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 67725396,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "decrypt",
+              "ms": 1669.0999999999985,
+              "bytes": 67117137,
+              "mbPerSecond": 40.21157330297769,
+              "storage": {
+                "usage": 67725396,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "cleanup",
+              "ms": 6.940000000002328,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 608259,
+                "quota": 10737418240
+              },
+              "memory": null
+            }
+          ],
+          "paddedLength": 67108864,
+          "containerBytes": 67117137,
+          "outputBytes": 67108864,
+          "commitmentVerified": true
+        },
+        "swTransport": "transferable-stream"
+      },
+      "rss": {
+        "baselineBytes": 1666596864,
+        "peakBytes": 1888321536,
+        "maxProcesses": 7,
+        "samples": 23
+      },
+      "download": {
+        "suggestedFilename": "bench-output.bin",
+        "verification": {
+          "sizeMatches": true,
+          "size": 67108864,
+          "sha256Matches": true,
+          "ms": 28.78262499999255
+        }
+      }
+    },
+    {
+      "sink": "sw",
+      "size": 67108864,
+      "chunkSize": 1048576,
+      "wallMs": 5104.616000000009,
+      "pageErrors": [],
+      "page": {
+        "kind": "pipeline",
+        "startedAt": "2026-11-23T19:12:56.021Z",
+        "params": {
+          "size": 67108864,
+          "chunkSize": 1048576,
+          "source": {
+            "kind": "seeded",
+            "seed": 1
+          },
+          "sink": "sw"
+        },
+        "sinkLabel": "Service worker streaming download from a synthetic /spike-dl/ URL",
+        "delivery": "sw-stream",
+        "environment": {
+          "storageBefore": {
+            "usage": 608259,
+            "quota": 10737418240
+          },
+          "memoryBefore": null
+        },
+        "result": {
+          "outcome": "ok",
+          "phases": [
+            {
+              "phase": "hash",
+              "ms": 1615.2000000000044,
+              "bytes": 67108864,
+              "mbPerSecond": 41.548330856859714,
+              "storage": {
+                "usage": 608259,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "encrypt",
+              "ms": 1678.2000000000044,
+              "bytes": 67112145,
+              "mbPerSecond": 39.99055237754727,
+              "storage": {
+                "usage": 67720404,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "release",
+              "ms": 0,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 67720404,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "decrypt",
+              "ms": 1656.0400000000009,
+              "bytes": 67112145,
+              "mbPerSecond": 40.52567872756695,
+              "storage": {
+                "usage": 67720404,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "cleanup",
+              "ms": 8.319999999999709,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 608259,
+                "quota": 10737418240
+              },
+              "memory": null
+            }
+          ],
+          "paddedLength": 67108864,
+          "containerBytes": 67112145,
+          "outputBytes": 67108864,
+          "commitmentVerified": true
+        },
+        "swTransport": "transferable-stream"
+      },
+      "rss": {
+        "baselineBytes": 1809088512,
+        "peakBytes": 1837875200,
+        "maxProcesses": 7,
+        "samples": 20
+      },
+      "download": {
+        "suggestedFilename": "bench-output.bin",
+        "verification": {
+          "sizeMatches": true,
+          "size": 67108864,
+          "sha256Matches": true,
+          "ms": 29.719124999988708
+        }
+      }
+    },
+    {
+      "sink": "opfs",
+      "size": 1073741824,
+      "chunkSize": 262144,
+      "wallMs": 84965.514417,
+      "pageErrors": [],
+      "page": {
+        "kind": "pipeline",
+        "startedAt": "2026-11-23T19:17:03.489Z",
+        "params": {
+          "size": 1073741824,
+          "chunkSize": 262144,
+          "source": {
+            "kind": "seeded",
+            "seed": 1
+          },
+          "sink": "opfs"
+        },
+        "sinkLabel": "OPFS sync access handle, then blob: URL download of the disk-backed File",
+        "delivery": "blob-url-disk",
+        "environment": {
+          "storageBefore": {
+            "usage": 0,
+            "quota": 10737418240
+          },
+          "memoryBefore": null
+        },
+        "result": {
+          "outcome": "ok",
+          "phases": [
+            {
+              "phase": "hash",
+              "ms": 28037.8,
+              "bytes": 1073741824,
+              "mbPerSecond": 38.29622238549386,
+              "storage": {
+                "usage": 491520,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "encrypt",
+              "ms": 28128.399999999998,
+              "bytes": 1073849937,
+              "mbPerSecond": 38.1767159525604,
+              "storage": {
+                "usage": 1074341457,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "release",
+              "ms": 0,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 1074341457,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "decrypt",
+              "ms": 26395.54,
+              "bytes": 1073849937,
+              "mbPerSecond": 40.68300693980877,
+              "storage": {
+                "usage": 2148083281,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "cleanup",
+              "ms": 33.5399999999936,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 1074233344,
+                "quota": 10737418240
+              },
+              "memory": null
+            }
+          ],
+          "paddedLength": 1073741824,
+          "containerBytes": 1073849937,
+          "outputBytes": 1073741824,
+          "commitmentVerified": true
+        }
+      },
+      "rss": {
+        "baselineBytes": 1330249728,
+        "peakBytes": 1399209984,
+        "maxProcesses": 7,
+        "samples": 335
+      },
+      "download": {
+        "suggestedFilename": "bench-output.bin",
+        "verification": {
+          "sizeMatches": true,
+          "size": 1073741824,
+          "sha256Matches": true,
+          "ms": 1228.3639169999951
+        }
+      }
+    },
+    {
+      "sink": "fsa-opfs",
+      "size": 1073741824,
+      "chunkSize": 262144,
+      "wallMs": 80313.881916,
+      "pageErrors": [],
+      "page": {
+        "kind": "pipeline",
+        "startedAt": "2026-11-23T19:23:06.055Z",
+        "params": {
+          "size": 1073741824,
+          "chunkSize": 262144,
+          "source": {
+            "kind": "seeded",
+            "seed": 1
+          },
+          "sink": "fsa-opfs"
+        },
+        "sinkLabel": "FileSystemWritableFileStream on an OPFS handle (no picker, for automation)",
+        "delivery": "blob-url-disk",
+        "environment": {
+          "storageBefore": {
+            "usage": 0,
+            "quota": 10737418240
+          },
+          "memoryBefore": null
+        },
+        "result": {
+          "outcome": "ok",
+          "phases": [
+            {
+              "phase": "hash",
+              "ms": 25823.12,
+              "bytes": 1073741824,
+              "mbPerSecond": 41.58063874543432,
+              "storage": {
+                "usage": 491520,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "encrypt",
+              "ms": 26385.4,
+              "bytes": 1073849937,
+              "mbPerSecond": 40.69864155934721,
+              "storage": {
+                "usage": 1074341457,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "release",
+              "ms": 0,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 1074341457,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "decrypt",
+              "ms": 25722.58,
+              "bytes": 1073849937,
+              "mbPerSecond": 41.74736503881026,
+              "storage": {
+                "usage": 2148083281,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "cleanup",
+              "ms": 41.69999999999709,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 1074233344,
+                "quota": 10737418240
+              },
+              "memory": null
+            }
+          ],
+          "paddedLength": 1073741824,
+          "containerBytes": 1073849937,
+          "outputBytes": 1073741824,
+          "commitmentVerified": true
+        }
+      },
+      "rss": {
+        "baselineBytes": 1328594944,
+        "peakBytes": 1466515456,
+        "maxProcesses": 7,
+        "samples": 317
+      },
+      "download": {
+        "suggestedFilename": "bench-output.bin",
+        "verification": {
+          "sizeMatches": true,
+          "size": 1073741824,
+          "sha256Matches": true,
+          "ms": 1192.7129580000037
+        }
+      }
+    },
+    {
+      "sink": "blob",
+      "size": 1073741824,
+      "chunkSize": 262144,
+      "wallMs": 81017.710084,
+      "pageErrors": [],
+      "page": {
+        "kind": "pipeline",
+        "startedAt": "2026-11-23T19:19:53.761Z",
+        "params": {
+          "size": 1073741824,
+          "chunkSize": 262144,
+          "source": {
+            "kind": "seeded",
+            "seed": 1
+          },
+          "sink": "blob"
+        },
+        "sinkLabel": "In-memory Blob, then blob: URL download",
+        "delivery": "blob-url-memory",
+        "environment": {
+          "storageBefore": {
+            "usage": 0,
+            "quota": 10737418240
+          },
+          "memoryBefore": null
+        },
+        "result": {
+          "outcome": "ok",
+          "phases": [
+            {
+              "phase": "hash",
+              "ms": 25340.72,
+              "bytes": 1073741824,
+              "mbPerSecond": 42.372190845406124,
+              "storage": {
+                "usage": 491520,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "encrypt",
+              "ms": 27541.5,
+              "bytes": 1073849937,
+              "mbPerSecond": 38.99024878819236,
+              "storage": {
+                "usage": 1074341457,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "release",
+              "ms": 0,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 1074341457,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "decrypt",
+              "ms": 25744.239999999998,
+              "bytes": 1073849937,
+              "mbPerSecond": 41.712240757544215,
+              "storage": {
+                "usage": 1074341457,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "cleanup",
+              "ms": 31.55999999999767,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 491520,
+                "quota": 10737418240
+              },
+              "memory": null
+            }
+          ],
+          "paddedLength": 1073741824,
+          "containerBytes": 1073849937,
+          "outputBytes": 1073741824,
+          "commitmentVerified": true
+        }
+      },
+      "rss": {
+        "baselineBytes": 1328218112,
+        "peakBytes": 3869179904,
+        "maxProcesses": 7,
+        "samples": 320
+      },
+      "download": {
+        "suggestedFilename": "bench-output.bin",
+        "verification": {
+          "sizeMatches": true,
+          "size": 1073741824,
+          "sha256Matches": true,
+          "ms": 1222.404416999998
+        }
+      }
+    },
+    {
+      "sink": "sw",
+      "size": 1073741824,
+      "chunkSize": 262144,
+      "wallMs": 80675.463,
+      "pageErrors": [],
+      "page": {
+        "kind": "pipeline",
+        "startedAt": "2026-11-23T19:18:30.833Z",
+        "params": {
+          "size": 1073741824,
+          "chunkSize": 262144,
+          "source": {
+            "kind": "seeded",
+            "seed": 1
+          },
+          "sink": "sw"
+        },
+        "sinkLabel": "Service worker streaming download from a synthetic /spike-dl/ URL",
+        "delivery": "sw-stream",
+        "environment": {
+          "storageBefore": {
+            "usage": 0,
+            "quota": 10737418240
+          },
+          "memoryBefore": null
+        },
+        "result": {
+          "outcome": "ok",
+          "phases": [
+            {
+              "phase": "hash",
+              "ms": 25391.899999999998,
+              "bytes": 1073741824,
+              "mbPerSecond": 42.286785313426726,
+              "storage": {
+                "usage": 558427,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "encrypt",
+              "ms": 27355.839999999997,
+              "bytes": 1073849937,
+              "mbPerSecond": 39.25486978283248,
+              "storage": {
+                "usage": 1074408364,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "release",
+              "ms": 0.020000000004074536,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 1074408364,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "decrypt",
+              "ms": 26278.32,
+              "bytes": 1073849937,
+              "mbPerSecond": 40.86448209017928,
+              "storage": {
+                "usage": 1074412516,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "cleanup",
+              "ms": 41.220000000001164,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 562579,
+                "quota": 10737418240
+              },
+              "memory": null
+            }
+          ],
+          "paddedLength": 1073741824,
+          "containerBytes": 1073849937,
+          "outputBytes": 1073741824,
+          "commitmentVerified": true
+        },
+        "swTransport": "transferable-stream"
+      },
+      "rss": {
+        "baselineBytes": 1331625984,
+        "peakBytes": 3265757184,
+        "maxProcesses": 7,
+        "samples": 318
+      },
+      "download": {
+        "suggestedFilename": "bench-output.bin",
+        "verification": {
+          "sizeMatches": true,
+          "size": 1073741824,
+          "sha256Matches": true,
+          "ms": 1231.4639580000076
+        }
+      }
+    },
+    {
+      "sink": "opfs",
+      "size": 1073741824,
+      "chunkSize": 1048576,
+      "wallMs": 78466.833625,
+      "pageErrors": [],
+      "page": {
+        "kind": "pipeline",
+        "startedAt": "2026-11-23T19:57:52.690Z",
+        "params": {
+          "size": 1073741824,
+          "chunkSize": 1048576,
+          "source": {
+            "kind": "seeded",
+            "seed": 1
+          },
+          "sink": "opfs"
+        },
+        "sinkLabel": "OPFS sync access handle, then blob: URL download of the disk-backed File",
+        "delivery": "blob-url-disk",
+        "environment": {
+          "storageBefore": {
+            "usage": 0,
+            "quota": 10737418240
+          },
+          "memoryBefore": null
+        },
+        "result": {
+          "outcome": "ok",
+          "phases": [
+            {
+              "phase": "hash",
+              "ms": 24946.06,
+              "bytes": 1073741824,
+              "mbPerSecond": 43.04254154764319,
+              "storage": {
+                "usage": 491520,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "encrypt",
+              "ms": 26049.2,
+              "bytes": 1073770065,
+              "mbPerSecond": 41.22084612963162,
+              "storage": {
+                "usage": 1074261585,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "release",
+              "ms": 0,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 1074261585,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "decrypt",
+              "ms": 25103.859999999993,
+              "bytes": 1073770065,
+              "mbPerSecond": 42.77310600839871,
+              "storage": {
+                "usage": 2148003409,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "cleanup",
+              "ms": 23.660000000003492,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 1074233344,
+                "quota": 10737418240
+              },
+              "memory": null
+            }
+          ],
+          "paddedLength": 1073741824,
+          "containerBytes": 1073770065,
+          "outputBytes": 1073741824,
+          "commitmentVerified": true
+        }
+      },
+      "rss": {
+        "baselineBytes": 1329643520,
+        "peakBytes": 1470857216,
+        "maxProcesses": 7,
+        "samples": 309
+      },
+      "download": {
+        "suggestedFilename": "bench-output.bin",
+        "verification": {
+          "sizeMatches": true,
+          "size": 1073741824,
+          "sha256Matches": true,
+          "ms": 1178.5836249999993
+        }
+      }
+    },
+    {
+      "sink": "fsa-opfs",
+      "size": 1073741824,
+      "chunkSize": 1048576,
+      "wallMs": 77473.56912500001,
+      "pageErrors": [],
+      "page": {
+        "kind": "pipeline",
+        "startedAt": "2026-11-23T19:59:11.474Z",
+        "params": {
+          "size": 1073741824,
+          "chunkSize": 1048576,
+          "source": {
+            "kind": "seeded",
+            "seed": 1
+          },
+          "sink": "fsa-opfs"
+        },
+        "sinkLabel": "FileSystemWritableFileStream on an OPFS handle (no picker, for automation)",
+        "delivery": "blob-url-disk",
+        "environment": {
+          "storageBefore": {
+            "usage": 491520,
+            "quota": 10737418240
+          },
+          "memoryBefore": null
+        },
+        "result": {
+          "outcome": "ok",
+          "phases": [
+            {
+              "phase": "hash",
+              "ms": 24998.98000000001,
+              "bytes": 1073741824,
+              "mbPerSecond": 42.951425378155406,
+              "storage": {
+                "usage": 491520,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "encrypt",
+              "ms": 25833.899999999994,
+              "bytes": 1073770065,
+              "mbPerSecond": 41.56438110389838,
+              "storage": {
+                "usage": 1074261585,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "release",
+              "ms": 0.01999999998952262,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 1074261585,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "decrypt",
+              "ms": 25173.440000000002,
+              "bytes": 1073770065,
+              "mbPerSecond": 42.654880103791925,
+              "storage": {
+                "usage": 2148003409,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "cleanup",
+              "ms": 21.880000000004657,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 1074233344,
+                "quota": 10737418240
+              },
+              "memory": null
+            }
+          ],
+          "paddedLength": 1073741824,
+          "containerBytes": 1073770065,
+          "outputBytes": 1073741824,
+          "commitmentVerified": true
+        }
+      },
+      "rss": {
+        "baselineBytes": 1397932032,
+        "peakBytes": 1467727872,
+        "maxProcesses": 7,
+        "samples": 306
+      },
+      "download": {
+        "suggestedFilename": "bench-output.bin",
+        "verification": {
+          "sizeMatches": true,
+          "size": 1073741824,
+          "sha256Matches": true,
+          "ms": 448.1909169999999
+        }
+      }
+    },
+    {
+      "sink": "blob",
+      "size": 1073741824,
+      "chunkSize": 1048576,
+      "wallMs": 77766.912166,
+      "pageErrors": [],
+      "page": {
+        "kind": "pipeline",
+        "startedAt": "2026-11-23T20:00:29.266Z",
+        "params": {
+          "size": 1073741824,
+          "chunkSize": 1048576,
+          "source": {
+            "kind": "seeded",
+            "seed": 1
+          },
+          "sink": "blob"
+        },
+        "sinkLabel": "In-memory Blob, then blob: URL download",
+        "delivery": "blob-url-memory",
+        "environment": {
+          "storageBefore": {
+            "usage": 491520,
+            "quota": 10737418240
+          },
+          "memoryBefore": null
+        },
+        "result": {
+          "outcome": "ok",
+          "phases": [
+            {
+              "phase": "hash",
+              "ms": 25025.580000000016,
+              "bytes": 1073741824,
+              "mbPerSecond": 42.905771774320485,
+              "storage": {
+                "usage": 491520,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "encrypt",
+              "ms": 25858.01999999999,
+              "bytes": 1073770065,
+              "mbPerSecond": 41.52561042956887,
+              "storage": {
+                "usage": 1074261585,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "release",
+              "ms": 0,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 1074261585,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "decrypt",
+              "ms": 25101.679999999993,
+              "bytes": 1073770065,
+              "mbPerSecond": 42.77682071478882,
+              "storage": {
+                "usage": 1074261585,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "cleanup",
+              "ms": 26.379999999975553,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 491520,
+                "quota": 10737418240
+              },
+              "memory": null
+            }
+          ],
+          "paddedLength": 1073741824,
+          "containerBytes": 1073770065,
+          "outputBytes": 1073741824,
+          "commitmentVerified": true
+        }
+      },
+      "rss": {
+        "baselineBytes": 1393344512,
+        "peakBytes": 3495231488,
+        "maxProcesses": 7,
+        "samples": 307
+      },
+      "download": {
+        "suggestedFilename": "bench-output.bin",
+        "verification": {
+          "sizeMatches": true,
+          "size": 1073741824,
+          "sha256Matches": true,
+          "ms": 463.74279099999694
+        }
+      }
+    },
+    {
+      "sink": "sw",
+      "size": 1073741824,
+      "chunkSize": 1048576,
+      "wallMs": 76856.849334,
+      "pageErrors": [],
+      "page": {
+        "kind": "pipeline",
+        "startedAt": "2026-11-23T20:01:47.112Z",
+        "params": {
+          "size": 1073741824,
+          "chunkSize": 1048576,
+          "source": {
+            "kind": "seeded",
+            "seed": 1
+          },
+          "sink": "sw"
+        },
+        "sinkLabel": "Service worker streaming download from a synthetic /spike-dl/ URL",
+        "delivery": "sw-stream",
+        "environment": {
+          "storageBefore": {
+            "usage": 491520,
+            "quota": 10737418240
+          },
+          "memoryBefore": null
+        },
+        "result": {
+          "outcome": "ok",
+          "phases": [
+            {
+              "phase": "hash",
+              "ms": 25065.320000000007,
+              "bytes": 1073741824,
+              "mbPerSecond": 42.83774649595535,
+              "storage": {
+                "usage": 608259,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "encrypt",
+              "ms": 25874.880000000005,
+              "bytes": 1073770065,
+              "mbPerSecond": 41.49855245705486,
+              "storage": {
+                "usage": 1074378324,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "release",
+              "ms": 0.02000000001862645,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 1074378324,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "decrypt",
+              "ms": 25228.20000000001,
+              "bytes": 1073770065,
+              "mbPerSecond": 42.562293980545554,
+              "storage": {
+                "usage": 1074378324,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "cleanup",
+              "ms": 35.73999999999069,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 608259,
+                "quota": 10737418240
+              },
+              "memory": null
+            }
+          ],
+          "paddedLength": 1073741824,
+          "containerBytes": 1073770065,
+          "outputBytes": 1073741824,
+          "commitmentVerified": true
+        },
+        "swTransport": "transferable-stream"
+      },
+      "rss": {
+        "baselineBytes": 3598483456,
+        "peakBytes": 3857825792,
+        "maxProcesses": 7,
+        "samples": 305
+      },
+      "download": {
+        "suggestedFilename": "bench-output.bin",
+        "verification": {
+          "sizeMatches": true,
+          "size": 1073741824,
+          "sha256Matches": true,
+          "ms": 450.63495800003875
+        }
+      }
+    },
+    {
+      "sink": "opfs",
+      "size": 1073741824,
+      "chunkSize": 49152,
+      "wallMs": 81222.029875,
+      "pageErrors": [],
+      "page": {
+        "kind": "pipeline",
+        "startedAt": "2026-11-23T20:18:26.340Z",
+        "params": {
+          "size": 1073741824,
+          "chunkSize": 49152,
+          "source": {
+            "kind": "seeded",
+            "seed": 1
+          },
+          "sink": "opfs"
+        },
+        "sinkLabel": "OPFS sync access handle, then blob: URL download of the disk-backed File",
+        "delivery": "blob-url-disk",
+        "environment": {
+          "storageBefore": {
+            "usage": 0,
+            "quota": 10737418240
+          },
+          "memoryBefore": null
+        },
+        "result": {
+          "outcome": "ok",
+          "phases": [
+            {
+              "phase": "hash",
+              "ms": 24978.14,
+              "bytes": 1073741824,
+              "mbPerSecond": 42.987261021036794,
+              "storage": {
+                "usage": 491520,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "encrypt",
+              "ms": 27261.799999999996,
+              "bytes": 1074344205,
+              "mbPerSecond": 39.408410486468256,
+              "storage": {
+                "usage": 1074835725,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "release",
+              "ms": 0.01999999999679858,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 1074835725,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "decrypt",
+              "ms": 26646.660000000003,
+              "bytes": 1074344205,
+              "mbPerSecond": 40.31815638432734,
+              "storage": {
+                "usage": 2148577549,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "cleanup",
+              "ms": 37.15999999998894,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 1074233344,
+                "quota": 10737418240
+              },
+              "memory": null
+            }
+          ],
+          "paddedLength": 1073774592,
+          "containerBytes": 1074344205,
+          "outputBytes": 1073741824,
+          "commitmentVerified": true
+        }
+      },
+      "rss": {
+        "baselineBytes": 1327677440,
+        "peakBytes": 1503313920,
+        "maxProcesses": 7,
+        "samples": 320
+      },
+      "download": {
+        "suggestedFilename": "bench-output.bin",
+        "verification": {
+          "sizeMatches": true,
+          "size": 1073741824,
+          "sha256Matches": true,
+          "ms": 1179.2562080000062
+        }
+      }
+    },
+    {
+      "sink": "opfs",
+      "size": 5368709120,
+      "chunkSize": 262144,
+      "wallMs": 385529.830083,
+      "pageErrors": [],
+      "page": {
+        "kind": "pipeline",
+        "startedAt": "2026-11-23T19:37:54.214Z",
+        "params": {
+          "size": 5368709120,
+          "chunkSize": 262144,
+          "source": {
+            "kind": "seeded",
+            "seed": 1
+          },
+          "sink": "opfs"
+        },
+        "sinkLabel": "OPFS sync access handle, then blob: URL download of the disk-backed File",
+        "delivery": "none",
+        "environment": {
+          "storageBefore": {
+            "usage": 0,
+            "quota": 10737418240
+          },
+          "memoryBefore": null
+        },
+        "result": {
+          "outcome": "error",
+          "phases": [
+            {
+              "phase": "hash",
+              "ms": 124759.84,
+              "bytes": 5368709120,
+              "mbPerSecond": 43.03235015370331,
+              "storage": {
+                "usage": 491520,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "encrypt",
+              "ms": 130791.79999999999,
+              "bytes": 5369243217,
+              "mbPerSecond": 41.05183365470924,
+              "storage": {
+                "usage": 5369734737,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "release",
+              "ms": 0,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 5369734737,
+                "quota": 10737418240
+              },
+              "memory": null
+            }
+          ],
+          "paddedLength": 5368709120,
+          "containerBytes": 5369243217,
+          "outputBytes": 5367660544,
+          "commitmentVerified": false,
+          "error": {
+            "phase": "decrypt",
+            "name": "Error",
+            "message": "OPFS write made no progress"
+          }
+        }
+      },
+      "rss": {
+        "baselineBytes": 1329020928,
+        "peakBytes": 1465303040,
+        "maxProcesses": 7,
+        "samples": 1535
+      }
+    },
+    {
+      "sink": "fsa-opfs",
+      "size": 5368709120,
+      "chunkSize": 262144,
+      "wallMs": 385999.528625,
+      "pageErrors": [],
+      "page": {
+        "kind": "pipeline",
+        "startedAt": "2026-11-23T20:11:31.527Z",
+        "params": {
+          "size": 5368709120,
+          "chunkSize": 262144,
+          "source": {
+            "kind": "seeded",
+            "seed": 1
+          },
+          "sink": "fsa-opfs"
+        },
+        "sinkLabel": "FileSystemWritableFileStream on an OPFS handle (no picker, for automation)",
+        "delivery": "none",
+        "environment": {
+          "storageBefore": {
+            "usage": 0,
+            "quota": 10737418240
+          },
+          "memoryBefore": null
+        },
+        "result": {
+          "outcome": "error",
+          "phases": [
+            {
+              "phase": "hash",
+              "ms": 124819.59999999999,
+              "bytes": 5368709120,
+              "mbPerSecond": 43.01174751401223,
+              "storage": {
+                "usage": 491520,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "encrypt",
+              "ms": 129917.48,
+              "bytes": 5369243217,
+              "mbPerSecond": 41.32810470923544,
+              "storage": {
+                "usage": 5369734737,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "release",
+              "ms": 0.01999999998952262,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 5369734737,
+                "quota": 10737418240
+              },
+              "memory": null
+            }
+          ],
+          "paddedLength": 5368709120,
+          "containerBytes": 5369243217,
+          "outputBytes": 5367660544,
+          "commitmentVerified": false,
+          "error": {
+            "phase": "decrypt",
+            "name": "QuotaExceededError",
+            "message": "Quota exceeded"
+          }
+        }
+      },
+      "rss": {
+        "baselineBytes": 1328693248,
+        "peakBytes": 1471578112,
+        "maxProcesses": 7,
+        "samples": 1534
+      }
+    },
+    {
+      "sink": "blob",
+      "size": 5368709120,
+      "chunkSize": 262144,
+      "wallMs": 394610.24512499996,
+      "pageErrors": [],
+      "page": {
+        "kind": "pipeline",
+        "startedAt": "2026-11-23T19:44:21.775Z",
+        "params": {
+          "size": 5368709120,
+          "chunkSize": 262144,
+          "source": {
+            "kind": "seeded",
+            "seed": 1
+          },
+          "sink": "blob"
+        },
+        "sinkLabel": "In-memory Blob, then blob: URL download",
+        "delivery": "blob-url-memory",
+        "environment": {
+          "storageBefore": {
+            "usage": 0,
+            "quota": 10737418240
+          },
+          "memoryBefore": null
+        },
+        "result": {
+          "outcome": "ok",
+          "phases": [
+            {
+              "phase": "hash",
+              "ms": 125667.20000000001,
+              "bytes": 5368709120,
+              "mbPerSecond": 42.721641924066105,
+              "storage": {
+                "usage": 491520,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "encrypt",
+              "ms": 130601.14,
+              "bytes": 5369243217,
+              "mbPerSecond": 41.111763779397336,
+              "storage": {
+                "usage": 5369734737,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "release",
+              "ms": 0.01999999998952262,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 5369734737,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "decrypt",
+              "ms": 125484.08000000002,
+              "bytes": 5369243217,
+              "mbPerSecond": 42.78824227742674,
+              "storage": {
+                "usage": 5369734737,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "cleanup",
+              "ms": 276.54000000003725,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 491520,
+                "quota": 10737418240
+              },
+              "memory": null
+            }
+          ],
+          "paddedLength": 5368709120,
+          "containerBytes": 5369243217,
+          "outputBytes": 5368709120,
+          "commitmentVerified": true
+        }
+      },
+      "rss": {
+        "baselineBytes": 1330020352,
+        "peakBytes": 12405309440,
+        "maxProcesses": 7,
+        "samples": 1545
+      },
+      "download": {
+        "suggestedFilename": "bench-output.bin",
+        "verification": {
+          "sizeMatches": true,
+          "size": 5368709120,
+          "sha256Matches": true,
+          "ms": 6571.544999999984
+        }
+      }
+    },
+    {
+      "sink": "sw",
+      "size": 5368709120,
+      "chunkSize": 262144,
+      "wallMs": 388039.35458299995,
+      "pageErrors": [],
+      "page": {
+        "kind": "pipeline",
+        "startedAt": "2026-11-23T19:31:22.834Z",
+        "params": {
+          "size": 5368709120,
+          "chunkSize": 262144,
+          "source": {
+            "kind": "seeded",
+            "seed": 1
+          },
+          "sink": "sw"
+        },
+        "sinkLabel": "Service worker streaming download from a synthetic /spike-dl/ URL",
+        "delivery": "sw-stream",
+        "environment": {
+          "storageBefore": {
+            "usage": 0,
+            "quota": 10737418240
+          },
+          "memoryBefore": null
+        },
+        "result": {
+          "outcome": "ok",
+          "phases": [
+            {
+              "phase": "hash",
+              "ms": 125292.16,
+              "bytes": 5368709120,
+              "mbPerSecond": 42.84952163008444,
+              "storage": {
+                "usage": 558427,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "encrypt",
+              "ms": 129495.82,
+              "bytes": 5369243217,
+              "mbPerSecond": 41.46267591494459,
+              "storage": {
+                "usage": 5369801644,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "release",
+              "ms": 0,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 5369801644,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "decrypt",
+              "ms": 126566.23999999999,
+              "bytes": 5369243217,
+              "mbPerSecond": 42.422396501626345,
+              "storage": {
+                "usage": 5369801644,
+                "quota": 10737418240
+              },
+              "memory": null
+            },
+            {
+              "phase": "cleanup",
+              "ms": 196.2399999999907,
+              "bytes": 0,
+              "mbPerSecond": null,
+              "storage": {
+                "usage": 558427,
+                "quota": 10737418240
+              },
+              "memory": null
+            }
+          ],
+          "paddedLength": 5368709120,
+          "containerBytes": 5369243217,
+          "outputBytes": 5368709120,
+          "commitmentVerified": true
+        },
+        "swTransport": "transferable-stream"
+      },
+      "rss": {
+        "baselineBytes": 1329725440,
+        "peakBytes": 7016710144,
+        "maxProcesses": 7,
+        "samples": 1518
+      },
+      "download": {
+        "suggestedFilename": "bench-output.bin",
+        "verification": {
+          "sizeMatches": true,
+          "size": 5368709120,
+          "sha256Matches": true,
+          "ms": 6073.266457999998
+        }
+      }
+    }
+  ],
+  "rss": {
+    "baselineBytes": 1328922624,
+    "peakBytes": 12405309440
+  },
+  "environment": {
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:159.0) Gecko/20100101 Firefox/159.0",
+    "hardwareConcurrency": 12,
+    "deviceMemory": null,
+    "secureContext": true,
+    "crossOriginIsolated": true,
+    "storage": {
+      "quota": 10737418240,
+      "usage": 0
+    },
+    "memoryApis": {
+      "performanceMemory": false,
+      "jsHeapSizeLimit": null,
+      "measureUserAgentSpecificMemory": false
+    },
+    "fileApis": {
+      "opfs": true,
+      "showSaveFilePicker": false,
+      "serviceWorker": true
+    },
+    "sinks": {
+      "fsa": false,
+      "fsa-opfs": true,
+      "opfs": true,
+      "blob": true,
+      "sw": true
+    }
+  },
+  "micro": {
+    "page": {
+      "kind": "micro",
+      "startedAt": "2026-11-23T19:12:08.697Z",
+      "totalBytes": 268435456,
+      "chunkSizes": [49152, 262144, 1048576, 4194304],
+      "results": [
+        {
+          "stage": "generator",
+          "chunkSize": 1048576,
+          "bytes": 268435456,
+          "ms": 131.79999999999998,
+          "mbPerSecond": 2036.687830045524
+        },
+        {
+          "stage": "sha256-js",
+          "chunkSize": 1048576,
+          "bytes": 268435456,
+          "ms": 6151.34,
+          "mbPerSecond": 43.638533392724185
+        },
+        {
+          "stage": "aes-gcm-encrypt",
+          "chunkSize": 49152,
+          "bytes": 268468224,
+          "ms": 188.6399999999794,
+          "mbPerSecond": 1423.1776081426492
+        },
+        {
+          "stage": "aes-gcm-decrypt",
+          "chunkSize": 49152,
+          "bytes": 268468224,
+          "ms": 176.34000000002197,
+          "mbPerSecond": 1522.4465464441791
+        },
+        {
+          "stage": "aes-gcm-encrypt",
+          "chunkSize": 262144,
+          "bytes": 268435456,
+          "ms": 104.51999999999862,
+          "mbPerSecond": 2568.268809797202
+        },
+        {
+          "stage": "aes-gcm-decrypt",
+          "chunkSize": 262144,
+          "bytes": 268435456,
+          "ms": 88.06000000000131,
+          "mbPerSecond": 3048.324506018578
+        },
+        {
+          "stage": "aes-gcm-encrypt",
+          "chunkSize": 1048576,
+          "bytes": 268435456,
+          "ms": 131.9599999999973,
+          "mbPerSecond": 2034.2183692028302
+        },
+        {
+          "stage": "aes-gcm-decrypt",
+          "chunkSize": 1048576,
+          "bytes": 268435456,
+          "ms": 115.22000000000298,
+          "mbPerSecond": 2329.764415899957
+        },
+        {
+          "stage": "aes-gcm-encrypt",
+          "chunkSize": 4194304,
+          "bytes": 268435456,
+          "ms": 132.88000000000193,
+          "mbPerSecond": 2020.1343768813672
+        },
+        {
+          "stage": "aes-gcm-decrypt",
+          "chunkSize": 4194304,
+          "bytes": 268435456,
+          "ms": 116.79999999999836,
+          "mbPerSecond": 2298.24876712332
+        }
+      ]
+    },
+    "rss": {
+      "baselineBytes": 1328922624,
+      "peakBytes": 1615364096,
+      "maxProcesses": 7,
+      "samples": 32
+    }
+  },
+  "invocations": [
+    {
+      "startedAt": "2026-11-23T19:12:08.233Z",
+      "args": {
+        "sizes": [67108864],
+        "sinks": ["opfs", "fsa-opfs", "blob", "sw"],
+        "chunks": [262144, 1048576],
+        "seed": 1,
+        "microBytes": 268435456,
+        "headed": false
+      },
+      "rss": {
+        "baselineBytes": 1328922624,
+        "peakBytes": 1888321536
+      }
+    },
+    {
+      "startedAt": "2026-11-23T19:17:02.977Z",
+      "args": {
+        "sizes": [1073741824],
+        "sinks": ["opfs"],
+        "chunks": [262144],
+        "seed": 1,
+        "microBytes": 0,
+        "headed": false
+      },
+      "rss": {
+        "baselineBytes": 1330249728,
+        "peakBytes": 1399209984
+      }
+    },
+    {
+      "startedAt": "2026-11-23T19:23:05.522Z",
+      "args": {
+        "sizes": [1073741824],
+        "sinks": ["fsa-opfs"],
+        "chunks": [262144],
+        "seed": 1,
+        "microBytes": 0,
+        "headed": false
+      },
+      "rss": {
+        "baselineBytes": 1328594944,
+        "peakBytes": 1466515456
+      }
+    },
+    {
+      "startedAt": "2026-11-23T19:19:53.275Z",
+      "args": {
+        "sizes": [1073741824],
+        "sinks": ["blob"],
+        "chunks": [262144],
+        "seed": 1,
+        "microBytes": 0,
+        "headed": false
+      },
+      "rss": {
+        "baselineBytes": 1328218112,
+        "peakBytes": 3869179904
+      }
+    },
+    {
+      "startedAt": "2026-11-23T19:18:30.343Z",
+      "args": {
+        "sizes": [1073741824],
+        "sinks": ["sw"],
+        "chunks": [262144],
+        "seed": 1,
+        "microBytes": 0,
+        "headed": false
+      },
+      "rss": {
+        "baselineBytes": 1331625984,
+        "peakBytes": 3265757184
+      }
+    },
+    {
+      "startedAt": "2026-11-23T19:57:52.200Z",
+      "args": {
+        "sizes": [1073741824],
+        "sinks": ["opfs", "fsa-opfs", "blob", "sw"],
+        "chunks": [1048576],
+        "seed": 1,
+        "microBytes": 0,
+        "headed": false
+      },
+      "rss": {
+        "baselineBytes": 1329643520,
+        "peakBytes": 3857825792
+      }
+    },
+    {
+      "startedAt": "2026-11-23T20:18:25.841Z",
+      "args": {
+        "sizes": [1073741824],
+        "sinks": ["opfs"],
+        "chunks": [49152],
+        "seed": 1,
+        "microBytes": 0,
+        "headed": false
+      },
+      "rss": {
+        "baselineBytes": 1327677440,
+        "peakBytes": 1503313920
+      }
+    },
+    {
+      "startedAt": "2026-11-23T19:37:53.707Z",
+      "args": {
+        "sizes": [5368709120],
+        "sinks": ["opfs"],
+        "chunks": [262144],
+        "seed": 1,
+        "microBytes": 0,
+        "headed": false
+      },
+      "rss": {
+        "baselineBytes": 1329020928,
+        "peakBytes": 1465303040
+      }
+    },
+    {
+      "startedAt": "2026-11-23T20:11:31.042Z",
+      "args": {
+        "sizes": [5368709120],
+        "sinks": ["fsa-opfs"],
+        "chunks": [262144],
+        "seed": 1,
+        "microBytes": 0,
+        "headed": false
+      },
+      "rss": {
+        "baselineBytes": 1328693248,
+        "peakBytes": 1471578112
+      }
+    },
+    {
+      "startedAt": "2026-11-23T19:44:21.289Z",
+      "args": {
+        "sizes": [5368709120],
+        "sinks": ["blob"],
+        "chunks": [262144],
+        "seed": 1,
+        "microBytes": 0,
+        "headed": false
+      },
+      "rss": {
+        "baselineBytes": 1330020352,
+        "peakBytes": 12405309440
+      }
+    },
+    {
+      "startedAt": "2026-11-23T19:31:22.350Z",
+      "args": {
+        "sizes": [5368709120],
+        "sinks": ["sw"],
+        "chunks": [262144],
+        "seed": 1,
+        "microBytes": 0,
+        "headed": false
+      },
+      "rss": {
+        "baselineBytes": 1329725440,
+        "peakBytes": 7016710144
+      }
+    }
+  ]
+}

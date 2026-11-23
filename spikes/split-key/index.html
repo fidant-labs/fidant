@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Split-key bench</title>
+    <link rel="stylesheet" href="/src/bench/bench.css" />
+  </head>
+  <body data-state="idle">
+    <h1>Split-key bench (SIG-7)</h1>
+    <p>
+      Seeded synthetic data, or a file you pick that never leaves this browser. Keys stay in the
+      worker. The JSON holds measurements and the browser environment, never keys, file names or
+      content.
+    </p>
+
+    <section aria-labelledby="micro-heading">
+      <h2 id="micro-heading">Stage microbenchmarks</h2>
+      <form id="micro-form">
+        <label>
+          MiB per stage
+          <input id="micro-mib" type="number" min="1" max="4096" step="1" value="256" required />
+        </label>
+        <fieldset>
+          <legend>AES-GCM chunk sizes</legend>
+          <div id="micro-chunks"></div>
+        </fieldset>
+        <button id="micro-run" type="submit">Run microbenchmarks</button>
+      </form>
+    </section>
+
+    <section aria-labelledby="pipeline-heading">
+      <h2 id="pipeline-heading">Full pipeline</h2>
+      <p>
+        Hash, encrypt into a staged OPFS file, release the server half, decrypt from OPFS into the
+        sink, then delete the staged file.
+      </p>
+      <form id="pipeline-form">
+        <label>
+          Size
+          <select id="pipe-size"></select>
+        </label>
+        <label>
+          Custom MiB
+          <input id="pipe-custom-mib" type="number" min="0" step="1" value="16" />
+        </label>
+        <label>
+          Chunk
+          <select id="pipe-chunk"></select>
+        </label>
+        <fieldset>
+          <legend>Source</legend>
+          <label><input type="radio" name="pipe-source" value="seeded" checked /> Seeded</label>
+          <label>
+            Seed
+            <input id="pipe-seed" type="number" min="0" max="4294967295" step="1" value="1" />
+          </label>
+          <label><input type="radio" name="pipe-source" value="file" /> File</label>
+          <input id="pipe-file" type="file" aria-label="File to use as the source" />
+        </fieldset>
+        <label>
+          Sink
+          <select id="pipe-sink"></select>
+        </label>
+        <button id="pipe-run" type="submit">Run pipeline</button>
+        <button id="clear-opfs" type="button">Clear OPFS</button>
+      </form>
+    </section>
+
+    <p id="status" role="status" aria-live="polite">Idle.</p>
+
+    <section aria-labelledby="results-heading">
+      <h2 id="results-heading">Microbenchmark results</h2>
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Stage</th>
+            <th scope="col">Chunk</th>
+            <th scope="col">MiB</th>
+            <th scope="col">ms</th>
+            <th scope="col">MB/s</th>
+          </tr>
+        </thead>
+        <tbody id="results"></tbody>
+      </table>
+    </section>
+
+    <section aria-labelledby="pipeline-results-heading">
+      <h2 id="pipeline-results-heading">Pipeline results</h2>
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Sink</th>
+            <th scope="col">Size</th>
+            <th scope="col">Chunk</th>
+            <th scope="col">Phase</th>
+            <th scope="col">MiB</th>
+            <th scope="col">ms</th>
+            <th scope="col">MB/s</th>
+            <th scope="col">OPFS MiB</th>
+            <th scope="col">JS heap MiB</th>
+          </tr>
+        </thead>
+        <tbody id="pipeline-results"></tbody>
+      </table>
+    </section>
+
+    <section aria-labelledby="env-heading">
+      <h2 id="env-heading">Environment</h2>
+      <pre id="environment"></pre>
+    </section>
+
+    <section aria-labelledby="json-heading">
+      <h2 id="json-heading">JSON</h2>
+      <button id="copy" type="button">Copy JSON</button>
+      <pre id="json"></pre>
+    </section>
+
+    <script type="module" src="/src/bench/main.ts"></script>
+  </body>
+</html>
