@@ -54,7 +54,7 @@ main {
   list-style: none;
 }
 
-.menu a {
+.menu > li > * {
   display: block;
   padding: 0.35rem 0.7rem;
   border-radius: var(--radius);
@@ -67,7 +67,7 @@ main {
   text-decoration: underline;
 }
 
-.menu a[aria-current="page"] {
+.menu [aria-current="page"] {
   background: var(--surface);
   box-shadow: inset 0 0 0 1px var(--border);
   font-weight: 600;

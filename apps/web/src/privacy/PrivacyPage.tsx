@@ -13,11 +13,11 @@ const NEVER: ReadonlyArray<readonly [string, string]> = [
 const SEES: ReadonlyArray<readonly [string, string]> = [
   [
     "Your IP address and browser details",
-    "Like any website you visit. We use them only to keep the connection open, and never write them to our logs.",
+    "Like any website you visit. We use them only to show you this page and connect you, and never write them to our logs.",
   ],
   [
-    "A link number",
-    "Each link has a random number so the right two browsers can find each other. It can't unlock anything. We forget it within a minute after the sender's page closes.",
+    "A link ID",
+    "Each link has a random ID, like a ticket number, so the right two browsers can find each other. It can't unlock anything. We forget it within a minute after the sender's page closes, apart from its first few characters in our log lines.",
   ],
   [
     "Setup messages",
@@ -91,6 +91,10 @@ export function PrivacyPage() {
           send that part to any website, ours included. That is why we can't unlock your file even
           if we wanted to.
         </p>
+        <p>
+          Because the two browsers connect directly, each can see the other's network address (IP
+          address), the same as on a video call.
+        </p>
         <p class="notice warning">
           Anyone who has the link can open the file. Send each link only to the person it is for.
         </p>
@@ -105,7 +109,7 @@ export function PrivacyPage() {
         <h3>What we keep</h3>
         <p>
           We have no accounts, no database, no cookies and no tracking. Apart from the log lines
-          above, nothing is saved once the transfer is over.
+          above, nothing is kept once the sender's page is closed, within a minute at most.
         </p>
       </section>
     </Page>

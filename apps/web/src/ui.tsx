@@ -1,4 +1,4 @@
-// Pieces shared by the send and receive pages.
+// Pieces shared by the pages.
 
 import type { ComponentChildren } from "preact";
 import { FILE_DATA, LOGS, passedOn, type Relayed } from "./lib/server-facts.ts";
@@ -71,22 +71,19 @@ function Menu({ current }: { current: Section | undefined }) {
   return (
     <nav aria-label="Main">
       <ul class="menu">
-        {MENU.map(([section, href, label]) =>
-          section === current ? (
-            <li key={section}>
-              <a href={href} aria-current="page">
-                {label}
-              </a>
-            </li>
-          ) : (
-            <li key={section}>
+        {MENU.map(([section, href, label]) => (
+          <li key={section}>
+            {section === current ? (
+              // Not a link: following it would reload the page and drop a transfer in progress.
+              <span aria-current="page">{label}</span>
+            ) : (
               <a href={href} target={newTab ? "_blank" : undefined} rel="noopener">
                 {label}
                 {newTab && <span class="visually-hidden"> (opens in a new tab)</span>}
               </a>
-            </li>
-          ),
-        )}
+            )}
+          </li>
+        ))}
       </ul>
     </nav>
   );

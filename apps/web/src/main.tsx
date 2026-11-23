@@ -22,7 +22,7 @@ function InsecurePage() {
 
 function App() {
   // The privacy page uses no crypto, so it opens even without a secure connection.
-  if (location.pathname === "/privacy") {
+  if (/^\/privacy\/?$/.test(location.pathname)) {
     return <PrivacyPage />;
   }
   if (!hasSecureCrypto()) {
