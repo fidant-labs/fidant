@@ -9,6 +9,7 @@ const h3 = "mt-6 mb-2 font-bold";
 
 // Written for people who aren't technical. Keep every sentence true of what the
 // code does today: `server` in the dictionaries and apps/server/src/signaling.ts are the source.
+// `logFields` lists every field the server stores; it is keyed by LogFields, so it cannot fall behind.
 // The text lives in i18n/en.ts and i18n/sv.ts under `privacy`.
 
 function Facts({ rows }: { rows: ReadonlyArray<readonly [string, string]> }) {
@@ -74,9 +75,16 @@ export function PrivacyPage() {
         <h3 class={h3}>{p.neverHeading}</h3>
         <Facts rows={p.never} />
         <h3 class={h3}>{p.seesHeading}</h3>
-        <Facts rows={[...p.sees, [p.logLines, t.server.logs]]} />
+        <Facts rows={p.sees} />
         <h3 class={h3}>{p.keepHeading}</h3>
         <p>{p.keep}</p>
+        <Facts
+          rows={Object.values(p.logFields).map(([what, why]) => [
+            what.charAt(0).toUpperCase() + what.slice(1),
+            why,
+          ])}
+        />
+        <p class="mt-4">{p.logRetention}</p>
       </section>
     </Page>
   );
