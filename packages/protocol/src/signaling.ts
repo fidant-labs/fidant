@@ -75,7 +75,9 @@ function parseObject(raw: string): Fields | undefined {
   } catch {
     return undefined;
   }
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return undefined;
+  }
   return value as Fields;
 }
 
@@ -104,32 +106,52 @@ function isErrorCode(value: unknown): value is ErrorCode {
 }
 
 function parseRelay(value: Fields): RelayMessage | undefined {
-  if (!hasKeys(value, ["t", "link", "data"])) return undefined;
-  if (!isLinkId(value.link) || !isRelayData(value.data)) return undefined;
+  if (!hasKeys(value, ["t", "link", "data"])) {
+    return undefined;
+  }
+  if (!isLinkId(value.link) || !isRelayData(value.data)) {
+    return undefined;
+  }
   return { t: "relay", link: value.link, data: value.data };
 }
 
 /** Parses a message a browser sent to the server. Returns undefined if it is invalid. */
 export function parseClientMessage(raw: string): ClientMessage | undefined {
   const value = parseObject(raw);
-  if (!value) return undefined;
+  if (!value) {
+    return undefined;
+  }
   switch (value.t) {
     case "host": {
-      if (!hasKeys(value, ["t", "links"])) return undefined;
+      if (!hasKeys(value, ["t", "links"])) {
+        return undefined;
+      }
       const links = value.links;
-      if (!Array.isArray(links) || links.length > MAX_LINKS) return undefined;
-      if (!links.every(isLinkId)) return undefined;
-      if (new Set(links).size !== links.length) return undefined;
+      if (!Array.isArray(links) || links.length > MAX_LINKS) {
+        return undefined;
+      }
+      if (!links.every(isLinkId)) {
+        return undefined;
+      }
+      if (new Set(links).size !== links.length) {
+        return undefined;
+      }
       return { t: "host", links: [...links] };
     }
     case "join":
-      if (!hasKeys(value, ["t", "link"]) || !isLinkId(value.link)) return undefined;
+      if (!hasKeys(value, ["t", "link"]) || !isLinkId(value.link)) {
+        return undefined;
+      }
       return { t: "join", link: value.link };
     case "relay":
       return parseRelay(value);
     case "refuse":
-      if (!hasKeys(value, ["t", "link", "reason"])) return undefined;
-      if (!isLinkId(value.link) || !isRefuseReason(value.reason)) return undefined;
+      if (!hasKeys(value, ["t", "link", "reason"])) {
+        return undefined;
+      }
+      if (!isLinkId(value.link) || !isRefuseReason(value.reason)) {
+        return undefined;
+      }
       return { t: "refuse", link: value.link, reason: value.reason };
     default:
       return undefined;
@@ -139,22 +161,32 @@ export function parseClientMessage(raw: string): ClientMessage | undefined {
 /** Parses a message the server sent to a browser. Returns undefined if it is invalid. */
 export function parseServerMessage(raw: string): ServerMessage | undefined {
   const value = parseObject(raw);
-  if (!value) return undefined;
+  if (!value) {
+    return undefined;
+  }
   switch (value.t) {
     case "joined":
     case "left":
-      if (!hasKeys(value, ["t", "link"]) || !isLinkId(value.link)) return undefined;
+      if (!hasKeys(value, ["t", "link"]) || !isLinkId(value.link)) {
+        return undefined;
+      }
       return { t: value.t, link: value.link };
     case "relay":
       return parseRelay(value);
     case "refused":
-      if (!hasKeys(value, ["t", "reason"]) || !isRefuseReason(value.reason)) return undefined;
+      if (!hasKeys(value, ["t", "reason"]) || !isRefuseReason(value.reason)) {
+        return undefined;
+      }
       return { t: "refused", reason: value.reason };
     case "host-gone":
-      if (!hasKeys(value, ["t"])) return undefined;
+      if (!hasKeys(value, ["t"])) {
+        return undefined;
+      }
       return { t: "host-gone" };
     case "error":
-      if (!hasKeys(value, ["t", "code"]) || !isErrorCode(value.code)) return undefined;
+      if (!hasKeys(value, ["t", "code"]) || !isErrorCode(value.code)) {
+        return undefined;
+      }
       return { t: "error", code: value.code };
     default:
       return undefined;

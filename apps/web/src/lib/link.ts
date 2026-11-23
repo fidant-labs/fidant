@@ -39,8 +39,12 @@ export function parseRecipientLocation(location: {
 }): { linkId: string; secret: string } | undefined {
   const match = /^\/r\/([^/]+)\/?$/.exec(location.pathname);
   const linkId = match?.[1];
-  if (!isLinkId(linkId)) return undefined;
+  if (!isLinkId(linkId)) {
+    return undefined;
+  }
   const secret = location.hash.startsWith("#") ? location.hash.slice(1) : "";
-  if (!isSecret(secret)) return undefined;
+  if (!isSecret(secret)) {
+    return undefined;
+  }
   return { linkId, secret };
 }

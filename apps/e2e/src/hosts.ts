@@ -33,9 +33,13 @@ export function isStackHost(url: string, stackOrigins: readonly string[]): boole
   } catch {
     return false;
   }
-  if (localSchemes.has(target.protocol)) return true;
+  if (localSchemes.has(target.protocol)) {
+    return true;
+  }
   const to = endpoint(target);
-  if (!to.port) return false;
+  if (!to.port) {
+    return false;
+  }
   return stackOrigins.some((origin) => {
     const stack = endpoint(new URL(origin));
     return stack.scheme === to.scheme && stack.port === to.port && sameHost(stack.host, to.host);

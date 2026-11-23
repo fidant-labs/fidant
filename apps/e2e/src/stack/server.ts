@@ -87,23 +87,32 @@ function waitForPort(child: ChildProcess, stderrTail: string[]): Promise<number>
     const onError = (error: Error) => finish(error);
     const onLine = (line: string) => {
       const port = parsePort(line);
-      if (port !== undefined) finish(undefined, port);
+      if (port !== undefined) {
+        finish(undefined, port);
+      }
     };
     const finish = (error?: Error, port?: number) => {
       clearTimeout(timer);
       child.off("exit", onExit);
       child.off("error", onError);
-      if (error) reject(error);
-      else resolve(port as number);
+      if (error) {
+        reject(error);
+      } else {
+        resolve(port as number);
+      }
     };
 
     child.once("exit", onExit);
     child.once("error", onError);
-    if (child.stdout) createInterface({ input: child.stdout }).on("line", onLine);
+    if (child.stdout) {
+      createInterface({ input: child.stdout }).on("line", onLine);
+    }
     if (child.stderr) {
       createInterface({ input: child.stderr }).on("line", (line) => {
         stderrTail.push(line);
-        if (stderrTail.length > tailLines) stderrTail.shift();
+        if (stderrTail.length > tailLines) {
+          stderrTail.shift();
+        }
         onLine(line);
       });
     }

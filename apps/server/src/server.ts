@@ -44,7 +44,9 @@ export function serveStatic(root: string) {
       res.writeHead(404, securityHeaders).end();
       return;
     }
-    if (!extname(file)) file = join(base, "index.html");
+    if (!extname(file)) {
+      file = join(base, "index.html");
+    }
     try {
       const body = await readFile(file);
       res.writeHead(200, {

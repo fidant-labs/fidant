@@ -32,7 +32,9 @@ const server = await startServer({
 const { port } = server.address() as AddressInfo;
 log("listening", { port });
 console.error("Sigill is running. Open one of these and accept the certificate warning once:");
-for (const host of ["localhost", ...lanAddresses]) console.error(`  https://${host}:${port}`);
+for (const host of ["localhost", ...lanAddresses]) {
+  console.error(`  https://${host}:${port}`);
+}
 console.error(
   "On another Mac, if the page can't be reached, allow the browser under System Settings → Privacy & Security → Local Network, then restart it.",
 );

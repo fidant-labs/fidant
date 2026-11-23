@@ -104,13 +104,16 @@ export const test = base.extend<{ sigill: Sigill }>({
           return page;
         },
         forbid(label, value) {
-          if (value.length < 4)
+          if (value.length < 4) {
             throw new Error(`Forbidden value for ${label} is too short to check`);
+          }
           forbidden.push({ label, value });
         },
       });
     } finally {
-      for (const context of contexts) await context.close();
+      for (const context of contexts) {
+        await context.close();
+      }
       server.kill();
       await exited;
       rmSync(certDir, { recursive: true, force: true });
@@ -130,10 +133,16 @@ export const test = base.extend<{ sigill: Sigill }>({
     ];
     const leaks: string[] = [];
     for (const { name, text } of sources) {
-      for (const { label, value } of forbidden)
-        if (text.includes(value)) leaks.push(`${label} in ${name}`);
-      for (const marker of SDP_MARKERS)
-        if (text.includes(marker)) leaks.push(`SDP "${marker}" in ${name}`);
+      for (const { label, value } of forbidden) {
+        if (text.includes(value)) {
+          leaks.push(`${label} in ${name}`);
+        }
+      }
+      for (const marker of SDP_MARKERS) {
+        if (text.includes(marker)) {
+          leaks.push(`SDP "${marker}" in ${name}`);
+        }
+      }
     }
     expect(leaks, "values that must stay in the browser").toEqual([]);
 
@@ -164,7 +173,9 @@ function waitForPort(
     };
     const onData = () => {
       for (const line of stdout().split("\n")) {
-        if (!line.endsWith("}")) continue;
+        if (!line.endsWith("}")) {
+          continue;
+        }
         try {
           const entry = JSON.parse(line) as { event?: unknown; port?: unknown };
           if (entry.event === "listening" && typeof entry.port === "number") {
@@ -193,7 +204,9 @@ function waitForPort(
 function checkLogLines(stdout: string): void {
   const problems: string[] = [];
   const lines = stdout.split("\n");
-  if (lines.pop() !== "") problems.push("stdout does not end with a newline");
+  if (lines.pop() !== "") {
+    problems.push("stdout does not end with a newline");
+  }
   for (const [i, line] of lines.entries()) {
     let entry: unknown;
     try {
@@ -219,12 +232,15 @@ function checkLogLines(stdout: string): void {
                 : key === "code"
                   ? LOG_CODES.has(value as string)
                   : false;
-      if (!ok)
+      if (!ok) {
         problems.push(
           `line ${i + 1}: ${LOG_KEYS.has(key) ? "bad value for" : "unexpected"} field "${key}"`,
         );
+      }
     }
-    if (!("event" in entry)) problems.push(`line ${i + 1} has no event`);
+    if (!("event" in entry)) {
+      problems.push(`line ${i + 1} has no event`);
+    }
   }
   expect(problems, "server stdout log lines").toEqual([]);
 }

@@ -55,8 +55,12 @@ export const test = base.extend<Fixtures>({
       const recorders = new Map<string, Recorder>();
       await use(recorders);
       const dir = join(observationsDir, testDirName(testInfo));
-      for (const recorder of recorders.values()) await recorder.write(dir);
-      if (allowBlocked) return;
+      for (const recorder of recorders.values()) {
+        await recorder.write(dir);
+      }
+      if (allowBlocked) {
+        return;
+      }
       const blocked = [...recorders.values()].flatMap((recorder) =>
         recorder.blocked.map(({ kind, url }) => `  ${recorder.actor} (${kind}): ${url}`),
       );
@@ -77,7 +81,9 @@ export const test = base.extend<Fixtures>({
       await use(undefined);
       const recorded = new Set([..._recorders.values()].map((recorder) => recorder.context));
       const unrecorded = browser.contexts().filter((context) => !recorded.has(context));
-      if (unrecorded.length === 0) return;
+      if (unrecorded.length === 0) {
+        return;
+      }
       await Promise.all(unrecorded.map((context) => context.close()));
       throw new Error(
         `${unrecorded.length} browser context(s) in this test had no traffic recorder. ` +
@@ -164,21 +170,29 @@ export const test = base.extend<Fixtures>({
     const opened: BrowserContext[] = [];
     await use(async (name) => {
       assertActorName(name);
-      if (name === "default") throw new Error('The actor name "default" is the built-in context.');
-      if (_recorders.has(name)) throw new Error(`The actor "${name}" already exists.`);
+      if (name === "default") {
+        throw new Error('The actor name "default" is the built-in context.');
+      }
+      if (_recorders.has(name)) {
+        throw new Error(`The actor "${name}" already exists.`);
+      }
       const context = await browser.newContext(_actorContextOptions);
       opened.push(context);
       await record(_recorders, name, context);
       return { context, page: await context.newPage() };
     });
     // `_recorders` writes the records once these have closed.
-    for (const context of opened) await context.close();
+    for (const context of opened) {
+      await context.close();
+    }
   },
 
   observed: async ({ _recorders }, use) => {
     await use((name) => {
       const recorder = _recorders.get(name);
-      if (!recorder) throw new Error(`No actor named "${name}" in this test.`);
+      if (!recorder) {
+        throw new Error(`No actor named "${name}" in this test.`);
+      }
       return { blocked: recorder.blocked, records: () => recorder.records() };
     });
   },

@@ -43,12 +43,16 @@ export class Recorder {
         failure: request.failure()?.errorText ?? "unknown",
       }),
     );
-    for (const page of context.pages()) this.#watchPage(page);
+    for (const page of context.pages()) {
+      this.#watchPage(page);
+    }
     context.on("page", (page) => this.#watchPage(page));
 
     await context.route("**/*", async (route) => {
       const url = route.request().url();
-      if (isStackHost(url, this.#stackOrigins)) return route.continue();
+      if (isStackHost(url, this.#stackOrigins)) {
+        return route.continue();
+      }
       this.#block(url, "http");
       return route.abort("blockedbyclient");
     });

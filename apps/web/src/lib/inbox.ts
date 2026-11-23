@@ -38,7 +38,9 @@ export function createInbox(channel: MessageSource, signal: AbortSignal): Inbox 
   let queue: Promise<void> = Promise.resolve();
 
   const fail = (error: unknown) => {
-    if (failure) return;
+    if (failure) {
+      return;
+    }
     failure = { error };
     waiter?.reject(error);
     waiter = undefined;
@@ -48,16 +50,22 @@ export function createInbox(channel: MessageSource, signal: AbortSignal): Inbox 
   const onAbort = () => fail(signal.reason);
 
   const toBytes = (data: unknown): Uint8Array<ArrayBuffer> => {
-    if (!(data instanceof ArrayBuffer)) throw new Error("unexpected text message");
+    if (!(data instanceof ArrayBuffer)) {
+      throw new Error("unexpected text message");
+    }
     return new Uint8Array(data);
   };
 
   const enqueue = (data: unknown) => {
     queue = queue
       .then(async () => {
-        if (failure || !reader) return;
+        if (failure || !reader) {
+          return;
+        }
         const frame = await reader.decrypt(toBytes(data));
-        if (failure) return;
+        if (failure) {
+          return;
+        }
         if (waiter) {
           const w = waiter;
           waiter = undefined;
@@ -93,26 +101,41 @@ export function createInbox(channel: MessageSource, signal: AbortSignal): Inbox 
 
   channel.addEventListener("message", onMessage);
   signal.addEventListener("abort", onAbort, { once: true });
-  if (signal.aborted) onAbort();
+  if (signal.aborted) {
+    onAbort();
+  }
 
   return {
     takeRaw() {
-      if (failure) return Promise.reject(failure.error);
-      if (reader) return Promise.reject(new Error("inbox already started"));
+      if (failure) {
+        return Promise.reject(failure.error);
+      }
+      if (reader) {
+        return Promise.reject(new Error("inbox already started"));
+      }
       return new Promise((resolve, reject) => {
         const waiting = { resolve, reject };
-        if (raw.length > 0) giveRaw(raw.shift(), waiting);
-        else rawWaiter = waiting;
+        if (raw.length > 0) {
+          giveRaw(raw.shift(), waiting);
+        } else {
+          rawWaiter = waiting;
+        }
       });
     },
     start(next) {
       reader = next;
-      for (const data of raw.splice(0)) enqueue(data);
+      for (const data of raw.splice(0)) {
+        enqueue(data);
+      }
     },
     next() {
-      if (failure) return Promise.reject(failure.error);
+      if (failure) {
+        return Promise.reject(failure.error);
+      }
       const frame = frames.shift();
-      if (frame) return Promise.resolve(frame);
+      if (frame) {
+        return Promise.resolve(frame);
+      }
       return new Promise((resolve, reject) => {
         waiter = { resolve, reject };
       });
