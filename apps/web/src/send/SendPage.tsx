@@ -373,7 +373,7 @@ export function SendPage() {
         </p>
       )}
       {file && (
-        <div class="file-chosen">
+        <>
           <FileCard name={file.name} size={formatBytes(file.size)} />
           {hash.status === "preparing" && (
             <p class="muted" role="status">
@@ -392,7 +392,7 @@ export function SendPage() {
               ["SHA-256", hash.status === "ready" ? <code>{hash.hex}</code> : "Not ready yet"],
             ]}
           />
-        </div>
+        </>
       )}
       {hasRecipients && <p class="hint">Remove everyone to change your name or file.</p>}
 

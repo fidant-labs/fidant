@@ -170,7 +170,6 @@ button.big {
   padding: 0.8rem 1.75rem;
 }
 
-button.secondary,
 a.button.secondary {
   background: transparent;
   color: var(--accent);

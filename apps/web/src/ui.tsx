@@ -31,13 +31,13 @@ const ICONS = {
   ),
 };
 
-export type IconName = keyof typeof ICONS;
+type IconName = keyof typeof ICONS;
 
 /** Decorative: the text next to an icon always carries its meaning. */
 export function Icon({ name }: { name: IconName }) {
   return (
     <svg
-      class={`icon icon-${name}`}
+      class="icon"
       viewBox="0 0 24 24"
       width="24"
       height="24"
@@ -67,7 +67,7 @@ export function Page({ children }: { children: ComponentChildren }) {
   );
 }
 
-export type DirectState = "ready" | "active" | "done";
+type DirectState = "ready" | "active" | "done";
 
 /** Hidden from screen readers, so always pair it with a sentence that says the same. */
 export function Direct({ from, to, state }: { from: string; to: string; state: DirectState }) {
