@@ -35,10 +35,17 @@ export function senderHolds(state: { online: boolean; links: number; connected: 
   return `${ids} ${who} connected right now.`;
 }
 
-export function recipientHolds(connected: boolean): string {
-  return connected
-    ? "The ID of your link, never the part that unlocks the file, and that this page is connected to the sender."
-    : "Nothing about this page once it notices the connection has closed, which takes up to a minute if the network dropped. Only the sender's page can keep your link's ID there.";
+export type Tie = "paired" | "unpaired" | "closed";
+
+export function recipientHolds(tie: Tie): string {
+  switch (tie) {
+    case "paired":
+      return "The ID of your link, never the part that unlocks the file, and that this page is connected to the sender.";
+    case "unpaired":
+      return "Nothing that ties this page to your link. Only the sender's page can keep your link's ID there.";
+    case "closed":
+      return "Nothing about this page once it notices the connection has closed, which takes up to a minute if the network dropped. Only the sender's page can keep your link's ID there.";
+  }
 }
 
 export const LOG_FIELD_PHRASES = {

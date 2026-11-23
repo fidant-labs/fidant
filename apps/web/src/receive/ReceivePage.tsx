@@ -38,6 +38,7 @@ import {
   NO_RELAYS,
   recipientHolds,
   SEES_RECIPIENT,
+  type Tie,
 } from "../lib/server-facts.ts";
 import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
 import { createSink, isPickerCancel, type Sink } from "../lib/sink.ts";
@@ -137,13 +138,13 @@ export function ReceivePage() {
   const [picking, setPicking] = useState(false);
   const [relayed, setRelayed] = useState(NO_RELAYS);
   const [reachedServer, setReachedServer] = useState(false);
-  const [connected, setConnected] = useState(false);
+  const [tie, setTie] = useState<Tie>("closed");
   const attemptRef = useRef<Attempt | undefined>(undefined);
 
   /** Closes everything an attempt holds. `linger` keeps the peer up for a moment. */
   const release = (attempt: Attempt, linger = false) => {
     attempt.ended = true;
-    setConnected(false);
+    setTie("closed");
     attempt.abort.abort(new Error("attempt ended"));
     attempt.signaling.close();
     if (linger) {
@@ -212,7 +213,7 @@ export function ReceivePage() {
       if (byClient || !current()) {
         return;
       }
-      setConnected(false);
+      setTie("closed");
       if (attempt.channelOpen && !attempt.abort.signal.aborted) {
         return;
       }
@@ -235,7 +236,9 @@ export function ReceivePage() {
           }
           break;
         case "host-gone":
-          setConnected(false);
+          if (current()) {
+            setTie("unpaired");
+          }
           // A transfer under way can finish without the server; the peer
           // closing ends it if the sender really went away. Before that,
           // browsers can take many seconds to notice a closed tab over the
@@ -320,6 +323,9 @@ export function ReceivePage() {
       try {
         await signaling.ready;
         setReachedServer(true);
+        if (current()) {
+          setTie("unpaired");
+        }
         const signalKey = await deriveSignalKey(secret, linkId);
         if (!current()) {
           return;
@@ -332,7 +338,8 @@ export function ReceivePage() {
           onClose: () => lost(),
         });
         if (signaling.send({ t: "join", link: linkId })) {
-          setConnected(true);
+          // ponytail: paired as soon as join is sent; the server sends no ack, so a refused join over-claims for one round trip
+          setTie("paired");
         }
       } catch {
         finish({ s: "failed", message: SERVER });
@@ -429,7 +436,7 @@ export function ReceivePage() {
   const panel = reachedServer ? (
     <ServerPanel
       sees={SEES_RECIPIENT}
-      holds={recipientHolds(connected)}
+      holds={recipientHolds(tie)}
       relayed={relayed}
       afterwards={AFTERWARDS_RECIPIENT}
     />

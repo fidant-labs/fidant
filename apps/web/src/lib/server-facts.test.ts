@@ -48,13 +48,17 @@ test("senderHolds follows links, connections and the server connection", () => {
   );
 });
 
-test("recipientHolds while active and after the attempt ends", () => {
+test("recipientHolds for a paired, unpaired and closed page", () => {
   assert.equal(
-    recipientHolds(true),
+    recipientHolds("paired"),
     "The ID of your link, never the part that unlocks the file, and that this page is connected to the sender.",
   );
   assert.equal(
-    recipientHolds(false),
+    recipientHolds("unpaired"),
+    "Nothing that ties this page to your link. Only the sender's page can keep your link's ID there.",
+  );
+  assert.equal(
+    recipientHolds("closed"),
     "Nothing about this page once it notices the connection has closed, which takes up to a minute if the network dropped. Only the sender's page can keep your link's ID there.",
   );
 });
