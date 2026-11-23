@@ -263,6 +263,28 @@ test("a declined offer shows as declined, and the link can be reopened", async (
   await expect(opened).toBeVisible();
 });
 
+// No one joins here, so the sender receives no signaling and the demo fixture's frame checks don't apply.
+harness("a held Enter on Remove removes only one recipient", async ({ actor, leaks, canary }) => {
+  const demo: Demo = { open: async (name) => (await actor(name)).page };
+  const sender = await openSender(demo, makeFile(leaks, canary, 10));
+  const anna = makeName(leaks, canary, "Anna");
+  const erik = makeName(leaks, canary, "Erik");
+  await addRecipient(leaks, sender, anna);
+  await addRecipient(leaks, sender, erik);
+
+  await sender.getByRole("button", { name: `Remove ${anna}` }).focus();
+  await sender.keyboard.down("Enter");
+  await expect(sender.getByRole("button", { name: `Remove ${erik}` })).toBeFocused();
+  await sender.keyboard.down("Enter"); // auto-repeat while held
+  await sender.keyboard.up("Enter");
+  await expect(recipientRow(sender, anna)).toHaveCount(0);
+  await expect(sender.getByRole("button", { name: `Copy link for ${erik}` })).toBeVisible();
+
+  await sender.keyboard.press("Enter");
+  await expect(recipientRow(sender, erik)).toHaveCount(0);
+  await expect(sender.getByLabel("Who is it for?")).toBeFocused();
+});
+
 test("the sender's name must fit with the file name, and stray drops are ignored", async ({
   demo,
   leaks,

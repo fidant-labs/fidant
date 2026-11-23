@@ -114,6 +114,12 @@ function RecipientRow({ recipient, fileSize, onRemove }: RowProps) {
               variant="link"
               aria-label={t.send.removeFor(name)}
               data-remove={linkId}
+              // Focus moves to the next Remove button, so a held Enter would remove it too.
+              onKeyDown={(event) => {
+                if (event.repeat) {
+                  event.preventDefault();
+                }
+              }}
               onClick={() => onRemove(linkId)}
             >
               {t.send.remove}
