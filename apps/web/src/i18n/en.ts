@@ -396,7 +396,6 @@ export const en = {
     keepHeading: "What we keep",
     keep: "We have no accounts, no database, no cookies and no tracking. Apart from the log lines below, nothing is kept once the sender's page is closed, within a minute at most.",
     logFields,
-    logRetention: "Log lines are deleted after 30 days.",
   },
 };
 
