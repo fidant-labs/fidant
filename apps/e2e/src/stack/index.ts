@@ -3,6 +3,8 @@ import type { RunningService, Service } from "./service.ts";
 
 export interface Stack {
   baseURL: string;
+  /** The origin of every running service. The browser may reach these and nothing else. */
+  origins: string[];
   stop(): Promise<void>;
 }
 
@@ -24,5 +26,5 @@ export async function startStack(): Promise<Stack> {
   }
   const web = running.find((service) => service.name === "server");
   if (!web) throw new Error("The stack has no server.");
-  return { baseURL: web.url, stop };
+  return { baseURL: web.url, origins: running.map((service) => new URL(service.url).origin), stop };
 }

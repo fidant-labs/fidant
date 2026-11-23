@@ -1,0 +1,68 @@
+import { createHash } from "node:crypto";
+
+export type Headers = Record<string, string>;
+
+/** One observed browser event, written as one JSON line. No bodies here: SIG-40 adds them. */
+export type ObservationRecord =
+  | { type: "request"; time: string; method: string; url: string; headers: Headers }
+  | { type: "response"; time: string; url: string; status: number; headers: Headers }
+  | { type: "requestfailed"; time: string; url: string; failure: string }
+  | { type: "websocket-open"; time: string; url: string }
+  | {
+      type: "frame-sent" | "frame-received";
+      time: string;
+      url: string;
+      payload: string;
+      /** Set when the frame was binary and `payload` holds its bytes as base64. */
+      base64?: true;
+    }
+  | { type: "websocket-close"; time: string; url: string }
+  | BlockedRecord;
+
+export interface BlockedRecord {
+  type: "blocked";
+  time: string;
+  url: string;
+  kind: "http" | "websocket";
+}
+
+/**
+ * Drops the fragment from a URL. Browsers never send it, and SIG-21 links carry the key there,
+ * so no URL is stored with one.
+ */
+export function stripFragment(url: string): string {
+  const hash = url.indexOf("#");
+  return hash === -1 ? url : url.slice(0, hash);
+}
+
+const maxSlugText = 80;
+
+/**
+ * A directory name for one test: readable words from its title path, plus a short hash of the
+ * full path so that tests with similar titles never share a directory.
+ */
+export function testSlug(titlePath: readonly string[]): string {
+  const text = titlePath
+    .join(" ")
+    .normalize("NFKD")
+    .replace(/\p{M}+/gu, "")
+    .toLowerCase()
+    .replace(/\.spec\.ts\b/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, maxSlugText)
+    .replace(/-+$/, "");
+  const hash = createHash("sha256").update(JSON.stringify(titlePath)).digest("hex").slice(0, 8);
+  return text ? `${text}-${hash}` : hash;
+}
+
+const actorName = /^[a-z][a-z0-9-]{0,31}$/;
+
+/** Actor names become file names, so they are kept to lowercase words. */
+export function assertActorName(name: string): void {
+  if (!actorName.test(name)) {
+    throw new Error(
+      `Actor name "${name}" must be lowercase letters, digits and dashes, starting with a letter.`,
+    );
+  }
+}

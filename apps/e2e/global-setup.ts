@@ -11,5 +11,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   const stack = await startStack();
   // Workers start after global setup and inherit this, so the config's use.baseURL sees it.
   process.env.BASE_URL = stack.baseURL;
+  // The recording fixture blocks every origin not in this comma-separated list.
+  process.env.STACK_ORIGINS = stack.origins.join(",");
   return stack.stop;
 }
