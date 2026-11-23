@@ -8,6 +8,11 @@
     "test": "node --test"
   },
   "devDependencies": {
-    "@types/node": "^24.19.2"
+    "@types/node": "^24.19.2",
+    "@types/ws": "^8.18.2"
+  },
+  "dependencies": {
+    "@sigill/protocol": "workspace:*",
+    "ws": "^8.23.0"
   }
 }

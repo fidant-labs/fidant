@@ -11,6 +11,7 @@ Planning lives in Linear: workspace `sigill`, team `SIG`, issue keys like `SIG-2
 - `pnpm check`: lint, typecheck, unit tests and build across the workspace. Run it before every commit. The pre-push hook runs it too.
 - `pnpm format`: fixes formatting and safe lint issues.
 - `pnpm e2e`: builds the web client, starts the local stack and runs the Playwright suite in `apps/e2e` (Chromium). It is not part of `pnpm check`. Browser traffic and server logs are written to `apps/e2e/observations/`. Playwright traces and reports stay local and are never uploaded. One-time setup: `pnpm --filter @sigill/e2e exec playwright install chromium`.
+- `pnpm --filter @sigill/web e2e`: Playwright end-to-end test of the first demo in headless Chromium against the real server. Run `pnpm build` first. Install the browser once with `pnpm --filter @sigill/web exec playwright install chromium`. `pnpm check` does not run it; CI runs it as the `first-demo-e2e` job. SIG-41 moves it onto `apps/e2e`.
 
 ## Prerequisites
 
@@ -22,8 +23,10 @@ Planning lives in Linear: workspace `sigill`, team `SIG`, issue keys like `SIG-2
 
 ## Layout
 
-- `apps/*`: things we run or ship. `apps/web` is the Preact client, built by Vite into `apps/web/dist`. `apps/server` is the Node process that serves it. `apps/e2e` is the end-to-end harness (see `docs/decisions/0001-e2e-tests-and-leak-model.md`).
+- `apps/*`: things we run or ship. `apps/web` is the Preact client, built by Vite into `apps/web/dist`. `apps/server` is the Node process that serves it and relays signaling messages between browsers over a WebSocket at `/signal`. `apps/e2e` is the end-to-end harness (see `docs/decisions/0001-e2e-tests-and-leak-model.md`).
+- `apps/web/e2e`: Playwright end-to-end tests for the first demo, with their own `tsconfig.json`. They move onto the shared e2e harness in SIG-41.
 - `packages/*`: code used by more than one app. Create a package only when a second consumer exists.
+- `packages/protocol` (`@sigill/protocol`): signaling message types, parsers and limits shared by the server and the web client.
 - `docs/decisions/`: decision records. See its README for the format.
 - Workspace packages export TypeScript source directly (`"exports": { ".": "./src/index.ts" }`). Internal packages have no build step.
 - Every package with TypeScript has a `typecheck` script (`tsc --noEmit -p .`) and, if it has tests, a `test` script. The root scripts run them recursively.
