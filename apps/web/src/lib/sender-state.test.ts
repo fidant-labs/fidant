@@ -7,6 +7,7 @@ import {
   findRecipient,
   hostedLinks,
   initialSenderState,
+  SETUP_TIMEOUT_MS,
   type SenderAction,
   type SenderEffect,
   type SenderState,
@@ -132,7 +133,7 @@ test("a join for a link ID not on the list is refused as unknown", () => {
   assert.deepEqual(result.effects, [{ type: "refuse", linkId: stranger, reason: "unknown" }]);
 });
 
-test("a drop before delivery returns the recipient to waiting with no progress", () => {
+test("a drop before delivery returns the recipient to waiting and frees the link", () => {
   for (const reached of ["connecting", "offered", "receiving"] as const) {
     const { state: s0, linkId } = withRecipient();
     const steps: SenderAction[] = [
@@ -151,11 +152,46 @@ test("a drop before delivery returns the recipient to waiting with no progress",
       status: "waiting",
       bytesSent: 0,
     });
-    assert.deepEqual(dropped.effects, [{ type: "close", linkId }]);
+    assert.deepEqual(
+      dropped.effects,
+      [
+        { type: "refuse", linkId, reason: "busy" },
+        { type: "close", linkId },
+      ],
+      "the server unbinds a joiner that may still be connected",
+    );
 
     const again = update(dropped.state, { type: "joined", linkId });
     assert.equal(statusOf(again.state, linkId), "connecting", "the same link starts over");
     assert.deepEqual(again.effects, [{ type: "start", linkId }]);
+  }
+});
+
+test("a channel that does not open in time is dropped and its joiner refused", () => {
+  assert.equal(SETUP_TIMEOUT_MS, 20_000);
+  const { state: s0, linkId } = withRecipient();
+  const connecting = run(s0, { type: "joined", linkId }).state;
+  const result = update(connecting, { type: "timeout", linkId });
+  assert.deepEqual(findRecipient(result.state, linkId), findRecipient(s0, linkId));
+  assert.deepEqual(result.effects, [
+    { type: "refuse", linkId, reason: "busy" },
+    { type: "close", linkId },
+  ]);
+
+  const again = update(result.state, { type: "joined", linkId });
+  assert.equal(statusOf(again.state, linkId), "connecting", "the real recipient can join");
+  assert.deepEqual(again.effects, [{ type: "start", linkId }]);
+});
+
+test("a timeout after the channel opened is ignored", () => {
+  const { state: s0, linkId } = withRecipient();
+  const offered = run(s0, { type: "joined", linkId }, { type: "channel-open", linkId }).state;
+  const receiving = run(offered, { type: "accepted", linkId }).state;
+  const delivered = run(receiving, { type: "receipt", linkId, match: true }).state;
+  for (const state of [s0, offered, receiving, delivered]) {
+    const result = update(state, { type: "timeout", linkId });
+    assert.equal(result.state, state);
+    assert.deepEqual(result.effects, []);
   }
 });
 
@@ -228,6 +264,7 @@ test("events that do not fit the current status are ignored", () => {
     { type: "receipt", linkId, match: true },
     { type: "dropped", linkId },
     { type: "left", linkId },
+    { type: "timeout", linkId },
     { type: "declined", linkId },
   ];
   for (const action of outOfPlace) {

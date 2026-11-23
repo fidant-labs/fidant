@@ -9,6 +9,9 @@
 //   `left` → reducer `left`, which only matters before the channel opens.
 // - When the data channel opens, sendFile runs the transfer and reports
 //   accepted, progress, declined and receipt back to the reducer.
+// - A peer that closes or fails before delivery → `dropped`; a data channel
+//   that has not opened SETUP_TIMEOUT_MS after the join → `timeout`. Both
+//   refuse the joiner so the server unbinds it (see sender-state.ts).
 // - Effects run outside render: `close` tears the peer down, `refuse` tells
 //   the server to refuse the joiner.
 //
@@ -27,6 +30,7 @@ import {
   findRecipient,
   hostedLinks,
   initialSenderState,
+  SETUP_TIMEOUT_MS,
   type SenderAction,
   type SenderEffect,
   type SenderState,
@@ -41,7 +45,12 @@ type Hash =
   | { status: "ready"; hex: string }
   | { status: "failed" };
 
-type Connection = { abort: AbortController; peer?: Peer };
+type Connection = {
+  abort: AbortController;
+  peer?: Peer;
+  /** Fires `timeout` if the data channel has not opened in time. */
+  deadline?: ReturnType<typeof setTimeout>;
+};
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
@@ -69,6 +78,7 @@ export function SendPage() {
     const connection = connectionsRef.current.get(linkId);
     if (!connection) return;
     connectionsRef.current.delete(linkId);
+    clearTimeout(connection.deadline);
     connection.abort.abort(new Error("connection closed"));
     connection.peer?.close();
   };
@@ -81,6 +91,11 @@ export function SendPage() {
     const connection: Connection = { abort: new AbortController() };
     connectionsRef.current.set(linkId, connection);
     const dispatch = (action: SenderAction) => dispatchRef.current(action);
+    // Someone who knows the link ID but not the secret can join and stay
+    // silent; the reducer then refuses them so the link is free again.
+    connection.deadline = setTimeout(() => {
+      if (connectionsRef.current.get(linkId) === connection) dispatch({ type: "timeout", linkId });
+    }, SETUP_TIMEOUT_MS);
 
     let signalKey: CryptoKey;
     try {
@@ -96,6 +111,7 @@ export function SendPage() {
       linkId,
       signalKey,
       onOpen(channel, info) {
+        clearTimeout(connection.deadline);
         dispatch({ type: "channel-open", linkId });
         const chosen = fileRef.current;
         if (!chosen) {

@@ -7,20 +7,21 @@
 //
 // Transitions per recipient (anything not listed is ignored):
 //
-// | from                          | event          | to         | effect      |
-// |-------------------------------|----------------|------------|-------------|
-// | waiting, failed               | joined         | connecting | start       |
-// | connecting, offered, receiving| joined         | (same)     | refuse busy |
-// | delivered                     | joined         | delivered  | refuse used |
-// | connecting                    | channel-open   | offered    |             |
-// | offered                       | accepted       | receiving  |             |
-// | offered                       | declined       | waiting    | close       |
-// | receiving                     | progress       | receiving  |             |
-// | receiving                     | receipt(true)  | delivered  | close       |
-// | receiving                     | receipt(false) | failed     | close       |
-// | connecting, offered, receiving| dropped        | waiting    | close       |
-// | connecting                    | left           | waiting    | close       |
-// | (not on the list)             | joined         | -          | refuse unknown |
+// | from                           | event          | to         | effect             |
+// |--------------------------------|----------------|------------|--------------------|
+// | waiting, failed                | joined         | connecting | start              |
+// | connecting, offered, receiving | joined         | (same)     | refuse busy        |
+// | delivered                      | joined         | delivered  | refuse used        |
+// | connecting                     | channel-open   | offered    |                    |
+// | offered                        | accepted       | receiving  |                    |
+// | offered                        | declined       | waiting    | close              |
+// | receiving                      | progress       | receiving  |                    |
+// | receiving                      | receipt(true)  | delivered  | close              |
+// | receiving                      | receipt(false) | failed     | close              |
+// | connecting, offered, receiving | dropped        | waiting    | refuse busy, close |
+// | connecting                     | timeout        | waiting    | refuse busy, close |
+// | connecting                     | left           | waiting    | close              |
+// | (not on the list)              | joined         | -          | refuse unknown     |
 //
 // Rules:
 // - A link is used only once the recipient's RECEIPT matches (delivered).
@@ -35,6 +36,18 @@
 //   RECEIPT or DECLINE, so `left` can arrive before that frame is decrypted,
 //   and a recipient whose socket drops mid-transfer can still finish. From
 //   then on only the peer closing (dropped), a receipt or a decline end it.
+// - `dropped` means the sender's peer for the link failed or closed before
+//   delivery; `timeout` means its data channel did not open within
+//   SETUP_TIMEOUT_MS of the join. Either way the server may still have the
+//   joiner bound to the link (a peer can fail while the joiner's socket stays
+//   open, and someone who knows a link ID but not its secret can join and then
+//   stay silent or send garbage). So the sender also refuses the joiner, which
+//   makes the server unbind it and frees the link for the real recipient. The
+//   reason is "busy": the protocol has no better one, and an honest recipient
+//   that already got signals from the sender treats a refusal after them as a
+//   failed attempt, not as "in use" (see ReceivePage). If the joiner already
+//   left, the server ignores the refusal. `left` needs no refusal: the joiner
+//   is gone.
 // - A drop or decline before delivery returns the recipient to "waiting" with
 //   bytesSent 0. There is no resume: the next join starts over.
 // - A mismatching RECEIPT marks the recipient "failed" with an error. The link
@@ -82,6 +95,7 @@ export type SenderAction =
   | { type: "progress"; linkId: string; bytesSent: number }
   | { type: "receipt"; linkId: string; match: boolean }
   | { type: "dropped"; linkId: string }
+  | { type: "timeout"; linkId: string }
   | { type: "left"; linkId: string }
   | { type: "declined"; linkId: string };
 
@@ -91,6 +105,9 @@ export type SenderEffect =
   | { type: "close"; linkId: string };
 
 export type SenderUpdate = { state: SenderState; effects: SenderEffect[] };
+
+/** How long after a join the data channel may take to open before the attempt is dropped. */
+export const SETUP_TIMEOUT_MS = 20_000;
 
 export const CHECKSUM_MISMATCH = "The recipient's checksum did not match.";
 
@@ -178,10 +195,16 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
       return { state: replace(state, next), effects: [{ type: "close", linkId }] };
     }
     case "dropped":
-      if (!isActive(current)) return { state, effects: [] };
+    case "timeout":
+      if (action.type === "dropped" ? !isActive(current) : current.status !== "connecting") {
+        return { state, effects: [] };
+      }
       return {
         state: replace(state, reset(current, "waiting")),
-        effects: [{ type: "close", linkId }],
+        effects: [
+          { type: "refuse", linkId, reason: "busy" },
+          { type: "close", linkId },
+        ],
       };
     case "left":
       if (current.status !== "connecting") return { state, effects: [] };

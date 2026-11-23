@@ -50,6 +50,8 @@ type Attempt = {
   peer?: Peer;
   /** Set once the data channel opened; signaling problems no longer matter then. */
   channelOpen: boolean;
+  /** Set once a signal from the sender arrived, so the sender took this join. */
+  heardSender: boolean;
   /** Set once the recipient accepted and the file started arriving. */
   receiving: boolean;
   /** The server said the sender is gone while the file was arriving. */
@@ -68,6 +70,7 @@ const REFUSED_TEXT = {
 } as const;
 const OFFLINE_TEXT = "The sender is offline";
 const LOST_TEXT = "Transfer failed. The connection to the sender was lost.";
+const CONNECT_TEXT = "Transfer failed. Could not connect to the sender.";
 const SERVER_TEXT = "Transfer failed. Could not reach the server.";
 
 /** How long to wait for `host-gone` after the peer drops, to tell "offline" from "failed". */
@@ -105,6 +108,7 @@ export function ReceivePage() {
       abort: new AbortController(),
       signaling,
       channelOpen: false,
+      heardSender: false,
       receiving: false,
       hostGone: false,
       ended: false,
@@ -142,10 +146,18 @@ export function ReceivePage() {
     signaling.subscribe((message) => {
       switch (message.t) {
         case "relay":
+          attempt.heardSender = true;
           void attempt.peer?.handleRelay(message.data);
           break;
         case "refused":
-          finish({ s: "refused", text: REFUSED_TEXT[message.reason] });
+          // A refusal after the sender's first signal means the sender gave up
+          // on this attempt (its peer failed or never connected), not that the
+          // link is in use or used: the sender only signals a join it took.
+          if (attempt.heardSender) {
+            finish({ s: "failed", text: attempt.channelOpen ? LOST_TEXT : CONNECT_TEXT });
+          } else {
+            finish({ s: "refused", text: REFUSED_TEXT[message.reason] });
+          }
           break;
         case "host-gone":
           // A transfer under way can finish without the server; the peer
