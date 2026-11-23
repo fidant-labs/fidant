@@ -44,12 +44,16 @@ export class Recorder {
         failure: request.failure()?.errorText ?? "unknown",
       }),
     );
-    for (const page of context.pages()) this.#watchPage(page);
+    for (const page of context.pages()) {
+      this.#watchPage(page);
+    }
     context.on("page", (page) => this.#watchPage(page));
 
     await context.route("**/*", async (route) => {
       const url = route.request().url();
-      if (isStackHost(url, this.#stackOrigins)) return route.continue();
+      if (isStackHost(url, this.#stackOrigins)) {
+        return route.continue();
+      }
       this.#block(url, "http");
       return route.abort("blockedbyclient");
     });
@@ -129,8 +133,12 @@ const bodiless = new Set(["GET", "HEAD", "OPTIONS"]);
  * allows a body, with none exposed, is marked unless its headers say `content-length: 0`.
  */
 export function requestBody(method: string, headers: Headers, body: Buffer | null): RequestBody {
-  if (body && body.length > 0) return { body: body.toString("base64") };
-  if (bodiless.has(method.toUpperCase()) || headers["content-length"] === "0") return {};
+  if (body && body.length > 0) {
+    return { body: body.toString("base64") };
+  }
+  if (bodiless.has(method.toUpperCase()) || headers["content-length"] === "0") {
+    return {};
+  }
   return { bodyMissing: true };
 }
 

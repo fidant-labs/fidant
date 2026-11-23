@@ -19,15 +19,21 @@ const defaultServices: readonly Service[] = [server];
 export async function startStack(services: readonly Service[] = defaultServices): Promise<Stack> {
   const running: RunningService[] = [];
   const stop = async () => {
-    for (const service of running.toReversed()) await service.stop();
+    for (const service of running.toReversed()) {
+      await service.stop();
+    }
   };
   try {
-    for (const service of services) running.push(await service.start());
+    for (const service of services) {
+      running.push(await service.start());
+    }
   } catch (error) {
     await stop();
     throw error;
   }
   const web = running.find((service) => service.name === "server");
-  if (!web) throw new Error("The stack has no server.");
+  if (!web) {
+    throw new Error("The stack has no server.");
+  }
   return { baseURL: web.url, origins: running.map((service) => new URL(service.url).origin), stop };
 }

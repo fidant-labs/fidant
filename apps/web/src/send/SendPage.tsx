@@ -76,7 +76,9 @@ export function SendPage() {
 
   const closeConnection = (linkId: string) => {
     const connection = connectionsRef.current.get(linkId);
-    if (!connection) return;
+    if (!connection) {
+      return;
+    }
     connectionsRef.current.delete(linkId);
     clearTimeout(connection.deadline);
     connection.abort.abort(new Error("connection closed"));
@@ -86,7 +88,9 @@ export function SendPage() {
   const startConnection = async (linkId: string) => {
     const recipient = findRecipient(senderRef.current, linkId);
     const signaling = signalingRef.current;
-    if (!recipient || !signaling) return;
+    if (!recipient || !signaling) {
+      return;
+    }
     closeConnection(linkId);
     const connection: Connection = { abort: new AbortController() };
     connectionsRef.current.set(linkId, connection);
@@ -94,7 +98,9 @@ export function SendPage() {
     // Someone who knows the link ID but not the secret can join and stay
     // silent; the reducer then refuses them so the link is free again.
     connection.deadline = setTimeout(() => {
-      if (connectionsRef.current.get(linkId) === connection) dispatch({ type: "timeout", linkId });
+      if (connectionsRef.current.get(linkId) === connection) {
+        dispatch({ type: "timeout", linkId });
+      }
     }, SETUP_TIMEOUT_MS);
 
     let signalKey: CryptoKey;
@@ -104,7 +110,9 @@ export function SendPage() {
       dispatch({ type: "dropped", linkId });
       return;
     }
-    if (connection.abort.signal.aborted) return;
+    if (connection.abort.signal.aborted) {
+      return;
+    }
 
     connection.peer = createSenderPeer({
       signaling,
@@ -129,11 +137,16 @@ export function SendPage() {
           onProgress: (bytesSent) => dispatch({ type: "progress", linkId, bytesSent }),
         }).then(
           (result) => {
-            if (result.type === "declined") dispatch({ type: "declined", linkId });
-            else dispatch({ type: "receipt", linkId, match: result.match });
+            if (result.type === "declined") {
+              dispatch({ type: "declined", linkId });
+            } else {
+              dispatch({ type: "receipt", linkId, match: result.match });
+            }
           },
           () => {
-            if (!connection.abort.signal.aborted) dispatch({ type: "dropped", linkId });
+            if (!connection.abort.signal.aborted) {
+              dispatch({ type: "dropped", linkId });
+            }
           },
         );
       },
@@ -164,8 +177,12 @@ export function SendPage() {
       senderRef.current = next.state;
       setSender(next.state);
     }
-    for (const effect of next.effects) runEffect(effect);
-    if (action.type === "add" || action.type === "remove") host();
+    for (const effect of next.effects) {
+      runEffect(effect);
+    }
+    if (action.type === "add" || action.type === "remove") {
+      host();
+    }
   };
 
   // Runs once on mount: everything it uses is read through refs.
@@ -178,11 +195,15 @@ export function SendPage() {
     signaling.ready.then(
       () => host(),
       () => {
-        if (!disposed) setLostServer(true);
+        if (!disposed) {
+          setLostServer(true);
+        }
       },
     );
     signaling.onClose(({ byClient }) => {
-      if (!byClient && !disposed) setLostServer(true);
+      if (!byClient && !disposed) {
+        setLostServer(true);
+      }
     });
     signaling.subscribe((message) => {
       switch (message.t) {
@@ -212,7 +233,9 @@ export function SendPage() {
       disposed = true;
       window.removeEventListener("beforeunload", onBeforeUnload);
       hashAbortRef.current?.abort();
-      for (const linkId of [...connectionsRef.current.keys()]) closeConnection(linkId);
+      for (const linkId of [...connectionsRef.current.keys()]) {
+        closeConnection(linkId);
+      }
       signaling.close();
     };
   }, []);
@@ -234,7 +257,9 @@ export function SendPage() {
     );
     setFile(fits ? chosen : undefined);
     // Clear the input so it does not show a file that will not be sent.
-    if (!fits) input.value = "";
+    if (!fits) {
+      input.value = "";
+    }
     if (!chosen || !fits) {
       fileRef.current = undefined;
       setHash({ status: "none" });
@@ -248,10 +273,14 @@ export function SendPage() {
     setHash({ status: "preparing" });
     sha256.then(
       (digest) => {
-        if (!controller.signal.aborted) setHash({ status: "ready", hex: toHex(digest) });
+        if (!controller.signal.aborted) {
+          setHash({ status: "ready", hex: toHex(digest) });
+        }
       },
       () => {
-        if (!controller.signal.aborted) setHash({ status: "failed" });
+        if (!controller.signal.aborted) {
+          setHash({ status: "failed" });
+        }
       },
     );
   };

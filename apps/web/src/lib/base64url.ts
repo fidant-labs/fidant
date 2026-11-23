@@ -6,7 +6,9 @@
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
 const LOOKUP = new Int16Array(128).fill(-1);
-for (let i = 0; i < ALPHABET.length; i++) LOOKUP[ALPHABET.charCodeAt(i)] = i;
+for (let i = 0; i < ALPHABET.length; i++) {
+  LOOKUP[ALPHABET.charCodeAt(i)] = i;
+}
 
 export function encodeBase64url(bytes: Uint8Array): string {
   let out = "";
@@ -36,7 +38,9 @@ export function encodeBase64url(bytes: Uint8Array): string {
 
 /** Decodes unpadded base64url. Returns undefined for anything malformed. */
 export function decodeBase64url(text: string): Uint8Array<ArrayBuffer> | undefined {
-  if (text.length % 4 === 1) return undefined;
+  if (text.length % 4 === 1) {
+    return undefined;
+  }
   const out = new Uint8Array(Math.floor((text.length * 3) / 4));
   let bits = 0;
   let bitCount = 0;
@@ -44,7 +48,9 @@ export function decodeBase64url(text: string): Uint8Array<ArrayBuffer> | undefin
   for (let i = 0; i < text.length; i++) {
     const code = text.charCodeAt(i);
     const value = code < 128 ? (LOOKUP[code] as number) : -1;
-    if (value < 0) return undefined;
+    if (value < 0) {
+      return undefined;
+    }
     bits = ((bits << 6) | value) & 0xffffff;
     bitCount += 6;
     if (bitCount >= 8) {
@@ -53,6 +59,8 @@ export function decodeBase64url(text: string): Uint8Array<ArrayBuffer> | undefin
     }
   }
   // Leftover bits must be zero, or two strings would decode to the same bytes.
-  if ((bits & ((1 << bitCount) - 1)) !== 0) return undefined;
+  if ((bits & ((1 << bitCount) - 1)) !== 0) {
+    return undefined;
+  }
   return out;
 }

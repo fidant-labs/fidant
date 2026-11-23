@@ -42,8 +42,9 @@ function channelPair(transit: Transit = {}): Pair {
 
   const deliver = (to: EventTarget, data: Uint8Array<ArrayBuffer>) => {
     setTimeout(() => {
-      if (readyState === "open")
+      if (readyState === "open") {
         to.dispatchEvent(new MessageEvent("message", { data: data.buffer }));
+      }
     });
   };
 
@@ -54,11 +55,15 @@ function channelPair(transit: Transit = {}): Pair {
       return readyState;
     },
     send(data) {
-      if (readyState !== "open") throw new Error("channel is closed");
+      if (readyState !== "open") {
+        throw new Error("channel is closed");
+      }
       let copy: Uint8Array<ArrayBuffer> | undefined = data.slice();
       if (toRecipient) {
         copy = transit.toRecipient ? transit.toRecipient(copy, pair) : copy;
-        if (copy) deliver(other, copy);
+        if (copy) {
+          deliver(other, copy);
+        }
       } else {
         deliver(other, copy);
         const sent = copy;
@@ -73,9 +78,13 @@ function channelPair(transit: Transit = {}): Pair {
     sender: make(ends[0], ends[1], true),
     recipient: make(ends[1], ends[0], false),
     close() {
-      if (readyState !== "open") return;
+      if (readyState !== "open") {
+        return;
+      }
       readyState = "closed";
-      for (const end of ends) end.dispatchEvent(new Event("close"));
+      for (const end of ends) {
+        end.dispatchEvent(new Event("close"));
+      }
     },
   };
   return pair;
@@ -164,7 +173,9 @@ test("receives a file, verifies it and sends a matching receipt", async () => {
   const r = run({ bytes });
   const result = await r.receiving;
   assert.equal(result.type, "received");
-  if (result.type !== "received") return;
+  if (result.type !== "received") {
+    return;
+  }
   assert.deepEqual(result.sha256, sha256(bytes));
   assert.ok(result.blob);
   assert.deepEqual(new Uint8Array(await result.blob.arrayBuffer()), bytes);
@@ -179,7 +190,9 @@ test("receives an empty file", async () => {
   const r = run({ bytes: new Uint8Array() });
   const result = await r.receiving;
   assert.equal(result.type, "received");
-  if (result.type === "received") assert.equal(result.blob?.size, 0);
+  if (result.type === "received") {
+    assert.equal(result.blob?.size, 0);
+  }
   assert.deepEqual(await r.sending, { type: "receipt", match: true });
 });
 
@@ -194,7 +207,9 @@ test("declines an offer", async () => {
 test("succeeds when the sender closes the channel after the receipt", async () => {
   const pair = channelPair({
     afterToSender: (frame, p) => {
-      if (frame[1] === RecipientKind.RECEIPT) p.close();
+      if (frame[1] === RecipientKind.RECEIPT) {
+        p.close();
+      }
     },
   });
   const r = run({ bytes: new Uint8Array(randomBytes(100_000)), pair });
@@ -232,8 +247,9 @@ test("failures say whether the sender, the connection or the sink failed", async
   let chunks = 0;
   const tampered = channelPair({
     toRecipient(frame) {
-      if (frame[1] === SenderKind.CHUNK && ++chunks === 2)
+      if (frame[1] === SenderKind.CHUNK && ++chunks === 2) {
         frame[HEADER_BYTES] = (frame[HEADER_BYTES] as number) ^ 1;
+      }
       return frame;
     },
   });
@@ -300,7 +316,9 @@ test("treats a missing END as truncation", async () => {
   const sink = new RecordingSink();
   const pair = channelPair({
     toRecipient(frame, p) {
-      if (frame[1] !== SenderKind.END) return frame;
+      if (frame[1] !== SenderKind.END) {
+        return frame;
+      }
       setTimeout(() => p.close(), 10);
       return undefined;
     },

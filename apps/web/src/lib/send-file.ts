@@ -91,7 +91,9 @@ export async function sendFile(options: SendFileOptions): Promise<SendResult> {
   let progressTimer: ReturnType<typeof setInterval> | undefined;
 
   try {
-    if (channel.readyState !== "open") throw new Error("data channel is not open");
+    if (channel.readyState !== "open") {
+      throw new Error("data channel is not open");
+    }
     channel.bufferedAmountLowThreshold = BUFFER_LOW_BYTES;
 
     const send = (frame: Uint8Array<ArrayBuffer>) => {
@@ -107,13 +109,19 @@ export async function sendFile(options: SendFileOptions): Promise<SendResult> {
     inbox.start(new FrameReader(key, "r"));
 
     const chunkSize = Math.min(MAX_CHUNK_BYTES, maxMessageSize - 64);
-    if (chunkSize < 1) throw new Error("max message size too small");
+    if (chunkSize < 1) {
+      throw new Error("max message size too small");
+    }
     const meta = { name: file.name, size: file.size, type: file.type, chunkSize };
     send(await writer.encrypt(SenderKind.META, encodeMeta(meta)));
 
     const answer = await inbox.next();
-    if (answer.kind === RecipientKind.DECLINE) return { type: "declined" };
-    if (answer.kind !== RecipientKind.ACCEPT) throw new Error("expected ACCEPT or DECLINE");
+    if (answer.kind === RecipientKind.DECLINE) {
+      return { type: "declined" };
+    }
+    if (answer.kind !== RecipientKind.ACCEPT) {
+      throw new Error("expected ACCEPT or DECLINE");
+    }
     options.onAccepted();
 
     // The recipient may send nothing more until it has END, but read its next
@@ -123,7 +131,9 @@ export async function sendFile(options: SendFileOptions): Promise<SendResult> {
     const reply = inbox.next();
     reply.then(
       () => {
-        if (streaming) abort.abort(new Error("recipient sent a frame before END"));
+        if (streaming) {
+          abort.abort(new Error("recipient sent a frame before END"));
+        }
       },
       (error: unknown) => abort.abort(error),
     );
@@ -146,7 +156,9 @@ export async function sendFile(options: SendFileOptions): Promise<SendResult> {
     // padded length needs; the bytes past the end of the file are zeros.
     const total = paddedLength(file.size, chunkSize);
     for (let offset = 0; offset < total; offset += chunkSize) {
-      if (channel.bufferedAmount > BUFFER_HIGH_BYTES) await bufferLow(channel, signal);
+      if (channel.bufferedAmount > BUFFER_HIGH_BYTES) {
+        await bufferLow(channel, signal);
+      }
       const body = new Uint8Array(chunkSize);
       if (offset < file.size) {
         const end = Math.min(offset + chunkSize, file.size);
@@ -161,13 +173,17 @@ export async function sendFile(options: SendFileOptions): Promise<SendResult> {
     streaming = false;
 
     const receipt = await abortable(reply, signal);
-    if (receipt.kind !== RecipientKind.RECEIPT) throw new Error("expected RECEIPT");
+    if (receipt.kind !== RecipientKind.RECEIPT) {
+      throw new Error("expected RECEIPT");
+    }
     clearInterval(progressTimer);
     progressTimer = undefined;
     report();
     return { type: "receipt", match: equalBytes(receipt.body, sha256) };
   } finally {
-    if (progressTimer !== undefined) clearInterval(progressTimer);
+    if (progressTimer !== undefined) {
+      clearInterval(progressTimer);
+    }
     channel.removeEventListener("close", onClose);
     inbox.stop();
     abort.abort();
@@ -204,7 +220,9 @@ function bufferLow(channel: FrameChannel, signal: AbortSignal): Promise<void> {
  */
 export function anySignal(signals: readonly AbortSignal[]): AbortSignal {
   const native = (AbortSignal as { any?: (signals: AbortSignal[]) => AbortSignal }).any;
-  if (typeof native === "function") return native.call(AbortSignal, [...signals]);
+  if (typeof native === "function") {
+    return native.call(AbortSignal, [...signals]);
+  }
   return anySignalFallback(signals);
 }
 
@@ -217,16 +235,22 @@ export function anySignalFallback(signals: readonly AbortSignal[]): AbortSignal 
     return controller.signal;
   }
   const onAbort = (event: Event) => {
-    for (const s of signals) s.removeEventListener("abort", onAbort);
+    for (const s of signals) {
+      s.removeEventListener("abort", onAbort);
+    }
     controller.abort((event.target as AbortSignal).reason);
   };
-  for (const s of signals) s.addEventListener("abort", onAbort, { once: true });
+  for (const s of signals) {
+    s.addEventListener("abort", onAbort, { once: true });
+  }
   return controller.signal;
 }
 
 /** Resolves or rejects like `promise`, or rejects as soon as `signal` aborts. */
 export function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
-  if (signal.aborted) return Promise.reject(signal.reason);
+  if (signal.aborted) {
+    return Promise.reject(signal.reason);
+  }
   return new Promise((resolve, reject) => {
     const onAbort = () => reject(signal.reason);
     signal.addEventListener("abort", onAbort, { once: true });
@@ -244,16 +268,22 @@ export function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<
 }
 
 function equalBytes(a: Uint8Array, b: Uint8Array): boolean {
-  if (a.length !== b.length) return false;
+  if (a.length !== b.length) {
+    return false;
+  }
   let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= (a[i] as number) ^ (b[i] as number);
+  for (let i = 0; i < a.length; i++) {
+    diff |= (a[i] as number) ^ (b[i] as number);
+  }
   return diff === 0;
 }
 
 /** Lets the page handle input and paint before continuing a long job. */
 export function yieldToPage(): Promise<void> {
   const scheduler = (globalThis as { scheduler?: { yield?: () => Promise<void> } }).scheduler;
-  if (scheduler?.yield) return scheduler.yield();
+  if (scheduler?.yield) {
+    return scheduler.yield();
+  }
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 

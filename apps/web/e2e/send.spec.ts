@@ -85,10 +85,14 @@ test("delivers a file to two recipients with a verified checksum", async ({ sigi
   const sender = await openSender(sigill, file);
   const names = [`Anna-${randomTag()}`, `Erik-${randomTag()}`];
   const links: string[] = [];
-  for (const name of names) links.push(await addRecipient(sigill, sender, name));
+  for (const name of names) {
+    links.push(await addRecipient(sigill, sender, name));
+  }
 
   const received = await Promise.all(links.map((link) => receive(sigill, link, file, "8.4 MB")));
-  for (const { bytes } of received) expect(sha256Hex(bytes)).toBe(file.sha256);
+  for (const { bytes } of received) {
+    expect(sha256Hex(bytes)).toBe(file.sha256);
+  }
 
   for (const name of names) {
     await expect(

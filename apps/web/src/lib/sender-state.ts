@@ -176,19 +176,27 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
         effects: [{ type: "start", linkId }],
       };
     case "channel-open":
-      if (current.status !== "connecting") return { state, effects: [] };
+      if (current.status !== "connecting") {
+        return { state, effects: [] };
+      }
       return { state: replace(state, { ...current, status: "offered" }), effects: [] };
     case "accepted":
-      if (current.status !== "offered") return { state, effects: [] };
+      if (current.status !== "offered") {
+        return { state, effects: [] };
+      }
       return { state: replace(state, { ...current, status: "receiving" }), effects: [] };
     case "progress":
-      if (current.status !== "receiving") return { state, effects: [] };
+      if (current.status !== "receiving") {
+        return { state, effects: [] };
+      }
       return {
         state: replace(state, { ...current, bytesSent: Math.max(0, action.bytesSent) }),
         effects: [],
       };
     case "receipt": {
-      if (current.status !== "receiving") return { state, effects: [] };
+      if (current.status !== "receiving") {
+        return { state, effects: [] };
+      }
       const next: Recipient = action.match
         ? { ...current, status: "delivered" }
         : { ...reset(current, "failed"), error: CHECKSUM_MISMATCH };
@@ -207,13 +215,17 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
         ],
       };
     case "left":
-      if (current.status !== "connecting") return { state, effects: [] };
+      if (current.status !== "connecting") {
+        return { state, effects: [] };
+      }
       return {
         state: replace(state, reset(current, "waiting")),
         effects: [{ type: "close", linkId }],
       };
     case "declined":
-      if (current.status !== "offered") return { state, effects: [] };
+      if (current.status !== "offered") {
+        return { state, effects: [] };
+      }
       return {
         state: replace(state, reset(current, "waiting")),
         effects: [{ type: "close", linkId }],

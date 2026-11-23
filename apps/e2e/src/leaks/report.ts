@@ -30,22 +30,30 @@ export function formatLeakReport(
   violations: readonly string[],
   seed?: string,
 ): string | undefined {
-  if (findings.length === 0 && violations.length === 0) return undefined;
+  if (findings.length === 0 && violations.length === 0) {
+    return undefined;
+  }
   const parts = [
     `Leak check failed: ${findings.length} finding(s), ` +
       `${violations.length} server stdout violation(s).`,
   ];
-  if (seed) parts.push(`Replay the canaries with SIGILL_E2E_SEED=${seed}.`);
+  if (seed) {
+    parts.push(`Replay the canaries with SIGILL_E2E_SEED=${seed}.`);
+  }
   if (findings.length > 0) {
     // The context shows bytes of throwaway test canaries, never of a real secret.
     parts.push("Findings:", ...list(findings.map(formatFinding)));
   }
-  if (violations.length > 0) parts.push("Server stdout violations:", ...list(violations));
+  if (violations.length > 0) {
+    parts.push("Server stdout violations:", ...list(violations));
+  }
   return parts.join("\n");
 }
 
 function list(lines: readonly string[]): string[] {
   const shown = lines.slice(0, maxListed).map((line) => `  ${line}`);
-  if (lines.length > maxListed) shown.push(`  … and ${lines.length - maxListed} more`);
+  if (lines.length > maxListed) {
+    shown.push(`  … and ${lines.length - maxListed} more`);
+  }
   return shown;
 }

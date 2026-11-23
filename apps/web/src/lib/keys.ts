@@ -29,7 +29,9 @@ export const MAX_SIGNAL_PAYLOAD = Math.floor((MAX_RELAY_DATA * 3) / 4) - IV_BYTE
 
 async function deriveKey(secret: string, salt: Uint8Array<ArrayBuffer>, info: string) {
   const ikm = isSecret(secret) ? decodeBase64url(secret) : undefined;
-  if (!ikm) throw new Error("invalid link secret");
+  if (!ikm) {
+    throw new Error("invalid link secret");
+  }
   const base = await crypto.subtle.importKey("raw", ikm, "HKDF", false, ["deriveKey"]);
   return crypto.subtle.deriveKey(
     { name: "HKDF", hash: "SHA-256", salt, info: encoder.encode(info) },
@@ -43,7 +45,9 @@ async function deriveKey(secret: string, salt: Uint8Array<ArrayBuffer>, info: st
 /** Key for sealing SDP and ICE messages on one link. */
 export function deriveSignalKey(secret: string, linkId: string): Promise<CryptoKey> {
   const salt = isLinkId(linkId) ? decodeBase64url(linkId) : undefined;
-  if (!salt) return Promise.reject(new Error("invalid link ID"));
+  if (!salt) {
+    return Promise.reject(new Error("invalid link ID"));
+  }
   return deriveKey(secret, salt, "sigill/v1/signal");
 }
 
@@ -72,7 +76,9 @@ export async function sealSignal(
   payload: unknown,
 ): Promise<string> {
   const json = JSON.stringify(payload);
-  if (json === undefined) throw new Error("signal payload is not JSON-serialisable");
+  if (json === undefined) {
+    throw new Error("signal payload is not JSON-serialisable");
+  }
   const plaintext = encoder.encode(json);
   if (plaintext.length > MAX_SIGNAL_PAYLOAD) {
     throw new Error(
@@ -103,7 +109,9 @@ export async function openSignal(
   data: string,
 ): Promise<unknown> {
   const sealed = data.length <= MAX_RELAY_DATA ? decodeBase64url(data) : undefined;
-  if (!sealed || sealed.length < IV_BYTES + TAG_BYTES) throw new Error("malformed signal");
+  if (!sealed || sealed.length < IV_BYTES + TAG_BYTES) {
+    throw new Error("malformed signal");
+  }
   const plaintext = await crypto.subtle.decrypt(
     {
       name: "AES-GCM",

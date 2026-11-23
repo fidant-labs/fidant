@@ -50,7 +50,9 @@ export function fileSecrets(
   options: FileSecretOptions = {},
 ): Secret[] {
   const secrets: Secret[] = [];
-  if (file.bytes.length >= minWindow) secrets.push({ class: "C", label, bytes: file.bytes });
+  if (file.bytes.length >= minWindow) {
+    secrets.push({ class: "C", label, bytes: file.bytes });
+  }
   // SHA-256 of no bytes is a well-known constant that shows up legitimately.
   if (file.bytes.length > 0) {
     secrets.push({ class: "C", label: `${label} sha256`, bytes: sha256(file.bytes) });
@@ -167,7 +169,9 @@ function base64Secrets(secret: ByteSecret): ByteSecret[] {
         .replaceAll("=", "")
         .slice(Math.ceil((8 * shift) / 6));
       const textWindow = Math.min(base64Window(w), text.length);
-      if (textWindow < minWindow || seen.has(text)) continue;
+      if (textWindow < minWindow || seen.has(text)) {
+        continue;
+      }
       seen.add(text);
       secrets.push({ class: cls, label, bytes: Buffer.from(text), window: textWindow });
     }
@@ -236,7 +240,9 @@ export class Needles {
         (segment.length - minWindow + 1) / stride(segment),
       );
     }
-    if (offset >= 2 ** 31) throw new Error("Secrets over 2 GiB in total are not supported.");
+    if (offset >= 2 ** 31) {
+      throw new Error("Secrets over 2 GiB in total are not supported.");
+    }
     this.#store = Buffer.alloc(offset);
     this.#exact = new AnchorTable(anchors.exact);
     this.#folded = new AnchorTable(anchors.folded);
@@ -260,12 +266,16 @@ export class Needles {
     const exact = this.#exact;
     const folded = this.#folded;
     const end = bytes.length - minWindow;
-    if (end < 0) return;
+    if (end < 0) {
+      return;
+    }
     let lo = word(bytes, 0);
     let hi = word(bytes, 4);
     for (let at = 0; ; ) {
       let next = 0;
-      if (exact.has(lo, hi)) next = this.#grow(exact, bytes, at, lo, hi, found);
+      if (exact.has(lo, hi)) {
+        next = this.#grow(exact, bytes, at, lo, hi, found);
+      }
       if (next === 0 && folded.size > 0) {
         const foldedLo = foldWord(lo);
         const foldedHi = foldWord(hi);
@@ -274,13 +284,17 @@ export class Needles {
         }
       }
       if (next === 0) {
-        if (++at > end) return;
+        if (++at > end) {
+          return;
+        }
         // Roll the anchor one byte on instead of reading all eight again.
         lo = (lo >>> 8) | ((hi & 0xff) << 24);
         hi = (hi >>> 8) | ((bytes[at + 7] as number) << 24);
       } else {
         at = next;
-        if (at > end) return;
+        if (at > end) {
+          return;
+        }
         lo = word(bytes, at);
         hi = word(bytes, at + 4);
       }
@@ -319,7 +333,9 @@ export class Needles {
       ) {
         after++;
       }
-      if (before + after < segment.window) continue;
+      if (before + after < segment.window) {
+        continue;
+      }
       found({ secret: segment.secret, offset: at - before, length: before + after });
       // Later anchors inside this run would report it again.
       return at + after - minWindow + 1;
@@ -332,8 +348,11 @@ export class Needles {
     let high = this.#starts.length - 1;
     while (low < high) {
       const mid = (low + high + 1) >>> 1;
-      if ((this.#starts[mid] as number) <= offset) low = mid;
-      else high = mid - 1;
+      if ((this.#starts[mid] as number) <= offset) {
+        low = mid;
+      } else {
+        high = mid - 1;
+      }
     }
     return this.#segments[low] as Segment;
   }
@@ -355,7 +374,9 @@ class AnchorTable {
     this.size = anchors;
     let slots = 16;
     // A quarter full, so a lookup of an absent anchor mostly ends at its first slot.
-    while (slots < anchors * 4) slots *= 2;
+    while (slots < anchors * 4) {
+      slots *= 2;
+    }
     this.#slots = new Int32Array(slots * 3);
     this.#mask = slots - 1;
   }
@@ -367,7 +388,9 @@ class AnchorTable {
     // keeps a secret of zeros from making the insert quadratic.
     let copies = 0;
     while (slots[slot * 3] !== 0) {
-      if (slots[slot * 3 + 1] === lo && slots[slot * 3 + 2] === hi && ++copies >= maxCopies) return;
+      if (slots[slot * 3 + 1] === lo && slots[slot * 3 + 2] === hi && ++copies >= maxCopies) {
+        return;
+      }
       slot = (slot + 1) & this.#mask;
     }
     slots[slot * 3] = offset + 1;
@@ -379,7 +402,9 @@ class AnchorTable {
   has(lo: number, hi: number): boolean {
     const slots = this.#slots;
     for (let slot = hashSlot(lo, hi) & this.#mask; slots[slot * 3] !== 0; ) {
-      if (slots[slot * 3 + 1] === lo && slots[slot * 3 + 2] === hi) return true;
+      if (slots[slot * 3 + 1] === lo && slots[slot * 3 + 2] === hi) {
+        return true;
+      }
       slot = (slot + 1) & this.#mask;
     }
     return false;
