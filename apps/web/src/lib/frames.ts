@@ -279,14 +279,34 @@ function isZero(bytes: Uint8Array): boolean {
   return bits === 0;
 }
 
+/**
+ * C0 and C1 control characters (U+0000–001F, U+007F–009F) and the Unicode
+ * direction controls (U+200E, U+200F, U+202A–202E, U+2066–2069).
+ */
+const FORBIDDEN_CHARACTERS = /[\p{Cc}\u200E\u200F\u202A-\u202E\u2066-\u2069]/u;
+
+/**
+ * Whether a file name or type contains characters META refuses: control
+ * characters, which could break how the name is shown or saved, and direction
+ * controls, which can make a name ending in ".exe" display as if it ended in
+ * ".pdf". The sender checks it when a file is chosen; decodeMeta rejects such names.
+ */
+export function hasForbiddenCharacters(text: string): boolean {
+  return FORBIDDEN_CHARACTERS.test(text);
+}
+
 function parseMeta(value: unknown): FileMeta | undefined {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
   const keys = Object.keys(value).sort().join(",");
   if (keys !== "chunkSize,name,size,type") return undefined;
   const { name, size, type, chunkSize } = value as Record<string, unknown>;
-  if (typeof name !== "string" || name.length === 0) return undefined;
+  if (typeof name !== "string" || name.length === 0 || hasForbiddenCharacters(name)) {
+    return undefined;
+  }
   if (typeof size !== "number" || !Number.isSafeInteger(size) || size < 0) return undefined;
-  if (typeof type !== "string" || type.length > MAX_TYPE_LENGTH) return undefined;
+  if (typeof type !== "string" || type.length > MAX_TYPE_LENGTH || hasForbiddenCharacters(type)) {
+    return undefined;
+  }
   if (
     typeof chunkSize !== "number" ||
     !Number.isInteger(chunkSize) ||

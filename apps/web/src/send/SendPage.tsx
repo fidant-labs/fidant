@@ -21,7 +21,7 @@
 import { MAX_LINKS } from "@sigill/protocol";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { formatBytes, toHex } from "../lib/format.ts";
-import { metaFits } from "../lib/frames.ts";
+import { hasForbiddenCharacters, metaFits } from "../lib/frames.ts";
 import { deriveSignalKey } from "../lib/keys.ts";
 import { createLink } from "../lib/link.ts";
 import { createSenderPeer, type Peer } from "../lib/peer.ts";
@@ -222,8 +222,16 @@ export function SendPage() {
     const chosen = input.files?.[0];
     hashAbortRef.current?.abort(new Error("a different file was chosen"));
     hashAbortRef.current = undefined;
-    const fits = !chosen || metaFits(chosen);
-    setFileError(fits ? "" : "This file name is too long to send. Rename the file and try again.");
+    const unsafe =
+      !!chosen && (hasForbiddenCharacters(chosen.name) || hasForbiddenCharacters(chosen.type));
+    const fits = !chosen || (!unsafe && metaFits(chosen));
+    setFileError(
+      fits
+        ? ""
+        : unsafe
+          ? "This file name contains characters that can't be sent. Rename the file and try again."
+          : "This file name is too long to send. Rename the file and try again.",
+    );
     setFile(fits ? chosen : undefined);
     // Clear the input so it does not show a file that will not be sent.
     if (!fits) input.value = "";

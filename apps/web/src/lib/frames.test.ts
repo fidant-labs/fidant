@@ -14,6 +14,7 @@ import {
   FrameReader,
   FrameWriter,
   HEADER_BYTES,
+  hasForbiddenCharacters,
   MAX_CHUNK_BYTES,
   MAX_PADDABLE_SIZE,
   META_PADDED_BYTES,
@@ -414,6 +415,31 @@ test("decodeMeta rejects malformed padding and JSON", () => {
   assert.throws(() => decodeMeta(rawMeta(JSON.stringify({ ...meta(10), extra: 1 }))));
   assert.throws(() => decodeMeta(rawMeta("not json")));
   assert.throws(() => decodeMeta(rawMeta("")));
+});
+
+test("META refuses control and direction characters in the name and type", () => {
+  const forbidden = [
+    0x00, 0x09, 0x0a, 0x1f, 0x7f, 0x80, 0x9f, 0x200e, 0x200f, 0x202a, 0x202d, 0x202e, 0x2066,
+    0x2069,
+  ];
+  for (const code of forbidden) {
+    const c = String.fromCodePoint(code);
+    const label = `U+${code.toString(16).padStart(4, "0")}`;
+    assert.equal(hasForbiddenCharacters(`a${c}b.pdf`), true, label);
+    const badName = { ...meta(10), name: `invoice${c}fdp.exe` };
+    const badType = { ...meta(10), type: `text/plain${c}` };
+    assert.throws(() => encodeMeta(badName), /invalid/, label);
+    assert.throws(() => encodeMeta(badType), /invalid/, label);
+    assert.equal(metaFits(badName), false, label);
+    // A sender that skips the check is still refused by the recipient.
+    assert.throws(() => decodeMeta(rawMeta(JSON.stringify(badName))), /invalid/, label);
+    assert.throws(() => decodeMeta(rawMeta(JSON.stringify(badType))), /invalid/, label);
+  }
+  // Ordinary non-ASCII names, joiners and emoji are fine.
+  for (const name of ["Årsrapport 2026.pdf", "日本語.txt", "a\u200db.png", "🙂.bin", "a b.txt"]) {
+    assert.equal(hasForbiddenCharacters(name), false, name);
+    assert.deepEqual(decodeMeta(encodeMeta({ ...meta(10), name })).name, name);
+  }
 });
 
 // meta(10) has chunkSize 4: paddedLength(10, 4) = 12, so three chunks, the
