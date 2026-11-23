@@ -242,7 +242,7 @@ test("logs only allowlisted fields and never relay payloads", async () => {
   bad.send(`{"t":"relay","data":"${marker}"}`);
   await bad.closed;
 
-  const allowed = new Set(["link", "links", "bytes", "reason", "code"]);
+  const allowed = new Set(["link", "links", "bytes", "reason", "code", "port"]);
   assert.ok(logLines.some((line) => line.event === "relay"));
   for (const line of logLines) {
     const text = JSON.stringify(line);

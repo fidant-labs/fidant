@@ -24,6 +24,7 @@ export type LogFields = {
   bytes?: number;
   reason?: string;
   code?: string;
+  port?: number;
 };
 
 export type Logger = (event: string, fields?: LogFields) => void;
