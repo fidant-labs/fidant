@@ -37,7 +37,7 @@ Planning lives in Linear: workspace `sigill`, team `SIG`, issue keys like `SIG-2
 
 ## Merging
 
-- An agent may merge a pull request when the required `check` passed and the Claude reviewer approved the pull request's current head commit. The approval counts only with a successful `Claude review` run on that same commit, because any workflow in this repository can post a review as `github-actions[bot]`.
+- An agent may merge a pull request when the required `check` passed and the latest review by `github-actions[bot]` on the pull request's current head commit is an approval. The approval counts only with a successful `Claude review` run on that same commit, because any workflow in this repository can post a review as `github-actions[bot]`.
 - Pull requests that touch `.github/**`, `AGENTS.md`, `CLAUDE.md`, `.claude/**`, `.agents/**`, `.mcp.json` or `skills-lock.json` also need an approval from the `maintainers` team. Authors cannot approve their own pull requests, so the other developer approves. The `sensitive-paths` ruleset enforces this, and repository admins can bypass it.
 - Agents never approve pull requests, never merge with `--admin` or any other rule bypass, and never change rulesets, teams or repository settings.
 
