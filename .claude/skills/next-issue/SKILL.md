@@ -130,7 +130,7 @@ After opening the PR, and after every later push:
 
    ```sh
    sha=$(gh pr view <number> --repo sigill-labs/sigill --json headRefOid --jq .headRefOid)
-   gh run list --repo sigill-labs/sigill --workflow "Claude review" --commit "$sha" --json databaseId --jq '.[0].databaseId'
+   gh run list --repo sigill-labs/sigill --workflow "Claude review" --commit "$sha" --json databaseId --jq '.[0].databaseId // empty'
    gh run watch <run id> --repo sigill-labs/sigill --exit-status --compact --interval 30
    ```
 
