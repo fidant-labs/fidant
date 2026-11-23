@@ -10,6 +10,7 @@ Planning lives in Linear: workspace `sigill`, team `SIG`, issue keys like `SIG-2
 - `pnpm start`: builds the web client and serves it over HTTPS on `PORT` (default 8443), on all network interfaces, and prints the addresses to open. The first start creates a self-signed certificate in `.certs/`; browsers show a warning once. On macOS, a browser on another laptop needs Local Network access (System Settings → Privacy & Security → Local Network) or the page "can't be reached", even though `curl` works.
 - `pnpm check`: lint, typecheck, unit tests and build across the workspace. Run it before every commit. The pre-push hook runs it too.
 - `pnpm format`: fixes formatting and safe lint issues.
+- `pnpm --filter @sigill/web e2e`: Playwright end-to-end test of the first demo in headless Chromium against the real server. Run `pnpm build` first. Install the browser once with `pnpm --filter @sigill/web exec playwright install chromium`. `pnpm check` does not run it; CI runs it as the `first-demo-e2e` job.
 
 ## Prerequisites
 
@@ -20,8 +21,10 @@ Planning lives in Linear: workspace `sigill`, team `SIG`, issue keys like `SIG-2
 
 ## Layout
 
-- `apps/*`: things we run or ship. `apps/web` is the Preact client, built by Vite into `apps/web/dist`. `apps/server` is the Node process that serves it.
+- `apps/*`: things we run or ship. `apps/web` is the Preact client, built by Vite into `apps/web/dist`. `apps/server` is the Node process that serves it and relays signaling messages between browsers over a WebSocket at `/signal`.
+- `apps/web/e2e`: Playwright end-to-end tests for the first demo, with their own `tsconfig.json`. They move onto the shared e2e harness in SIG-41.
 - `packages/*`: code used by more than one app. Create a package only when a second consumer exists.
+- `packages/protocol` (`@sigill/protocol`): signaling message types, parsers and limits shared by the server and the web client.
 - Workspace packages export TypeScript source directly (`"exports": { ".": "./src/index.ts" }`). Internal packages have no build step.
 - Every package with TypeScript has a `typecheck` script (`tsc --noEmit -p .`) and, if it has tests, a `test` script. The root scripts run them recursively.
 
