@@ -122,6 +122,7 @@ export function SendPage() {
           channel,
           maxMessageSize: info.maxMessageSize,
           file: chosen.file,
+          from: "",
           secret: recipient.secret,
           sha256: chosen.sha256,
           signal: connection.abort.signal,

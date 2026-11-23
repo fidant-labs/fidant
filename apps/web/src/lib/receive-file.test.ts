@@ -136,6 +136,7 @@ function run(options: RunOptions) {
     channel: pair.sender,
     maxMessageSize: 65536,
     file,
+    from: "Anna",
     secret,
     sha256: Promise.resolve(options.senderSha256 ?? sha256(options.bytes)),
     signal: new AbortController().signal,
@@ -170,7 +171,7 @@ test("receives a file, verifies it and sends a matching receipt", async () => {
   assert.deepEqual(new Uint8Array(await result.blob.arrayBuffer()), bytes);
   assert.deepEqual(await r.sending, { type: "receipt", match: true });
   assert.deepEqual(r.offers, [
-    { name: "report.bin", size: bytes.length, type: "application/octet-stream" },
+    { name: "report.bin", size: bytes.length, type: "application/octet-stream", from: "Anna" },
   ]);
   assert.equal(r.progress.at(-1), bytes.length);
 });
@@ -379,7 +380,7 @@ for (const early of ["CHUNK", "END"] as const) {
     // A sender that does not wait for ACCEPT.
     const transferId = createTransferId();
     const writer = new FrameWriter(await deriveFileKey(secret, transferId), "s");
-    const meta = { name: "a.bin", size: 1, type: "", chunkSize: MAX_CHUNK_BYTES };
+    const meta = { name: "a.bin", size: 1, type: "", chunkSize: MAX_CHUNK_BYTES, from: "" };
     pair.sender.send(encodeInit(transferId));
     pair.sender.send(await writer.encrypt(SenderKind.META, encodeMeta(meta)));
     pair.sender.send(

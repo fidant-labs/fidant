@@ -16,6 +16,7 @@ import {
   HEADER_BYTES,
   hasForbiddenCharacters,
   MAX_CHUNK_BYTES,
+  MAX_FROM_LENGTH,
   MAX_PADDABLE_SIZE,
   META_PADDED_BYTES,
   MetaTooLargeError,
@@ -48,7 +49,7 @@ function flip(frame: Uint8Array, index: number): Uint8Array {
 /** Encrypts a whole file as the sender would: META, zero-padded CHUNKs, END. */
 async function encryptFile(key: CryptoKey, file: Uint8Array, chunkSize = MAX_CHUNK_BYTES) {
   const writer = new FrameWriter(key, "s");
-  const meta = { name: "report.bin", size: file.length, type: "", chunkSize };
+  const meta = { name: "report.bin", size: file.length, type: "", chunkSize, from: "" };
   const frames = [await writer.encrypt(META, encodeMeta(meta))];
   for (let o = 0; o < paddedLength(file.length, chunkSize); o += chunkSize) {
     const body = new Uint8Array(chunkSize);
@@ -326,11 +327,17 @@ test("chunk bodies are limited to 48 KiB and fixed-size kinds are checked", asyn
 });
 
 function meta(size: number) {
-  return { name: "a.txt", size, type: "text/plain", chunkSize: 4 };
+  return { name: "a.txt", size, type: "text/plain", chunkSize: 4, from: "Anna" };
 }
 
 test("META and END bodies encode and decode", () => {
-  const m = { name: "Årsrapport 2026.pdf", size: 2 ** 40, type: "application/pdf", chunkSize: 4 };
+  const m = {
+    name: "Årsrapport 2026.pdf",
+    size: 2 ** 40,
+    type: "application/pdf",
+    chunkSize: 4,
+    from: "Åsa Öberg",
+  };
   assert.equal(encodeMeta(m).length, META_PADDED_BYTES);
   assert.deepEqual(decodeMeta(encodeMeta(m)), m);
   assert.throws(() => encodeMeta({ ...m, name: "" }));
@@ -338,6 +345,12 @@ test("META and END bodies encode and decode", () => {
   assert.throws(() => encodeMeta({ ...m, size: MAX_PADDABLE_SIZE + 1 }));
   assert.throws(() => encodeMeta({ ...m, type: "x".repeat(256) }));
   assert.throws(() => encodeMeta({ ...m, chunkSize: MAX_CHUNK_BYTES + 1 }));
+  assert.deepEqual(decodeMeta(encodeMeta({ ...m, from: "" })).from, "");
+  assert.deepEqual(
+    decodeMeta(encodeMeta({ ...m, from: "x".repeat(MAX_FROM_LENGTH) })).from.length,
+    MAX_FROM_LENGTH,
+  );
+  assert.throws(() => encodeMeta({ ...m, from: "x".repeat(MAX_FROM_LENGTH + 1) }));
 
   const hash = randomBytes(32);
   assert.deepEqual(decodeEnd(encodeEnd(hash, 12345)), {
@@ -359,12 +372,13 @@ function rawMeta(json: string, length = META_PADDED_BYTES): Uint8Array {
 test("META is always the same size, so it does not reveal the name length", async () => {
   const { key } = await setup();
   const writer = new FrameWriter(key, "s");
-  const short = { name: "a", size: 1, type: "", chunkSize: MAX_CHUNK_BYTES };
+  const short = { name: "a", size: 1, type: "", chunkSize: MAX_CHUNK_BYTES, from: "" };
   const long = {
     name: `${"å".repeat(300)}.pdf`,
     size: 2 ** 40,
     type: "application/pdf",
     chunkSize: 4,
+    from: "å".repeat(MAX_FROM_LENGTH),
   };
   const a = await writer.encrypt(META, encodeMeta(short));
   const b = await writer.encrypt(META, encodeMeta(long));
@@ -379,15 +393,22 @@ test("META is always the same size, so it does not reveal the name length", asyn
 test("META that does not fit throws MetaTooLargeError, and metaFits says so", () => {
   const fits = { name: "x".repeat(900), type: "application/pdf", size: 2 ** 40 };
   assert.equal(metaFits(fits), true);
-  assert.deepEqual(decodeMeta(encodeMeta({ ...fits, chunkSize: MAX_CHUNK_BYTES })).name, fits.name);
+  assert.deepEqual(
+    decodeMeta(encodeMeta({ ...fits, chunkSize: MAX_CHUNK_BYTES, from: "" })).name,
+    fits.name,
+  );
   const tooLong = { ...fits, name: "x".repeat(1000) };
   assert.equal(metaFits(tooLong), false);
-  assert.throws(() => encodeMeta({ ...tooLong, chunkSize: 4 }), MetaTooLargeError);
+  assert.throws(() => encodeMeta({ ...tooLong, chunkSize: 4, from: "" }), MetaTooLargeError);
   // Escaped and multi-byte characters count by their encoded length.
   assert.equal(metaFits({ ...fits, name: "\u0001".repeat(170) }), false);
   assert.equal(metaFits({ ...fits, name: "å".repeat(400) }), true);
   assert.equal(metaFits({ ...fits, name: "å".repeat(500) }), false);
   assert.equal(metaFits({ ...fits, name: "" }), false);
+  // The sender name shares the same 1024 bytes.
+  assert.equal(metaFits({ ...fits, name: "x".repeat(800) }, "x".repeat(MAX_FROM_LENGTH)), true);
+  assert.equal(metaFits({ ...fits, name: "x".repeat(900) }, "x".repeat(MAX_FROM_LENGTH)), false);
+  assert.equal(metaFits(fits, "x".repeat(MAX_FROM_LENGTH + 1)), false);
 });
 
 test("decodeMeta rejects malformed padding and JSON", () => {
@@ -413,11 +434,14 @@ test("decodeMeta rejects malformed padding and JSON", () => {
   assert.throws(() => decodeMeta(huge), /length out of range/);
 
   assert.throws(() => decodeMeta(rawMeta(JSON.stringify({ ...meta(10), extra: 1 }))));
+  const { from: _, ...noFrom } = meta(10);
+  assert.throws(() => decodeMeta(rawMeta(JSON.stringify(noFrom))));
+  assert.throws(() => decodeMeta(rawMeta(JSON.stringify({ ...meta(10), from: 1 }))));
   assert.throws(() => decodeMeta(rawMeta("not json")));
   assert.throws(() => decodeMeta(rawMeta("")));
 });
 
-test("META refuses control and direction characters in the name and type", () => {
+test("META refuses control and direction characters in the name, type and sender name", () => {
   const forbidden = [
     0x00, 0x09, 0x0a, 0x1f, 0x7f, 0x80, 0x9f, 0x200e, 0x200f, 0x202a, 0x202d, 0x202e, 0x2066,
     0x2069,
@@ -428,12 +452,16 @@ test("META refuses control and direction characters in the name and type", () =>
     assert.equal(hasForbiddenCharacters(`a${c}b.pdf`), true, label);
     const badName = { ...meta(10), name: `invoice${c}fdp.exe` };
     const badType = { ...meta(10), type: `text/plain${c}` };
+    const badFrom = { ...meta(10), from: `Your bank${c}` };
     assert.throws(() => encodeMeta(badName), /invalid/, label);
     assert.throws(() => encodeMeta(badType), /invalid/, label);
+    assert.throws(() => encodeMeta(badFrom), /invalid/, label);
     assert.equal(metaFits(badName), false, label);
+    assert.equal(metaFits(meta(10), badFrom.from), false, label);
     // A sender that skips the check is still refused by the recipient.
     assert.throws(() => decodeMeta(rawMeta(JSON.stringify(badName))), /invalid/, label);
     assert.throws(() => decodeMeta(rawMeta(JSON.stringify(badType))), /invalid/, label);
+    assert.throws(() => decodeMeta(rawMeta(JSON.stringify(badFrom))), /invalid/, label);
   }
   // Ordinary non-ASCII names, joiners and emoji are fine.
   for (const name of ["Årsrapport 2026.pdf", "日本語.txt", "a\u200db.png", "🙂.bin", "a b.txt"]) {
