@@ -47,7 +47,7 @@ export function hasCreateWritable(): boolean {
 }
 
 /** The bench directory, created if missing. */
-export async function benchDir(): Promise<FileSystemDirectoryHandle> {
+async function benchDir(): Promise<FileSystemDirectoryHandle> {
   const root = await navigator.storage.getDirectory();
   return root.getDirectoryHandle(BENCH_DIR, { create: true });
 }

@@ -468,8 +468,8 @@ export class PlaintextCheck {
     return file;
   }
 
-  /** Throws unless at least `size` bytes arrived and C matches. Returns C as computed. */
-  finish(): Uint8Array {
+  /** Throws unless at least `size` bytes arrived and C matches. */
+  finish(): void {
     if (this.failed) {
       throw new Error("plaintext check has failed");
     }
@@ -481,6 +481,5 @@ export class PlaintextCheck {
     if (!equalBytes(computed, this.commitment)) {
       throw new Error("C does not match");
     }
-    return computed;
   }
 }

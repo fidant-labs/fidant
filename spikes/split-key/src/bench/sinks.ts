@@ -156,7 +156,7 @@ export async function openSink(kind: SinkKind, options: SinkOptions = {}): Promi
 }
 
 /** Whether this engine can transfer a ReadableStream with postMessage. */
-export function canTransferStreams(): boolean {
+function canTransferStreams(): boolean {
   const { port1, port2 } = new MessageChannel();
   try {
     const stream = new ReadableStream();

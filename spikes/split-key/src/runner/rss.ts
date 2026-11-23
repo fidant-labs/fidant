@@ -102,7 +102,6 @@ export class RssSampler {
   private timer: NodeJS.Timeout | undefined;
   private sampling = false;
   private current: RssWindow | undefined;
-  private last = 0;
   private readonly engine: Engine;
   private readonly excludePids: number[];
   private readonly intervalMs: number;
@@ -166,12 +165,6 @@ export class RssSampler {
     if (this.current) {
       this.current.maxProcesses = Math.max(this.current.maxProcesses, tree.length);
     }
-    this.last = bytes;
     return bytes;
-  }
-
-  /** The latest summed RSS. */
-  get latestBytes(): number {
-    return this.last;
   }
 }

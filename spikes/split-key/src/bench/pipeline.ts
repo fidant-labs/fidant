@@ -77,7 +77,7 @@ import {
 } from "./sinks.ts";
 
 /** The name in META. Never the picked file's name. */
-export const DUMMY_NAME = "bench.bin";
+const DUMMY_NAME = "bench.bin";
 const DUMMY_TYPE = "application/octet-stream";
 const MIN_READ_BYTES = 1024 * 1024;
 
