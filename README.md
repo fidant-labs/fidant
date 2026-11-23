@@ -26,11 +26,11 @@ Send a file:
 
 1. On the sending device, open the LAN address the server printed (like `https://192.168.1.20:8443`), not `localhost`. Links made on `localhost` won't work on other devices, and the page warns about it.
 2. Accept the certificate warning. Do this once on each device.
-3. Choose a file. The page computes its SHA-256 first.
+3. Optionally type your name, then choose a file. The page computes its SHA-256 first. The name only travels inside the encrypted file description, and the recipient sees it marked as not verified.
 4. Add each recipient by name. Each one gets their own link. Names stay in the sender's browser.
 5. Copy each link and send it to that person yourself, for example in a chat.
-6. The recipient opens the link, sees the file name and size, and clicks Accept. Browsers with a save picker (desktop Chrome and Edge) ask where to save the file; others offer a "Save file" link when the transfer is done.
-7. The sender's row for that recipient changes to "Delivered, checksum verified" when the recipient's checksum matches.
+6. The recipient opens the link, sees the file name and size, and clicks Download. Browsers with a save picker (desktop Chrome and Edge) ask where to save the file; others start the download by themselves when the transfer is done, with a "Save file" button as a fallback.
+7. The sender's card for that recipient changes to "<name> has the file" when the recipient's checksum matches.
 
 Keep the sender's tab open until every recipient has the file. The file goes directly from the sender's browser to each recipient's browser, so it is only available while that tab is open.
 

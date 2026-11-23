@@ -1,11 +1,11 @@
 // Where a received file goes while it arrives.
 //
 // - FileSystemSink: where the browser has showSaveFilePicker (Chromium), the
-//   user picks the destination when they click Accept and the file streams
+//   user picks the destination when they click Download and the file streams
 //   straight to disk. On failure the writable is aborted, so no partial file
 //   is committed.
 // - BlobSink: everywhere else. Chunks are collected in memory and folded into
-//   one Blob as they arrive; the page offers a "Save file" link at the end.
+//   one Blob as they arrive; the page starts its download at the end.
 //
 // No Preact here, so tests can run it in Node.
 
@@ -117,7 +117,7 @@ export function canPickSaveFile(): boolean {
 }
 
 /**
- * Makes the sink for an accepted file. Call it first thing in the Accept click
+ * Makes the sink for an accepted file. Call it first thing in the Download click
  * handler: the save dialog may only open during a user gesture, so the picker
  * is called synchronously, before this returns. Rejects with an AbortError
  * DOMException if the user cancels the dialog (see isPickerCancel).

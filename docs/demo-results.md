@@ -30,9 +30,9 @@ One sender, two recipients on two other devices, same network.
 - Recipient 2 device and browser: not tested yet
 - Network (for example home Wi-Fi, office Wi-Fi, phone hotspot): not tested yet
 - File size in bytes: not tested yet
-- Time from Accept to "Delivered, checksum verified", recipient 1: not tested yet
-- Time from Accept to "Delivered, checksum verified", recipient 2: not tested yet
-- Checksum verified on both rows (yes/no): not tested yet
+- Time from Download to "<name> has the file", recipient 1: not tested yet
+- Time from Download to "<name> has the file", recipient 2: not tested yet
+- "Has the file" on both cards (yes/no): not tested yet
 - SHA-256 of the saved files matches the source (`shasum -a 256`), yes/no: not tested yet
 - Notes:
 
