@@ -46,7 +46,7 @@ The issue also has a draft receipt text and a proposal for the checksums:
 - **File name.** It may appear only in the six places 0001 lists: the `receiptText` field of the sign-start request, BankID `userVisibleData`, `completionData.signature`, the one Postgres column that stores the signature, the receipt download response, and the BankID simulator's own logs. Never in the audit log, the TSA, mail, storage, signaling, URLs, headers or server output.
 - **Exact size.** The exact byte size is class M. It travels only inside the encrypted META. "The receipt text names the file but not its exact size."
 - **Checksum.** The receipt signs the salted commitment `C = SHA-256(salt ‖ plaintext)`, exception (c). The salt is 32 random bytes that only the sender and recipients hold, and it travels inside the encrypted META. No plain SHA-256 of the plaintext leaves the browser.
-- **Evidence copies.** A verifier needs the file and the salt, so the sender's and recipient's evidence copies carry the salt. They are assembled in the browser from the decrypted META. The receipt download response never contains the salt, and its Content-Disposition filename is generic.
+- **Evidence copies.** A verifier needs the file and the salt, so the sender's and recipient's evidence copies carry the salt. They are assembled in the browser from the decrypted metadata (under this record, the META and SALT frames; see Key layering). The receipt download response never contains the salt, and its Content-Disposition filename is generic.
 - **Audit log and TSA.** They hold hashes of the signed receipt text or of the BankID signature, exception (e). The signature itself lives in one Postgres column.
 - **Inside the encrypted channel.** AEAD ciphertext under a key no infrastructure holds is not secret, exception (a). That covers today's plain SHA-256 in the END and RECEIPT frames.
 - **Split key.** The server half is released to a recipient only after their receipt is signed.
@@ -145,10 +145,10 @@ If the signature XML embeds the IP, every evidence package carries it, whatever 
 
 ### Reading the file name before signing
 
-| Option                                                              | For                                                                     | Against                                                                          |
-| ------------------------------------------------------------------- | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| META under the full key                                             | No change to the keys                                                   | The recipient's browser cannot name the file before signing                      |
-| META under a key from the fragment half, content under the full key | The browser can render the receipt; content still needs the server half | Name, type and size readable with the link alone; key change in SIG-7 and SIG-13 |
+| Option                                                              | For                                                                     | Against                                                                                                 |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| META under the full key                                             | No change to the keys                                                   | The recipient's browser cannot name the file before signing                                             |
+| META under a key from the fragment half, content under the full key | The browser can render the receipt; content still needs the server half | Name, type, size and `C` readable with the link alone (the salt is not); key change in SIG-7 and SIG-13 |
 
 ### Identity in the audit log
 
@@ -195,7 +195,7 @@ Swedish, template `receipt-sv-1`:
 ```text
 Kvittens från Fidant
 
-Jag bekräftar att jag har tagit emot filen ”rapport-Q3.pdf” från Anna Andersson.
+Jag bekräftar att jag har tagit emot filen ”⁨rapport-Q3.pdf⁩” från Anna Andersson.
 Filen skickades 23 november 2026 kl. 14.02 svensk tid.
 Kontrollsumma: 3f9a…c21e
 ```
@@ -205,7 +205,7 @@ English, template `receipt-en-1`:
 ```text
 Receipt from Fidant
 
-I confirm that I have received the file "rapport-Q3.pdf" from Anna Andersson.
+I confirm that I have received the file "⁨rapport-Q3.pdf⁩" from Anna Andersson.
 The file was sent on 23 November 2026 at 14:02 Swedish time.
 Checksum: 3f9a…c21e
 ```
@@ -215,13 +215,14 @@ Rules:
 - **Plain text.** The sign request omits `userVisibleDataFormat`. A file name may contain `*`, `#` or `_`, and in simple markdown those would change how the text looks. META refuses control characters today. These include LF, CR and U+0085. It also refuses the direction controls U+200E, U+200F, U+202A to U+202E and U+2066 to U+2069. It still accepts U+2028, U+2029 and U+061C, so verified transfers add rules (see Name rules).
 - **Lines.** Lines end with a single LF. There is no trailing line break.
 - **No size.** 0001 keeps the exact size inside the browsers, and a rounded size would need a new exception to 0001. This takes the option "Drop it". It also makes the English-only `formatBytes` irrelevant to the receipt.
-- **File name in quotation marks.** Swedish uses ” on both sides (U+201D). English uses straight double quotes (U+0022). Because names cannot contain these marks (see Name rules), they show where the name starts and ends.
-- **Name rules.** A file name in a verified transfer must not contain:
-  - any format character (`\p{Cf}`), line separator or paragraph separator (`\p{Zl}`, `\p{Zp}`). That covers U+2028, U+2029, U+061C, zero-width characters, U+FEFF, the soft hyphen and tag characters, so the name cannot start a new line or hide or reorder text;
-  - any quotation mark (`\p{Quotation_Mark}`) except the apostrophes ' (U+0027) and ’ (U+2019), nor the double primes and ditto marks ″ (U+2033), ‶ (U+2036), ʺ (U+02BA), ˮ (U+02EE) and 〃 (U+3003). So no character in the name looks like the closing mark.
+- **File name in quotation marks.** Swedish uses ” on both sides (U+201D). English uses straight double quotes (U+0022). Because names cannot contain these marks or anything that looks like them (see Name rules), they show where the name starts and ends.
+- **Name rules.** A file name in a verified transfer is an allowlist, not a denylist, because lookalikes of the closing mark are too many to list. After NFC normalisation, each character must be one of:
+  - a letter that is not a modifier letter (`\p{Lu}`, `\p{Ll}`, `\p{Lt}`, `\p{Lo}`) or a decimal digit (`\p{Nd}`), optionally followed by combining marks (`\p{Mn}`, `\p{Mc}`);
+  - a space (U+0020) or one of `. , - _ ( ) [ ] & + ! # % @ = ~ ; :`;
+  - an apostrophe ' (U+0027) or ’ (U+2019), but never two in a row, since `’’` looks like ”.
 
-  The browser refuses such a file when the sender chooses it. The server's re-render check applies the same rules.
-- **Name direction.** The template wraps the name in FSI (U+2068) and PDI (U+2069). The name cannot contain direction controls, so a right-to-left name cannot move the quotation marks or the words around it. Unverified: that the BankID app honours these isolates. If it does not, SIG-15 refuses right-to-left letters in verified names instead.
+  That refuses every quotation mark and its lookalikes (″, ʺ, ˮ, ❞, ＂ and the rest), every format and direction character, and every line or paragraph separator. So the name cannot close the quotation marks, start a new line, or hide or reorder text. The send page refuses a name outside the allowlist when the sender chooses the file and asks for a new name. The server's re-render check applies the same allowlist. SIG-15 fixes it in code with tests.
+- **Name direction.** The template puts FSI (U+2068) right after the opening mark and PDI (U+2069) right before the closing mark: `”`, U+2068, the name, U+2069, `”`. FSI and PDI are fixed template bytes, not part of the name. The examples above contain them, though they are invisible. The variable slot is the text strictly between U+2068 and U+2069. The name cannot contain U+2069, so the slot boundary is unambiguous. The isolates keep a right-to-left name from moving the quotation marks or the words around it. Unverified: that the BankID app honours them. If it does not, SIG-15 refuses right-to-left letters in verified names instead.
 - **Date.** Day without a leading zero, then the month name, then the year. Swedish month names are lowercase.
 - **Time.** Swedish local time (Europe/Stockholm), 24-hour clock, two-digit hour and minute: "14.02" in Swedish, "14:02" in English. The minute is truncated, not rounded. The text says "svensk tid" or "Swedish time". This takes the option "Swedish local time, labelled". The hidden data holds the exact UTC time, which also settles the repeated hour when summer time ends.
 - **"Sent".** The server's time of the `transfer.created` event, in both modes. It is the moment the sender created the transfer, not when the recipient's copy arrived.
@@ -293,7 +294,7 @@ This stays within 0001. The ciphertext hash is computed from ciphertext, which i
 This takes the option "META under a key from the fragment half, content under the full key". SIG-7, SIG-13, SIG-15 and SIG-23 implement it.
 
 - META (name, type, exact size and `C`) and the frame declaring the P2P ciphertext hash are encrypted under a key derived from the fragment half alone.
-- The salt travels in its own SALT frame under the full key, which needs the server half. 0001 puts the salt in the encrypted metadata; here that metadata spans two frames, META and SALT.
+- The salt travels in its own SALT frame under the full key, which needs the server half. 0001 puts the salt in the encrypted metadata and speaks of one META frame (name, type, exact size, salt). This record amends that wording: the encrypted metadata spans two frames, META and SALT. The salt stays class K inside AEAD under a key no infrastructure holds, so this is stricter than 0001, not looser. The SALT frame has a fixed size, so 0001's padding goal still holds.
 - CHUNK frames, the file content, are also under the full key.
 - So the recipient's browser can read the name and `C` and render the receipt before signing, but can read neither the salt nor the content until the server releases its half. The receipt needs only the name and the short form of `C`. The salt is needed only after decrypting, to recompute `C`.
 
@@ -306,7 +307,7 @@ This takes the option "Browser sends the full `receiptText`; server re-renders a
 - The templates live in a workspace package shared by the server and the web client.
 - The recipient picks the language on the pickup page. It defaults to the browser's language.
 - The recipient's browser renders the text from the template and META, shows it, and sends it as `receiptText` in the sign-start request, the one field 0001 allows. The request also carries the language, `C`, and the ciphertext hash with its attempt ID.
-- The server re-renders the text from what it knows: the template for that language, the sender's name, `sentAt` and the short form of `C`. It takes the file name from the template's one variable slot in the received text and applies META's name rules to it.
+- The server re-renders the text from what it knows: the template for that language, the sender's name, `sentAt` and the short form of `C`. It takes the file name from the template's one variable slot in the received text and applies the Name rules to it.
 - The server rejects any `receiptText` that is not byte for byte identical to its own rendering. It builds the hidden data itself, so the visible checksum and the hidden `C` always agree.
 - On rejection, neither the `receiptText` nor the name taken from it goes into the error response, a log line, an exception message or an audit `reason`, and neither is kept beyond the request. The response and the log carry only a fixed code from `@sigill/protocol`. Error paths are where a name most easily leaks outside 0001's six places.
 - The evidence records the choice as `lang` and `template`, in the hidden data and in the audit event.
@@ -360,7 +361,7 @@ Why this much and no more:
 ## Consequences
 
 - **SIG-7 and SIG-13**:
-  - META gains `C`, which takes about 50 of META's 1024 bytes, so the file-name budget shrinks. `metaFits` must reserve the room, and `parseMeta` accepts the new key set.
+  - META gains `C` as base64url (43 characters, about 50 bytes with its key) of META's 1024 bytes, so the file-name budget shrinks. `metaFits` must reserve the room, and `parseMeta` accepts the new key set.
   - A new SALT frame carries the salt under the full key, so it reaches the recipient only after signing.
   - META and the frame declaring the P2P ciphertext hash move under a key from the fragment half. CHUNK frames stay under the full key.
   - A new frame, or a new END field, carries the ciphertext hash.
