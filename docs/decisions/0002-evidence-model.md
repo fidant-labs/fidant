@@ -212,10 +212,11 @@ Checksum: 3f9a…c21e
 
 Rules:
 
-- **Plain text.** The sign request omits `userVisibleDataFormat`. A file name may contain `*`, `#` or `_`, and in simple markdown those would change how the text looks. META already refuses control characters, line breaks and direction controls in names.
+- **Plain text.** The sign request omits `userVisibleDataFormat`. A file name may contain `*`, `#` or `_`, and in simple markdown those would change how the text looks. META refuses control characters today. These include LF, CR and U+0085. It also refuses the direction controls U+200E, U+200F, U+202A to U+202E and U+2066 to U+2069. It still accepts U+2028, U+2029 and U+061C, so verified transfers add rules (see Name rules).
 - **Lines.** Lines end with a single LF. There is no trailing line break.
 - **No size.** 0001 keeps the exact size inside the browsers, and a rounded size would need a new exception to 0001. This takes the option "Drop it". It also makes the English-only `formatBytes` irrelevant to the receipt.
-- **File name in quotation marks.** Swedish uses ” on both sides (U+201D). English uses straight double quotes (U+0022). The marks show where the name starts and ends.
+- **File name in quotation marks.** Swedish uses ” on both sides (U+201D). English uses straight double quotes (U+0022). Because names cannot contain these marks (see Name rules), they show where the name starts and ends.
+- **Name rules.** A file name in a verified transfer must not contain U+2028, U+2029 or U+061C, so it cannot start a new line or reorder the signed text. It must not contain ” (U+201D), “ (U+201C) or " (U+0022), so it cannot close the quotation marks. The browser refuses such a file when the sender chooses it. The server's re-render check enforces the same rules.
 - **Date.** Day without a leading zero, then the month name, then the year. Swedish month names are lowercase.
 - **Time.** Swedish local time (Europe/Stockholm), 24-hour clock, two-digit hour and minute: "14.02" in Swedish, "14:02" in English. The minute is truncated, not rounded. The text says "svensk tid" or "Swedish time". This takes the option "Swedish local time, labelled". The hidden data holds the exact UTC time, which also settles the repeated hour when summer time ends.
 - **"Sent".** The server's time of the `transfer.created` event, in both modes. It is the moment the sender created the transfer, not when the recipient's copy arrived.
@@ -321,7 +322,7 @@ The principle:
 Rules:
 
 - **Party reference.** `partyRef = HMAC-SHA256(serverPepper, personnummer)`. The pepper is a server secret, kept outside the database. A plain SHA-256 would not do: there are only about 10^7 to 10^8 personnummer, so it is easily brute-forced. This takes the option "HMAC under a server pepper, identity in a separate deletable table".
-- **`parties` table.** One row per `partyRef`: name and personnummer, written once at the first BankID login. When a sender names a recipient by personnummer, that personnummer goes here too, so the sign request can set `requirement.personalNumber`.
+- **`parties` table.** One row per `partyRef`: name and personnummer. A row is created when a sender names a recipient by personnummer, or at the party's first BankID login, whichever comes first. The name is filled in at that first login. Naming a recipient puts the personnummer here, so the sign request can set `requirement.personalNumber`.
 - **No IP address and no user agent** in the audit log. This takes the option "Keep them out of the audit log". BankID still receives `endUserIp` with every request, as its API requires. If the BankID signature XML embeds the IP (unverified, see Context), every evidence package carries it regardless.
 - **Time.** Every event has the server's UTC time. The TSA anchors the chain in batches, as SIG-9 decides.
 
@@ -331,7 +332,7 @@ Every event also has `eventId`, `transferId`, `at` and its chain hash. The other
 | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | `transfer.created`                                       | `mode` (`p2p` or `hosted`), `senderRef`, `recipientSlots` (a count), `repeatDownloads`, `expiresAt`, `commitment` (`C`), `ciphertextSha256` (hosted only) | `senderRef` only. Name and personnummer are in `parties`, needed to show who sent. P2P recipient labels are class M and never sent. |
 | `recipient.slot.added`                                   | `slotId`, `expectedRecipientRef` (if the sender named one)                                                                                                | A reference only                                                                                                                    |
-| `party.authenticated`                                    | `slotId` or `sender`, `partyRef`, hash of the BankID `orderRef`                                                                                           | A reference only. The name goes to `parties` once.                                                                                  |
+| `party.authenticated`                                    | `slotId` or `sender`, `partyRef`, hash of the BankID `orderRef`                                                                                           | A reference only. The name goes to `parties` once, at the first login.                                                              |
 | `ciphertext.checked`                                     | `slotId`, `attemptId`, `result`                                                                                                                           | None                                                                                                                                |
 | `receipt.signed`                                         | `slotId`, `partyRef`, `lang`, `template`, SHA-256 of `signature`, of `userNonVisibleData` and of `ocspResponse`                                           | A reference only. The signature lives in its one Postgres column (0001); the chain stores its hash only, exception (e).             |
 | `keyhalf.released`                                       | `slotId`                                                                                                                                                  | None                                                                                                                                |
@@ -355,6 +356,7 @@ Why this much and no more:
   - META gains the salt and `C`. That takes about 100 of META's 1024 bytes, so the file-name budget shrinks. `metaFits` must reserve the room, and `parseMeta` accepts the new key set.
   - META and the frame declaring the P2P ciphertext hash move under a key from the fragment half. CHUNK frames stay under the full key.
   - A new frame, or a new END field, carries the ciphertext hash.
+  - `parseMeta` and `metaFits` also enforce the Name rules for verified transfers.
 - **SIG-15**:
   - The receipt templates, the browser rendering and the server's re-render check.
   - Signing only after the ciphertext check; refusing a sign-start whose `C` differs from the registered one.
