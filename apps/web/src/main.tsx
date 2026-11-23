@@ -1,4 +1,5 @@
 import { render } from "preact";
+import { PrivacyPage } from "./privacy/PrivacyPage.tsx";
 import { ReceivePage } from "./receive/ReceivePage.tsx";
 import { SendPage } from "./send/SendPage.tsx";
 import { Page, Problem } from "./ui.tsx";
@@ -20,6 +21,10 @@ function InsecurePage() {
 }
 
 function App() {
+  // The privacy page uses no crypto, so it opens even without a secure connection.
+  if (location.pathname === "/privacy") {
+    return <PrivacyPage />;
+  }
   if (!hasSecureCrypto()) {
     return <InsecurePage />;
   }
