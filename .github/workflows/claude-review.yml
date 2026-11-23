@@ -37,6 +37,7 @@ jobs:
           anthropic_workspace_id: wrkspc_01Mt8B96ymKDRUBXYtyA9e4j
           github_token: ${{ secrets.GITHUB_TOKEN }}
           allow_fork_prs: "false"
+          show_full_output: "true"
           prompt: |
             Review pull request #${{ github.event.pull_request.number }} in ${{ github.repository }}.
             Read AGENTS.md first; its invariants are hard rules.
