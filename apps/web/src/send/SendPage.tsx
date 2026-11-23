@@ -45,7 +45,7 @@ import {
   senderHolds,
 } from "../lib/server-facts.ts";
 import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
-import { FileCard, Icon, Page, ServerPanel, TechDetails } from "../ui.tsx";
+import { button, FileCard, Icon, Page, ServerPanel, TechDetails } from "../ui.tsx";
 import { RecipientList } from "./RecipientList.tsx";
 
 type Hash =
@@ -62,6 +62,13 @@ type Connection = {
 };
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+const field = "flex flex-1 flex-col gap-1";
+const input =
+  "rounded-lg border border-border bg-card px-[0.7rem] py-[0.55rem] text-foreground aria-invalid:border-destructive";
+const fieldError = "mt-1 mb-0 text-destructive";
+const hint = "text-[0.9rem] text-muted-foreground";
+const notice = "rounded-lg border px-4 py-3";
 
 export function SendPage() {
   const [file, setFile] = useState<File | undefined>(undefined);
@@ -361,31 +368,32 @@ export function SendPage() {
   return (
     <Page current="send">
       <h1>Send a file</h1>
-      <p class="lede">
+      <p class="mt-2 mb-6 text-[1.05rem] text-muted-foreground">
         Your file goes straight from this browser to the people you choose. It's encrypted on the
         way and never uploaded or stored.
       </p>
 
       {isLocalhost && (
-        <p class="notice warning">
+        <p class={`${notice} border-border bg-warning-bg`}>
           This page is open on localhost, so the links won't work on other computers. Open the
           network address the server printed instead.
         </p>
       )}
       {lostServer && (
-        <p class="notice error" role="alert">
+        <p class={`${notice} border-destructive bg-destructive-bg`} role="alert">
           Lost the connection to the server. Files already on their way can finish, but nobody new
           can connect. Reload the page to start again.
         </p>
       )}
 
-      <div class="field">
-        <label for="from">
-          Your name <span class="muted">(optional)</span>
+      <div class={`${field} my-4`}>
+        <label for="from" class="font-semibold">
+          Your name <span class="font-normal text-muted-foreground">(optional)</span>
         </label>
         <input
           id="from"
           type="text"
+          class={input}
           autocomplete="name"
           maxLength={MAX_FROM_LENGTH}
           value={from}
@@ -395,34 +403,41 @@ export function SendPage() {
           aria-describedby={fromError ? "from-error from-hint" : "from-hint"}
         />
         {fromError && (
-          <p id="from-error" class="field-error">
+          <p id="from-error" class={fieldError}>
             {fromError}
           </p>
         )}
-        <p id="from-hint" class="hint">
+        <p id="from-hint" class={`m-0 ${hint}`}>
           Shown to the people you send to.
         </p>
       </div>
 
       {!hasRecipients && (
-        <div class="drop">
+        <div class="relative my-4 rounded-lg border-2 border-dashed border-border bg-card focus-within:outline-3 focus-within:outline-offset-2 focus-within:outline-primary hover:border-primary">
           <input
             id="file"
             type="file"
+            class="absolute inset-0 size-full cursor-pointer opacity-0"
             onChange={onFileChange}
             aria-invalid={fileError ? "true" : "false"}
             aria-describedby={fileError ? "file-error" : undefined}
           />
-          <label for="file">
+          <label
+            for="file"
+            class="flex flex-col items-center gap-2 px-4 py-8 text-center text-muted-foreground"
+          >
             <Icon name="file" class="size-8" />
             <span>
-              <strong>{file ? "Choose a different file" : "Choose a file"}</strong> or drop it here
+              <strong class="text-primary">
+                {file ? "Choose a different file" : "Choose a file"}
+              </strong>{" "}
+              or drop it here
             </span>
           </label>
         </div>
       )}
       {fileError && (
-        <p id="file-error" class="field-error">
+        <p id="file-error" class={fieldError}>
           {fileError}
         </p>
       )}
@@ -430,12 +445,12 @@ export function SendPage() {
         <>
           <FileCard name={file.name} size={formatBytes(file.size)} />
           {hash.status === "preparing" && (
-            <p class="muted" role="status">
+            <p class="text-muted-foreground" role="status">
               Getting the file ready…
             </p>
           )}
           {hash.status === "failed" && (
-            <p class="field-error" role="alert">
+            <p class={fieldError} role="alert">
               Couldn't read the file. Choose it again.
             </p>
           )}
@@ -448,15 +463,18 @@ export function SendPage() {
           />
         </>
       )}
-      {hasRecipients && <p class="hint">Remove everyone to change your name or file.</p>}
+      {hasRecipients && <p class={hint}>Remove everyone to change your name or file.</p>}
 
-      <form class="add-recipient" onSubmit={onAdd} noValidate>
-        <div class="field">
-          <label for="recipient-name">Who is it for?</label>
+      <form class="mt-8 flex flex-wrap items-end gap-2" onSubmit={onAdd} noValidate>
+        <div class={field}>
+          <label for="recipient-name" class="font-semibold">
+            Who is it for?
+          </label>
           <input
             id="recipient-name"
             name="name"
             type="text"
+            class={input}
             placeholder="Their name"
             autocomplete="off"
             maxLength={100}
@@ -465,16 +483,16 @@ export function SendPage() {
             aria-describedby={nameError ? "name-error recipient-hint" : "recipient-hint"}
           />
         </div>
-        <button type="submit" disabled={!file || full}>
+        <button type="submit" class={button} disabled={!file || full}>
           Add
         </button>
       </form>
       {nameError && (
-        <p id="name-error" class="field-error">
+        <p id="name-error" class={fieldError}>
           {nameError}
         </p>
       )}
-      <p id="recipient-hint" class="hint">
+      <p id="recipient-hint" class={hint}>
         {!file
           ? "Choose a file first."
           : full
@@ -487,7 +505,7 @@ export function SendPage() {
         onRemove={onRemove}
       />
       {unfinished && (
-        <p class="hint">
+        <p class={hint}>
           Keep this tab open until everyone has the file. It's sent straight from here.
         </p>
       )}
