@@ -21,6 +21,8 @@ export const en = {
     size: "Size",
     type: "Type",
     typeMissing: "Not given",
+    you: "You",
+    sender: "Sender",
   },
   format: {
     bytes: (n: number) => (n === 1 ? "1 byte" : `${n.toLocaleString("en-US")} bytes`),
@@ -74,7 +76,6 @@ export const en = {
       failed: (name: string) =>
         `The file didn't arrive intact for ${name}. They can open the link again to retry.`,
     },
-    you: "You",
     progressFor: (name: string) => `Progress for ${name}`,
     copy: "Copy link",
     copyFor: (name: string) => `Copy link for ${name}`,
@@ -85,6 +86,92 @@ export const en = {
     remove: "Remove",
     removeFor: (name: string) => `Remove ${name}`,
     linkFor: (name: string) => `Link for ${name}`,
+  },
+  receive: {
+    connecting: "Connecting to the sender…",
+    /** `from` is the sender's typed name, or "" when they gave none. */
+    offerTitle: (from: string) =>
+      from ? `${from} wants to send you a file` : "You've been sent a file",
+    unverified: "Name typed by the sender, not verified.",
+    download: "Download",
+    decline: "Decline",
+    offerCaption: (from: string) =>
+      `Sent straight from ${from ? `${from}'s` : "the sender's"} computer to yours. Encrypted, never stored on a server.`,
+    receivingTitle: "Downloading…",
+    progressLabel: "Download progress",
+    receivingCaption: "Receiving directly from the sender. Keep this tab open until it's done.",
+    doneTitle: "Download complete",
+    verified: "We checked it: this is exactly the file that was sent.",
+    autoDownload: "Your download should start by itself.",
+    savedWhereChosen: "It's saved where you chose.",
+    saveFile: "Save file",
+    doneCaption: "Sent straight from the sender's computer to yours. Encrypted the whole way.",
+    declinedTitle: "You declined the file",
+    declinedBody:
+      "You can close this tab. If you change your mind, the link still works while the sender's page is open.",
+    showAgain: "Show the file again",
+    tryAgain: "Try again",
+    whatHappened: "What happened",
+    encryptionLabel: "Encryption",
+    encryption: "AES-256-GCM, end to end. The key is in your link and never leaves this browser.",
+    sha256Checked: "SHA-256, checked",
+    // Keyed by what went wrong; the page stores the key, so a language switch re-renders it.
+    problems: {
+      badLink: {
+        title: "This link doesn't work",
+        body: "Part of it may be missing. Check that you copied all of it, or ask the sender to send it again.",
+      },
+      unknown: {
+        title: "This link isn't active",
+        body: "The file comes straight from the sender's browser, so the link only works while they have the page open. Ask them for a new link.",
+      },
+      used: {
+        title: "This link has already been used",
+        body: "Each link works once. If you still need the file, ask the sender for a new link.",
+      },
+      busy: {
+        title: "This link is open somewhere else",
+        body: "Each link can be open in one place at a time. Close the other tab and reload this page.",
+      },
+      offline: {
+        title: "The sender's page is closed",
+        body: "The file comes straight from their browser, so it has to stay open. Ask them for a new link.",
+      },
+      lost: {
+        title: "The connection to the sender was lost",
+        body: "Nothing was saved.",
+      },
+      lostReceiving: {
+        title: "The connection to the sender was lost",
+        body: "The file may not have been saved. Try again to make sure you get it.",
+      },
+      checksum: {
+        title: "The file didn't arrive intact",
+        body: "It was changed or damaged on the way, so it was not saved. Try again, and tell the sender if it keeps happening.",
+        detail: "The SHA-256 checksum of the received file did not match the sender's.",
+      },
+      invalid: {
+        title: "Something went wrong with the transfer",
+        body: "The sender's browser sent data we couldn't read, so nothing was saved.",
+        detail: "A frame from the sender failed to decrypt or broke the transfer format.",
+      },
+      save: {
+        title: "The file couldn't be saved",
+        body: "Check that there's enough space on your disk.",
+      },
+      create: {
+        title: "The file couldn't be created",
+        body: "Try again, or choose another place to save it.",
+      },
+      connect: {
+        title: "Couldn't connect to the sender's computer",
+        body: "The file travels directly between your two computers, and they couldn't reach each other.",
+      },
+      server: {
+        title: "Couldn't reach the server",
+        body: "The server connects you to the sender. Check your internet connection.",
+      },
+    },
   },
   server: {
     heading: "What our server has right now",

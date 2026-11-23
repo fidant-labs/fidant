@@ -88,7 +88,7 @@ function RecipientRow({ recipient, fileSize, onRemove }: RowProps) {
           </p>
           {status === "receiving" && (
             <>
-              <Direct from={t.send.you} to={name} state="active" class="mt-3" />
+              <Direct from={t.common.you} to={name} state="active" class="mt-3" />
               <div class="my-3 flex flex-wrap items-center gap-3">
                 <progress
                   class="min-w-40 flex-1 accent-primary"

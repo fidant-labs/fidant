@@ -21,6 +21,8 @@ export const sv: Messages = {
     size: "Storlek",
     type: "Typ",
     typeMissing: "Inte angiven",
+    you: "Du",
+    sender: "Avsändare",
   },
   format: {
     bytes: (n: number) => `${n.toLocaleString("sv")} byte`,
@@ -74,7 +76,6 @@ export const sv: Messages = {
       failed: (name: string) =>
         `Filen kom inte fram oskadd till ${name}. Länken kan öppnas igen för att försöka på nytt.`,
     },
-    you: "Du",
     progressFor: (name: string) => `Förlopp för ${name}`,
     copy: "Kopiera länk",
     copyFor: (name: string) => `Kopiera länken till ${name}`,
@@ -85,6 +86,92 @@ export const sv: Messages = {
     remove: "Ta bort",
     removeFor: (name: string) => `Ta bort ${name}`,
     linkFor: (name: string) => `Länk till ${name}`,
+  },
+  receive: {
+    connecting: "Ansluter till avsändaren…",
+    offerTitle: (from: string) =>
+      from ? `${from} vill skicka en fil till dig` : "Du har fått en fil",
+    unverified: "Namnet är skrivet av avsändaren och inte verifierat.",
+    download: "Ladda ner",
+    decline: "Tacka nej",
+    offerCaption: (from: string) =>
+      `Skickas direkt från ${from ? `datorn hos ${from}` : "avsändarens dator"} till din. Krypterad, sparas aldrig på någon server.`,
+    receivingTitle: "Laddar ner…",
+    progressLabel: "Förlopp för nedladdningen",
+    receivingCaption: "Tar emot direkt från avsändaren. Ha fliken öppen tills det är klart.",
+    doneTitle: "Nedladdningen är klar",
+    verified: "Vi har kontrollerat den: det här är exakt den fil som skickades.",
+    autoDownload: "Nedladdningen bör starta av sig själv.",
+    savedWhereChosen: "Den är sparad där du valde.",
+    saveFile: "Spara filen",
+    doneCaption: "Skickad direkt från avsändarens dator till din. Krypterad hela vägen.",
+    declinedTitle: "Du tackade nej till filen",
+    declinedBody:
+      "Du kan stänga fliken. Om du ändrar dig fungerar länken fortfarande medan avsändarens sida är öppen.",
+    showAgain: "Visa filen igen",
+    tryAgain: "Försök igen",
+    whatHappened: "Vad som hände",
+    encryptionLabel: "Kryptering",
+    encryption:
+      "AES-256-GCM, hela vägen från avsändaren till dig. Nyckeln finns i din länk och lämnar aldrig den här webbläsaren.",
+    sha256Checked: "SHA-256, kontrollerad",
+    problems: {
+      badLink: {
+        title: "Länken fungerar inte",
+        body: "En del av den kanske saknas. Kontrollera att du har kopierat hela länken, eller be avsändaren att skicka den igen.",
+      },
+      unknown: {
+        title: "Länken är inte aktiv",
+        body: "Filen kommer direkt från avsändarens webbläsare, så länken fungerar bara medan avsändaren har sidan öppen. Be om en ny länk.",
+      },
+      used: {
+        title: "Länken har redan använts",
+        body: "Varje länk fungerar en gång. Om du fortfarande behöver filen kan du be avsändaren om en ny länk.",
+      },
+      busy: {
+        title: "Länken är öppen någon annanstans",
+        body: "Varje länk kan bara vara öppen på ett ställe i taget. Stäng den andra fliken och ladda om den här sidan.",
+      },
+      offline: {
+        title: "Avsändarens sida är stängd",
+        body: "Filen kommer direkt från avsändarens webbläsare, så sidan måste vara öppen. Be om en ny länk.",
+      },
+      lost: {
+        title: "Anslutningen till avsändaren bröts",
+        body: "Ingenting sparades.",
+      },
+      lostReceiving: {
+        title: "Anslutningen till avsändaren bröts",
+        body: "Filen kanske inte sparades. Försök igen för att vara säker på att du får den.",
+      },
+      checksum: {
+        title: "Filen kom inte fram oskadd",
+        body: "Den ändrades eller skadades på vägen, så den sparades inte. Försök igen, och säg till avsändaren om det fortsätter att hända.",
+        detail: "SHA-256-kontrollsumman för den mottagna filen stämde inte med avsändarens.",
+      },
+      invalid: {
+        title: "Något gick fel med överföringen",
+        body: "Avsändarens webbläsare skickade data som vi inte kunde läsa, så ingenting sparades.",
+        detail:
+          "En del av överföringen från avsändaren gick inte att dekryptera eller följde inte överföringsformatet.",
+      },
+      save: {
+        title: "Filen kunde inte sparas",
+        body: "Kontrollera att det finns tillräckligt med utrymme på disken.",
+      },
+      create: {
+        title: "Filen kunde inte skapas",
+        body: "Försök igen, eller välj ett annat ställe att spara den på.",
+      },
+      connect: {
+        title: "Det gick inte att ansluta till avsändarens dator",
+        body: "Filen färdas direkt mellan era två datorer, och de kunde inte nå varandra.",
+      },
+      server: {
+        title: "Det gick inte att nå servern",
+        body: "Servern kopplar ihop dig med avsändaren. Kontrollera din internetanslutning.",
+      },
+    },
   },
   server: {
     heading: "Vad vår server har just nu",

@@ -28,6 +28,7 @@ import { cn } from "cn";
 import type { ComponentChildren, VNode } from "preact";
 import { useEffect, useMemo, useReducer, useRef, useState } from "preact/hooks";
 import { Button, buttonVariants } from "#components/ui/button";
+import type { Messages } from "../i18n/en.ts";
 import { useI18n } from "../i18n/I18n.tsx";
 import { displayName, formatBytes, formatProgress, toHex } from "../lib/format.ts";
 import { deriveSignalKey } from "../lib/keys.ts";
@@ -42,16 +43,17 @@ import { Direct, FileCard, Icon, Page, Problem, ServerPanel, TechDetails } from 
 
 const caption = "text-[0.9rem] text-muted-foreground";
 
-type Message = { title: string; body: string; detail?: string };
+/** Which problem to show. Text comes from the dictionary at render time, so a language switch re-renders it. */
+type ProblemKey = keyof Messages["receive"]["problems"];
 
 type View =
   | { s: "connecting" }
-  | { s: "refused"; message: Message }
+  | { s: "refused"; problem: ProblemKey }
   | { s: "offer"; offer: FileOffer }
   | { s: "receiving"; offer: FileOffer; bytes: number }
   | { s: "done"; offer: FileOffer; blob: Blob | undefined; sha256: string }
   | { s: "declined" }
-  | { s: "failed"; message: Message };
+  | { s: "failed"; problem: ProblemKey };
 
 type Attempt = {
   abort: AbortController;
@@ -70,59 +72,6 @@ type Attempt = {
   /** Resolves the offer: a Sink to accept, undefined to decline. */
   decide?: ((sink: Sink | undefined) => void) | undefined;
   timers: Array<ReturnType<typeof setTimeout>>;
-};
-
-const REFUSED: Record<"unknown" | "used" | "busy", Message> = {
-  unknown: {
-    title: "This link isn't active",
-    body: "The file comes straight from the sender's browser, so the link only works while they have the page open. Ask them for a new link.",
-  },
-  used: {
-    title: "This link has already been used",
-    body: "Each link works once. If you still need the file, ask the sender for a new link.",
-  },
-  busy: {
-    title: "This link is open somewhere else",
-    body: "Each link can be open in one place at a time. Close the other tab and reload this page.",
-  },
-};
-const OFFLINE: Message = {
-  title: "The sender's page is closed",
-  body: "The file comes straight from their browser, so it has to stay open. Ask them for a new link.",
-};
-const LOST: Message = {
-  title: "The connection to the sender was lost",
-  body: "Nothing was saved.",
-};
-const LOST_RECEIVING: Message = {
-  title: "The connection to the sender was lost",
-  body: "The file may not have been saved. Try again to make sure you get it.",
-};
-const CHECKSUM: Message = {
-  title: "The file didn't arrive intact",
-  body: "It was changed or damaged on the way, so it was not saved. Try again, and tell the sender if it keeps happening.",
-  detail: "The SHA-256 checksum of the received file did not match the sender's.",
-};
-const INVALID: Message = {
-  title: "Something went wrong with the transfer",
-  body: "The sender's browser sent data we couldn't read, so nothing was saved.",
-  detail: "A frame from the sender failed to decrypt or broke the transfer format.",
-};
-const SAVE: Message = {
-  title: "The file couldn't be saved",
-  body: "Check that there's enough space on your disk.",
-};
-const CREATE: Message = {
-  title: "The file couldn't be created",
-  body: "Try again, or choose another place to save it.",
-};
-const CONNECT: Message = {
-  title: "Couldn't connect to the sender's computer",
-  body: "The file travels directly between your two computers, and they couldn't reach each other.",
-};
-const SERVER: Message = {
-  title: "Couldn't reach the server",
-  body: "The server connects you to the sender. Check your internet connection.",
 };
 
 /** How long to wait for `host-gone` after the peer drops, to tell "offline" from "failed". */
@@ -182,7 +131,7 @@ export function ReceivePage() {
     setView({ s: "connecting" });
 
     const current = () => attemptRef.current === attempt && !attempt.ended;
-    const lostMessage = () => (attempt.receiving ? LOST_RECEIVING : LOST);
+    const lostMessage = () => (attempt.receiving ? "lostReceiving" : "lost");
     const finish = (next: View, linger = false) => {
       if (!current()) {
         return;
@@ -197,12 +146,12 @@ export function ReceivePage() {
         return;
       }
       if (attempt.hostGone) {
-        finish({ s: "refused", message: OFFLINE });
+        finish({ s: "refused", problem: "offline" });
         return;
       }
       attempt.abort.abort(new Error("connection lost"));
       attempt.timers.push(
-        setTimeout(() => finish({ s: "failed", message: lostMessage() }), HOST_GONE_GRACE_MS),
+        setTimeout(() => finish({ s: "failed", problem: lostMessage() }), HOST_GONE_GRACE_MS),
       );
     };
 
@@ -214,7 +163,7 @@ export function ReceivePage() {
       if (attempt.channelOpen && !attempt.abort.signal.aborted) {
         return;
       }
-      finish({ s: "failed", message: attempt.channelOpen ? lostMessage() : SERVER });
+      finish({ s: "failed", problem: attempt.channelOpen ? lostMessage() : "server" });
     });
     signaling.subscribe((message) => {
       switch (message.t) {
@@ -227,9 +176,9 @@ export function ReceivePage() {
           // on this attempt (its peer failed or never connected), not that the
           // link is in use or used: the sender only signals a join it took.
           if (attempt.heardSender) {
-            finish({ s: "failed", message: attempt.channelOpen ? lostMessage() : CONNECT });
+            finish({ s: "failed", problem: attempt.channelOpen ? lostMessage() : "connect" });
           } else {
-            finish({ s: "refused", message: REFUSED[message.reason] });
+            finish({ s: "refused", problem: message.reason });
           }
           break;
         case "host-gone":
@@ -244,11 +193,11 @@ export function ReceivePage() {
             attempt.hostGone = true;
             break;
           }
-          finish({ s: "refused", message: OFFLINE });
+          finish({ s: "refused", problem: "offline" });
           break;
         case "error":
           if (!attempt.channelOpen) {
-            finish({ s: "failed", message: SERVER });
+            finish({ s: "failed", problem: "server" });
           }
           break;
         default:
@@ -304,11 +253,11 @@ export function ReceivePage() {
           const reason = error instanceof ReceiveError ? error.reason : "connection";
           // RECEIPT went out for a mismatch: linger so it reaches the sender.
           if (reason === "checksum") {
-            finish({ s: "failed", message: CHECKSUM }, true);
+            finish({ s: "failed", problem: "checksum" }, true);
           } else if (reason === "invalid") {
-            finish({ s: "failed", message: INVALID });
+            finish({ s: "failed", problem: "invalid" });
           } else if (reason === "save") {
-            finish({ s: "failed", message: SAVE });
+            finish({ s: "failed", problem: "save" });
           } else {
             lost();
           }
@@ -339,7 +288,7 @@ export function ReceivePage() {
           setTie("paired");
         }
       } catch {
-        finish({ s: "failed", message: SERVER });
+        finish({ s: "failed", problem: "server" });
       }
     })();
   };
@@ -412,7 +361,7 @@ export function ReceivePage() {
           return;
         }
         release(attempt);
-        setView({ s: "failed", message: CREATE });
+        setView({ s: "failed", problem: "create" });
       },
     );
   };
@@ -422,10 +371,7 @@ export function ReceivePage() {
   if (!link) {
     return (
       <Page>
-        <Problem
-          title="This link doesn't work"
-          body="Part of it may be missing. Check that you copied all of it, or ask the sender to send it again."
-        />
+        <Problem {...t.receive.problems.badLink} />
       </Page>
     );
   }
@@ -442,35 +388,28 @@ export function ReceivePage() {
   let body: VNode;
   switch (view.s) {
     case "connecting":
-      body = <h1>Connecting to the sender…</h1>;
+      body = <h1>{t.receive.connecting}</h1>;
       break;
     case "refused":
-      body = <Problem {...view.message} />;
+      body = <Problem {...t.receive.problems[view.problem]} />;
       break;
     case "offer": {
       const { offer } = view;
       body = (
         <>
-          <h1>
-            {offer.from ? `${offer.from} wants to send you a file` : "You've been sent a file"}
-          </h1>
-          {offer.from && (
-            <p class="text-muted-foreground">Name typed by the sender, not verified.</p>
-          )}
+          <h1>{t.receive.offerTitle(offer.from)}</h1>
+          {offer.from && <p class="text-muted-foreground">{t.receive.unverified}</p>}
           <FileCard name={offer.name} size={formatBytes(offer.size, lang)} />
           <div class="mt-6 mb-8 flex flex-col items-start gap-2">
             <Button type="button" size="lg" onClick={onAccept} disabled={picking}>
-              <Icon name="download" class="size-4" /> Download
+              <Icon name="download" class="size-4" /> {t.receive.download}
             </Button>
             <Button type="button" variant="link" onClick={onDecline} disabled={picking}>
-              Decline
+              {t.receive.decline}
             </Button>
           </div>
-          <Direct from={offer.from || "Sender"} to="You" state="ready" />
-          <p class={caption}>
-            Sent straight from {offer.from ? `${offer.from}'s` : "the sender's"} computer to yours.
-            Encrypted, never stored on a server.
-          </p>
+          <Direct from={offer.from || t.common.sender} to={t.common.you} state="ready" />
+          <p class={caption}>{t.receive.offerCaption(offer.from)}</p>
           <OfferDetails offer={offer} />
         </>
       );
@@ -480,12 +419,12 @@ export function ReceivePage() {
       const { offer, bytes } = view;
       body = (
         <>
-          <h1>Downloading…</h1>
+          <h1>{t.receive.receivingTitle}</h1>
           <FileCard name={offer.name} size={formatBytes(offer.size, lang)} />
           <div class="my-3 flex flex-wrap items-center gap-3">
             <progress
               class="min-w-40 flex-1 accent-primary"
-              aria-label="Download progress"
+              aria-label={t.receive.progressLabel}
               max={Math.max(offer.size, 1)}
               value={offer.size === 0 ? 0 : bytes}
             />
@@ -493,10 +432,8 @@ export function ReceivePage() {
               {formatProgress(bytes, offer.size, lang)}
             </span>
           </div>
-          <Direct from="Sender" to="You" state="active" />
-          <p class={caption}>
-            Receiving directly from the sender. Keep this tab open until it's done.
-          </p>
+          <Direct from={t.common.sender} to={t.common.you} state="active" />
+          <p class={caption}>{t.receive.receivingCaption}</p>
         </>
       );
       break;
@@ -507,22 +444,20 @@ export function ReceivePage() {
         <>
           <div class="flex items-center gap-[0.6rem] text-primary">
             <Icon name="check" class="size-8 stroke-[2.5]" />
-            <h1 class="m-0">Download complete</h1>
+            <h1 class="m-0">{t.receive.doneTitle}</h1>
           </div>
           <FileCard name={offer.name} size={formatBytes(offer.size, lang)} />
-          <p>We checked it: this is exactly the file that was sent.</p>
+          <p>{t.receive.verified}</p>
           {blob ? (
             <div class="flex flex-wrap items-center gap-4">
-              <p class="text-muted-foreground">Your download should start by itself.</p>
-              <SaveLink blob={blob} name={offer.name} />
+              <p class="text-muted-foreground">{t.receive.autoDownload}</p>
+              <SaveLink blob={blob} name={offer.name} label={t.receive.saveFile} />
             </div>
           ) : (
-            <p class="text-muted-foreground">It's saved where you chose.</p>
+            <p class="text-muted-foreground">{t.receive.savedWhereChosen}</p>
           )}
-          <Direct from="Sender" to="You" state="done" />
-          <p class={caption}>
-            Sent straight from the sender's computer to yours. Encrypted the whole way.
-          </p>
+          <Direct from={t.common.sender} to={t.common.you} state="done" />
+          <p class={caption}>{t.receive.doneCaption}</p>
           <OfferDetails offer={offer} sha256={sha256} />
         </>
       );
@@ -531,28 +466,28 @@ export function ReceivePage() {
     case "declined":
       body = (
         <>
-          <h1>You declined the file</h1>
-          <p>
-            You can close this tab. If you change your mind, the link still works while the sender's
-            page is open.
-          </p>
+          <h1>{t.receive.declinedTitle}</h1>
+          <p>{t.receive.declinedBody}</p>
           <Button type="button" variant="link" onClick={start}>
-            Show the file again
+            {t.receive.showAgain}
           </Button>
         </>
       );
       break;
-    case "failed":
+    case "failed": {
+      const problem: { title: string; body: string; detail?: string } =
+        t.receive.problems[view.problem];
       body = (
         <>
-          <Problem {...view.message} />
+          <Problem {...problem} />
           <Button type="button" onClick={start}>
-            Try again
+            {t.receive.tryAgain}
           </Button>
-          {view.message.detail && <TechDetails rows={[["What happened", view.message.detail]]} />}
+          {problem.detail && <TechDetails rows={[[t.receive.whatHappened, problem.detail]]} />}
         </>
       );
       break;
+    }
   }
   return (
     <Page>
@@ -563,22 +498,20 @@ export function ReceivePage() {
 }
 
 function OfferDetails({ offer, sha256 }: { offer: FileOffer; sha256?: string }) {
+  const { t } = useI18n();
   const rows: Array<readonly [string, ComponentChildren]> = [
-    ["Size", `${offer.size.toLocaleString("en-US")} bytes`],
-    ["Type", offer.type || "Not given"],
-    [
-      "Encryption",
-      "AES-256-GCM, end to end. The key is in your link and never leaves this browser.",
-    ],
+    [t.common.size, t.format.bytes(offer.size)],
+    [t.common.type, offer.type || t.common.typeMissing],
+    [t.receive.encryptionLabel, t.receive.encryption],
   ];
   if (sha256) {
-    rows.push(["SHA-256, checked", <code key="sha256">{sha256}</code>]);
+    rows.push([t.receive.sha256Checked, <code key="sha256">{sha256}</code>]);
   }
   return <TechDetails rows={rows} />;
 }
 
 /** Starts the download once by itself, and stays as a button in case the browser blocked that. */
-function SaveLink({ blob, name }: { blob: Blob; name: string }) {
+function SaveLink({ blob, name, label }: { blob: Blob; name: string; label: string }) {
   const url = useMemo(() => URL.createObjectURL(blob), [blob]);
   const anchor = useRef<HTMLAnchorElement>(null);
   useEffect(() => anchor.current?.click(), [url]);
@@ -586,7 +519,7 @@ function SaveLink({ blob, name }: { blob: Blob; name: string }) {
   return (
     // cn drops the base `border-transparent`, which would otherwise hide the outline's border.
     <a ref={anchor} class={cn(buttonVariants({ variant: "outline" }))} href={url} download={name}>
-      Save file
+      {label}
     </a>
   );
 }
