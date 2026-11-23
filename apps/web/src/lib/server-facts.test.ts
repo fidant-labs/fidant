@@ -7,6 +7,7 @@ import {
   NO_RELAYS,
   passedOn,
   recipientHolds,
+  senderAfterwards,
   senderHolds,
 } from "./server-facts.ts";
 
@@ -45,6 +46,17 @@ test("senderHolds follows links, connections and the server connection", () => {
   assert.equal(
     senderHolds({ online: false, links: 3, connected: 1 }),
     "Nothing once it notices the connection has closed. That takes up to a minute if the network dropped.",
+  );
+});
+
+test("senderAfterwards for an open and a lost server connection", () => {
+  assert.equal(
+    senderAfterwards(true),
+    "When you close this tab, the server forgets your links, within a minute at most. Its log lines stay.",
+  );
+  assert.equal(
+    senderAfterwards(false),
+    "Your links are gone from the server within a minute of the connection closing. Its log lines stay.",
   );
 });
 

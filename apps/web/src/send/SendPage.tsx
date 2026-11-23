@@ -38,10 +38,10 @@ import {
   update,
 } from "../lib/sender-state.ts";
 import {
-  AFTERWARDS_SENDER,
   addRelay,
   NO_RELAYS,
   SEES_SENDER,
+  senderAfterwards,
   senderHolds,
 } from "../lib/server-facts.ts";
 import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
@@ -493,9 +493,9 @@ export function SendPage() {
       )}
       <ServerPanel
         sees={SEES_SENDER}
-        holds={senderHolds({ online: !lostServer, links: sender.recipients.length, connected })}
+        holds={senderHolds({ online: !lostServer, links: hostedLinks(sender).length, connected })}
         relayed={relayed}
-        afterwards={AFTERWARDS_SENDER}
+        afterwards={senderAfterwards(!lostServer)}
       />
     </Page>
   );

@@ -67,7 +67,10 @@ export const SEES_SENDER =
   "Your IP address and the usual browser details any website gets, and the same for each recipient when they open their link.";
 export const SEES_RECIPIENT = "Your IP address and the usual browser details any website gets.";
 export const FILE_DATA = "None. The file goes directly between browsers.";
-export const AFTERWARDS_SENDER =
-  "When you close this tab, the server forgets your links, within a minute at most. Its log lines stay.";
+export function senderAfterwards(online: boolean): string {
+  return online
+    ? "When you close this tab, the server forgets your links, within a minute at most. Its log lines stay."
+    : "Your links are gone from the server within a minute of the connection closing. Its log lines stay.";
+}
 export const AFTERWARDS_RECIPIENT =
   "When this page disconnects, the server drops what it has about this page, within a minute at most. Its log lines stay.";
