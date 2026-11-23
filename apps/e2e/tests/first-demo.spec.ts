@@ -308,29 +308,42 @@ test("the sender's name must fit with the file name, and stray drops are ignored
   leaks,
   canary,
 }) => {
-  const fileName = `${base32Token(canary.fork("long file name"), 8)}${"r".repeat(872)}.bin`;
-  leaks.watchText("long file name", fileName);
+  // A canary file whose name is padded to 884 characters: too long with a 100-character sender name, short enough with a short one.
+  const base = canaryFile(canary.fork("long file name"), { size: 5, ext: "bin" });
+  const file = leaks.watch({
+    ...base,
+    name: base.name.replace(/\.bin$/, `${"r".repeat(884 - base.name.length)}.bin`),
+  });
   const page = await demo.open("sender");
   await page.goto("/send");
   await page.getByLabel("Your name").fill("x".repeat(100));
   await page.getByLabel("Choose a file").setInputFiles({
-    name: fileName,
-    mimeType: "application/octet-stream",
-    buffer: Buffer.from("hello"),
+    name: file.name,
+    mimeType: file.mime,
+    buffer: file.bytes,
   });
-  const drop = (id: string, fill: string) => `(() => {
-    const dt = new DataTransfer();
-    ${fill};
-    const e = new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: dt });
-    document.getElementById("${id}").dispatchEvent(e);
-    return e.defaultPrevented;
-  })()`;
-  const file = `dt.items.add(new File(["x"], "x.bin"))`;
+  // Whether a dragover and a drop of what `fill` adds (nothing: no DataTransfer) onto `selector` are cancelled.
+  const cancelled = async (selector: string, fill = "") => {
+    const results = [];
+    for (const type of ["dragover", "drop"]) {
+      results.push(
+        await page.evaluate(`(() => {
+          const dt = ${fill ? "new DataTransfer()" : "null"};
+          ${fill};
+          const e = new DragEvent("${type}", { bubbles: true, cancelable: true, dataTransfer: dt });
+          document.querySelector("${selector}").dispatchEvent(e);
+          return e.defaultPrevented;
+        })()`),
+      );
+    }
+    return results;
+  };
+  const someFile = `dt.items.add(new File(["x"], "x.bin"))`;
   const text = `dt.setData("text/plain", "x")`;
-  expect(await page.evaluate(drop("file", file))).toBe(false);
-  expect(await page.evaluate(drop("file", text))).toBe(true);
-  expect(await page.evaluate(drop("recipient-name", text))).toBe(false);
-  expect(await page.evaluate(drop("recipient-name", file))).toBe(true);
+  expect(await cancelled("#file", someFile)).toEqual([false, false]);
+  expect(await cancelled("#file", text)).toEqual([true, true]);
+  expect(await cancelled("#recipient-name", text)).toEqual([false, false]);
+  expect(await cancelled("#recipient-name", someFile)).toEqual([true, true]);
   const name = makeName(leaks, canary, "Anna");
   await page.getByLabel("Who is it for?").fill(name);
   await page.getByRole("button", { name: "Add", exact: true }).click();
@@ -343,13 +356,8 @@ test("the sender's name must fit with the file name, and stray drops are ignored
   const link = await addRecipient(leaks, page, name);
   await expect(page.getByLabel("Your name")).toBeDisabled();
 
-  expect(await page.evaluate(drop("from", text))).toBe(true);
-  const strayDrop = `(() => {
-    const drop = new DragEvent("drop", { bubbles: true, cancelable: true });
-    document.body.dispatchEvent(drop);
-    return drop.defaultPrevented;
-  })()`;
-  expect(await page.evaluate(strayDrop)).toBe(true);
+  expect(await cancelled("#from", text)).toEqual([true, true]);
+  expect(await cancelled("body")).toEqual([true, true]);
 
   const recipient = await demo.open("recipient");
   await recipient.goto(link);
