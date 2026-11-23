@@ -5,7 +5,7 @@ diff_id() {
   local base
   base=$(git rev-parse --abbrev-ref origin/HEAD 2>/dev/null) || base=origin/main
   # -U0 keeps the id stable when merging the base branch only shifts context lines
-  git diff -U0 "$(git merge-base "$base" HEAD)" HEAD | git patch-id --stable | cut -d' ' -f1
+  git diff --no-ext-diff --no-textconv -U0 "$(git merge-base "$base" HEAD)" HEAD | git patch-id --verbatim | cut -d' ' -f1
 }
 
 marker() { echo "$(git rev-parse --git-dir)/deep-review-clean"; }
