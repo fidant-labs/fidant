@@ -6,6 +6,12 @@ import type { Messages } from "./en.ts";
 
 export const sv: Messages = {
   product: "Fidant",
+  tabTitles: {
+    landing: "Fidant: privat filöverföring",
+    send: "Skicka en fil – Fidant",
+    receive: "Ta emot en fil – Fidant",
+    privacy: "Integritet – Fidant",
+  },
   menu: {
     language: "Språk",
     theme: "Tema",
@@ -74,7 +80,7 @@ export const sv: Messages = {
     continue: "Fortsätt",
     back: "Tillbaka till filen",
     title: "Skicka en fil",
-    lede: "Din fil går direkt från den här webbläsaren till dem du väljer. Den krypteras på vägen och laddas aldrig upp eller sparas.",
+    lede: "Din fil skickas från den här webbläsaren till dem du väljer. Den är krypterad hela vägen och laddas aldrig upp eller sparas.",
     localhost:
       "Sidan är öppnad på localhost, så länkarna fungerar inte på andra datorer. Öppna i stället nätverksadressen som servern skrev ut.",
     lostServer:
@@ -109,7 +115,7 @@ export const sv: Messages = {
     fileFirst: "Välj en fil först.",
     full: (max: number) => `Du kan skicka till högst ${max} personer åt gången.`,
     oneLinkEach: "Varje person får en egen länk, som fungerar en gång.",
-    keepOpen: "Ha fliken öppen tills alla har fått filen. Den skickas direkt härifrån.",
+    keepOpen: "Ha fliken öppen tills alla har fått filen. Den skickas härifrån.",
     recipients: "Mottagare",
     status: {
       waiting: (name: string) => `Väntar på att ${name} ska öppna länken`,
@@ -139,16 +145,16 @@ export const sv: Messages = {
     download: "Ladda ner",
     decline: "Tacka nej",
     offerCaption: (from: string) =>
-      `Skickas direkt från ${from ? `datorn hos ${from}` : "avsändarens dator"} till din. Krypterad, sparas aldrig på någon server.`,
+      `Skickas från ${from ? `datorn hos ${from}` : "avsändarens dator"} till din. Krypterad, sparas aldrig på någon server.`,
     receivingTitle: "Laddar ner…",
     progressLabel: "Förlopp för nedladdningen",
-    receivingCaption: "Tar emot direkt från avsändaren. Ha fliken öppen tills det är klart.",
+    receivingCaption: "Tar emot från avsändaren. Ha fliken öppen tills det är klart.",
     doneTitle: "Nedladdningen är klar",
     verified: "Vi har kontrollerat den: det här är exakt den fil som skickades.",
     autoDownload: "Nedladdningen bör starta av sig själv.",
     savedWhereChosen: "Den är sparad där du valde.",
     saveFile: "Spara filen",
-    doneCaption: "Skickad direkt från avsändarens dator till din. Krypterad hela vägen.",
+    doneCaption: "Skickad från avsändarens dator till din. Krypterad hela vägen.",
     declinedTitle: "Du tackade nej till filen",
     declinedBody:
       "Du kan stänga fliken. Om du ändrar dig fungerar länken fortfarande medan avsändarens sida är öppen.",
@@ -209,7 +215,7 @@ export const sv: Messages = {
       },
       connect: {
         title: "Det gick inte att ansluta till avsändarens dator",
-        body: "Filen färdas direkt mellan era två datorer, och de kunde inte nå varandra.",
+        body: "Era två datorer kunde inte nå varandra.",
       },
       server: {
         title: "Det gick inte att nå servern",
@@ -261,6 +267,15 @@ export const sv: Messages = {
         ? "Inget ännu."
         : `${messages} ${messages === 1 ? "uppkopplingsmeddelande" : "uppkopplingsmeddelanden"} (${size}), alla krypterade så att servern inte kan läsa dem.`,
     fileData: "Inget. Filen går direkt mellan webbläsarna.",
+    fileDataRelayed:
+      "Inget. Webbläsarna kunde inte ansluta direkt, så filen går krypterad via vårt relä i stället.",
+    relaySeesLabel: "Vårt relä ser",
+    relaySees:
+      "Båda webbläsarnas IP-adresser och den krypterade filen som passerar, med storleken avrundad uppåt så att den exakta storleken inte syns. Reläet kan inte låsa upp filen.",
+    relayLogsLabel: "Vårt relä loggar",
+    relayLogs: "Anslutningstider och IP-adresser. Aldrig namn, nycklar eller filinnehåll.",
+    relayKeepsLabel: "Vårt relä sparar",
+    relayKeeps: "Ingenting av filen när den har passerat. Loggraderna finns kvar.",
     senderAfterwards: (online: boolean) =>
       online
         ? "När du stänger den här fliken glömmer servern dina länkar, inom högst en minut. Loggraderna finns kvar."
@@ -276,6 +291,7 @@ export const sv: Messages = {
         bytes: "meddelandens storlek",
         reason: "varför en länk eller anslutning nekades",
         code: "felkoder",
+        path: "om varje anslutning gick direkt, via vårt relä eller misslyckades",
         port: "porten servern lyssnar på",
       } satisfies Record<keyof LogFields, string>),
     )}. Aldrig namn, nycklar, filinnehåll eller IP-adresser.`,
@@ -313,7 +329,7 @@ export const sv: Messages = {
       ". Webbläsare skickar aldrig den delen till någon webbplats, inte heller till vår. Därför kan vi inte låsa upp din fil, ens om vi ville.",
     ],
     direct:
-      "Eftersom de två webbläsarna ansluter direkt till varandra kan båda se den andras nätverksadress (IP-adress), precis som i ett videosamtal.",
+      "Eftersom de två webbläsarna ansluter direkt till varandra kan båda se den andras nätverksadress (IP-adress), precis som i ett videosamtal. Om ett nätverk blockerar det går filen i stället via vårt relä, fortfarande låst. Reläet ser då båda IP-adresserna och ungefär hur stor filen är, men kan inte låsa upp den.",
     linkWarning:
       "Alla som har länken kan öppna filen. Skicka varje länk bara till den som den är avsedd för.",
     serverHeading: "Vad vår server vet",

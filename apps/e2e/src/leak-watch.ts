@@ -20,7 +20,7 @@ import {
 import { exemptTest, registerSecrets } from "./leaks/registry.ts";
 import { formatLeakReport, logViolations } from "./leaks/report.ts";
 import { type Capture, type Finding, scan } from "./leaks/scan.ts";
-import { e2eDir, observationsDir, serverStderrLog, serverStdoutLog } from "./paths.ts";
+import { coturnLog, e2eDir, observationsDir, serverStderrLog, serverStdoutLog } from "./paths.ts";
 import type { Recorder } from "./recorder.ts";
 
 /** What a test uses to register its secrets and check for leaks. */
@@ -52,8 +52,8 @@ export interface Leaks {
 /** A path relative to apps/e2e, as findings name points. */
 const point = (path: string) => relative(e2eDir, path);
 
-/** The server logs, stdout first. Both get the canary scan; stdout also the allowlist check. */
-const logs = [serverStdoutLog, serverStderrLog];
+/** The run logs, server stdout first. All get the canary scan; stdout also the allowlist check. */
+const logs = [serverStdoutLog, serverStderrLog, coturnLog];
 
 /**
  * One test's leak check: its secrets, the recorders whose records it scans, and where the server

@@ -41,6 +41,7 @@ function routeOf(path: string): Route {
  * another page shows.
  */
 function App() {
+  const { t } = useI18n();
   const [route, setRoute] = useState(() => routeOf(location.pathname));
   const kept = useRef(new Set<Route>());
   useEffect(() => {
@@ -48,6 +49,10 @@ function App() {
     addEventListener("popstate", onPop);
     return () => removeEventListener("popstate", onPop);
   }, []);
+
+  useEffect(() => {
+    document.title = t.tabTitles[route];
+  }, [route, t]);
 
   // A page change replaces or hides the link that had focus, so focus moves to the new page's
   // heading (also on back and forward). The first render keeps the browser's own focus.

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { assertFrameFits, parseSignalPayload } from "./peer.ts";
+import { assertFrameFits, connectionPath, parseIceServers, parseSignalPayload } from "./peer.ts";
 
 const candidate = {
   candidate: "candidate:1 1 udp 2122260223 192.168.1.2 54400 typ host",
@@ -57,4 +57,91 @@ test("assertFrameFits throws only for frames over the limit", () => {
   assertFrameFits(65536, 65536);
   assertFrameFits(Number.POSITIVE_INFINITY, 1 << 30);
   assert.throws(() => assertFrameFits(65536, 65537));
+});
+
+test("parseIceServers accepts the /ice-servers response", () => {
+  assert.deepEqual(parseIceServers({ iceServers: [] }), []);
+  const turn = {
+    urls: ["turn:127.0.0.1:3478?transport=udp"],
+    username: "1700000000",
+    credential: "c2VjcmV0",
+  };
+  assert.deepEqual(parseIceServers({ iceServers: [turn] }), [turn]);
+  assert.deepEqual(parseIceServers({ iceServers: [{ urls: "stun:127.0.0.1:3478" }] }), [
+    { urls: "stun:127.0.0.1:3478" },
+  ]);
+});
+
+test("parseIceServers drops unknown fields", () => {
+  assert.deepEqual(parseIceServers({ iceServers: [{ urls: "turn:a", extra: 1 }], more: true }), [
+    { urls: "turn:a" },
+  ]);
+});
+
+test("parseIceServers rejects anything else", () => {
+  for (const value of [
+    null,
+    "x",
+    [],
+    {},
+    { iceServers: null },
+    { iceServers: {} },
+    { iceServers: [null] },
+    { iceServers: ["turn:a"] },
+    { iceServers: [{}] },
+    { iceServers: [{ urls: 1 }] },
+    { iceServers: [{ urls: [] }] },
+    { iceServers: [{ urls: ["turn:a", 1] }] },
+    { iceServers: [{ urls: "turn:a", username: 1 }] },
+    { iceServers: [{ urls: "turn:a", credential: {} }] },
+  ]) {
+    assert.equal(parseIceServers(value), undefined, JSON.stringify(value));
+  }
+});
+
+function statsWith(local: string, remote: string, selected = true): Map<string, object> {
+  return new Map<string, object>([
+    ["T1", { type: "transport", ...(selected ? { selectedCandidatePairId: "P1" } : {}) }],
+    [
+      "P0",
+      {
+        type: "candidate-pair",
+        nominated: false,
+        state: "failed",
+        localCandidateId: "L0",
+        remoteCandidateId: "R0",
+      },
+    ],
+    [
+      "P1",
+      {
+        type: "candidate-pair",
+        nominated: true,
+        state: "succeeded",
+        localCandidateId: "L1",
+        remoteCandidateId: "R1",
+      },
+    ],
+    ["L0", { type: "local-candidate", candidateType: "relay" }],
+    ["R0", { type: "remote-candidate", candidateType: "relay" }],
+    ["L1", { type: "local-candidate", candidateType: local }],
+    ["R1", { type: "remote-candidate", candidateType: remote }],
+  ]);
+}
+
+test("connectionPath reads the selected candidate pair's types", () => {
+  assert.equal(connectionPath(statsWith("host", "host")), "direct");
+  assert.equal(connectionPath(statsWith("srflx", "host")), "stun");
+  assert.equal(connectionPath(statsWith("host", "prflx")), "stun");
+  assert.equal(connectionPath(statsWith("host", "relay")), "relay");
+  assert.equal(connectionPath(statsWith("relay", "srflx")), "relay");
+});
+
+test("connectionPath falls back to the nominated succeeded pair", () => {
+  assert.equal(connectionPath(statsWith("relay", "host", false)), "relay");
+  assert.equal(connectionPath(statsWith("host", "host", false)), "direct");
+});
+
+test("connectionPath says direct when no pair is found", () => {
+  assert.equal(connectionPath(new Map()), "direct");
 });

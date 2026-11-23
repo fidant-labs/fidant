@@ -4,6 +4,7 @@ import { createServer, request } from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, before, test } from "node:test";
 import {
+  CONNECTION_PATHS,
   ERROR_CODES,
   type LogFields,
   parseServerMessage,
@@ -212,6 +213,8 @@ test("rejects messages from a socket that is not on the link or has the wrong ro
   assert.deepEqual(await stranger.next(), { t: "error", code: "not-on-link" });
   stranger.send({ t: "refuse", link, reason: "used" });
   assert.deepEqual(await stranger.next(), { t: "error", code: "not-on-link" });
+  stranger.send({ t: "path", link, path: "relay" });
+  assert.deepEqual(await stranger.next(), { t: "error", code: "not-on-link" });
   host.send({ t: "join", link: linkId() });
   assert.deepEqual(await host.next(), { t: "error", code: "wrong-role" });
   const guest = await joinAs(link, host);
@@ -219,6 +222,21 @@ test("rejects messages from a socket that is not on the link or has the wrong ro
   assert.deepEqual(await guest.next(), { t: "error", code: "wrong-role" });
   guest.send({ t: "join", link: linkId() });
   assert.deepEqual(await guest.next(), { t: "error", code: "already-joined" });
+  guest.send({ t: "path", link, path: "direct" });
+  assert.deepEqual(await guest.next(), { t: "error", code: "not-on-link" });
+});
+
+test("logs the path a host reports with nothing else", async () => {
+  const link = linkId();
+  const host = await hostFor(link);
+  const before = logLines.length;
+  host.send({ t: "path", link, path: "relay" });
+  // A message that answers proves the path report was handled first.
+  host.send({ t: "relay", link: linkId(), data: "sync" });
+  assert.deepEqual(await host.next(), { t: "error", code: "not-on-link" });
+  assert.deepEqual(logLines.slice(before, before + 1), [
+    { event: "path", fields: { path: "relay" } },
+  ]);
 });
 
 test("closes the socket with 1008 on an invalid message", async () => {
@@ -278,16 +296,19 @@ test("logs only allowlisted fields and never relay payloads", async () => {
   assert.deepEqual(await guest.next(), { t: "relay", link, data: marker });
   guest.send({ t: "relay", link, data: marker });
   assert.deepEqual(await host.next(), { t: "relay", link, data: marker });
+  host.send({ t: "path", link, path: "stun" });
   host.send({ t: "refuse", link, reason: "busy" });
   assert.deepEqual(await guest.next(), { t: "refused", reason: "busy" });
   const bad = await connect();
   bad.send(`{"t":"relay","data":"${marker}"}`);
   await bad.closed;
 
-  const allowed = new Set(["link", "links", "bytes", "reason", "code", "port"]);
+  const allowed = new Set(["link", "links", "bytes", "reason", "code", "port", "path"]);
   const logReasons: readonly unknown[] = [...REFUSE_REASONS, ...UPGRADE_REJECT_REASONS];
   const errorCodes: readonly unknown[] = ERROR_CODES;
+  const connectionPaths: readonly unknown[] = CONNECTION_PATHS;
   assert.ok(logLines.some((line) => line.event === "relay"));
+  assert.ok(logLines.some((line) => line.event === "path"));
   for (const line of logLines) {
     const text = JSON.stringify(line);
     assert.ok(!text.includes(marker), `payload leaked into the log: ${text}`);
@@ -302,6 +323,9 @@ test("logs only allowlisted fields and never relay payloads", async () => {
       }
       if (key === "code") {
         assert.ok(errorCodes.includes(value), `unknown code ${value}`);
+      }
+      if (key === "path") {
+        assert.ok(connectionPaths.includes(value), `unknown path ${value}`);
       }
     }
   }
