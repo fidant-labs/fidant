@@ -504,7 +504,7 @@ export function ReceivePage() {
       return (
         <Page>
           <div class="success">
-            <Icon name="check" />
+            <Icon name="check" class="size-8 stroke-[2.5]" />
             <h1>Download complete</h1>
           </div>
           <FileCard name={offer.name} size={formatBytes(offer.size)} />

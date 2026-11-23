@@ -414,7 +414,7 @@ export function SendPage() {
             aria-describedby={fileError ? "file-error" : undefined}
           />
           <label for="file">
-            <Icon name="file" />
+            <Icon name="file" class="size-8" />
             <span>
               <strong>{file ? "Choose a different file" : "Choose a file"}</strong> or drop it here
             </span>

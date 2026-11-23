@@ -24,62 +24,6 @@ h3 {
   list-style: decimal;
 }
 
-main {
-  max-width: 36rem;
-  margin: 0 auto;
-  padding: 2rem 1rem 4rem;
-}
-
-/* Menu bar */
-
-.menu-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem 1rem;
-  max-width: 36rem;
-  margin: 0 auto;
-  padding: 1rem 1rem 0.75rem;
-  border-bottom: 1px solid var(--border);
-}
-
-.menu {
-  display: flex;
-  gap: 0.25rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.menu a {
-  display: block;
-  padding: 0.35rem 0.7rem;
-  border-radius: var(--radius);
-  color: var(--text);
-  text-decoration: none;
-}
-
-.menu a:hover {
-  background: var(--surface);
-  text-decoration: underline;
-}
-
-.menu a[aria-current="page"] {
-  background: var(--surface);
-  box-shadow: inset 0 0 0 1px var(--border);
-  font-weight: 600;
-}
-
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
 /* Privacy page */
 
 .prose {
@@ -127,21 +71,6 @@ main {
 .facts dd {
   margin: 0.15rem 0 0;
   color: var(--muted);
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  margin: 0;
-  font-weight: 700;
-  color: var(--muted);
-}
-
-.icon {
-  width: 1.25em;
-  height: 1.25em;
-  flex: none;
 }
 
 .lede,
@@ -313,37 +242,6 @@ button:disabled {
   color: var(--accent);
 }
 
-.drop .icon {
-  width: 2rem;
-  height: 2rem;
-}
-
-.file-card {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  margin: 1rem 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-}
-
-.file-card .icon {
-  width: 2rem;
-  height: 2rem;
-  color: var(--muted);
-}
-
-.file-card p {
-  margin: 0;
-}
-
-.file-name {
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-
 /* Receive */
 
 .offer-actions {
@@ -370,108 +268,6 @@ button:disabled {
 
 .success h1 {
   margin: 0;
-}
-
-.success .icon {
-  width: 2rem;
-  height: 2rem;
-  stroke-width: 2.5;
-}
-
-.problem {
-  display: flex;
-  gap: 0.75rem;
-  padding: 1rem;
-  margin-bottom: 1rem;
-  border: 1px solid var(--error);
-  border-radius: var(--radius);
-  background: var(--error-bg);
-}
-
-.problem .icon {
-  width: 1.75rem;
-  height: 1.75rem;
-  color: var(--error);
-}
-
-.problem h1 {
-  font-size: 1.2rem;
-  margin: 0 0 0.25rem;
-}
-
-.problem p {
-  margin: 0;
-}
-
-/* The direct-connection diagram */
-
-.direct {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin: 1.5rem 0 0.25rem;
-}
-
-.direct-end {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  max-width: 7rem;
-  color: var(--muted);
-}
-
-.direct-end .icon {
-  width: 2.25rem;
-  height: 2.25rem;
-  color: var(--text);
-}
-
-.direct-label {
-  font-size: 0.85rem;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.direct-line {
-  flex: 1;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 2px;
-  margin-bottom: 1.25rem;
-  background: repeating-linear-gradient(90deg, var(--border) 0 6px, transparent 6px 12px);
-}
-
-.direct-badge {
-  display: inline-flex;
-  padding: 0.35rem;
-  border: 1px solid var(--border);
-  border-radius: 50%;
-  background: var(--bg);
-  color: var(--accent);
-}
-
-.direct-active .direct-line {
-  background: repeating-linear-gradient(90deg, var(--accent) 0 6px, transparent 6px 12px);
-  background-size: 12px 2px;
-  animation: flow 0.6s linear infinite;
-}
-
-.direct-done .direct-line {
-  background: var(--ok);
-}
-
-.direct-done .direct-badge {
-  border-color: var(--ok);
-  color: var(--ok);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .direct-active .direct-line {
-    animation: none;
-  }
 }
 
 /* Progress */
@@ -513,10 +309,6 @@ progress {
   padding: 0.75rem 1rem;
 }
 
-.recipient .direct {
-  margin-top: 0.75rem;
-}
-
 .recipient-status {
   display: flex;
   align-items: center;
@@ -555,48 +347,4 @@ progress {
   color: var(--muted);
   overflow-wrap: anywhere;
   user-select: all;
-}
-
-/* Technical details */
-
-.tech {
-  margin-top: 2rem;
-  font-size: 0.9rem;
-}
-
-.tech summary {
-  cursor: pointer;
-  color: var(--muted);
-}
-
-.tech dl,
-.server-panel dl {
-  margin: 0.75rem 0 0;
-  display: grid;
-  gap: 0.5rem;
-}
-
-.tech dt,
-.server-panel dt {
-  color: var(--muted);
-}
-
-.tech dd,
-.server-panel dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-
-.server-panel {
-  margin-top: 2rem;
-  font-size: 0.9rem;
-}
-
-.server-panel h2 {
-  margin: 0;
-  font-size: 1rem;
-}
-
-.tech code {
-  font-size: 0.85rem;
 }

@@ -81,7 +81,7 @@ function RecipientRow({ recipient, fileSize, onRemove }: RowProps) {
       </p>
       {status === "receiving" && (
         <>
-          <Direct from="You" to={name} state="active" />
+          <Direct from="You" to={name} state="active" class="mt-3" />
           <div class="progress-row">
             <progress
               aria-label={`Progress for ${name}`}
