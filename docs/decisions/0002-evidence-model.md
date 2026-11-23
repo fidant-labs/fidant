@@ -183,3 +183,128 @@ BankID receives `endUserIp` with every request whichever option is chosen.
 | Show it as the sender states it           | Matches the issue's draft              | The recipient signs a claim Sigill has not checked |
 | Omit it until checked                     | The text states only what Sigill knows | The recipient does not see the organisation        |
 | Show it labelled "uppgiven av avsändaren" | Informative and honest                 | Longer text; unchecked data in the evidence        |
+
+## Decision
+
+### Receipt text
+
+The recipient signs one of these two texts. The file name, sender, time and checksum are examples.
+
+Swedish, template `receipt-sv-1`:
+
+```text
+Kvittens från Sigill
+
+Jag bekräftar att jag har tagit emot filen ”rapport-Q3.pdf” från Anna Andersson.
+Filen skickades 23 november 2026 kl. 14.02 svensk tid.
+Kontrollsumma: 3f9a…c21e
+```
+
+English, template `receipt-en-1`:
+
+```text
+Receipt from Sigill
+
+I confirm that I have received the file "rapport-Q3.pdf" from Anna Andersson.
+The file was sent on 23 November 2026 at 14:02 Swedish time.
+Checksum: 3f9a…c21e
+```
+
+Rules:
+
+- **Plain text.** The sign request omits `userVisibleDataFormat`. A file name may contain `*`, `#` or `_`, and in simple markdown those would change how the text looks. META already refuses control characters, line breaks and direction controls in names.
+- **Lines.** Lines end with a single LF. There is no trailing line break.
+- **No size.** 0001 keeps the exact size inside the browsers, and a rounded size would need a new exception to 0001. This takes the option "Drop it". It also makes the English-only `formatBytes` irrelevant to the receipt.
+- **File name in quotation marks.** Swedish uses ” on both sides (U+201D). English uses straight double quotes (U+0022). The marks show where the name starts and ends.
+- **Date.** Day without a leading zero, then the month name, then the year. Swedish month names are lowercase.
+- **Time.** Swedish local time (Europe/Stockholm), 24-hour clock, two-digit hour and minute: "14.02" in Swedish, "14:02" in English. The minute is truncated, not rounded. The text says "svensk tid" or "Swedish time". This takes the option "Swedish local time, labelled". The hidden data holds the exact UTC time, which also settles the repeated hour when summer time ends.
+- **"Sent".** The server's time of the `transfer.created` event, in both modes. It is the moment the sender created the transfer, not when the recipient's copy arrived.
+- **Sender.** The name of the logged-in sender, as BankID returned it when they logged in. There is no sender signature in the POC.
+- **No organisation line.** The POC omits it until SIG-36 adds the sender signature or Sigill can check the organisation. This takes the option "Omit it until checked": the recipient signs only what Sigill knows.
+- **Visible checksum.** The first 4 and the last 4 lowercase hex characters of `C`, joined by … (U+2026). This takes the option "Shortened `C`": it is the same value a verifier recomputes from the file and the salt.
+- **Template IDs.** `receipt-sv-1` and `receipt-en-1`. Any change to the wording, the date or time format, or the rules above gets a new ID. Old templates stay, so old receipts can still be checked.
+
+### Hidden signed data
+
+The sign request carries `userNonVisibleData`: base64 of canonical JSON (UTF-8, keys sorted, no whitespace). BankID signs it but does not show it. Shown here with line breaks for reading:
+
+```json
+{
+  "ciphertext": {
+    "attempt": "<attempt ID>",
+    "scope": "p2p-attempt",
+    "sha256": "<hex>"
+  },
+  "file": {
+    "alg": "sha256-salted-32",
+    "commitment": "<base64url of C>"
+  },
+  "lang": "sv",
+  "recipient": "<slot ID>",
+  "sender": { "name": "Anna Andersson" },
+  "sentAt": "2026-11-23T13:02:41Z",
+  "template": "receipt-sv-1",
+  "transfer": "<transfer ID>",
+  "type": "sigill-receipt",
+  "v": 1
+}
+```
+
+Fields:
+
+- `v`, `type`: format version and kind, so a verifier knows how to read the rest.
+- `template`, `lang`: which visible template the recipient signed, and in which language.
+- `transfer`: the server-side transfer ID, the one 0001 calls a transfer ID. It is not the code's per-attempt `transferId`.
+- `recipient`: the recipient slot ID within the transfer. Never the label the sender typed, which is class M.
+- `sentAt`: the server's UTC time of `transfer.created`, to the second. The visible time is derived from it.
+- `sender.name`: the same name as in the visible text.
+- `file.commitment`: the full `C = SHA-256(salt ‖ plaintext)`, exception (c) of 0001. `alg` names that construction with a 32-byte salt.
+- `ciphertext.sha256`: the ciphertext hash checked before signing (see Checksums).
+- `ciphertext.scope`: `p2p-attempt` or `hosted-object`, the mode the hash was taken in.
+- `ciphertext.attempt`: in P2P, the ID of the attempt the hash covers. Today's code calls this `transferId`; it is the only place the per-attempt ID appears in the receipt. Hosted mode omits `attempt`, because one stored object serves every download.
+
+The hidden data never contains the file name, the salt, the exact size or the MIME type. The name is already in the visible text, and a second copy would add a carrier outside 0001's six places. The salt, size and type are K and M, allowed nowhere outside the browsers.
+
+### Checksums
+
+This takes the option "`C` plus a ciphertext hash".
+
+- **`C` is the lasting binding.** The sender's browser computes `C` when the file is chosen, with a fresh 32-byte salt, and puts the salt and `C` in META. After decrypting, the recipient's browser recomputes `C` and reports the value it got. The server knows `C` from the signed hidden data and compares.
+- **The ciphertext hash is the check before signing.** Its definition depends on the mode:
+  - Hosted: SHA-256 of the one stored ciphertext object. The server can check it too.
+  - P2P: SHA-256 of the CHUNK frames as received in that attempt, in order. The sender declares it in a frame the recipient can read with the fragment half (see Key layering). It covers one attempt only. Retries after signing are bound by `C` alone.
+- **Sign only after the ciphertext is on the device**, in both modes. The recipient's browser checks the ciphertext hash first, so "har tagit emot" is true when they sign. This follows SIG-23's order.
+- **Who is to blame.**
+  - The ciphertext hash does not match: transport or storage failed. The recipient retries and does not sign.
+  - The ciphertext hash matches but `C` does not: the sender's file or declaration is at fault, not the recipient.
+- **END and RECEIPT.** Unverified transfers may keep today's plain SHA-256 in those frames, inside the encrypted channel (exception (a)). Verified transfers compare `C` there instead, so one value is compared everywhere.
+
+This stays within 0001. The ciphertext hash is computed from ciphertext, which is not secret, so it is not a leak. No plain hash of the plaintext leaves the browser.
+
+### Key layering
+
+This takes the option "META under a key from the fragment half, content under the full key". SIG-7, SIG-13, SIG-15 and SIG-23 implement it.
+
+- META (name, type, exact size, salt and `C`) and the frame declaring the P2P ciphertext hash are encrypted under a key derived from the fragment half alone.
+- CHUNK frames, the file content, are encrypted under the full key, which needs the server half.
+- So the recipient's browser can read the name and render the receipt before signing, but cannot decrypt the content until the server releases its half.
+
+The trade-off: anyone holding the link can read the file name, type and size without signing. This is accepted because the link is already the capability to receive, the content still needs the signature, and the recipient must see what they sign. The fragment half never reaches infrastructure, so META stays AEAD ciphertext under a key no infrastructure holds, exception (a).
+
+### Rendering and checking
+
+This takes the option "Browser sends the full `receiptText`; server re-renders and compares".
+
+- The templates live in a workspace package shared by the server and the web client.
+- The recipient picks the language on the pickup page. It defaults to the browser's language.
+- The recipient's browser renders the text from the template and META, shows it, and sends it as `receiptText` in the sign-start request, the one field 0001 allows. The request also carries the language, `C`, and the ciphertext hash with its attempt ID.
+- The server re-renders the text from what it knows: the template for that language, the sender's name, `sentAt` and the short form of `C`. It takes the file name from the template's one variable slot in the received text and applies META's name rules to it.
+- The server rejects any `receiptText` that is not byte for byte identical to its own rendering. It builds the hidden data itself, so the visible checksum and the hidden `C` always agree.
+- The evidence records the choice as `lang` and `template`, in the hidden data and in the audit event.
+
+### What counts as a download
+
+- A download counts once the recipient's browser reports a `C` that matches and the server's comparison with `C` from the signed hidden data agrees.
+- Until then the recipient may retry without limit, even when repeat downloads are off. Every attempt is logged.
+- The confirmation is reported by the recipient's browser. The server cannot see the plaintext, so it can back the report only by comparing the reported `C` with the signed one. A modified browser could report a match it never computed.
+- In P2P, every download needs the sender's browser online. If the sender allows repeat downloads, they are available only while the sender's browser stays online until expiry. The send page must say so.
