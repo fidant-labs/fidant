@@ -196,7 +196,9 @@ test("the app box is open only on 80 and 443, and on 22 only to Lightsail's brow
     { Protocol: "tcp", FromPort: 443, ToPort: 443, Cidrs: ["0.0.0.0/0"], Ipv6Cidrs: ["::/0"] },
     { Protocol: "tcp", FromPort: 22, ToPort: 22, CidrListAliases: ["lightsail-connect"] },
   ]);
-  box.hasResourceProperties("AWS::Lightsail::StaticIp", { AttachedTo: "fidant-app" });
+  const [instanceId] = Object.keys(box.findResources("AWS::Lightsail::Instance"));
+  box.hasResourceProperties("AWS::Lightsail::StaticIp", { AttachedTo: { Ref: instanceId } });
+  assert.match(instance?.Properties.InstanceName, /^fidant-app-[0-9a-f]{8}$/);
   assert.match(instance?.Properties.UserData, /^fidant\.se \{$/m);
   assert.doesNotMatch(instance?.Properties.UserData, /@DOMAIN@/);
 });
