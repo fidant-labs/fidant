@@ -89,3 +89,15 @@ test("a context without a recorder fails the test", async ({ browser }) => {
   test.fail();
   await browser.newContext();
 });
+
+test("each page has its own tab title", async ({ page }) => {
+  for (const [path, title] of [
+    ["/", "Fidant: private file transfer"],
+    ["/send", "Send a file – Fidant"],
+    ["/privacy", "Privacy – Fidant"],
+    ["/r/unknown", "Receive a file – Fidant"],
+  ] as const) {
+    await page.goto(path);
+    await expect(page).toHaveTitle(title);
+  }
+});

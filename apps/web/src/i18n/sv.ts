@@ -6,6 +6,12 @@ import type { Messages } from "./en.ts";
 
 export const sv: Messages = {
   product: "Fidant",
+  tabTitles: {
+    landing: "Fidant: privat filöverföring",
+    send: "Skicka en fil – Fidant",
+    receive: "Ta emot en fil – Fidant",
+    privacy: "Integritet – Fidant",
+  },
   menu: {
     language: "Språk",
     theme: "Tema",

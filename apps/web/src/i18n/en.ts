@@ -6,6 +6,13 @@ import type { Tie } from "../lib/server-facts.ts";
 
 export const en = {
   product: "Fidant",
+  // Browser tab titles, one per page (WCAG 2.4.2).
+  tabTitles: {
+    landing: "Fidant: private file transfer",
+    send: "Send a file – Fidant",
+    receive: "Receive a file – Fidant",
+    privacy: "Privacy – Fidant",
+  },
   menu: {
     language: "Language",
     theme: "Theme",
