@@ -235,7 +235,7 @@ export function Problem({ title, body }: { title: string; body: string }) {
       <Icon name="alert" class="size-4" />
       <AlertTitle>
         {/* The page heading: the receive page moves focus to `main h1` after each step. */}
-        <h1 class="m-0 text-[length:inherit] font-[inherit] leading-[inherit]">{title}</h1>
+        <h1 class="m-0 text-[length:inherit] font-[weight:inherit] leading-[inherit]">{title}</h1>
       </AlertTitle>
       <AlertDescription>{body}</AlertDescription>
     </Alert>
