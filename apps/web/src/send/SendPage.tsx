@@ -510,7 +510,10 @@ export function SendPage() {
               autoComplete="name"
               maxLength={MAX_FROM_LENGTH}
               value={from}
-              onInput={(event) => setFrom(event.currentTarget.value)}
+              onInput={(event) => {
+                setFrom(event.currentTarget.value);
+                setFromError("");
+              }}
               disabled={hasRecipients}
               aria-invalid={fromError ? "true" : "false"}
               aria-describedby={fromError ? "from-error from-hint" : "from-hint"}
@@ -536,6 +539,7 @@ export function SendPage() {
                 autoComplete="off"
                 maxLength={100}
                 disabled={!file || full}
+                onInput={() => setNameError("")}
                 aria-invalid={nameError ? "true" : "false"}
                 aria-describedby={nameError ? "name-error recipient-hint" : "recipient-hint"}
               />

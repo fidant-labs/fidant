@@ -29,7 +29,7 @@
 // this demo). The file name and size are shown, never logged or sent anywhere.
 
 import { cn } from "cn";
-import type { ComponentChildren, VNode } from "preact";
+import { type ComponentChildren, Fragment, type VNode } from "preact";
 import { useEffect, useMemo, useReducer, useRef, useState } from "preact/hooks";
 import { Button, buttonVariants } from "#components/ui/button";
 import type { Messages } from "../i18n/en.ts";
@@ -83,6 +83,8 @@ type Attempt = {
 const HOST_GONE_GRACE_MS = 1000;
 /** How long the peer stays up after DECLINE or RECEIPT for the sender to close it. */
 const LINGER_MS = 5000;
+/** How long to wait for the data channel before giving up on the sender. */
+const CONNECT_TIMEOUT_MS = 30_000;
 
 export function ReceivePage() {
   const { t, lang } = useI18n();
@@ -140,6 +142,7 @@ export function ReceivePage() {
 
     const current = () => attemptRef.current === attempt && !attempt.ended;
     const lostMessage = () => (attempt.receiving ? "lostReceiving" : "lost");
+    const offlineMessage = () => (attempt.receiving ? "offlineReceiving" : "offline");
     const finish = (next: View, linger = false) => {
       if (!current()) {
         return;
@@ -154,7 +157,7 @@ export function ReceivePage() {
         return;
       }
       if (attempt.hostGone) {
-        finish({ s: "refused", problem: "offline" });
+        finish({ s: "refused", problem: offlineMessage() });
         return;
       }
       attempt.abort.abort(new Error("connection lost"));
@@ -162,6 +165,14 @@ export function ReceivePage() {
         setTimeout(() => finish({ s: "failed", problem: lostMessage() }), HOST_GONE_GRACE_MS),
       );
     };
+    // Without it, a sender whose signals never arrive leaves "Connecting…" up for good.
+    attempt.timers.push(
+      setTimeout(() => {
+        if (!attempt.channelOpen) {
+          finish({ s: "failed", problem: attempt.peer ? "connect" : "server" });
+        }
+      }, CONNECT_TIMEOUT_MS),
+    );
 
     signaling.onClose(({ byClient }) => {
       if (byClient || !current()) {
@@ -236,7 +247,7 @@ export function ReceivePage() {
             attempt.hostGone = true;
             break;
           }
-          finish({ s: "refused", problem: "offline" });
+          finish({ s: "refused", problem: offlineMessage() });
           break;
         case "error":
           if (!attempt.channelOpen) {
@@ -525,7 +536,8 @@ export function ReceivePage() {
   }
   return (
     <Page>
-      {body}
+      {/* A new key per step makes its heading a new node, so moving focus there is announced. */}
+      <Fragment key={view.s}>{body}</Fragment>
       {panel}
     </Page>
   );

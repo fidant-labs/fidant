@@ -9,12 +9,12 @@
 //
 // | from                           | event          | to         | effect             |
 // |--------------------------------|----------------|------------|--------------------|
-// | waiting, failed                | joined         | connecting | start              |
+// | waiting, declined, failed      | joined         | connecting | start              |
 // | connecting, offered, receiving | joined         | (same)     | refuse busy        |
 // | delivered                      | joined         | delivered  | refuse used        |
 // | connecting                     | channel-open   | offered    |                    |
 // | offered                        | accepted       | receiving  |                    |
-// | offered                        | declined       | waiting    | close              |
+// | offered                        | declined       | declined   | close              |
 // | receiving                      | progress       | receiving  |                    |
 // | receiving                      | receipt(true)  | delivered  | close              |
 // | receiving                      | receipt(false) | failed     | close              |
@@ -53,8 +53,11 @@
 //   `timeout` refuse the attempt stored when the recipient started
 //   connecting. The server ignores a refusal whose attempt is not the bound
 //   joiner's, so a late drop of one attempt cannot turn away the next joiner.
-// - A drop or decline before delivery returns the recipient to "waiting" with
-//   bytesSent 0. There is no resume: the next join starts over.
+// - A drop before delivery returns the recipient to "waiting" with bytesSent
+//   0. There is no resume: the next join starts over.
+// - A decline marks the recipient "declined", so the sender sees the link was
+//   opened and turned down. The link stays usable: the next join starts over,
+//   exactly like a join from "waiting".
 // - A mismatching RECEIPT marks the recipient "failed" with an error. The link
 //   stays usable: the next join clears the error and starts over, exactly like
 //   a join from "waiting".
@@ -75,6 +78,7 @@ export type RecipientStatus =
   | "waiting"
   | "connecting"
   | "offered"
+  | "declined"
   | "receiving"
   | "delivered"
   | "failed";
@@ -242,7 +246,7 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
         return { state, effects: [] };
       }
       return {
-        state: replace(state, reset(current, "waiting")),
+        state: replace(state, reset(current, "declined")),
         effects: [{ type: "close", linkId }],
       };
   }

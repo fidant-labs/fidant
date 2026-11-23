@@ -4,6 +4,35 @@
 import type { LogFields } from "@sigill/protocol";
 import type { Tie } from "../lib/server-facts.ts";
 
+// Every field a server log line can carry (plus `event`, which names the log line), with what it is
+// and why we keep it. Keyed by LogFields, so a new field fails the typecheck until it is described
+// here and in sv.ts. Event names are typed by LogEvent in @sigill/protocol.
+const logFields: Record<"event" | keyof LogFields, readonly [string, string]> = {
+  event: [
+    "what happened, like a link being opened or a connection being refused",
+    "So we can see how the service behaves and find what went wrong.",
+  ],
+  link: [
+    "the first 6 characters of a link ID",
+    "So we can follow one link through the log when something goes wrong, without being able to find the link itself.",
+  ],
+  links: [
+    "how many links a sender has",
+    "To see how the service is used and to spot a sender with an unusual number of links.",
+  ],
+  bytes: ["message sizes", "To spot oversized or broken messages and to size the server."],
+  reason: [
+    "why a link or connection was refused",
+    "To see why connections fail, so we can fix the cause.",
+  ],
+  code: ["error codes", "To find bugs in the browser app or the server."],
+  path: [
+    "whether each connection was direct, went through our relay or failed",
+    "To know how often connections need our relay, which tells us how big it must be.",
+  ],
+  port: ["the port the server listens on", "To confirm the server started where it should."],
+};
+
 export const en = {
   product: "Fidant",
   // Browser tab titles, one per page (WCAG 2.4.2).
@@ -119,13 +148,15 @@ export const en = {
     keepOpen: "Keep this tab open until everyone has the file. It's sent from here.",
     recipients: "Recipients",
     status: {
-      waiting: (name: string) => `Waiting for ${name} to open the link`,
-      connecting: (name: string) => `Connecting to ${name}…`,
+      waiting: (name: string) => `Waiting for ${name}'s link to be opened`,
+      connecting: (name: string) => `Connecting through ${name}'s link…`,
       offered: (name: string) => `${name}'s link has been opened`,
-      receiving: (name: string) => `Sending to ${name}`,
+      declined: (name: string) =>
+        `${name}'s link was opened and the file declined. The link still works.`,
+      receiving: (name: string) => `Sending through ${name}'s link`,
       delivered: (name: string) => `Delivered through ${name}'s link`,
       failed: (name: string) =>
-        `The file didn't arrive intact for ${name}. They can open the link again to retry.`,
+        `The file didn't arrive intact through ${name}'s link. The link can be opened again to retry.`,
     },
     progressFor: (name: string) => `Progress for ${name}`,
     copy: "Copy link",
@@ -187,6 +218,10 @@ export const en = {
       offline: {
         title: "The sender's page is closed",
         body: "The file comes straight from their browser, so it has to stay open. Ask them for a new link.",
+      },
+      offlineReceiving: {
+        title: "The sender's page is closed",
+        body: "The file comes straight from their browser, so it has to stay open. The file may not have been saved. Ask them for a new link.",
       },
       lost: {
         title: "The connection to the sender was lost",
@@ -293,15 +328,9 @@ export const en = {
     logs: `What happened, like a link being opened, with ${new Intl.ListFormat("en", {
       type: "conjunction",
     }).format(
-      Object.values({
-        link: "the first 6 characters of a link ID",
-        links: "how many links a sender has",
-        bytes: "message sizes",
-        reason: "why a link or connection was refused",
-        code: "error codes",
-        path: "whether each connection was direct, went through our relay or failed",
-        port: "the port it listens on",
-      } satisfies Record<keyof LogFields, string>),
+      Object.entries(logFields)
+        .filter(([field]) => field !== "event")
+        .map(([, [what]]) => what),
     )}. Never names, keys, file data or IP addresses.`,
   },
   privacy: {
@@ -364,9 +393,9 @@ export const en = {
         "A few small, locked messages that help the two browsers connect. We pass them on without being able to read them, and don't keep them.",
       ],
     ] as ReadonlyArray<readonly [string, string]>,
-    logLines: "Log lines",
     keepHeading: "What we keep",
-    keep: "We have no accounts, no database, no cookies and no tracking. Apart from the log lines above, nothing is kept once the sender's page is closed, within a minute at most.",
+    keep: "We have no accounts, no database, no cookies and no tracking. Apart from the log lines below, nothing is kept once the sender's page is closed, within a minute at most.",
+    logFields,
   },
 };
 

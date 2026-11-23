@@ -50,7 +50,24 @@ export type UpgradeRejectReason = (typeof UPGRADE_REJECT_REASONS)[number];
 /** Every value the server may write in a log line's `reason` field. */
 export type LogReason = RefuseReason | UpgradeRejectReason;
 
-/** The only fields a log line may carry. `link` is cut to its first 6 characters. */
+/** The only events a log line may name. */
+export type LogEvent =
+  | "listening"
+  | "upgrade-rejected"
+  | "bad-message"
+  | "error"
+  | "host"
+  | "host-gone"
+  | "refused"
+  | "joined"
+  | "relay-dropped"
+  | "rate-limited"
+  | "relay"
+  | "path"
+  | "host-closed"
+  | "left";
+
+/** The only fields a log line may carry, besides `event`. `link` is cut to its first 6 characters. */
 export type LogFields = {
   link?: string;
   links?: number;

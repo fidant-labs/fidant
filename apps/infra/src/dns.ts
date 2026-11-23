@@ -1,19 +1,12 @@
 import { CfnOutput, Fn, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
 import * as route53 from "aws-cdk-lib/aws-route53";
-import { CloudFrontTarget } from "aws-cdk-lib/aws-route53-targets";
 import type { Construct } from "constructs";
-import { type DnsRecord, type Mail, primaryDomain, zoneNames } from "./config.ts";
+import { type Mail, primaryDomain, zoneNames } from "./config.ts";
 
 export type DnsStackProps = StackProps & {
   mail: Mail;
-  certificateValidation: DnsRecord[];
-  distributionDomain: string | undefined;
+  boxAddress: string;
 };
-
-function inZone(name: string, zoneName: string): boolean {
-  const bare = name.replace(/\.$/, "");
-  return bare === zoneName || bare.endsWith(`.${zoneName}`);
-}
 
 function addMail(zone: route53.IHostedZone, mail: Mail): void {
   if (mail.apexTxt.length > 0) {
@@ -61,28 +54,9 @@ export class DnsStack extends Stack {
         addNoMail(zone);
       }
 
-      for (const record of props.certificateValidation) {
-        if (inZone(record.name, zoneName)) {
-          new route53.CnameRecord(zone, record.name, {
-            zone,
-            recordName: record.name,
-            domainName: record.value,
-          });
-        }
-      }
-
-      const { distributionDomain } = props;
-      if (distributionDomain !== undefined) {
-        const target = route53.RecordTarget.fromAlias({
-          bind: () => ({
-            dnsName: distributionDomain,
-            hostedZoneId: CloudFrontTarget.CLOUDFRONT_ZONE_ID,
-          }),
-        });
-        for (const recordName of [zoneName, `www.${zoneName}`]) {
-          new route53.ARecord(zone, `${recordName} A`, { zone, recordName, target });
-          new route53.AaaaRecord(zone, `${recordName} AAAA`, { zone, recordName, target });
-        }
+      const target = route53.RecordTarget.fromIpAddresses(props.boxAddress);
+      for (const recordName of [zoneName, `www.${zoneName}`]) {
+        new route53.ARecord(zone, `${recordName} A`, { zone, recordName, target });
       }
     }
   }
