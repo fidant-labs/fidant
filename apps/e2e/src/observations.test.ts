@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { assertActorName, stripFragment, testSlug } from "./observations.ts";
+import { assertActorName, stripFragment, testDirName, testSlug } from "./observations.ts";
 
 test("strips the fragment from a URL", () => {
   assert.equal(
@@ -49,4 +49,25 @@ test("accepts simple actor names only", () => {
   assert.throws(() => assertActorName("Sender"));
   assert.throws(() => assertActorName("../x"));
   assert.throws(() => assertActorName("2nd"));
+});
+
+test("names a test's directory after its project and title path", () => {
+  const first = { project: { name: "chromium" }, titlePath: ["a.spec.ts", "sends"] };
+  const name = testDirName({ ...first, retry: 0, repeatEachIndex: 0 });
+  assert.equal(name, testSlug(["chromium", "a.spec.ts", "sends"]));
+  assert.match(name, /^chromium-a-sends-[0-9a-f]{8}$/);
+});
+
+test("gives retries and repeats a directory of their own", () => {
+  const first = { project: { name: "chromium" }, titlePath: ["a.spec.ts", "sends"] };
+  const names = [
+    testDirName({ ...first, retry: 0, repeatEachIndex: 0 }),
+    testDirName({ ...first, retry: 1, repeatEachIndex: 0 }),
+    testDirName({ ...first, retry: 0, repeatEachIndex: 1 }),
+    testDirName({ ...first, retry: 1, repeatEachIndex: 1 }),
+  ];
+  assert.equal(new Set(names).size, names.length);
+  assert.match(names[1] ?? "", /^chromium-a-sends-retry-1-[0-9a-f]{8}$/);
+  assert.match(names[2] ?? "", /^chromium-a-sends-repeat-1-[0-9a-f]{8}$/);
+  assert.match(names[3] ?? "", /^chromium-a-sends-repeat-1-retry-1-[0-9a-f]{8}$/);
 });

@@ -124,7 +124,7 @@ async function responseRecord(response: Response): Promise<ObservationRecord> {
 }
 
 /** All headers, or the provisional ones if the browser no longer has the full set. */
-async function headersOf(all: Promise<Headers>, provisional: Headers): Promise<Headers> {
+export async function headersOf(all: Promise<Headers>, provisional: Headers): Promise<Headers> {
   try {
     return await all;
   } catch {
@@ -132,7 +132,8 @@ async function headersOf(all: Promise<Headers>, provisional: Headers): Promise<H
   }
 }
 
-function frameRecord(
+/** A websocket frame as a record. Binary payloads are stored as base64. */
+export function frameRecord(
   type: "frame-sent" | "frame-received",
   url: string,
   payload: string | Buffer,

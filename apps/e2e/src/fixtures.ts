@@ -10,7 +10,7 @@ import {
   assertActorName,
   type BlockedRecord,
   type ObservationRecord,
-  testSlug,
+  testDirName,
 } from "./observations.ts";
 import { observationsDir } from "./paths.ts";
 import { Recorder } from "./recorder.ts";
@@ -54,7 +54,7 @@ export const test = base.extend<Fixtures>({
     async ({ allowBlocked }, use, testInfo) => {
       const recorders = new Map<string, Recorder>();
       await use(recorders);
-      const dir = testDir(testInfo);
+      const dir = join(observationsDir, testDirName(testInfo));
       for (const recorder of recorders.values()) await recorder.write(dir);
       if (allowBlocked) return;
       const blocked = [...recorders.values()].flatMap((recorder) =>
@@ -192,16 +192,4 @@ async function record(
   const recorder = new Recorder(name, parseStackOrigins(process.env.SIGILL_E2E_STACK_ORIGINS));
   recorders.set(name, recorder);
   await recorder.attach(context);
-}
-
-function testDir(testInfo: {
-  project: { name: string };
-  titlePath: string[];
-  retry: number;
-  repeatEachIndex: number;
-}): string {
-  const path = [testInfo.project.name, ...testInfo.titlePath];
-  if (testInfo.repeatEachIndex > 0) path.push(`repeat ${testInfo.repeatEachIndex}`);
-  if (testInfo.retry > 0) path.push(`retry ${testInfo.retry}`);
-  return join(observationsDir, testSlug(path));
 }

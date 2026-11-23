@@ -56,6 +56,25 @@ export function testSlug(titlePath: readonly string[]): string {
   return text ? `${text}-${hash}` : hash;
 }
 
+/** The parts of Playwright's TestInfo that name a test's observations directory. */
+export interface TestIdentity {
+  project: { name: string };
+  titlePath: readonly string[];
+  retry: number;
+  repeatEachIndex: number;
+}
+
+/**
+ * The observations directory name for one run of a test. Retries and repeats get their own
+ * directory, so a later attempt never overwrites an earlier one.
+ */
+export function testDirName(test: TestIdentity): string {
+  const path = [test.project.name, ...test.titlePath];
+  if (test.repeatEachIndex > 0) path.push(`repeat ${test.repeatEachIndex}`);
+  if (test.retry > 0) path.push(`retry ${test.retry}`);
+  return testSlug(path);
+}
+
 const actorName = /^[a-z][a-z0-9-]{0,31}$/;
 
 /** Actor names become file names, so they are kept to lowercase words. */

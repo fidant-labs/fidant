@@ -10,10 +10,13 @@ export interface Stack {
 
 // Services start in this order and stop in reverse. Later services (database, storage, relay)
 // get their own module next to server.ts and go into this list before the services that need them.
-const services: Service[] = [server];
+const defaultServices: readonly Service[] = [server];
 
-/** Starts every service of the local stack. If one fails, the ones already running are stopped. */
-export async function startStack(): Promise<Stack> {
+/**
+ * Starts every service of the local stack. If one fails, the ones already running are stopped
+ * and the error is rethrown.
+ */
+export async function startStack(services: readonly Service[] = defaultServices): Promise<Stack> {
   const running: RunningService[] = [];
   const stop = async () => {
     for (const service of running.toReversed()) await service.stop();
