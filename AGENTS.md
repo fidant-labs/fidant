@@ -11,7 +11,13 @@ Planning lives in Linear: workspace `sigill`, team `SIG`, issue keys like `SIG-2
 - `pnpm check`: lint, typecheck, unit tests and build across the workspace. Run it before every commit. The pre-push hook runs it too.
 - `pnpm format`: fixes formatting and safe lint issues.
 - `pnpm e2e`: builds the web client, starts the local stack and runs the Playwright suite in `apps/e2e` (Chromium). It is not part of `pnpm check`. Browser traffic and server logs are written to `apps/e2e/observations/`. Playwright traces and reports stay local and are never uploaded. One-time setup: `pnpm --filter @sigill/e2e exec playwright install chromium`.
-- `pnpm --filter @sigill/infra cdk deploy FidantDns --profile fidant-dns` and `pnpm --filter @sigill/infra cdk deploy FidantCertificate FidantSite --profile fidant-poc`: deploy the AWS infrastructure in `apps/infra`. Sign in first with `aws sso login --sso-session fidant`. Each account is bootstrapped once: `cdk bootstrap --profile fidant-poc` covers both of its regions, and `fidant-dns` needs only `aws://<account>/eu-north-1`.
+- `pnpm --filter @sigill/infra cdk deploy FidantDns --profile fidant-dns` and `pnpm --filter @sigill/infra cdk deploy FidantCertificate FidantSite --profile fidant-poc`: deploy the AWS infrastructure in `apps/infra`. Sign in first with `aws sso login --sso-session fidant`. Bootstrap each account once, through the same filter so the CLI reads `apps/infra/cdk.json`: `pnpm --filter @sigill/infra cdk bootstrap --profile fidant-poc` covers both of its regions, and `pnpm --filter @sigill/infra cdk bootstrap aws://<fidant-dns account>/eu-north-1 --profile fidant-dns` covers fidant-dns.
+  - The first deploy has a fixed order, because the certificate validates through DNS records that live in another account and the certificate stack waits until they resolve publicly:
+    1. Deploy `FidantDns` with the `fidant-dns` profile. Its outputs list each zone's name servers.
+    2. At the registrar (a separate AWS account), point fidant.se, fidant.eu and fidant.org at those name servers, and wait until `dig +short NS fidant.se` (and `.eu`, `.org`) returns them.
+    3. Start the `FidantCertificate FidantSite` deploy with the `fidant-poc` profile. While it waits on the certificate, read the six validation records (CloudFormation stack events, or `aws acm describe-certificate --region us-east-1 --profile fidant-poc --certificate-arn <arn>`), copy them into `certificateValidation` in `apps/infra/src/config.ts` and redeploy with `pnpm --filter @sigill/infra cdk deploy FidantDns --profile fidant-dns --output "$(mktemp -d)"`. The running deploy locks `cdk.out`, so this one needs its own output directory. The certificate then validates and `FidantSite` finishes.
+    4. Copy the `DistributionDomain` output of `FidantSite` into `distributionDomain` in `apps/infra/src/config.ts` and redeploy `FidantDns`.
+  - After the first time, either deploy runs on its own in any order.
 
 ## Prerequisites
 
