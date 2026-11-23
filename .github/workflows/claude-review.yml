@@ -55,11 +55,10 @@ jobs:
       - name: Submit review
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERDICT: ${{ fromJSON(steps.claude.outputs.structured_output).verdict }}
-          SUMMARY: ${{ fromJSON(steps.claude.outputs.structured_output).summary }}
+          OUTPUT: ${{ steps.claude.outputs.structured_output }}
           PR: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           event=REQUEST_CHANGES
-          if [ "$VERDICT" = "approve" ]; then event=APPROVE; fi
-          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/reviews" -f commit_id="$HEAD_SHA" -f event="$event" -f body="$SUMMARY"
+          if [ "$(jq -r .verdict <<<"$OUTPUT")" = "approve" ]; then event=APPROVE; fi
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/reviews" -f commit_id="$HEAD_SHA" -f event="$event" -f body="$(jq -r .summary <<<"$OUTPUT")"
