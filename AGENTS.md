@@ -34,6 +34,7 @@ Planning lives in Linear: workspace `sigill`, team `SIG`, issue keys like `SIG-2
 - Commits: conventional commits, subject line only, imperative, under 72 characters, for example `feat: add signaling server`.
 - Branches: `sig-<number>-<short-slug>` after the Linear issue. One pull request per issue. `main` is protected: changes land only through pull requests with green CI.
 - Pull request titles start with the Linear issue key (`SIG-21: ...`) so Linear links them.
+- Keep the Linear issue's status current while working: assign it and set "In Progress" when work starts, link the pull request when it opens, and set "Done" when it merges.
 
 ## Invariants
 
