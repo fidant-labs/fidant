@@ -285,7 +285,7 @@ This takes the option "`C` plus a ciphertext hash".
 - **The ciphertext hash is the check before signing.** Its definition depends on the mode:
   - Hosted: SHA-256 of the one stored ciphertext object. The server can check it too.
   - P2P: SHA-256 of the CHUNK frames as received in that attempt, in order. The sender declares it in a frame the recipient can read with the fragment half (see Key layering), sent right after the last CHUNK. It is its own frame, not a field in END, because END is under the full key, which the recipient does not hold before signing. So the sender hashes the ciphertext as it streams and needs neither a second encryption pass nor a buffer of the whole ciphertext. It covers one attempt only. Retries after signing are bound by `C` alone.
-- **Sign only after the ciphertext is on the device**, in both modes. The recipient's browser checks the ciphertext hash first, so "har tagit emot" is true when they sign. This follows SIG-23's order.
+- **Sign only after the ciphertext is on the device**, in both modes. The recipient's browser checks the ciphertext hash first, so when they sign, the ciphertext is on the device and matches what the sender declared. "Har tagit emot filen" attests that; whether it decrypts to the file behind `C` is shown only later (see What counts as a download). This follows SIG-23's order.
 - **Who is to blame.**
   - The ciphertext hash does not match: transport or storage failed. The recipient retries and does not sign.
   - The ciphertext hash matches but `C` does not: the sender's file or declaration is at fault, not the recipient.
@@ -321,7 +321,9 @@ This takes the option "Browser sends the full `receiptText`; server re-renders a
 - A download counts once the recipient's browser reports a `C` that matches and the server's comparison with the registered `C`, which the receipt also signs, agrees.
 - Until then the recipient may retry without limit, even when repeat downloads are off. Every attempt is logged.
 - The confirmation is reported by the recipient's browser. The server cannot see the plaintext, so it can back the report only by comparing the reported `C` with the registered one. A modified browser could report a match it never computed.
-- **The receipt alone does not prove delivery.** In P2P the sender declares both the ciphertext hash and `C`. A dishonest or faulty sender can stream bytes that match its own ciphertext hash but do not decrypt to the file behind `C`. The recipient then signs a valid receipt for a file they never got. So evidence of delivery is the signed receipt plus a `download.confirmed` event with result `match` for the same slot. A receipt without one proves only that the recipient signed after receiving ciphertext. A later `download.failed` with `mismatch` or `decrypt-failed` points at the sender.
+- **The receipt alone does not prove delivery.** In both modes the sender supplies the ciphertext and declares `C`. A dishonest or faulty sender can supply bytes that match its own ciphertext hash but do not decrypt to the file behind `C`. The recipient then signs a valid receipt for a file they never got. So evidence of delivery is the signed receipt plus a `download.confirmed` event with result `match` for the same slot. A receipt without one proves only that the recipient signed after receiving ciphertext that matched the sender's declaration.
+- **Blame on failure.** A `download.failed` points at the sender only for an attempt whose `ciphertext.checked` result was `match` for the same `attemptId`. A retry after signing has no ciphertext check, so a `decrypt-failed` there assigns no blame: transport, the sender or a wrong key half released by the server are all possible.
+- **The recipient controls the confirmation.** This is an accepted trade-off. A recipient can sign, receive the key half, decrypt, and then never report: a modified browser, a closed tab or a dropped connection. A modified browser can also report a false `mismatch`. The sender then holds the receipt and `keyhalf.released`, but no proof that the file itself was delivered. The receipt wording stays "har tagit emot filen", and the evidence package states which of the events exist.
 - In P2P, every download needs the sender's browser online. If the sender allows repeat downloads, they are available only while the sender's browser stays online until expiry. The send page must say so.
 
 ### Personal data per audit event
@@ -334,7 +336,7 @@ The principle:
 
 Rules:
 
-- **Party reference.** `partyRef = HMAC-SHA256(serverPepper, personnummer)`, with the personnummer in one canonical form: 12 digits `YYYYMMDDNNNN`, no hyphen or plus sign. A personnummer a sender types is converted to that form before hashing, so it gives the same reference as the one BankID returns. The pepper is a server secret, kept outside the database. A plain SHA-256 would not do: there are only about 10^7 to 10^8 personnummer, so it is easily brute-forced. This takes the option "HMAC under a server pepper, identity in a separate deletable table".
+- **Party reference.** `partyRef = HMAC-SHA256(serverPepper, personnummer)`, with the personnummer in one canonical form: 12 digits `YYYYMMDDNNNN`, no hyphen or plus sign. A personnummer a sender types is converted to that form before hashing. For the 10-digit form the century follows from the separator, as in Skatteverket's rules: `+` means 100 years or older, `-` means the most recent century that gives a birth date in the past. That way it gives the same reference as the one BankID returns. The pepper is a server secret, kept outside the database. A plain SHA-256 would not do: there are only about 10^7 to 10^8 personnummer, so it is easily brute-forced. This takes the option "HMAC under a server pepper, identity in a separate deletable table".
 - **`parties` table.** One row per `partyRef`: name and personnummer. A row is created when a sender names a recipient by personnummer, or at the party's first BankID login, whichever comes first. The name is filled in at that first login. Naming a recipient puts the personnummer here, so the sign request can set `requirement.personalNumber`.
 - **No IP address and no user agent** in the audit log. This takes the option "Keep them out of the audit log". BankID still receives `endUserIp` with every request, as its API requires. If the BankID signature XML embeds the IP (unverified, see Context), every evidence package carries it regardless.
 - **Time.** Every event has the server's UTC time. The TSA anchors the chain in batches, as SIG-9 decides.
@@ -381,7 +383,7 @@ Why this much and no more:
 - **SIG-19 and SIG-20**:
   - The evidence package is assembled in the browser. It holds the signature, `ocspResponse`, the TSA tokens, the salt and the template text for the version signed.
   - A verifier recomputes `C` from the file and the salt, checks the hidden data, and checks the visible text against the template.
-  - It counts delivery only with a matching `download.confirmed` event for the same slot in the audit log (see What counts as a download). The package carries that event and its chain proof.
+  - It counts delivery only with a matching `download.confirmed` event for the same slot in the audit log (see What counts as a download). The package carries that event and its chain proof once the event's batch is anchored (SIG-9 sets the schedule).
 - **SIG-23**:
   - The create-transfer request carries `C`.
   - The recipient signs after the ciphertext is on the device, and the key half is released after signing.
