@@ -221,15 +221,19 @@ test("left once the channel is open is ignored; a receipt after it still deliver
 
   // A decline that arrives after `left` still counts too.
   const declined = update(leftOffered.state, { type: "declined", linkId });
-  assert.equal(statusOf(declined.state, linkId), "waiting");
+  assert.equal(statusOf(declined.state, linkId), "declined");
 });
 
-test("a decline returns the recipient to waiting", () => {
+test("a decline marks the recipient declined and the next join retries", () => {
   const { state: s0, linkId } = withRecipient();
   const { state } = run(s0, { type: "joined", linkId }, { type: "channel-open", linkId });
   const result = update(state, { type: "declined", linkId });
-  assert.equal(statusOf(result.state, linkId), "waiting");
+  assert.equal(statusOf(result.state, linkId), "declined");
   assert.deepEqual(result.effects, [{ type: "close", linkId }]);
+
+  const retry = update(result.state, { type: "joined", linkId });
+  assert.equal(statusOf(retry.state, linkId), "connecting");
+  assert.deepEqual(retry.effects, [{ type: "start", linkId }]);
 });
 
 test("a mismatching receipt fails the transfer and the next join retries", () => {
