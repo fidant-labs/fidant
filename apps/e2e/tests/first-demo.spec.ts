@@ -252,7 +252,7 @@ test("a declined offer puts the recipient back to waiting, and can be reopened",
   await recipient.getByRole("button", { name: "Decline" }).click();
   await expect(recipient.getByText("You declined the file")).toBeVisible();
   await expect(
-    recipientRow(sender, name).getByText(`Waiting for ${name} to open the link`),
+    recipientRow(sender, name).getByText(`Waiting for ${name}'s link to be opened`),
   ).toBeVisible();
 
   await recipient.getByRole("button", { name: "Show the file again" }).click();

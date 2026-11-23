@@ -112,13 +112,13 @@ export const en = {
     keepOpen: "Keep this tab open until everyone has the file. It's sent from here.",
     recipients: "Recipients",
     status: {
-      waiting: (name: string) => `Waiting for ${name} to open the link`,
-      connecting: (name: string) => `Connecting to ${name}…`,
+      waiting: (name: string) => `Waiting for ${name}'s link to be opened`,
+      connecting: (name: string) => `Connecting through ${name}'s link…`,
       offered: (name: string) => `${name}'s link has been opened`,
-      receiving: (name: string) => `Sending to ${name}`,
+      receiving: (name: string) => `Sending through ${name}'s link`,
       delivered: (name: string) => `Delivered through ${name}'s link`,
       failed: (name: string) =>
-        `The file didn't arrive intact for ${name}. They can open the link again to retry.`,
+        `The file didn't arrive intact through ${name}'s link. The link can be opened again to retry.`,
     },
     progressFor: (name: string) => `Progress for ${name}`,
     copy: "Copy link",

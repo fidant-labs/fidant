@@ -112,13 +112,13 @@ export const sv: Messages = {
     keepOpen: "Ha fliken öppen tills alla har fått filen. Den skickas härifrån.",
     recipients: "Mottagare",
     status: {
-      waiting: (name: string) => `Väntar på att ${name} ska öppna länken`,
-      connecting: (name: string) => `Ansluter till ${name}…`,
+      waiting: (name: string) => `Väntar på att länken till ${name} ska öppnas`,
+      connecting: (name: string) => `Ansluter via länken till ${name}…`,
       offered: (name: string) => `Länken till ${name} har öppnats`,
-      receiving: (name: string) => `Skickar till ${name}`,
+      receiving: (name: string) => `Skickar via länken till ${name}`,
       delivered: (name: string) => `Levererad via länken till ${name}`,
       failed: (name: string) =>
-        `Filen kom inte fram oskadd till ${name}. Länken kan öppnas igen för att försöka på nytt.`,
+        `Filen kom inte fram oskadd via länken till ${name}. Länken kan öppnas igen för att försöka på nytt.`,
     },
     progressFor: (name: string) => `Förlopp för ${name}`,
     copy: "Kopiera länk",

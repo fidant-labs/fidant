@@ -1,8 +1,9 @@
 // One card per recipient: status, progress, link, copy and remove.
 //
 // Only the status sentence sits in the polite live region, so screen readers
-// hear "Sending to Anna", "Delivered through Anna's link" and so on, not every progress
-// tick.
+// hear "Sending through Anna's link", "Delivered through Anna's link" and so on,
+// not every progress tick. Each status names the link, not the person, because
+// whoever opens a link may not be the person it was made for.
 
 import { useEffect, useRef, useState } from "preact/hooks";
 import { Button } from "#components/ui/button";
