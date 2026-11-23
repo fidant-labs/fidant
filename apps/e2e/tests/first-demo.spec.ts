@@ -182,6 +182,17 @@ test("delivers a file to two recipients with a verified checksum", async ({
   const panel = sender.getByRole("region", { name: "What our server has right now" });
   await expect(panel).toContainText("None. The file goes directly between browsers.");
   await expect(panel).toContainText(/[1-9]\d* setup messages? \(/);
+
+  const recipientPanel = received[0]?.page.getByRole("region", {
+    name: "What our server has right now",
+  });
+  if (!recipientPanel) {
+    throw new Error("no recipient");
+  }
+  await expect(recipientPanel).toContainText(
+    "Nothing now. It forgot your link when this page disconnected from it.",
+  );
+  await expect(recipientPanel).toContainText(/[1-9]\d* setup messages? \(/);
 });
 
 test("refuses used, unknown and malformed links", async ({ demo, leaks, canary, baseURL }) => {
@@ -210,6 +221,11 @@ test("refuses used, unknown and malformed links", async ({ demo, leaks, canary, 
   const malformed = await demo.open("malformed");
   await malformed.goto("/r/not-a-link#nope");
   await expect(malformed.getByText("This link doesn't work")).toBeVisible();
+
+  const bare = await demo.open("no-fragment");
+  await bare.goto(`/r/${linkId}`);
+  await expect(bare.getByText("This link doesn't work")).toBeVisible();
+  await expect(bare.getByRole("region", { name: "What our server has right now" })).toHaveCount(0);
 });
 
 test("a declined offer puts the recipient back to waiting, and can be reopened", async ({
