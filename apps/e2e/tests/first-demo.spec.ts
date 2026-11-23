@@ -83,9 +83,17 @@ function makeName(leaks: Leaks, canary: SeededRandom, first: string): string {
   return name;
 }
 
-/** Opens the sender page, types the sender's name if given, and chooses the file. */
-async function openSender(demo: Demo, file: CanaryFile, from = ""): Promise<Page> {
+/** Opens the sender page, runs `init` in it before any page script, types the sender's name if given, and chooses the file. */
+async function openSender(
+  demo: Demo,
+  file: CanaryFile,
+  from = "",
+  init?: () => void,
+): Promise<Page> {
   const page = await demo.open("sender");
+  if (init) {
+    await page.addInitScript(init);
+  }
   await page.goto("/send");
   if (from) {
     await page.getByLabel("Your name").fill(from);
@@ -353,4 +361,72 @@ test("a waiting recipient sees when the sender goes offline", async ({ demo, lea
   await expect(
     recipient.getByRole("region", { name: "What our server has right now" }),
   ).toContainText("Nothing about this page once it notices the connection has closed");
+});
+
+/** Lets a test cut the sender's peer connections (`cut()`) and stop its data channels sending (`stalled`). */
+function breakableSender() {
+  const g = globalThis as { cut?: () => void; stalled?: boolean };
+  const peers: RTCPeerConnection[] = [];
+  const Native = globalThis.RTCPeerConnection;
+  globalThis.RTCPeerConnection = class extends Native {
+    constructor(config?: RTCConfiguration) {
+      super(config);
+      peers.push(this);
+    }
+  };
+  g.cut = () => {
+    for (const peer of peers) {
+      peer.close();
+    }
+  };
+  const send = RTCDataChannel.prototype.send;
+  RTCDataChannel.prototype.send = function (this: RTCDataChannel, ...args: unknown[]) {
+    if (!g.stalled) {
+      Reflect.apply(send, this, args);
+    }
+  } as RTCDataChannel["send"];
+}
+
+test("a lost sender says whether the file may have been saved", async ({ demo, leaks, canary }) => {
+  const file = makeFile(leaks, canary, 100_001);
+  const sender = await openSender(demo, file, "", breakableSender);
+  const stall = (stalled: boolean) =>
+    sender.evaluate((on) => {
+      (globalThis as { stalled?: boolean }).stalled = on;
+    }, stalled);
+  const cut = () => sender.evaluate(() => (globalThis as { cut?: () => void }).cut?.());
+
+  /** Opens a link for `first` and, if `download`, starts a download the stalled sender never feeds. */
+  const join = async (first: string, download: boolean) => {
+    const link = await addRecipient(leaks, sender, makeName(leaks, canary, first));
+    await stall(false);
+    const page = await demo.open(first.toLowerCase());
+    await page.goto(link);
+    await expect(page.getByRole("button", { name: "Download" })).toBeVisible();
+    if (download) {
+      await stall(true);
+      await page.getByRole("button", { name: "Download" }).click();
+      await expect(page.getByRole("heading", { name: "Downloading…" })).toBeVisible();
+    }
+    return page;
+  };
+
+  // Before the download: nothing can have been saved.
+  const anna = await join("Anna", false);
+  await cut();
+  await expect(anna.getByText("The connection to the sender was lost")).toBeVisible();
+  await expect(anna.getByText("Nothing was saved.")).toBeVisible();
+
+  // Mid-download, the connection drops while the sender's page stays open.
+  const erik = await join("Erik", true);
+  await cut();
+  await expect(erik.getByText("The connection to the sender was lost")).toBeVisible();
+  await expect(erik.getByText("The file may not have been saved.")).toBeVisible();
+
+  // Mid-download, the sender's page closes. The server says so at once, but the page waits for
+  // the peer connection to drop, which Chromium notices only when ICE consent expires (about 15 s).
+  const bo = await join("Bo", true);
+  await sender.close();
+  await expect(bo.getByText("The sender's page is closed")).toBeVisible({ timeout: 30_000 });
+  await expect(bo.getByText("The file may not have been saved.")).toBeVisible();
 });

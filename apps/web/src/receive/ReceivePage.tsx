@@ -133,6 +133,7 @@ export function ReceivePage() {
 
     const current = () => attemptRef.current === attempt && !attempt.ended;
     const lostMessage = () => (attempt.receiving ? "lostReceiving" : "lost");
+    const offlineMessage = () => (attempt.receiving ? "offlineReceiving" : "offline");
     const finish = (next: View, linger = false) => {
       if (!current()) {
         return;
@@ -147,7 +148,7 @@ export function ReceivePage() {
         return;
       }
       if (attempt.hostGone) {
-        finish({ s: "refused", problem: "offline" });
+        finish({ s: "refused", problem: offlineMessage() });
         return;
       }
       attempt.abort.abort(new Error("connection lost"));
@@ -194,7 +195,7 @@ export function ReceivePage() {
             attempt.hostGone = true;
             break;
           }
-          finish({ s: "refused", problem: "offline" });
+          finish({ s: "refused", problem: offlineMessage() });
           break;
         case "error":
           if (!attempt.channelOpen) {

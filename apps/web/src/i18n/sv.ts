@@ -182,6 +182,10 @@ export const sv: Messages = {
         title: "Avsändarens sida är stängd",
         body: "Filen kommer direkt från avsändarens webbläsare, så sidan måste vara öppen. Be om en ny länk.",
       },
+      offlineReceiving: {
+        title: "Avsändarens sida är stängd",
+        body: "Filen kommer direkt från avsändarens webbläsare, så sidan måste vara öppen. Filen kanske inte sparades. Be om en ny länk.",
+      },
       lost: {
         title: "Anslutningen till avsändaren bröts",
         body: "Ingenting sparades.",

@@ -183,6 +183,10 @@ export const en = {
         title: "The sender's page is closed",
         body: "The file comes straight from their browser, so it has to stay open. Ask them for a new link.",
       },
+      offlineReceiving: {
+        title: "The sender's page is closed",
+        body: "The file comes straight from their browser, so it has to stay open. The file may not have been saved. Ask them for a new link.",
+      },
       lost: {
         title: "The connection to the sender was lost",
         body: "Nothing was saved.",
