@@ -11,18 +11,27 @@ Planning lives in Linear: workspace `sigill`, team `SIG`, issue keys like `SIG-2
 - `pnpm check`: lint, typecheck, unit tests and build across the workspace. Run it before every commit. The pre-push hook runs it too.
 - `pnpm format`: fixes formatting and safe lint issues.
 - `pnpm e2e`: builds the web client, starts the local stack and runs the Playwright suite in `apps/e2e` (Chromium). It is not part of `pnpm check`. Browser traffic and server logs are written to `apps/e2e/observations/`. Playwright traces and reports stay local and are never uploaded. One-time setup: `pnpm --filter @sigill/e2e exec playwright install chromium`.
+- `pnpm --filter @sigill/infra cdk deploy FidantDns --profile fidant-dns` and `pnpm --filter @sigill/infra cdk deploy FidantSite --profile fidant-poc`: deploy the AWS infrastructure in `apps/infra`. Sign in first with `aws sso login --sso-session fidant`. The app reads the two account IDs from the untracked `apps/infra/.env` (see `.env.example`) and gives each profile only its own account's stack, so a deploy under the wrong profile finds no stack. Bootstrap each account once with `pnpm --filter @sigill/infra cdk bootstrap --profile <profile>`.
+  - The first deploy has a fixed order, because the certificate validates through DNS records that live in another account and the site stack waits until they resolve publicly:
+    1. Deploy `FidantDns` with the `fidant-dns` profile. Its outputs list each zone's name servers.
+    2. At the registrar (a separate AWS account), point fidant.se, fidant.eu and fidant.org at those name servers, and wait until `dig +short NS fidant.se` (and `.eu`, `.org`) returns them.
+    3. Start the `FidantSite` deploy with the `fidant-poc` profile. While it waits on the certificate, read the six validation records (CloudFormation stack events, or `aws acm describe-certificate --region us-east-1 --profile fidant-poc --certificate-arn <arn>`), copy them into `certificateValidation` in `apps/infra/src/config.ts` and redeploy with `pnpm --filter @sigill/infra cdk deploy FidantDns --profile fidant-dns --output "$(mktemp -d)"`. The running deploy locks `cdk.out`, so this one needs its own output directory. The certificate then validates and `FidantSite` finishes.
+    4. Copy the `DistributionDomain` output of `FidantSite` into `distributionDomain` in `apps/infra/src/config.ts`, redeploy `FidantDns` with the `fidant-dns` profile, and commit both copied values: a `FidantDns` deploy without them deletes those records.
+  - After the first time, either deploy runs on its own in any order. `FidantDns` has termination protection, so `cdk destroy` refuses it until the protection is turned off.
 
 ## Prerequisites
 
-- Node 24 (see `.node-version`).
-- pnpm, at the version pinned in `package.json` (`packageManager`).
+- Node 26 (see `.node-version`).
+- pnpm, at the version pinned in `package.json` (`packageManager`). Node 26 ships without Corepack, so install it with `npm install -g pnpm@<version>`.
 - gitleaks (`brew install gitleaks`). The pre-commit hook fails without it.
 - openssl, for the local certificate. macOS and Linux ship with it.
 - jq, for the Claude Code hooks. Recent macOS versions include it; on Linux, install it with the package manager.
+- AWS CLI v2, only for deploying `apps/infra`. Its SSO profiles (`fidant-mgmt`, `fidant-dns`, `fidant-poc`) are in SIG-54.
 
 ## Layout
 
 - `apps/*`: things we run or ship. `apps/web` is the Preact client, built by Vite into `apps/web/dist`. `apps/server` is the Node process that serves it and relays signaling messages between browsers over a WebSocket at `/signal`. `apps/e2e` is the end-to-end harness (see `docs/decisions/0001-e2e-tests-and-leak-model.md`).
+- `apps/infra` (`@sigill/infra`): the AWS CDK app. `FidantDns` (account `fidant-dns`) holds the hosted zones for fidant.se, fidant.eu and fidant.org and every record in them. `FidantSite` (account `fidant-poc`, us-east-1, where CloudFront requires its certificate) serves `apps/infra/site` through CloudFront at fidant.se; the other five names redirect there. The zones need two values from `fidant-poc`, the certificate validation records and the CloudFront domain, and those are copied by hand into `apps/infra/src/config.ts`.
 - `packages/*`: code used by more than one app. Create a package only when a second consumer exists.
 - `packages/protocol` (`@sigill/protocol`): signaling message types, parsers and limits shared by the server and the web client.
 - `docs/decisions/`: decision records. See its README for the format.

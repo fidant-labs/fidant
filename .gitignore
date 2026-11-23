@@ -14,6 +14,7 @@ observations/
 
 .claude/settings.local.json
 .claude/worktrees/
+cdk.out/
 
 # Raw downloads of the split-key bench runner.
 spikes/split-key/.runs/

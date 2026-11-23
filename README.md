@@ -8,7 +8,7 @@ This repository is at the first demo: send one file from a browser to named reci
 
 Prerequisites:
 
-- Node 24 (see `.node-version`).
+- Node 26 (see `.node-version`).
 - pnpm, at the version pinned in `package.json` (`packageManager`).
 - gitleaks (`brew install gitleaks`), only if you commit. The pre-commit hook fails without it.
 - openssl, for the local certificate. macOS and Linux ship with it.

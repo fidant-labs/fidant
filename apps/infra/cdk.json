@@ -1,0 +1,8 @@
+{
+  "app": "node --env-file-if-exists=.env bin/app.ts",
+  "notices": false,
+  "versionReporting": false,
+  "context": {
+    "cli-telemetry": false
+  }
+}
