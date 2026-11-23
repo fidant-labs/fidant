@@ -21,3 +21,9 @@ export function formatBytes(bytes: number): string {
   }
   return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${unit}`;
 }
+
+/** "45% · 1.1 MB of 2.4 MB". An empty file counts as done. */
+export function formatProgress(bytes: number, total: number): string {
+  const percent = total > 0 ? Math.min(100, Math.floor((bytes / total) * 100)) : 100;
+  return `${percent}% · ${formatBytes(bytes)} of ${formatBytes(total)}`;
+}

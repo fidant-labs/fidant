@@ -1,6 +1,7 @@
 import { render } from "preact";
 import { ReceivePage } from "./receive/ReceivePage.tsx";
 import { SendPage } from "./send/SendPage.tsx";
+import { Page, Problem } from "./ui.tsx";
 
 /** Encryption needs Web Crypto, which browsers only offer on HTTPS or localhost. */
 function hasSecureCrypto(): boolean {
@@ -9,13 +10,12 @@ function hasSecureCrypto(): boolean {
 
 function InsecurePage() {
   return (
-    <main>
-      <h1>Sigill</h1>
-      <p class="notice error">
-        Sigill needs a secure connection (HTTPS) to encrypt files in your browser. Open this page
-        with an https:// address.
-      </p>
-    </main>
+    <Page>
+      <Problem
+        title="This page needs a secure connection"
+        body="Files are encrypted in your browser, which only works over a secure connection. Open this page with an address that starts with https://."
+      />
+    </Page>
   );
 }
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { formatBytes, toHex } from "./format.ts";
+import { formatBytes, formatProgress, toHex } from "./format.ts";
 
 test("toHex pads every byte", () => {
   assert.equal(toHex(new Uint8Array([0, 15, 16, 255])), "000f10ff");
@@ -16,4 +16,10 @@ test("formatBytes uses decimal units", () => {
   assert.equal(formatBytes(999_999), "1.0 MB");
   assert.equal(formatBytes(123_456_789), "123 MB");
   assert.equal(formatBytes(1_000_000_000), "1.0 GB");
+});
+
+test("formatProgress rounds down and treats an empty file as done", () => {
+  assert.equal(formatProgress(1_100_000, 2_400_000), "45% · 1.1 MB of 2.4 MB");
+  assert.equal(formatProgress(2_399_999, 2_400_000), "99% · 2.4 MB of 2.4 MB");
+  assert.equal(formatProgress(0, 0), "100% · 0 bytes of 0 bytes");
 });

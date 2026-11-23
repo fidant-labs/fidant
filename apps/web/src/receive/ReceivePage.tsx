@@ -10,9 +10,9 @@
 //   transfer under way no longer needs the server (the sender may only have
 //   lost its signaling connection), so then `host-gone` is only remembered: if
 //   the sender's tab really closed, the peer drops too (at the latest when ICE
-//   consent runs out) and the drop is reported as "The sender is offline".
+//   consent runs out) and the drop is reported as the sender's page closing.
 // - When the data channel opens, receiveFile runs the transfer. The offer
-//   screen resolves its decision with a Sink (Accept) or undefined (Decline).
+//   screen resolves its decision with a Sink (Download) or undefined (Decline).
 //
 // When an attempt ends for any reason, its signaling socket is closed: the
 // server keeps a guest bound to its link until then, and a later opener would
@@ -26,7 +26,7 @@
 
 import type { ComponentChildren } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
-import { formatBytes } from "../lib/format.ts";
+import { formatBytes, formatProgress, toHex } from "../lib/format.ts";
 import { deriveSignalKey } from "../lib/keys.ts";
 import { parseRecipientLocation } from "../lib/link.ts";
 import { createRecipientPeer, type Peer } from "../lib/peer.ts";
@@ -34,15 +34,18 @@ import type { FileOffer } from "../lib/receive-file.ts";
 import { ReceiveError, receiveFile } from "../lib/receive-file.ts";
 import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
 import { createSink, isPickerCancel, type Sink } from "../lib/sink.ts";
+import { Direct, FileCard, Icon, Page, Problem, TechDetails } from "../ui.tsx";
+
+type Message = { title: string; body: string; detail?: string };
 
 type View =
   | { s: "connecting" }
-  | { s: "refused"; text: string }
+  | { s: "refused"; message: Message }
   | { s: "offer"; offer: FileOffer }
   | { s: "receiving"; offer: FileOffer; bytes: number }
-  | { s: "done"; offer: FileOffer; blob: Blob | undefined }
+  | { s: "done"; offer: FileOffer; blob: Blob | undefined; sha256: string }
   | { s: "declined" }
-  | { s: "failed"; text: string };
+  | { s: "failed"; message: Message };
 
 type Attempt = {
   abort: AbortController;
@@ -63,18 +66,54 @@ type Attempt = {
   timers: Array<ReturnType<typeof setTimeout>>;
 };
 
-const REFUSED_TEXT = {
-  unknown: "Link not found",
-  used: "This link has already been used",
-  busy: "This link is in use",
-} as const;
-const OFFLINE_TEXT = "The sender is offline";
-const LOST_TEXT = "Transfer failed. The connection to the sender was lost.";
-const CHECKSUM_TEXT = "Transfer failed: the file did not match its checksum.";
-const INVALID_TEXT = "Transfer failed: the sender sent invalid data.";
-const SAVE_TEXT = "Transfer failed. Could not save the file.";
-const CONNECT_TEXT = "Transfer failed. Could not connect to the sender.";
-const SERVER_TEXT = "Transfer failed. Could not reach the server.";
+const REFUSED: Record<"unknown" | "used" | "busy", Message> = {
+  unknown: {
+    title: "This link isn't active",
+    body: "The file comes straight from the sender's browser, so the link only works while they have the page open. Ask them for a new link.",
+  },
+  used: {
+    title: "This link has already been used",
+    body: "Each link works once. If you still need the file, ask the sender for a new link.",
+  },
+  busy: {
+    title: "This link is open somewhere else",
+    body: "Each link can be open in one place at a time. Close the other tab and reload this page.",
+  },
+};
+const OFFLINE: Message = {
+  title: "The sender's page is closed",
+  body: "The file comes straight from their browser, so it has to stay open. Ask them for a new link.",
+};
+const LOST: Message = {
+  title: "The connection to the sender was lost",
+  body: "Nothing was saved.",
+};
+const CHECKSUM: Message = {
+  title: "The file didn't arrive intact",
+  body: "It was changed or damaged on the way, so it was not saved. Try again, and tell the sender if it keeps happening.",
+  detail: "The SHA-256 checksum of the received file did not match the sender's.",
+};
+const INVALID: Message = {
+  title: "Something went wrong with the transfer",
+  body: "The sender's browser sent data we couldn't read, so nothing was saved.",
+  detail: "A frame from the sender failed to decrypt or broke the transfer format.",
+};
+const SAVE: Message = {
+  title: "The file couldn't be saved",
+  body: "Check that there's enough space on your disk.",
+};
+const CREATE: Message = {
+  title: "The file couldn't be created",
+  body: "Try again, or choose another place to save it.",
+};
+const CONNECT: Message = {
+  title: "Couldn't connect to the sender's computer",
+  body: "The file travels directly between your two computers, and they couldn't reach each other.",
+};
+const SERVER: Message = {
+  title: "Couldn't reach the server",
+  body: "The server connects you to the sender. Check your internet connection.",
+};
 
 /** How long to wait for `host-gone` after the peer drops, to tell "offline" from "failed". */
 const HOST_GONE_GRACE_MS = 1000;
@@ -132,19 +171,19 @@ export function ReceivePage() {
     const lost = () => {
       if (!current()) return;
       if (attempt.hostGone) {
-        finish({ s: "refused", text: OFFLINE_TEXT });
+        finish({ s: "refused", message: OFFLINE });
         return;
       }
       attempt.abort.abort(new Error("connection lost"));
       attempt.timers.push(
-        setTimeout(() => finish({ s: "failed", text: LOST_TEXT }), HOST_GONE_GRACE_MS),
+        setTimeout(() => finish({ s: "failed", message: LOST }), HOST_GONE_GRACE_MS),
       );
     };
 
     signaling.onClose(({ byClient }) => {
       if (byClient || !current()) return;
       if (attempt.channelOpen && !attempt.abort.signal.aborted) return;
-      finish({ s: "failed", text: attempt.channelOpen ? LOST_TEXT : SERVER_TEXT });
+      finish({ s: "failed", message: attempt.channelOpen ? LOST : SERVER });
     });
     signaling.subscribe((message) => {
       switch (message.t) {
@@ -157,9 +196,9 @@ export function ReceivePage() {
           // on this attempt (its peer failed or never connected), not that the
           // link is in use or used: the sender only signals a join it took.
           if (attempt.heardSender) {
-            finish({ s: "failed", text: attempt.channelOpen ? LOST_TEXT : CONNECT_TEXT });
+            finish({ s: "failed", message: attempt.channelOpen ? LOST : CONNECT });
           } else {
-            finish({ s: "refused", text: REFUSED_TEXT[message.reason] });
+            finish({ s: "refused", message: REFUSED[message.reason] });
           }
           break;
         case "host-gone":
@@ -171,10 +210,10 @@ export function ReceivePage() {
             attempt.hostGone = true;
             break;
           }
-          finish({ s: "refused", text: OFFLINE_TEXT });
+          finish({ s: "refused", message: OFFLINE });
           break;
         case "error":
-          if (!attempt.channelOpen) finish({ s: "failed", text: SERVER_TEXT });
+          if (!attempt.channelOpen) finish({ s: "failed", message: SERVER });
           break;
         default:
           break;
@@ -212,14 +251,17 @@ export function ReceivePage() {
       }).then(
         (result) => {
           if (result.type === "declined") finish({ s: "declined" }, true);
-          else if (offered) finish({ s: "done", offer: offered, blob: result.blob }, true);
+          else if (offered) {
+            const sha256 = toHex(result.sha256);
+            finish({ s: "done", offer: offered, blob: result.blob, sha256 }, true);
+          }
         },
         (error: unknown) => {
           const reason = error instanceof ReceiveError ? error.reason : "connection";
           // RECEIPT went out for a mismatch: linger so it reaches the sender.
-          if (reason === "checksum") finish({ s: "failed", text: CHECKSUM_TEXT }, true);
-          else if (reason === "invalid") finish({ s: "failed", text: INVALID_TEXT });
-          else if (reason === "save") finish({ s: "failed", text: SAVE_TEXT });
+          if (reason === "checksum") finish({ s: "failed", message: CHECKSUM }, true);
+          else if (reason === "invalid") finish({ s: "failed", message: INVALID });
+          else if (reason === "save") finish({ s: "failed", message: SAVE });
           else lost();
         },
       );
@@ -239,7 +281,7 @@ export function ReceivePage() {
         });
         signaling.send({ t: "join", link: linkId });
       } catch {
-        finish({ s: "failed", text: SERVER_TEXT });
+        finish({ s: "failed", message: SERVER });
       }
     })();
   };
@@ -290,7 +332,7 @@ export function ReceivePage() {
           return;
         }
         release(attempt);
-        setView({ s: "failed", text: "Transfer failed. Could not create the file." });
+        setView({ s: "failed", message: CREATE });
       },
     );
   };
@@ -299,122 +341,151 @@ export function ReceivePage() {
 
   if (!link) {
     return (
-      <Shell>
-        <p class="notice error">This link is not valid. Check that you copied all of it.</p>
-      </Shell>
+      <Page>
+        <Problem
+          title="This link doesn't work"
+          body="Part of it may be missing. Check that you copied all of it, or ask the sender to send it again."
+        />
+      </Page>
     );
   }
 
   switch (view.s) {
     case "connecting":
       return (
-        <Shell>
-          <p role="status">Connecting…</p>
-        </Shell>
+        <Page>
+          <div role="status">
+            <h1>Connecting to the sender…</h1>
+          </div>
+        </Page>
       );
     case "refused":
       return (
-        <Shell>
-          <p class="notice error" role="alert">
-            {view.text}
-          </p>
-        </Shell>
+        <Page>
+          <Problem {...view.message} />
+        </Page>
       );
-    case "offer":
+    case "offer": {
+      const { offer } = view;
       return (
-        <Shell titled>
-          <p class="lede">You have been sent a file.</p>
-          <OfferSummary offer={view.offer} />
+        <Page>
+          <h1>
+            {offer.from ? `${offer.from} wants to send you a file` : "You've been sent a file"}
+          </h1>
+          {offer.from && <p class="muted">Name typed by the sender, not verified.</p>}
+          <FileCard name={offer.name} size={formatBytes(offer.size)} />
           <div class="offer-actions">
-            <button type="button" onClick={onAccept} disabled={picking}>
-              Accept
+            <button type="button" class="big" onClick={onAccept} disabled={picking}>
+              <Icon name="download" /> Download
             </button>
-            <button type="button" class="secondary" onClick={onDecline} disabled={picking}>
+            <button type="button" class="link" onClick={onDecline} disabled={picking}>
               Decline
             </button>
           </div>
-          <p class="hint">The file is encrypted until it reaches this browser.</p>
-        </Shell>
+          <Direct from={offer.from || "Sender"} to="You" state="ready" />
+          <p class="caption">
+            Sent straight from {owner(offer.from)} computer to yours. Encrypted, never stored on a
+            server.
+          </p>
+          <OfferDetails offer={offer} />
+        </Page>
       );
-    case "receiving":
+    }
+    case "receiving": {
+      const { offer, bytes } = view;
       return (
-        <Shell titled>
-          <OfferSummary offer={view.offer} />
+        <Page>
+          <h1>Downloading…</h1>
+          <FileCard name={offer.name} size={formatBytes(offer.size)} />
           <div class="progress-row">
             <progress
               aria-label="Download progress"
-              max={Math.max(view.offer.size, 1)}
-              value={view.offer.size === 0 ? 0 : view.bytes}
+              max={Math.max(offer.size, 1)}
+              value={offer.size === 0 ? 0 : bytes}
             />
-            <span class="progress-text">
-              {formatBytes(view.bytes)} of {formatBytes(view.offer.size)}
-            </span>
+            <span class="progress-text">{formatProgress(bytes, offer.size)}</span>
           </div>
-          <p class="hint">Keep this tab open until the transfer finishes.</p>
-        </Shell>
-      );
-    case "done":
-      return (
-        <Shell titled>
-          <OfferSummary offer={view.offer} />
-          <p class="notice ok" role="status">
-            Checksum verified
+          <Direct from={offer.from || "Sender"} to="You" state="active" />
+          <p class="caption">
+            Receiving directly from {offer.from || "the sender"}. Keep this tab open until it's
+            done.
           </p>
-          {view.blob ? (
-            <SaveLink blob={view.blob} name={view.offer.name} />
-          ) : (
-            <p class="hint">The file is saved where you chose.</p>
-          )}
-        </Shell>
+        </Page>
       );
+    }
+    case "done": {
+      const { offer, blob, sha256 } = view;
+      return (
+        <Page>
+          <div class="success" role="status">
+            <Icon name="check" />
+            <h1>Download complete</h1>
+          </div>
+          <FileCard name={offer.name} size={formatBytes(offer.size)} />
+          <p>We checked it: this is exactly the file that was sent.</p>
+          {blob ? (
+            <div class="save-row">
+              <p class="muted">Your download should start by itself.</p>
+              <SaveLink blob={blob} name={offer.name} />
+            </div>
+          ) : (
+            <p class="muted">It's saved where you chose.</p>
+          )}
+          <Direct from={offer.from || "Sender"} to="You" state="done" />
+          <p class="caption">
+            Sent straight from {owner(offer.from)} computer to yours. Encrypted the whole way.
+          </p>
+          <OfferDetails offer={offer} sha256={sha256} />
+        </Page>
+      );
+    }
     case "declined":
       return (
-        <Shell>
-          <p role="status">You declined the file. You can close this tab.</p>
-        </Shell>
+        <Page>
+          <div role="status">
+            <h1>You declined the file</h1>
+            <p>You can close this tab.</p>
+          </div>
+        </Page>
       );
     case "failed":
       return (
-        <Shell>
-          <p class="notice error" role="alert">
-            {view.text}
-          </p>
+        <Page>
+          <Problem {...view.message} />
           <button type="button" onClick={start}>
             Try again
           </button>
-        </Shell>
+          {view.message.detail && <TechDetails rows={[["What happened", view.message.detail]]} />}
+        </Page>
       );
   }
 }
 
-/** Page frame. `titled` means the content brings its own h1 (the file name). */
-function Shell({ children, titled = false }: { children: ComponentChildren; titled?: boolean }) {
-  return (
-    <main>
-      <header>{titled ? <p class="brand">Sigill</p> : <h1>Sigill</h1>}</header>
-      {children}
-    </main>
-  );
+function owner(from: string): string {
+  return from ? `${from}'s` : "the sender's";
 }
 
-function OfferSummary({ offer }: { offer: FileOffer }) {
-  return (
-    <div class="file-info">
-      <h1 class="file-name">{offer.name}</h1>
-      <p>
-        <span title={`${offer.size} bytes`}>{formatBytes(offer.size)}</span>{" "}
-        <span class="hint">({offer.size.toLocaleString("en-US")} bytes)</span>
-      </p>
-    </div>
-  );
+function OfferDetails({ offer, sha256 }: { offer: FileOffer; sha256?: string }) {
+  const rows: Array<readonly [string, ComponentChildren]> = [
+    ["Size", `${offer.size.toLocaleString("en-US")} bytes`],
+    ["Type", offer.type || "Not given"],
+    [
+      "Encryption",
+      "AES-256-GCM, end to end. The key is in your link and never leaves this browser.",
+    ],
+  ];
+  if (sha256) rows.push(["SHA-256, checked", <code key="sha256">{sha256}</code>]);
+  return <TechDetails rows={rows} />;
 }
 
-/** A download link for a received Blob. The object URL is revoked on unmount. */
+/** Starts the download once by itself, and stays as a button in case the browser blocked that. */
 function SaveLink({ blob, name }: { blob: Blob; name: string }) {
   const url = useMemo(() => URL.createObjectURL(blob), [blob]);
+  const anchor = useRef<HTMLAnchorElement>(null);
+  useEffect(() => anchor.current?.click(), [url]);
   useEffect(() => () => URL.revokeObjectURL(url), [url]);
   return (
-    <a class="button" href={url} download={name}>
+    <a ref={anchor} class="button secondary" href={url} download={name}>
       Save file
     </a>
   );
