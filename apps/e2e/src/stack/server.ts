@@ -1,10 +1,10 @@
 import { type ChildProcess, spawn } from "node:child_process";
-import { once } from "node:events";
-import { createWriteStream, type WriteStream } from "node:fs";
+import { appendFileSync, createWriteStream, rmSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
+import { finished } from "node:stream/promises";
 import { repoRoot, runDir } from "../paths.ts";
 import { parsePort } from "./port.ts";
 import type { RunningService, Service } from "./service.ts";
@@ -26,19 +26,38 @@ async function startServer(): Promise<RunningService> {
     env: { ...process.env, PORT: "0", CERT_DIR: certDir },
     stdio: ["ignore", "pipe", "pipe"],
   });
+  // pipe() ends each log once the child's stream ends, so waiting for `close` drains them.
   child.stdout.pipe(stdoutLog);
   child.stderr.pipe(stderrLog);
+  const closed = new Promise<void>((resolve) => child.once("close", () => resolve()));
 
-  // Backstop: if the runner exits without calling stop(), do not leave the server behind.
-  const killOnExit = () => child.kill("SIGKILL");
-  process.once("exit", killOnExit);
+  // Backstop: if the runner exits without calling stop(), do not leave the server or its
+  // certificate behind. Only synchronous work runs inside an exit handler.
+  const cleanUpOnExit = () => {
+    child.kill("SIGKILL");
+    rmSync(certDir, { recursive: true, force: true });
+  };
+  process.once("exit", cleanUpOnExit);
+
+  const onUnexpectedExit = (code: number | null, signal: string | null) => {
+    const line = `server exited unexpectedly (code ${code}, signal ${signal})`;
+    appendFileSync(join(runDir, "stack-events.log"), `${new Date().toISOString()} ${line}\n`);
+    console.error(`[e2e stack] ${line}`);
+  };
 
   let stopped: Promise<void> | undefined;
   const stop = () => {
     stopped ??= (async () => {
-      await terminate(child);
-      process.off("exit", killOnExit);
-      await Promise.all([closeLog(stdoutLog), closeLog(stderrLog)]);
+      child.off("exit", onUnexpectedExit);
+      if (child.pid === undefined) {
+        // The spawn itself failed: there is no process to wait for, and pipe() never ends the logs.
+        stdoutLog.end();
+        stderrLog.end();
+      } else {
+        await terminate(child, closed);
+      }
+      await Promise.all([finished(stdoutLog), finished(stderrLog)]);
+      process.off("exit", cleanUpOnExit);
       await rm(certDir, { recursive: true, force: true });
     })();
     return stopped;
@@ -47,6 +66,7 @@ async function startServer(): Promise<RunningService> {
   const stderrTail: string[] = [];
   try {
     const port = await waitForPort(child, stderrTail);
+    child.once("exit", onUnexpectedExit);
     return { name: "server", url: `https://localhost:${port}`, port, stop };
   } catch (error) {
     await stop();
@@ -90,16 +110,16 @@ function waitForPort(child: ChildProcess, stderrTail: string[]): Promise<number>
   });
 }
 
-/** SIGTERM, then SIGKILL if the process is still alive after the grace period. */
-async function terminate(child: ChildProcess): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null) return;
-  const exited = once(child, "exit");
-  child.kill("SIGTERM");
-  const timer = setTimeout(() => child.kill("SIGKILL"), stopTimeoutMs);
-  await exited;
+/**
+ * SIGTERM, then SIGKILL if the process is still alive after the grace period. Resolves on
+ * `close`, once the process has exited and its stdout and stderr are drained.
+ */
+async function terminate(child: ChildProcess, closed: Promise<void>): Promise<void> {
+  let timer: NodeJS.Timeout | undefined;
+  if (child.exitCode === null && child.signalCode === null) {
+    child.kill("SIGTERM");
+    timer = setTimeout(() => child.kill("SIGKILL"), stopTimeoutMs);
+  }
+  await closed;
   clearTimeout(timer);
-}
-
-function closeLog(stream: WriteStream): Promise<void> {
-  return new Promise((resolve) => stream.end(resolve));
 }
