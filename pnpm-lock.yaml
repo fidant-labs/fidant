@@ -25,6 +25,10 @@ importers:
         version: 7.0.2
 
   apps/e2e:
+    dependencies:
+      '@sigill/protocol':
+        specifier: workspace:*
+        version: link:../../packages/protocol
     devDependencies:
       '@playwright/test':
         specifier: 'catalog:'

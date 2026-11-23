@@ -1,10 +1,19 @@
-import { expect, test } from "../src/fixtures.ts";
+import { canaryFile, canaryKey, expect, test } from "../src/fixtures.ts";
 
 // A host outside the stack. The route aborts requests to it before DNS, and the browser's
 // host-resolver-rules resolve it to nothing, so these tests never reach the internet.
 const outside = "https://example.com/";
 
-test("the app loads for a sender and a recipient", async ({ actor, observed, baseURL }) => {
+test("the app loads for a sender and a recipient", async ({
+  actor,
+  observed,
+  baseURL,
+  leaks,
+  canary,
+}) => {
+  // Nothing sends these yet; the leak check after the test must find neither.
+  leaks.watch(canaryFile(canary.fork("file")));
+  leaks.watchKey("fragment secret", canaryKey(canary.fork("key")));
   const actors = { sender: await actor("sender"), recipient: await actor("recipient") };
 
   for (const [name, { page }] of Object.entries(actors)) {
@@ -19,6 +28,27 @@ test("the app loads for a sender and a recipient", async ({ actor, observed, bas
     );
     expect(observed(name).blocked).toEqual([]);
   }
+});
+
+test("request bodies are recorded", async ({ page, observed, baseURL, leaks }) => {
+  // The empty POST has no visible body, which is a leak-check limit finding by design.
+  leaks.expectLeaks();
+  await page.goto("/");
+  await page.evaluate(async () => {
+    await fetch("/text", { method: "POST", body: "a text body" });
+    await fetch("/blob", { method: "PUT", body: new Blob([new Uint8Array([0, 1, 254, 255])]) });
+    await fetch("/empty", { method: "POST" });
+  });
+  const requests = (await observed("default").records()).filter(
+    (record) => record.type === "request",
+  );
+  const at = (path: string) =>
+    requests.find((record) => record.url === new URL(path, baseURL).href);
+  expect(at("/text")?.body).toBe(Buffer.from("a text body").toString("base64"));
+  expect(at("/blob")?.body).toBe("AAH+/w==");
+  // Chromium does not say whether a POST without an exposed body was empty, so it is marked.
+  expect(at("/empty")).toMatchObject({ bodyMissing: true });
+  expect(at("/empty")?.body).toBeUndefined();
 });
 
 test.describe("the blocker", () => {
