@@ -71,8 +71,9 @@ export function fileSecrets(
 }
 
 /**
- * A key and its SHA-256. A string key, such as a fragment secret, is also searched as text (any
- * 20 characters), and as the bytes it encodes when it is base64url.
+ * A key and its SHA-256. A string key, such as a fragment secret, is searched as text (any 20
+ * characters) and as the SHA-256 of that text, and also as the bytes it encodes when it is
+ * base64url.
  */
 export function keySecrets(
   label: string,
@@ -85,14 +86,14 @@ export function keySecrets(
       { class: cls, label: `${label} sha256`, bytes: sha256(key) },
     ];
   }
+  // The string's own SHA-256 always counts: hashing a fragment string into a lookup ID is common.
   const secrets: Secret[] = [
     { class: cls, label: `${label} text`, bytes: Buffer.from(key), window: keyTextWindow },
+    { class: cls, label: `${label} text sha256`, bytes: sha256(key) },
   ];
   const decoded = Buffer.from(key, "base64url");
   if (decoded.toString("base64url") === key && decoded.length >= minWindow) {
     secrets.push(...keySecrets(label, decoded, cls));
-  } else {
-    secrets.push({ class: cls, label: `${label} sha256`, bytes: sha256(key) });
   }
   return secrets;
 }
@@ -126,14 +127,14 @@ function tokenSecret(cls: SecretClass, label: string, token: string): ByteSecret
   };
 }
 
+/** How many leading bytes of a secret get base64 text forms. */
+const base64MaxBytes = 64 * 1024;
+
 /**
  * The base64 characters fully determined by `window` bytes, however they are aligned in a base64
  * stream: the fewest over the 3 alignments. 16 bytes give 20 characters (120 bits, as 0001 says);
  * the 12 characters of a name token give 15 (90 bits, about 2^-90 per position by chance).
  */
-/** How many leading bytes of a secret get base64 text forms. */
-const base64MaxBytes = 64 * 1024;
-
 const base64Window = (window: number) =>
   Math.min(
     ...[0, 1, 2].map(

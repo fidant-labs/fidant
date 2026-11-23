@@ -138,13 +138,23 @@ test("derives the secrets of a key given as bytes or as text", () => {
   const fromText = keySecrets("fragment", key.text, "S");
   assert.deepEqual(
     fromText.map((s) => `${s.class} ${s.label}`),
-    ["S fragment text", "S fragment", "S fragment sha256"],
+    ["S fragment text", "S fragment text sha256", "S fragment", "S fragment sha256"],
   );
   assert.equal(fromText[0] && "window" in fromText[0] && fromText[0].window, 20);
   const notBase64 = keySecrets("password", "correct horse battery");
   assert.deepEqual(
     notBase64.map((s) => s.label),
-    ["password text", "password sha256"],
+    ["password text", "password text sha256"],
+  );
+});
+
+test("matches the SHA-256 of a fragment string, not only of the bytes it encodes", () => {
+  const key = canaryKey(random);
+  const needles = keySecrets("fragment", key.text);
+  const hash = sha256(Buffer.from(key.text));
+  assert.deepEqual(
+    matches(needles, Buffer.concat([Buffer.from("/lookup/"), hash])).map((f) => f.secret.label),
+    ["fragment text sha256"],
   );
 });
 

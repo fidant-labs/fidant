@@ -170,6 +170,21 @@ test.describe("the detector catches", () => {
     });
   });
 
+  test("a fragment secret's SHA-256 as hex in a URL", async ({ page, leaks, canary }) => {
+    leaks.expectLeaks();
+    const key = canaryKey(canary.fork("key"));
+    leaks.watchKey("fragment secret", key);
+    await open(page);
+    // A lookup ID made by hashing the fragment string, as an app might.
+    await page.evaluate((hash) => fetch(`/lookup/${hash}`), sha256Hex(Buffer.from(key.text)));
+    expectFinding(await leaks.scan(), {
+      class: "K",
+      label: "fragment secret text sha256",
+      field: "request.url",
+      view: /^hex@\d$/,
+    });
+  });
+
   test("an NFD, percent-encoded file name in a URL path", async ({ page, leaks, canary }) => {
     leaks.expectLeaks();
     const file = leaks.watch(canaryFile(canary.fork("file"), fileOptions));
