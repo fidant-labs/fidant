@@ -1,0 +1,51 @@
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, sans-serif;
+  line-height: 1.4;
+}
+
+body {
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: end;
+}
+
+fieldset {
+  display: flex;
+  gap: 0.75rem;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+th,
+td {
+  padding: 0.25rem 0.5rem;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  text-align: right;
+}
+
+th:first-child,
+td:first-child {
+  text-align: left;
+}
+
+pre {
+  overflow-x: auto;
+  padding: 0.5rem;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
+
+body[data-state="error"] #status {
+  color: #c0392b;
+  font-weight: bold;
+}
