@@ -55,7 +55,7 @@ export function Icon({ name, class: cls }: { name: IconName; class?: string }) {
   );
 }
 
-const buttonBase =
+export const buttonBase =
   "inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg disabled:cursor-not-allowed disabled:opacity-50";
 
 export const button = `${buttonBase} border border-primary bg-primary px-4 py-[0.55rem] text-primary-foreground no-underline`;
