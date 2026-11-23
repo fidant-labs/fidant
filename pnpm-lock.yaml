@@ -36,6 +36,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@sigill/protocol':
+        specifier: workspace:*
+        version: link:../../packages/protocol
       preact:
         specifier: ^11.2.0
         version: 11.2.0

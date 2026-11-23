@@ -9,6 +9,7 @@
     "test": "node --test"
   },
   "dependencies": {
+    "@sigill/protocol": "workspace:*",
     "preact": "^11.2.0"
   },
   "devDependencies": {
