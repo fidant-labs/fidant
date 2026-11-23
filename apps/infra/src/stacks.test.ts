@@ -1,19 +1,18 @@
 import assert from "node:assert/strict";
+import { isIP } from "node:net";
 import { test } from "node:test";
 import { App, Stack } from "aws-cdk-lib";
 import { Match, Template } from "aws-cdk-lib/assertions";
 import { addStacks } from "./app.ts";
-import { boxAddress, primaryDomain, siteNames } from "./config.ts";
+import { boxAddress, siteNames } from "./config.ts";
 import { DnsStack } from "./dns.ts";
-import { SiteStack } from "./site.ts";
 
 const account = "111111111111";
 const dnsAccount = "222222222222";
 const pocAccount = "333333333333";
 
-function synth() {
-  const app = new App();
-  const dnsProps = {
+const dns = Template.fromStack(
+  new DnsStack(new App(), "Dns", {
     env: { account, region: "eu-north-1" },
     mail: {
       apexTxt: ["verify=1", "v=spf1 include:mail.example ~all"],
@@ -21,20 +20,9 @@ function synth() {
       cnames: [{ name: "key._domainkey", value: "key.example" }],
       dmarc: "v=DMARC1; p=quarantine",
     },
-    certificateValidation: [{ name: "_a.www.fidant.eu.", value: "_b.acm-validations.aws." }],
-    distributionDomain: "d111.cloudfront.net",
-  };
-  const dns = new DnsStack(app, "Dns", { ...dnsProps, boxAddress: undefined });
-  const boxDns = new DnsStack(app, "BoxDns", { ...dnsProps, boxAddress: "192.0.2.10" });
-  const site = new SiteStack(app, "Site", { env: { account, region: "us-east-1" } });
-  return {
-    dns: Template.fromStack(dns),
-    boxDns: Template.fromStack(boxDns),
-    site: Template.fromStack(site),
-  };
-}
-
-const { dns, boxDns, site } = synth();
+    boxAddress: "192.0.2.10",
+  }),
+);
 
 function zoneRef(zoneName: string): { Ref: string } {
   const [id] = Object.entries(dns.findResources("AWS::Route53::HostedZone")).find(
@@ -64,17 +52,15 @@ test("the fidant-dns account gets the protected DNS stack and the CI stack", () 
   );
 });
 
-test("the fidant-poc account gets the site, CI and app box stacks", () => {
+test("the fidant-poc account gets the CI and app box stacks, in eu-north-1", () => {
   const stacks = stacksFor(pocAccount);
   assert.deepEqual(
     stacks.map((stack) => [stack.stackName, stack.region]),
     [
-      ["FidantSite", "us-east-1"],
-      ["FidantCi", "us-east-1"],
+      ["FidantCi", "eu-north-1"],
       ["FidantApp", "eu-north-1"],
     ],
   );
-  Template.fromStack(stacks[0] as Stack);
 });
 
 function ciTemplate(currentAccount: string): Template {
@@ -138,53 +124,16 @@ test("any other account gets no stacks", () => {
 const recordSet = "AWS::Route53::RecordSet";
 const committed = Template.fromStack(stacksFor(dnsAccount)[0] as Stack);
 
-test("the committed config keeps the certificate valid and every site name pointed at CloudFront", () => {
+test("the committed config points every site name at the box, over IPv4 only", () => {
+  assert.equal(isIP(boxAddress), 4);
   for (const name of siteNames) {
-    const escaped = name.replaceAll(".", "\\.");
-    committed.resourcePropertiesCountIs(
-      recordSet,
-      {
-        Type: "CNAME",
-        Name: Match.stringLikeRegexp(`^_[0-9a-f]{32}\\.${escaped}\\.$`),
-        ResourceRecords: [
-          Match.stringLikeRegexp("^_[0-9a-f]{32}\\.[a-z0-9]+\\.acm-validations\\.aws\\.$"),
-        ],
-      },
-      1,
-    );
-    if (name === primaryDomain && boxAddress !== undefined) {
-      continue;
-    }
-    for (const type of ["A", "AAAA"]) {
-      committed.hasResourceProperties(recordSet, {
-        Name: `${name}.`,
-        Type: type,
-        AliasTarget: { DNSName: Match.stringLikeRegexp("^d[a-z0-9]+\\.cloudfront\\.net$") },
-      });
-    }
-  }
-  if (boxAddress !== undefined) {
-    assert.match(boxAddress, /^\d{1,3}(\.\d{1,3}){3}$/);
     committed.hasResourceProperties(recordSet, {
-      Name: `${primaryDomain}.`,
+      Name: `${name}.`,
       Type: "A",
       ResourceRecords: [boxAddress],
     });
+    committed.resourcePropertiesCountIs(recordSet, { Name: `${name}.`, Type: "AAAA" }, 0);
   }
-});
-
-test("with a box address, fidant.se points at the box over IPv4 only and www keeps CloudFront", () => {
-  boxDns.hasResourceProperties(recordSet, {
-    Name: "fidant.se.",
-    Type: "A",
-    ResourceRecords: ["192.0.2.10"],
-  });
-  boxDns.resourcePropertiesCountIs(recordSet, { Name: "fidant.se.", Type: "AAAA" }, 0);
-  boxDns.hasResourceProperties(recordSet, {
-    Name: "www.fidant.se.",
-    Type: "A",
-    AliasTarget: Match.objectLike({ DNSName: "d111.cloudfront.net" }),
-  });
 });
 
 test("the app box is open only on 80 and 443, and on 22 only to Lightsail's browser SSH", () => {
@@ -200,7 +149,11 @@ test("the app box is open only on 80 and 443, and on 22 only to Lightsail's brow
   box.hasResourceProperties("AWS::Lightsail::StaticIp", { AttachedTo: { Ref: instanceId } });
   assert.match(instance?.Properties.InstanceName, /^fidant-app-[0-9a-f]{8}$/);
   assert.match(instance?.Properties.UserData, /^fidant\.se \{$/m);
-  assert.doesNotMatch(instance?.Properties.UserData, /@DOMAIN@/);
+  assert.match(
+    instance?.Properties.UserData,
+    /^www\.fidant\.se, fidant\.eu, www\.fidant\.eu, fidant\.org, www\.fidant\.org \{\n\timport hsts\n\tredir https:\/\/fidant\.se\{uri\} permanent$/m,
+  );
+  assert.doesNotMatch(instance?.Properties.UserData, /@[A-Z_]+@/);
 });
 
 test("the committed config keeps fidant.se's Proton mail records", () => {
@@ -278,88 +231,13 @@ test("fidant.se gets the mail records", () => {
   });
 });
 
-test("a certificate validation record lands in the zone it belongs to", () => {
-  dns.hasResourceProperties("AWS::Route53::RecordSet", {
-    HostedZoneId: zoneRef("fidant.eu"),
-    Name: "_a.www.fidant.eu.",
-    Type: "CNAME",
-    ResourceRecords: ["_b.acm-validations.aws."],
-  });
-});
-
-test("every site name points at the distribution over IPv4 and IPv6", () => {
-  for (const type of ["A", "AAAA"]) {
-    for (const name of siteNames) {
-      dns.hasResourceProperties("AWS::Route53::RecordSet", {
-        Name: `${name}.`,
-        Type: type,
-        AliasTarget: { DNSName: "d111.cloudfront.net", HostedZoneId: "Z2FDTNDATAQYW2" },
-      });
-    }
+test("every site name points at the box over IPv4 only", () => {
+  for (const name of siteNames) {
+    dns.hasResourceProperties("AWS::Route53::RecordSet", {
+      Name: `${name}.`,
+      Type: "A",
+      ResourceRecords: ["192.0.2.10"],
+    });
   }
-});
-
-test("one certificate covers every site name", () => {
-  site.hasResourceProperties("AWS::CertificateManager::Certificate", {
-    DomainName: "fidant.se",
-    SubjectAlternativeNames: siteNames.filter((name) => name !== "fidant.se"),
-    ValidationMethod: "DNS",
-  });
-});
-
-test("the bucket is private and refuses plain HTTP", () => {
-  site.hasResourceProperties("AWS::S3::Bucket", {
-    PublicAccessBlockConfiguration: {
-      BlockPublicAcls: true,
-      BlockPublicPolicy: true,
-      IgnorePublicAcls: true,
-      RestrictPublicBuckets: true,
-    },
-  });
-  site.hasResourceProperties("AWS::S3::BucketPolicy", {
-    PolicyDocument: {
-      Statement: Match.arrayWith([
-        Match.objectLike({
-          Effect: "Deny",
-          Condition: { Bool: { "aws:SecureTransport": "false" } },
-        }),
-      ]),
-    },
-  });
-});
-
-test("the distribution serves every site name over HTTPS only", () => {
-  site.resourceCountIs("AWS::CloudFront::OriginAccessControl", 1);
-  site.hasResourceProperties("AWS::CloudFront::Distribution", {
-    DistributionConfig: Match.objectLike({
-      Aliases: siteNames,
-      ViewerCertificate: Match.objectLike({ MinimumProtocolVersion: "TLSv1.2_2021" }),
-      DefaultCacheBehavior: Match.objectLike({
-        ViewerProtocolPolicy: "redirect-to-https",
-        FunctionAssociations: [Match.objectLike({ EventType: "viewer-request" })],
-      }),
-    }),
-  });
-});
-
-test("a missing page answers 404, not S3's 403", () => {
-  site.hasResourceProperties("AWS::CloudFront::Distribution", {
-    DistributionConfig: Match.objectLike({
-      CustomErrorResponses: [
-        Match.objectLike({ ErrorCode: 403, ResponseCode: 404, ResponsePagePath: "/index.html" }),
-      ],
-    }),
-  });
-});
-
-test("responses carry a strict content security policy", () => {
-  site.hasResourceProperties("AWS::CloudFront::ResponseHeadersPolicy", {
-    ResponseHeadersPolicyConfig: Match.objectLike({
-      SecurityHeadersConfig: Match.objectLike({
-        ContentSecurityPolicy: Match.objectLike({
-          ContentSecurityPolicy: Match.stringLikeRegexp("^default-src 'none';"),
-        }),
-      }),
-    }),
-  });
+  dns.resourcePropertiesCountIs("AWS::Route53::RecordSet", { Type: "AAAA" }, 0);
 });
