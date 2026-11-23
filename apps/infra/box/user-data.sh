@@ -37,8 +37,8 @@ previous=$(readlink /opt/sigill/current || true)
 as_sigill() { runuser -u sigill -- env HOME=/var/lib/sigill bash -euo pipefail -c "$1"; }
 as_sigill "rm -rf $dir && git clone --quiet --filter=blob:none --no-checkout $repo $dir && cd $dir && git checkout --quiet $sha && pnpm install --frozen-lockfile"
 if ! as_sigill "cd $dir && pnpm build"; then
-  as_sigill "rm -rf $dir"
   touch "/opt/sigill/failed-$sha"
+  as_sigill "rm -rf $dir"
   exit 1
 fi
 switch() {
@@ -55,7 +55,12 @@ for _ in $(seq 20); do
   sleep 1
 done
 touch "/opt/sigill/failed-$sha"
-[ -n "$previous" ] && switch "$previous"
+if [ -n "$previous" ]; then
+  switch "$previous"
+else
+  rm -f /opt/sigill/current
+  systemctl stop sigill
+fi
 as_sigill "rm -rf $dir"
 exit 1
 EOF
