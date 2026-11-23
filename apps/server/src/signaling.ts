@@ -23,6 +23,8 @@ export type Logger = (event: string, fields?: LogFields) => void;
 
 export const SIGNAL_PATH = "/signal";
 
+export const HEARTBEAT_MS = 30_000;
+
 /** WebSocket close code for a protocol violation. */
 const POLICY_VIOLATION = 1008;
 
@@ -265,7 +267,7 @@ export function attachSignaling(
       peer.alive = false;
       socket.ping();
     }
-  }, options.heartbeatMs ?? 30_000);
+  }, options.heartbeatMs ?? HEARTBEAT_MS);
   heartbeat.unref();
 
   server.on("upgrade", onUpgrade);

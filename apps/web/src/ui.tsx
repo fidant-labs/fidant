@@ -174,7 +174,18 @@ export function FileCard({ name, size }: { name: string; size: string }) {
   );
 }
 
-const detailList = "mt-3 grid gap-2";
+function Facts({ rows }: { rows: ReadonlyArray<readonly [string, ComponentChildren]> }) {
+  return (
+    <dl class="mt-3 grid gap-2">
+      {rows.map(([term, value]) => (
+        <div key={term}>
+          <dt class="text-muted-foreground">{term}</dt>
+          <dd class="m-0 wrap-anywhere">{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
 
 export function TechDetails({
   rows,
@@ -184,14 +195,7 @@ export function TechDetails({
   return (
     <details class="mt-8 text-[0.9rem] [&_code]:text-[0.85rem]">
       <summary class="cursor-pointer text-muted-foreground">Technical details</summary>
-      <dl class={detailList}>
-        {rows.map(([term, value]) => (
-          <div key={term}>
-            <dt class="text-muted-foreground">{term}</dt>
-            <dd class="m-0 wrap-anywhere">{value}</dd>
-          </div>
-        ))}
-      </dl>
+      <Facts rows={rows} />
     </details>
   );
 }
@@ -220,14 +224,7 @@ export function ServerPanel({
       <h2 id="server-panel-heading" class="m-0 text-[1rem] font-bold">
         What our server has right now
       </h2>
-      <dl class={detailList}>
-        {rows.map(([term, value]) => (
-          <div key={term}>
-            <dt class="text-muted-foreground">{term}</dt>
-            <dd class="m-0 wrap-anywhere">{value}</dd>
-          </div>
-        ))}
-      </dl>
+      <Facts rows={rows} />
     </section>
   );
 }

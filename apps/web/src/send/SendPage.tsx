@@ -19,7 +19,7 @@
 // gets link IDs, opaque sealed signals and refusal reasons.
 
 import { MAX_LINKS } from "@sigill/protocol";
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useReducer, useRef, useState } from "preact/hooks";
 import { Alert, AlertDescription } from "#components/ui/alert";
 import { Button } from "#components/ui/button";
 import { Input } from "#components/ui/input";
@@ -42,10 +42,10 @@ import {
   update,
 } from "../lib/sender-state.ts";
 import {
-  AFTERWARDS_SENDER,
   addRelay,
   NO_RELAYS,
   SEES_SENDER,
+  senderAfterwards,
   senderHolds,
 } from "../lib/server-facts.ts";
 import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
@@ -76,7 +76,7 @@ export function SendPage() {
   const [hash, setHash] = useState<Hash>({ status: "none" });
   const [sender, setSender] = useState<SenderState>(initialSenderState);
   const [lostServer, setLostServer] = useState(false);
-  const [relayed, setRelayed] = useState(NO_RELAYS);
+  const [relayed, countRelay] = useReducer(addRelay, NO_RELAYS);
   const [nameError, setNameError] = useState("");
   const [fileError, setFileError] = useState("");
   const [from, setFrom] = useState("");
@@ -210,9 +210,7 @@ export function SendPage() {
 
   // Runs once on mount: everything it uses is read through refs.
   useEffect(() => {
-    const signaling = connectSignaling({
-      onRelay: (bytes) => setRelayed((r) => addRelay(r, bytes)),
-    });
+    const signaling = connectSignaling({ onRelay: countRelay });
     signalingRef.current = signaling;
     let disposed = false;
     const dispatch = (action: SenderAction) => dispatchRef.current(action);
@@ -512,9 +510,9 @@ export function SendPage() {
       )}
       <ServerPanel
         sees={SEES_SENDER}
-        holds={senderHolds({ online: !lostServer, links: sender.recipients.length, connected })}
+        holds={senderHolds({ online: !lostServer, links: hostedLinks(sender).length, connected })}
         relayed={relayed}
-        afterwards={AFTERWARDS_SENDER}
+        afterwards={senderAfterwards(!lostServer)}
       />
     </Page>
   );
