@@ -39,7 +39,7 @@ git worktree add .claude/worktrees/<branch> -b <branch> origin/main
 cd .claude/worktrees/<branch> && pnpm install
 ```
 
-If `pnpm` is missing or `node -v` is not 24, the shell is on another nvm version: prefix commands with `export PATH=~/.nvm/versions/node/v24.<x>/bin:$PATH` (run `corepack enable pnpm` once under Node 24 if needed), and pass the same prefix to every subagent. Run `pnpm check` once to confirm the baseline is green before changing anything.
+If `pnpm` is missing or `node -v` is not 26, the shell is on another nvm version: prefix commands with `export PATH=~/.nvm/versions/node/v26.<x>/bin:$PATH` (Node 26 ships without Corepack: run `npm install -g pnpm@<version>` once under it if needed, with the version from `package.json`), and pass the same prefix to every subagent. Run `pnpm check` once to confirm the baseline is green before changing anything.
 
 `.claude/worktrees/` is gitignored and excluded from biome. Every later step works inside this worktree. Pass its absolute path to every subagent and tell them to use absolute paths or `git -C <worktree>`, never the main checkout.
 

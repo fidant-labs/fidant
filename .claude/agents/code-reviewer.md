@@ -17,7 +17,7 @@ Be specific (file, line, what breaks and why). When the diff leaves intent uncle
 - Contracts: changed signatures, exports from `packages/*` (consumed as TypeScript source), HTTP responses or message formats that existing callers rely on, where only one side of the contract changed.
 - Data loss: paths that drop, truncate or overwrite a file, a key or a receipt without the user knowing.
 - Tests: new or changed behaviour has a `node:test` case in a `*.test.ts` file next to the code. A test that cannot fail, or only asserts on its own mocks, does not count.
-- Conventions the tooling does not catch: relative imports keep the `.ts` extension (Node 24 runs `.ts` by type stripping); each package declares every dependency it imports; workspace packages are depended on as `workspace:*`, never a version range that pnpm could resolve from the public registry.
+- Conventions the tooling does not catch: relative imports keep the `.ts` extension (Node runs `.ts` by type stripping); each package declares every dependency it imports; workspace packages are depended on as `workspace:*`, never a version range that pnpm could resolve from the public registry.
 - Maintainability: misleading names, dead code, a new helper that duplicates one already in the repo, comments that contradict the code.
 - The AGENTS.md invariants, as they show up in ordinary code:
   - file content, file names, file metadata and keys never reach the server or any other infrastructure, and never reach a log or `console` call; the one exception is the BankID receipt text, which names the file;
