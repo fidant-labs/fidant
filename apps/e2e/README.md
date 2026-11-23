@@ -17,7 +17,7 @@ Import `test` and `expect` from `src/fixtures.ts`, not from `@playwright/test`.
 
 - The default `page` and `context` are recorded as the actor `default`. For more browsers, call `actor("sender")`, `actor("recipient")` and so on. Each gets its own context and page and its own observations file. Do not call `browser.newContext()`: an unrecorded context fails the test.
 - `canary` gives random bytes from the run seed and the test's title. Fork it per canary: `canaryFile(canary.fork("file"))`, `canaryKey(canary.fork("key"))`.
-- `leaks.watch(file, label?)` registers a canary file and returns it: its bytes and their SHA-256, the tokens in its name and type, the SHA-256 of its name, and its size. `leaks.watchKey(label, key)` registers a key, as bytes or as text such as a fragment secret.
+- `leaks.watch(file, label?)` registers a canary file and returns it: its bytes and their SHA-256, the tokens in its name and type, the SHA-256 of its name, and its size. `leaks.watchKey(label, key)` registers a key, as bytes or as text such as a fragment secret. `leaks.watchText(label, text)` registers other text that must not appear whole, such as a recipient name.
 - After the test, the detector scans what the test observed for every secret it registered and fails the test on any finding. `leaks.scan()` returns the findings so far without failing, and `leaks.check()` returns the report the teardown would throw (undefined when clean). A test that leaks on purpose calls `leaks.expectLeaks()`. `tests/leaks.spec.ts` shows each kind of leak the detector catches.
 - Once all tests are done, a run-level sweep scans every observation against every secret of the run, so a leak that shows up in another test's traffic or a later log line still fails the run.
 

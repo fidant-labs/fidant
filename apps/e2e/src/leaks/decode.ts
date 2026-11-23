@@ -105,16 +105,24 @@ export function decodeViews(
   let limited = false;
   for (let i = 0; i < views.length && !truncated; i++) {
     const view = views[i] as View;
-    if (view.depth >= maxDepth) continue;
+    if (view.depth >= maxDepth) {
+      continue;
+    }
     const text = view.bytes.toString("latin1");
     const regions = textRegions(view.bytes, text);
     const decoders = view.depth === 0 ? [...allDecoders, hinted(hints)] : allDecoders;
     for (const decoder of decoders) {
       for (const child of decoder(view, text, regions, maxBytes - used)) {
-        if (child.limited) limited = true;
-        if (child.bytes.length < minViewBytes) continue;
+        if (child.limited) {
+          limited = true;
+        }
+        if (child.bytes.length < minViewBytes) {
+          continue;
+        }
         const key = digest(child.bytes);
-        if (seen.has(key)) continue;
+        if (seen.has(key)) {
+          continue;
+        }
         if (used + child.bytes.length > maxBytes) {
           truncated = true;
           break;
@@ -124,7 +132,9 @@ export function decodeViews(
         const path = view.depth === 0 ? child.name : `${view.path}>${child.name}`;
         views.push({ path, bytes: child.bytes, depth: view.depth + 1 });
       }
-      if (truncated) break;
+      if (truncated) {
+        break;
+      }
     }
   }
   return { views, truncated: truncated || limited };
@@ -133,7 +143,9 @@ export function decodeViews(
 const digest = (bytes: Buffer) => hash("sha256", bytes, "base64");
 
 const one = (name: string, result: Inflated | Buffer | undefined) => {
-  if (!result) return [];
+  if (!result) {
+    return [];
+  }
   return Buffer.isBuffer(result)
     ? [{ name, bytes: result }]
     : [{ name, bytes: result.bytes, limited: result.limited }];
@@ -147,7 +159,9 @@ const printableRun = run("[\\t\\n\\r\\x20-\\x7e]", 16);
  * Applied to a whole binary view, a stray `%41` would only copy it.
  */
 function textRegions(bytes: Buffer, text: string): string[] {
-  if (!hasControlChar(bytes) && isUtf8(bytes)) return [text];
+  if (!hasControlChar(bytes) && isUtf8(bytes)) {
+    return [text];
+  }
   return matches(text, printableRun);
 }
 
@@ -171,11 +185,14 @@ const textual =
 const json = textual((text) => (jsonEscape.test(text) ? one("json", unescapeJson(text)) : []));
 
 const percent = textual((text) => {
-  if (!percentEscape.test(text)) return [];
+  if (!percentEscape.test(text)) {
+    return [];
+  }
   const children: ReturnType<Decoder> = one("percent", decodePercent(text, false));
   // Form encoding writes a space as `+`, which base64 also uses, so it gets a view of its own.
-  if (text.includes("+") && text.includes("="))
+  if (text.includes("+") && text.includes("=")) {
     children.push(...one("form", decodePercent(text, true)));
+  }
   return children;
 });
 
@@ -184,7 +201,9 @@ const quotedPrintable = textual((text) =>
 );
 
 const rfc2047 = textual((text) => {
-  if (!text.includes("=?")) return [];
+  if (!text.includes("=?")) {
+    return [];
+  }
   let changed = false;
   const decoded = text.replace(
     encodedWords,
@@ -207,7 +226,9 @@ const rfc2047 = textual((text) => {
 
 /** UTF-8 text whose characters are all below 256, as when JS sends a binary string. */
 const latin1: Decoder = (view) => {
-  if (!isUtf8(view.bytes)) return [];
+  if (!isUtf8(view.bytes)) {
+    return [];
+  }
   const text = view.bytes.toString("utf8");
   return /[\u0080-ÿ]/.test(text) && !/[^\0-ÿ]/.test(text)
     ? one("latin1", Buffer.from(text, "latin1"))
@@ -228,7 +249,9 @@ const utf16: Decoder = (_view, text) => [
 const base64: Decoder = (_view, text) =>
   matches(text, base64Run).flatMap((match) => {
     const run = match.replace(/[\r\n]/g, "");
-    if (run.length < minBase64Run) return [];
+    if (run.length < minBase64Run) {
+      return [];
+    }
     // A run may start mid-quantum, after junk or a truncation, so try every offset.
     return [0, 1, 2, 3].map((offset) => ({
       name: `base64@${offset}`,
@@ -255,7 +278,9 @@ const compressed: Decoder = (view, _text, _regions, room) => {
   for (const at of indexesOf(bytes, gzipMagic)) {
     // Raw inflate of the member's body ignores whatever follows the member; gunzip would not.
     const body = gzipBody(bytes.subarray(at));
-    if (body) children.push(...one("gzip", inflate(inflateRawSync, body, room)));
+    if (body) {
+      children.push(...one("gzip", inflate(inflateRawSync, body, room)));
+    }
   }
   for (const at of indexesOf(bytes, zstdMagic)) {
     children.push(...one("zstd", inflate(zstdDecompressSync, bytes.subarray(at), room)));
@@ -326,7 +351,9 @@ function inflate(inflater: Inflater, data: Buffer, room: number): Inflated | und
   try {
     return { bytes: attempt(data), limited: false };
   } catch (error) {
-    if ((error as { code?: string }).code !== "ERR_BUFFER_TOO_LARGE") return undefined;
+    if ((error as { code?: string }).code !== "ERR_BUFFER_TOO_LARGE") {
+      return undefined;
+    }
   }
   // Output grows with the input prefix, so binary search the longest prefix that fits.
   let best: Buffer = Buffer.alloc(0);
@@ -338,8 +365,11 @@ function inflate(inflater: Inflater, data: Buffer, room: number): Inflated | und
       best = attempt(data.subarray(0, mid));
       low = mid;
     } catch (error) {
-      if ((error as { code?: string }).code === "ERR_BUFFER_TOO_LARGE") high = mid - 1;
-      else low = mid;
+      if ((error as { code?: string }).code === "ERR_BUFFER_TOO_LARGE") {
+        high = mid - 1;
+      } else {
+        low = mid;
+      }
     }
   }
   return { bytes: best, limited: true };
@@ -349,20 +379,30 @@ function inflate(inflater: Inflater, data: Buffer, room: number): Inflated | und
 function gzipBody(member: Buffer): Buffer | undefined {
   const flags = member[3] ?? 0;
   let at = 10;
-  if (flags & 4) at += 2 + (member.length >= at + 2 ? member.readUInt16LE(at) : 0);
+  if (flags & 4) {
+    at += 2 + (member.length >= at + 2 ? member.readUInt16LE(at) : 0);
+  }
   for (const bit of [8, 16]) {
-    if (!(flags & bit)) continue;
+    if (!(flags & bit)) {
+      continue;
+    }
     const end = member.indexOf(0, at);
-    if (end === -1) return undefined;
+    if (end === -1) {
+      return undefined;
+    }
     at = end + 1;
   }
-  if (flags & 2) at += 2;
+  if (flags & 2) {
+    at += 2;
+  }
   return at < member.length ? member.subarray(at) : undefined;
 }
 
 function indexesOf(bytes: Buffer, magic: Buffer): number[] {
   const found: number[] = [];
-  for (let at = bytes.indexOf(magic); at !== -1; at = bytes.indexOf(magic, at + 1)) found.push(at);
+  for (let at = bytes.indexOf(magic); at !== -1; at = bytes.indexOf(magic, at + 1)) {
+    found.push(at);
+  }
   return found;
 }
 
@@ -418,9 +458,13 @@ export function unescapeJson(text: string): Buffer {
   let start = 0;
   let pending = "";
   const flush = (end: number) => {
-    if (pending) parts.push(Buffer.from(pending.toWellFormed()));
+    if (pending) {
+      parts.push(Buffer.from(pending.toWellFormed()));
+    }
     pending = "";
-    if (end > start) parts.push(Buffer.from(text.slice(start, end), "latin1"));
+    if (end > start) {
+      parts.push(Buffer.from(text.slice(start, end), "latin1"));
+    }
   };
   for (let i = text.indexOf("\\"); i !== -1 && i < text.length - 1; i = text.indexOf("\\", i)) {
     const next = text[i + 1] as string;

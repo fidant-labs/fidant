@@ -104,14 +104,20 @@ function isNullableString(value: unknown): value is string | null {
 }
 
 function parseCandidate(value: unknown): SignalCandidate | undefined {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return undefined;
+  }
   const fields = value as Fields;
   if (!hasKeys(fields, ["candidate", "sdpMid", "sdpMLineIndex", "usernameFragment"])) {
     return undefined;
   }
   const { candidate, sdpMid, sdpMLineIndex, usernameFragment } = fields;
-  if (typeof candidate !== "string" || !isNullableString(sdpMid)) return undefined;
-  if (!isNullableString(usernameFragment)) return undefined;
+  if (typeof candidate !== "string" || !isNullableString(sdpMid)) {
+    return undefined;
+  }
+  if (!isNullableString(usernameFragment)) {
+    return undefined;
+  }
   if (
     sdpMLineIndex !== null &&
     !(typeof sdpMLineIndex === "number" && Number.isInteger(sdpMLineIndex) && sdpMLineIndex >= 0)
@@ -123,17 +129,27 @@ function parseCandidate(value: unknown): SignalCandidate | undefined {
 
 /** Checks an opened signal's shape. Returns undefined if it is not a SignalPayload. */
 export function parseSignalPayload(value: unknown): SignalPayload | undefined {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return undefined;
+  }
   const fields = value as Fields;
   switch (fields.kind) {
     case "offer":
     case "answer":
-      if (!hasKeys(fields, ["kind", "sdp"]) || typeof fields.sdp !== "string") return undefined;
-      if (fields.sdp.length === 0) return undefined;
+      if (!hasKeys(fields, ["kind", "sdp"]) || typeof fields.sdp !== "string") {
+        return undefined;
+      }
+      if (fields.sdp.length === 0) {
+        return undefined;
+      }
       return { kind: fields.kind, sdp: fields.sdp };
     case "ice": {
-      if (!hasKeys(fields, ["kind", "candidate"])) return undefined;
-      if (fields.candidate === null) return { kind: "ice", candidate: null };
+      if (!hasKeys(fields, ["kind", "candidate"])) {
+        return undefined;
+      }
+      if (fields.candidate === null) {
+        return { kind: "ice", candidate: null };
+      }
       const candidate = parseCandidate(fields.candidate);
       return candidate ? { kind: "ice", candidate } : undefined;
     }
@@ -204,28 +220,44 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
   }
 
   function fail(reason: PeerCloseReason, detail?: string): void {
-    if (closed) return;
+    if (closed) {
+      return;
+    }
     teardown();
-    if (detail === undefined) options.onClose(reason);
-    else options.onClose(reason, detail);
+    if (detail === undefined) {
+      options.onClose(reason);
+    } else {
+      options.onClose(reason, detail);
+    }
   }
 
   function failWith(error: unknown, fallback: PeerCloseReason): void {
-    if (error instanceof PeerError) fail(error.reason, error.message);
-    else fail(fallback, error instanceof Error ? error.message : String(error));
+    if (error instanceof PeerError) {
+      fail(error.reason, error.message);
+    } else {
+      fail(fallback, error instanceof Error ? error.message : String(error));
+    }
   }
 
   /** Seals and sends a signal, in order. `required` signals close the peer if they fail. */
   function sendSignal(payload: SignalPayload, required: boolean): void {
     outgoing = outgoing.then(async () => {
-      if (closed) return;
+      if (closed) {
+        return;
+      }
       try {
         const data = await sealSignal(signalKey, linkId, side, payload);
-        if (closed) return;
+        if (closed) {
+          return;
+        }
         const sent = signaling.send({ t: "relay", link: linkId, data });
-        if (!sent && required) fail("signal-failed", "signaling is not connected");
+        if (!sent && required) {
+          fail("signal-failed", "signaling is not connected");
+        }
       } catch (error) {
-        if (required) failWith(error, "signal-failed");
+        if (required) {
+          failWith(error, "signal-failed");
+        }
       }
     });
   }
@@ -234,7 +266,9 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
     channel = next;
     next.binaryType = "arraybuffer";
     next.onopen = () => {
-      if (!closed) options.onOpen(next, { maxMessageSize: maxMessageSizeOf(pc) });
+      if (!closed) {
+        options.onOpen(next, { maxMessageSize: maxMessageSizeOf(pc) });
+      }
     };
     next.onclose = () => fail("channel-closed");
   }
@@ -254,32 +288,43 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
   async function setRemote(type: "offer" | "answer", sdp: string): Promise<void> {
     await pc.setRemoteDescription({ type, sdp });
     const queued = pendingCandidates.splice(0);
-    for (const candidate of queued) await addCandidate(candidate);
+    for (const candidate of queued) {
+      await addCandidate(candidate);
+    }
   }
 
   async function sendLocalDescription(kind: "offer" | "answer"): Promise<void> {
     await pc.setLocalDescription();
     const sdp = pc.localDescription?.sdp;
-    if (!sdp) throw new PeerError("setup-failed", `no local ${kind}`);
+    if (!sdp) {
+      throw new PeerError("setup-failed", `no local ${kind}`);
+    }
     sendSignal({ kind, sdp }, true);
   }
 
   async function handleSignal(payload: SignalPayload): Promise<void> {
     switch (payload.kind) {
       case "offer":
-        if (side !== "r" || gotOffer) throw new PeerError("bad-signal", "unexpected offer");
+        if (side !== "r" || gotOffer) {
+          throw new PeerError("bad-signal", "unexpected offer");
+        }
         gotOffer = true;
         await setRemote("offer", payload.sdp);
         await sendLocalDescription("answer");
         return;
       case "answer":
-        if (side !== "s" || gotAnswer) throw new PeerError("bad-signal", "unexpected answer");
+        if (side !== "s" || gotAnswer) {
+          throw new PeerError("bad-signal", "unexpected answer");
+        }
         gotAnswer = true;
         await setRemote("answer", payload.sdp);
         return;
       case "ice":
-        if (pc.remoteDescription) await addCandidate(payload.candidate);
-        else pendingCandidates.push(payload.candidate);
+        if (pc.remoteDescription) {
+          await addCandidate(payload.candidate);
+        } else {
+          pendingCandidates.push(payload.candidate);
+        }
         return;
     }
   }
@@ -292,8 +337,11 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
   };
 
   pc.onconnectionstatechange = () => {
-    if (pc.connectionState === "failed") fail("connection-failed");
-    else if (pc.connectionState === "closed") fail("connection-closed");
+    if (pc.connectionState === "failed") {
+      fail("connection-failed");
+    } else if (pc.connectionState === "closed") {
+      fail("connection-closed");
+    }
   };
 
   if (side === "s") {
@@ -314,14 +362,18 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
   return {
     handleRelay(data) {
       incoming = incoming.then(async () => {
-        if (closed) return;
+        if (closed) {
+          return;
+        }
         let payload: SignalPayload | undefined;
         try {
           payload = parseSignalPayload(await openSignal(signalKey, linkId, other, data));
         } catch {
           payload = undefined;
         }
-        if (closed) return;
+        if (closed) {
+          return;
+        }
         if (!payload) {
           fail("bad-signal", "signal did not open or had the wrong shape");
           return;
@@ -335,7 +387,9 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
       return incoming;
     },
     close() {
-      if (!closed) teardown();
+      if (!closed) {
+        teardown();
+      }
     },
   };
 }

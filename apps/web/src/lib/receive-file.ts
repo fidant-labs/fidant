@@ -109,7 +109,9 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
   let sink: Sink | undefined;
 
   try {
-    if (channel.readyState !== "open") throw new Error("data channel is not open");
+    if (channel.readyState !== "open") {
+      throw new Error("data channel is not open");
+    }
 
     const send = (frame: Uint8Array<ArrayBuffer>) => {
       signal.throwIfAborted();
@@ -123,7 +125,9 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
     inbox.start(new FrameReader(key, "s"));
 
     const first = await inbox.next();
-    if (first.kind !== SenderKind.META) throw new Error("expected META");
+    if (first.kind !== SenderKind.META) {
+      throw new Error("expected META");
+    }
     const meta = decodeMeta(first.body);
     const verifier = new ReceiveVerifier();
     verifier.meta(meta);
@@ -143,7 +147,9 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
     // A sink that arrives after the transfer ended is discarded.
     decision.then(
       (late) => {
-        if (signal.aborted) void late?.abort();
+        if (signal.aborted) {
+          void late?.abort();
+        }
       },
       () => {},
     );
@@ -154,7 +160,9 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
       return chosen;
     };
     const chosen = await Promise.race([answer(), early]);
-    if (!chosen) return { type: "declined" };
+    if (!chosen) {
+      return { type: "declined" };
+    }
     sink = chosen;
 
     let reportedAt = 0;
@@ -165,7 +173,9 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
       pending = undefined;
       if (frame.kind === SenderKind.CHUNK) {
         const data = verifier.chunk(frame.body);
-        if (data.length > 0) await abortable(saving(sink.write(data)), signal);
+        if (data.length > 0) {
+          await abortable(saving(sink.write(data)), signal);
+        }
         const now = Date.now();
         if (now - reportedAt >= PROGRESS_INTERVAL_MS) {
           reportedAt = now;
@@ -175,7 +185,9 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
         try {
           sha256 = verifier.end(frame.body);
         } catch (error) {
-          if (!(error instanceof ChecksumMismatchError)) throw error;
+          if (!(error instanceof ChecksumMismatchError)) {
+            throw error;
+          }
           // Discard the file first, then tell the sender what arrived.
           const discarded = sink;
           sink = undefined;
@@ -193,7 +205,9 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
     send(await writer.encrypt(RecipientKind.RECEIPT, sha256));
     return { type: "received", sha256, blob };
   } catch (error) {
-    if (sink) await sink.abort().catch(() => {});
+    if (sink) {
+      await sink.abort().catch(() => {});
+    }
     throw classify(error, signal);
   } finally {
     channel.removeEventListener("close", onClose);
@@ -216,11 +230,15 @@ async function saving<T>(promise: Promise<T>): Promise<T> {
  * closed, caller gave up), whatever failed next counts as the connection.
  */
 function classify(error: unknown, signal: AbortSignal): ReceiveError {
-  if (error instanceof ReceiveError && error.reason === "checksum") return error;
+  if (error instanceof ReceiveError && error.reason === "checksum") {
+    return error;
+  }
   if (signal.aborted) {
     return new ReceiveError("connection", messageOf(signal.reason), { cause: error });
   }
-  if (error instanceof ReceiveError) return error;
+  if (error instanceof ReceiveError) {
+    return error;
+  }
   return new ReceiveError("invalid", messageOf(error), { cause: error });
 }
 

@@ -87,19 +87,25 @@ const RULES: Record<EncryptedKind, { dir: Direction; min: number; max: number }>
 
 function rule(kind: number, dir: Direction) {
   const r = Object.hasOwn(RULES, kind) ? RULES[kind as EncryptedKind] : undefined;
-  if (!r || r.dir !== dir) throw new Error(`frame kind ${kind} not allowed from "${dir}"`);
+  if (!r || r.dir !== dir) {
+    throw new Error(`frame kind ${kind} not allowed from "${dir}"`);
+  }
   return r;
 }
 
 function writeU64(view: DataView, offset: number, value: number): void {
-  if (!Number.isSafeInteger(value) || value < 0) throw new Error("u64 out of range");
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error("u64 out of range");
+  }
   view.setUint32(offset, Math.floor(value / 0x100000000));
   view.setUint32(offset + 4, value >>> 0);
 }
 
 function readU64(view: DataView, offset: number): number {
   const value = view.getUint32(offset) * 0x100000000 + view.getUint32(offset + 4);
-  if (!Number.isSafeInteger(value)) throw new Error("u64 out of range");
+  if (!Number.isSafeInteger(value)) {
+    throw new Error("u64 out of range");
+  }
   return value;
 }
 
@@ -113,7 +119,9 @@ export function encodeHeader(header: Header): Uint8Array<ArrayBuffer> {
 }
 
 export function decodeHeader(frame: Uint8Array): Header {
-  if (frame.length < HEADER_BYTES) throw new Error("frame shorter than header");
+  if (frame.length < HEADER_BYTES) {
+    throw new Error("frame shorter than header");
+  }
   const view = new DataView(frame.buffer, frame.byteOffset, HEADER_BYTES);
   return { version: view.getUint8(0), kind: view.getUint8(1), seq: readU64(view, 2) };
 }
@@ -128,7 +136,9 @@ function iv(dir: Direction, seq: number): Uint8Array<ArrayBuffer> {
 
 /** The one plaintext frame: tells the recipient which transferId to derive the file key from. */
 export function encodeInit(transferId: Uint8Array): Uint8Array<ArrayBuffer> {
-  if (transferId.length !== 16) throw new Error("transferId must be 16 bytes");
+  if (transferId.length !== 16) {
+    throw new Error("transferId must be 16 bytes");
+  }
   const out = new Uint8Array(HEADER_BYTES + 16);
   out.set(encodeHeader({ version: FRAME_VERSION, kind: SenderKind.INIT, seq: 0 }));
   out.set(transferId, HEADER_BYTES);
@@ -192,16 +202,22 @@ export class FrameReader {
   }
 
   async decrypt(frame: Uint8Array): Promise<Frame> {
-    if (this.failed) throw new Error("frame reader has failed");
+    if (this.failed) {
+      throw new Error("frame reader has failed");
+    }
     this.failed = true;
     const header = decodeHeader(frame);
-    if (header.version !== FRAME_VERSION) throw new Error("unknown frame version");
+    if (header.version !== FRAME_VERSION) {
+      throw new Error("unknown frame version");
+    }
     const r = rule(header.kind, this.dir);
     if (header.seq !== this.expected) {
       throw new Error(`frame seq ${header.seq}, expected ${this.expected}`);
     }
     const bodyLength = frame.length - HEADER_BYTES - TAG_BYTES;
-    if (bodyLength < r.min || bodyLength > r.max) throw new Error("frame length out of range");
+    if (bodyLength < r.min || bodyLength > r.max) {
+      throw new Error("frame length out of range");
+    }
     const seq = this.expected++;
     const plaintext = await crypto.subtle.decrypt(
       {
@@ -245,9 +261,13 @@ export class MetaTooLargeError extends Error {
  */
 export function encodeMeta(meta: FileMeta): Uint8Array<ArrayBuffer> {
   const checked = parseMeta(meta);
-  if (!checked) throw new Error("invalid file metadata");
+  if (!checked) {
+    throw new Error("invalid file metadata");
+  }
   const json = encoder.encode(JSON.stringify(checked));
-  if (json.length > META_PADDED_BYTES - META_LENGTH_BYTES) throw new MetaTooLargeError();
+  if (json.length > META_PADDED_BYTES - META_LENGTH_BYTES) {
+    throw new MetaTooLargeError();
+  }
   const body = new Uint8Array(META_PADDED_BYTES);
   new DataView(body.buffer).setUint16(0, json.length);
   body.set(json, META_LENGTH_BYTES);
@@ -274,19 +294,29 @@ export function metaFits(file: { name: string; type: string; size: number }, fro
  * JSON is valid metadata.
  */
 export function decodeMeta(body: Uint8Array): FileMeta {
-  if (body.length !== META_PADDED_BYTES) throw new Error("META body has the wrong length");
+  if (body.length !== META_PADDED_BYTES) {
+    throw new Error("META body has the wrong length");
+  }
   const length = new DataView(body.buffer, body.byteOffset, META_LENGTH_BYTES).getUint16(0);
-  if (length > META_PADDED_BYTES - META_LENGTH_BYTES) throw new Error("META length out of range");
+  if (length > META_PADDED_BYTES - META_LENGTH_BYTES) {
+    throw new Error("META length out of range");
+  }
   const end = META_LENGTH_BYTES + length;
-  if (!isZero(body.subarray(end))) throw new Error("META padding is not zeros");
+  if (!isZero(body.subarray(end))) {
+    throw new Error("META padding is not zeros");
+  }
   const meta = parseMeta(JSON.parse(decoder.decode(body.subarray(META_LENGTH_BYTES, end))));
-  if (!meta) throw new Error("invalid file metadata");
+  if (!meta) {
+    throw new Error("invalid file metadata");
+  }
   return meta;
 }
 
 function isZero(bytes: Uint8Array): boolean {
   let bits = 0;
-  for (const byte of bytes) bits |= byte;
+  for (const byte of bytes) {
+    bits |= byte;
+  }
   return bits === 0;
 }
 
@@ -307,14 +337,20 @@ export function hasForbiddenCharacters(text: string): boolean {
 }
 
 function parseMeta(value: unknown): FileMeta | undefined {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return undefined;
+  }
   const keys = Object.keys(value).sort().join(",");
-  if (keys !== "chunkSize,from,name,size,type") return undefined;
+  if (keys !== "chunkSize,from,name,size,type") {
+    return undefined;
+  }
   const { name, size, type, chunkSize, from } = value as Record<string, unknown>;
   if (typeof name !== "string" || name.length === 0 || hasForbiddenCharacters(name)) {
     return undefined;
   }
-  if (typeof size !== "number" || !Number.isSafeInteger(size) || size < 0) return undefined;
+  if (typeof size !== "number" || !Number.isSafeInteger(size) || size < 0) {
+    return undefined;
+  }
   if (typeof type !== "string" || type.length > MAX_TYPE_LENGTH || hasForbiddenCharacters(type)) {
     return undefined;
   }
@@ -330,7 +366,9 @@ function parseMeta(value: unknown): FileMeta | undefined {
     return undefined;
   }
   // The padded transfer length must stay a safe integer too.
-  if (size > MAX_PADDABLE_SIZE) return undefined;
+  if (size > MAX_PADDABLE_SIZE) {
+    return undefined;
+  }
   return { name, size, type, chunkSize, from };
 }
 
@@ -359,7 +397,9 @@ export function paddedLength(size: number, chunkSize: number = MAX_CHUNK_BYTES):
 
 /** Padmé for L ≥ 1, in floating-point arithmetic that stays exact up to 2^53. */
 function padme(length: number): number {
-  if (length < 2) return length;
+  if (length < 2) {
+    return length;
+  }
   const e = floorLog2(length);
   const s = floorLog2(e) + 1;
   const step = 2 ** (e - s);
@@ -369,13 +409,19 @@ function padme(length: number): number {
 /** floor(log2(n)) for a safe integer n ≥ 1, corrected for Math.log2 rounding. */
 function floorLog2(n: number): number {
   let e = Math.floor(Math.log2(n));
-  while (2 ** e > n) e--;
-  while (2 ** (e + 1) <= n) e++;
+  while (2 ** e > n) {
+    e--;
+  }
+  while (2 ** (e + 1) <= n) {
+    e++;
+  }
   return e;
 }
 
 export function encodeEnd(sha256: Uint8Array, size: number): Uint8Array<ArrayBuffer> {
-  if (sha256.length !== 32) throw new Error("sha256 must be 32 bytes");
+  if (sha256.length !== 32) {
+    throw new Error("sha256 must be 32 bytes");
+  }
   const out = new Uint8Array(40);
   out.set(sha256);
   writeU64(new DataView(out.buffer), 32, size);
@@ -383,7 +429,9 @@ export function encodeEnd(sha256: Uint8Array, size: number): Uint8Array<ArrayBuf
 }
 
 export function decodeEnd(body: Uint8Array): { sha256: Uint8Array; size: number } {
-  if (body.length !== 40) throw new Error("malformed END body");
+  if (body.length !== 40) {
+    throw new Error("malformed END body");
+  }
   const view = new DataView(body.buffer, body.byteOffset, 40);
   return { sha256: body.slice(0, 32), size: readU64(view, 32) };
 }
@@ -404,9 +452,13 @@ export class ChecksumMismatchError extends Error {
 }
 
 function equalBytes(a: Uint8Array, b: Uint8Array): boolean {
-  if (a.length !== b.length) return false;
+  if (a.length !== b.length) {
+    return false;
+  }
   let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= (a[i] as number) ^ (b[i] as number);
+  for (let i = 0; i < a.length; i++) {
+    diff |= (a[i] as number) ^ (b[i] as number);
+  }
   return diff === 0;
 }
 
@@ -436,7 +488,9 @@ export class ReceiveVerifier {
 
   meta(meta: { size: number; chunkSize: number }): void {
     this.step(() => {
-      if (this.size !== undefined) throw new Error("META received twice");
+      if (this.size !== undefined) {
+        throw new Error("META received twice");
+      }
       this.expected = paddedLength(meta.size, meta.chunkSize);
       this.chunkSize = meta.chunkSize;
       this.size = meta.size;
@@ -446,13 +500,22 @@ export class ReceiveVerifier {
   /** Checks one CHUNK body and returns the file bytes in it (a view, possibly empty). */
   chunk(body: Uint8Array): Uint8Array {
     return this.step(() => {
-      if (this.size === undefined) throw new Error("CHUNK before META");
-      if (this.digest) throw new Error("CHUNK after END");
-      if (body.length !== this.chunkSize) throw new Error("CHUNK is not the chunk size");
-      if (this.received + body.length > this.expected)
+      if (this.size === undefined) {
+        throw new Error("CHUNK before META");
+      }
+      if (this.digest) {
+        throw new Error("CHUNK after END");
+      }
+      if (body.length !== this.chunkSize) {
+        throw new Error("CHUNK is not the chunk size");
+      }
+      if (this.received + body.length > this.expected) {
         throw new Error("more chunks than META size");
+      }
       const fileBytes = Math.max(0, Math.min(body.length, this.size - this.received));
-      if (!isZero(body.subarray(fileBytes))) throw new Error("CHUNK padding is not zeros");
+      if (!isZero(body.subarray(fileBytes))) {
+        throw new Error("CHUNK padding is not zeros");
+      }
       this.received += body.length;
       const data = body.subarray(0, fileBytes);
       this.hash.update(data);
@@ -466,13 +529,23 @@ export class ReceiveVerifier {
    */
   end(endBody: Uint8Array): Uint8Array {
     return this.step(() => {
-      if (this.size === undefined) throw new Error("END before META");
-      if (this.digest) throw new Error("END received twice");
+      if (this.size === undefined) {
+        throw new Error("END before META");
+      }
+      if (this.digest) {
+        throw new Error("END received twice");
+      }
       const end = decodeEnd(endBody);
-      if (end.size !== this.size) throw new Error("END size differs from META size");
-      if (this.received !== this.expected) throw new Error("END before all chunks were received");
+      if (end.size !== this.size) {
+        throw new Error("END size differs from META size");
+      }
+      if (this.received !== this.expected) {
+        throw new Error("END before all chunks were received");
+      }
       const digest = this.hash.digest();
-      if (!equalBytes(digest, end.sha256)) throw new ChecksumMismatchError(digest.slice());
+      if (!equalBytes(digest, end.sha256)) {
+        throw new ChecksumMismatchError(digest.slice());
+      }
       this.digest = digest;
       return digest.slice();
     });
@@ -480,12 +553,16 @@ export class ReceiveVerifier {
 
   /** Returns the verified checksum. Throws unless the transfer completed. */
   finish(): Uint8Array {
-    if (this.failed || !this.digest) throw new Error("transfer incomplete");
+    if (this.failed || !this.digest) {
+      throw new Error("transfer incomplete");
+    }
     return this.digest.slice();
   }
 
   private step<T>(fn: () => T): T {
-    if (this.failed) throw new Error("receive verifier has failed");
+    if (this.failed) {
+      throw new Error("receive verifier has failed");
+    }
     try {
       return fn();
     } catch (error) {

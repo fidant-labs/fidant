@@ -20,8 +20,12 @@ function InsecurePage() {
 }
 
 function App() {
-  if (!hasSecureCrypto()) return <InsecurePage />;
-  if (location.pathname.startsWith("/r/")) return <ReceivePage />;
+  if (!hasSecureCrypto()) {
+    return <InsecurePage />;
+  }
+  if (location.pathname.startsWith("/r/")) {
+    return <ReceivePage />;
+  }
   return <SendPage />;
 }
 
@@ -29,13 +33,22 @@ function App() {
 function ignoreStrayDrop(event: DragEvent) {
   const target = event.target;
   const files = event.dataTransfer?.types.includes("Files") ?? false;
-  if (target instanceof HTMLInputElement && !target.disabled && (target.type === "file") === files)
+  if (
+    target instanceof HTMLInputElement &&
+    !target.disabled &&
+    (target.type === "file") === files
+  ) {
     return;
+  }
   event.preventDefault();
-  if (event.dataTransfer) event.dataTransfer.dropEffect = "none";
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = "none";
+  }
 }
 window.addEventListener("dragover", ignoreStrayDrop);
 window.addEventListener("drop", ignoreStrayDrop);
 
 const root = document.getElementById("app");
-if (root) render(<App />, root);
+if (root) {
+  render(<App />, root);
+}

@@ -84,8 +84,12 @@ export interface TestIdentity {
  */
 export function testDirName(test: TestIdentity): string {
   const path = [test.project.name, ...test.titlePath];
-  if (test.repeatEachIndex > 0) path.push(`repeat ${test.repeatEachIndex}`);
-  if (test.retry > 0) path.push(`retry ${test.retry}`);
+  if (test.repeatEachIndex > 0) {
+    path.push(`repeat ${test.repeatEachIndex}`);
+  }
+  if (test.retry > 0) {
+    path.push(`retry ${test.retry}`);
+  }
   return testSlug(path);
 }
 

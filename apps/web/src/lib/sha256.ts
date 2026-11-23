@@ -35,7 +35,9 @@ export class Sha256 {
   private finished = false;
 
   update(data: Uint8Array): this {
-    if (this.finished) throw new Error("Sha256: update after digest");
+    if (this.finished) {
+      throw new Error("Sha256: update after digest");
+    }
     this.length += data.length;
     let offset = 0;
 
@@ -44,12 +46,16 @@ export class Sha256 {
       this.tail.set(data.subarray(0, take), this.tailLength);
       this.tailLength += take;
       offset = take;
-      if (this.tailLength < 64) return this;
+      if (this.tailLength < 64) {
+        return this;
+      }
       this.compress(this.tail, 0);
       this.tailLength = 0;
     }
 
-    for (; offset + 64 <= data.length; offset += 64) this.compress(data, offset);
+    for (; offset + 64 <= data.length; offset += 64) {
+      this.compress(data, offset);
+    }
 
     if (offset < data.length) {
       this.tail.set(data.subarray(offset));
@@ -60,7 +66,9 @@ export class Sha256 {
 
   /** Returns the 32-byte hash. Can be called only once. */
   digest(): Uint8Array {
-    if (this.finished) throw new Error("Sha256: digest called twice");
+    if (this.finished) {
+      throw new Error("Sha256: digest called twice");
+    }
     this.finished = true;
 
     // Padding: 0x80, zeros, then the bit length as a 64-bit big-endian number.
@@ -79,7 +87,9 @@ export class Sha256 {
 
     const out = new Uint8Array(32);
     const outView = new DataView(out.buffer);
-    for (let i = 0; i < 8; i++) outView.setUint32(i * 4, this.state[i] as number);
+    for (let i = 0; i < 8; i++) {
+      outView.setUint32(i * 4, this.state[i] as number);
+    }
     return out;
   }
 

@@ -68,6 +68,6 @@ Server stdout is one JSON object per line, with allowlisted fields only: the eve
 - `pnpm check`: lint, typecheck, unit tests and build. Run it before every commit.
 - `pnpm format`: fixes formatting and safe lint issues.
 - `pnpm build`: builds the web client into `apps/web/dist`.
-- `pnpm --filter @sigill/web e2e`: runs the end-to-end test of the first demo in headless Chromium against the real server. Run `pnpm build` first. Once per machine, install the browser with `pnpm --filter @sigill/web exec playwright install chromium`. `pnpm check` does not run it.
+- `pnpm e2e`: builds the web client and runs the end-to-end tests, including the first demo, in headless Chromium against the real server, with leak checks. Once per machine, install the browser with `pnpm --filter @sigill/e2e exec playwright install chromium`. `pnpm check` does not run it.
 
 See [AGENTS.md](AGENTS.md) for the layout and conventions.

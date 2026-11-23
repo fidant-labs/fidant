@@ -67,9 +67,13 @@ async function receiveFile(key: CryptoKey, frames: Uint8Array[]) {
   const parts: Uint8Array[] = [];
   for (const frame of frames) {
     const { kind, body } = await reader.decrypt(frame);
-    if (kind === META) verifier.meta(decodeMeta(body));
-    else if (kind === CHUNK) parts.push(verifier.chunk(body));
-    else if (kind === END) verifier.end(body);
+    if (kind === META) {
+      verifier.meta(decodeMeta(body));
+    } else if (kind === CHUNK) {
+      parts.push(verifier.chunk(body));
+    } else if (kind === END) {
+      verifier.end(body);
+    }
   }
   return { digest: verifier.finish(), data: Buffer.concat(parts) };
 }
@@ -130,7 +134,9 @@ test("every CHUNK frame has the same size whatever the file size", async () => {
     const frames = await encryptFile(key, file, c);
     const chunks = frames.slice(1, -1);
     assert.equal(chunks.length, paddedLength(size, c) / c, `size ${size}`);
-    for (const frame of chunks) assert.equal(frame.length, HEADER_BYTES + c + 16, `size ${size}`);
+    for (const frame of chunks) {
+      assert.equal(frame.length, HEADER_BYTES + c + 16, `size ${size}`);
+    }
     const { digest, data } = await receiveFile(key, frames);
     assert.deepEqual(data, file, `size ${size}`);
     assert.deepEqual(digest, sha256(file), `size ${size}`);
@@ -155,7 +161,9 @@ test("paddedLength: Padmé rounding, then whole chunks", () => {
     [2 ** 40 - 1, 2 ** 40],
     [MAX_PADDABLE_SIZE, MAX_PADDABLE_SIZE],
   ];
-  for (const [n, expected] of padme) assert.equal(paddedLength(n, 1), expected, `n ${n}`);
+  for (const [n, expected] of padme) {
+    assert.equal(paddedLength(n, 1), expected, `n ${n}`);
+  }
 
   assert.equal(paddedLength(0), MAX_CHUNK_BYTES);
   assert.equal(paddedLength(1), MAX_CHUNK_BYTES);
@@ -172,14 +180,20 @@ test("paddedLength: Padmé rounding, then whole chunks", () => {
 
 test("paddedLength is monotonic, at least n and a whole number of chunks", () => {
   const sizes: number[] = [];
-  for (let n = 0; n < 5000; n++) sizes.push(n);
-  for (let n = 1; n < 2 ** 52; n = Math.ceil(n * 1.37) + 1) sizes.push(n - 1, n, n + 1);
+  for (let n = 0; n < 5000; n++) {
+    sizes.push(n);
+  }
+  for (let n = 1; n < 2 ** 52; n = Math.ceil(n * 1.37) + 1) {
+    sizes.push(n - 1, n, n + 1);
+  }
   sizes.push(2 ** 32 - 1, 2 ** 32, 2 ** 32 + 1, 2 ** 33 + 12345, MAX_PADDABLE_SIZE);
   sizes.sort((a, b) => a - b);
   for (const chunkSize of [1, 1000, 16 * 1024 - 64, MAX_CHUNK_BYTES]) {
     let previous = 0;
     for (const n of sizes) {
-      if (n > MAX_PADDABLE_SIZE) continue;
+      if (n > MAX_PADDABLE_SIZE) {
+        continue;
+      }
       const padded = paddedLength(n, chunkSize);
       assert.ok(Number.isSafeInteger(padded), `n ${n}`);
       assert.ok(padded >= Math.max(n, 1), `n ${n}`);
@@ -504,7 +518,9 @@ test("verifier: padding chunks carry no file bytes and must be zeros", () => {
   const file = randomBytes(9);
   const v = new ReceiveVerifier();
   v.meta({ size: 9, chunkSize: 1 });
-  for (let i = 0; i < 9; i++) v.chunk(file.subarray(i, i + 1));
+  for (let i = 0; i < 9; i++) {
+    v.chunk(file.subarray(i, i + 1));
+  }
   assert.equal(v.chunk(new Uint8Array(1)).length, 0);
   assert.equal(v.bytesReceived, 9);
   assert.deepEqual(v.end(encodeEnd(sha256(file), 9)), sha256(file));
@@ -526,7 +542,9 @@ test("verifier: truncation makes finish() throw", () => {
 
   const missingEnd = new ReceiveVerifier();
   missingEnd.meta(meta(10));
-  for (const c of chunks) missingEnd.chunk(c);
+  for (const c of chunks) {
+    missingEnd.chunk(c);
+  }
   assert.throws(() => missingEnd.finish(), /incomplete/);
 
   const fewerChunks = new ReceiveVerifier();
@@ -538,13 +556,17 @@ test("verifier: truncation makes finish() throw", () => {
 
   const endSizeLies = new ReceiveVerifier();
   endSizeLies.meta(meta(10));
-  for (const c of chunks) endSizeLies.chunk(c);
+  for (const c of chunks) {
+    endSizeLies.chunk(c);
+  }
   assert.throws(() => endSizeLies.end(encodeEnd(sha256(file.subarray(0, 6)), 6)), /META size/);
   assert.throws(() => endSizeLies.finish());
 
   const wrongHash = new ReceiveVerifier();
   wrongHash.meta(meta(10));
-  for (const c of chunks) wrongHash.chunk(c);
+  for (const c of chunks) {
+    wrongHash.chunk(c);
+  }
   assert.throws(
     () => wrongHash.end(encodeEnd(randomBytes(32), 10)),
     (error: unknown) =>
@@ -587,13 +609,17 @@ test("verifier: rejects out-of-order kinds, short chunks and excess chunks", () 
 
   const tooMany = new ReceiveVerifier();
   tooMany.meta(meta(10));
-  for (const c of chunks) tooMany.chunk(c);
+  for (const c of chunks) {
+    tooMany.chunk(c);
+  }
   assert.throws(() => tooMany.chunk(new Uint8Array(4)), /more chunks/);
   assert.throws(() => tooMany.end(encodeEnd(sha256(file), 10)), /has failed/);
 
   const chunkAfterEnd = new ReceiveVerifier();
   chunkAfterEnd.meta(meta(10));
-  for (const c of chunks) chunkAfterEnd.chunk(c);
+  for (const c of chunks) {
+    chunkAfterEnd.chunk(c);
+  }
   chunkAfterEnd.end(encodeEnd(sha256(file), 10));
   assert.throws(() => chunkAfterEnd.chunk(new Uint8Array(4)), /CHUNK after END/);
   assert.throws(() => chunkAfterEnd.finish(), "failed verifier does not finish");

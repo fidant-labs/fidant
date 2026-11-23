@@ -54,7 +54,9 @@ test("draws uniform integers below a bound", () => {
     counts.set(value, (counts.get(value) ?? 0) + 1);
   }
   assert.deepEqual([...counts.keys()].sort(), [0, 1, 2]);
-  for (const count of counts.values()) assert.ok(count > 900 && count < 1100, String(count));
+  for (const count of counts.values()) {
+    assert.ok(count > 900 && count < 1100, String(count));
+  }
   assert.equal(random.int(1), 0);
   assert.throws(() => random.int(0));
 });

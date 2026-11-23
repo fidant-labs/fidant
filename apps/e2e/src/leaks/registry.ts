@@ -59,16 +59,22 @@ export async function readRegistry(
 ): Promise<{ secrets: Secret[]; exempt: Set<string> }> {
   const entries: Entry[] = [];
   for (const name of (await readdir(dir)).sort()) {
-    if (!name.endsWith(".jsonl")) continue;
+    if (!name.endsWith(".jsonl")) {
+      continue;
+    }
     const text = await readFile(join(dir, name), "utf8");
     for (const line of text.split("\n")) {
-      if (line !== "") entries.push(JSON.parse(line) as Entry);
+      if (line !== "") {
+        entries.push(JSON.parse(line) as Entry);
+      }
     }
   }
   const exempt = new Set(entries.filter((entry) => "exempt" in entry).map((entry) => entry.test));
   const secrets: Secret[] = [];
   for (const entry of entries) {
-    if ("exempt" in entry || exempt.has(entry.test)) continue;
+    if ("exempt" in entry || exempt.has(entry.test)) {
+      continue;
+    }
     const label = `${entry.label} [${entry.test}]`;
     if ("size" in entry) {
       secrets.push({ class: "M", label, size: entry.size });
@@ -79,8 +85,12 @@ export async function readRegistry(
       label,
       bytes: Buffer.from(entry.bytes, "base64"),
     };
-    if (entry.window !== undefined) secret.window = entry.window;
-    if (entry.caseInsensitive) secret.caseInsensitive = true;
+    if (entry.window !== undefined) {
+      secret.window = entry.window;
+    }
+    if (entry.caseInsensitive) {
+      secret.caseInsensitive = true;
+    }
     secrets.push(secret);
   }
   return { secrets, exempt };
@@ -88,5 +98,7 @@ export async function readRegistry(
 
 /** Synchronous, so a secret is on disk before the test can leak it, even if the worker dies. */
 function append(dir: string, text: string): void {
-  if (text !== "") appendFileSync(join(dir, `${process.pid}.jsonl`), text);
+  if (text !== "") {
+    appendFileSync(join(dir, `${process.pid}.jsonl`), text);
+  }
 }

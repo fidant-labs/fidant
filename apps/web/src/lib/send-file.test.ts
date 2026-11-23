@@ -52,7 +52,9 @@ function fakeChannel(secret: string, behaviour: Behaviour) {
   const verifier = new ReceiveVerifier();
 
   const reply = async (kind: number, body: Uint8Array) => {
-    if (!writer) throw new Error("no writer");
+    if (!writer) {
+      throw new Error("no writer");
+    }
     const frame = await writer.encrypt(kind as 16 | 17 | 18, body);
     setTimeout(() => target.dispatchEvent(new MessageEvent("message", { data: frame.buffer })));
   };
@@ -75,13 +77,19 @@ function fakeChannel(secret: string, behaviour: Behaviour) {
       return;
     }
     const frame = await reader.decrypt(data);
-    if (frame.kind === SenderKind.CHUNK) received.chunkFrames.push(data.length);
+    if (frame.kind === SenderKind.CHUNK) {
+      received.chunkFrames.push(data.length);
+    }
     if (frame.kind === SenderKind.META) {
       received.meta = decodeMeta(frame.body);
       verifier.meta(received.meta);
-      if (behaviour === "close-after-meta") close();
-      else if (behaviour === "decline") await reply(RecipientKind.DECLINE, new Uint8Array());
-      else await reply(RecipientKind.ACCEPT, new Uint8Array());
+      if (behaviour === "close-after-meta") {
+        close();
+      } else if (behaviour === "decline") {
+        await reply(RecipientKind.DECLINE, new Uint8Array());
+      } else {
+        await reply(RecipientKind.ACCEPT, new Uint8Array());
+      }
     } else if (frame.kind === SenderKind.CHUNK) {
       received.bytes += verifier.chunk(frame.body).length;
       if (behaviour === "garbage-mid-stream" && received.chunkFrames.length === 1) {
@@ -92,7 +100,9 @@ function fakeChannel(secret: string, behaviour: Behaviour) {
       }
     } else if (frame.kind === SenderKind.END) {
       const sha = verifier.end(frame.body);
-      if (behaviour === "bad-receipt") sha[0] = (sha[0] as number) ^ 1;
+      if (behaviour === "bad-receipt") {
+        sha[0] = (sha[0] as number) ^ 1;
+      }
       await reply(RecipientKind.RECEIPT, sha);
     }
   };

@@ -19,7 +19,9 @@ export class SeededRandom {
   #pool: Buffer = Buffer.alloc(0);
 
   constructor(seed: Uint8Array) {
-    if (seed.length !== seedBytes) throw new Error(`A seed has ${seedBytes} bytes.`);
+    if (seed.length !== seedBytes) {
+      throw new Error(`A seed has ${seedBytes} bytes.`);
+    }
     this.seed = Buffer.from(seed);
     this.seed.copy(this.#input);
   }
@@ -31,7 +33,9 @@ export class SeededRandom {
 
   /** The next `length` bytes of the stream. */
   bytes(length: number): Buffer {
-    if (!Number.isSafeInteger(length) || length < 0) throw new Error(`Bad length: ${length}`);
+    if (!Number.isSafeInteger(length) || length < 0) {
+      throw new Error(`Bad length: ${length}`);
+    }
     const out = Buffer.allocUnsafe(length);
     let filled = Math.min(this.#pool.length, length);
     this.#pool.copy(out, 0, 0, filled);
@@ -55,7 +59,9 @@ export class SeededRandom {
     const limit = 2 ** 32 - (2 ** 32 % bound);
     for (;;) {
       const value = this.bytes(4).readUInt32BE(0);
-      if (value < limit) return value % bound;
+      if (value < limit) {
+        return value % bound;
+      }
     }
   }
 
@@ -77,8 +83,12 @@ export class SeededRandom {
  * Print it with `formatSeed` so a failure can be replayed.
  */
 export function runSeed(value: string | undefined = process.env.SIGILL_E2E_SEED): Buffer {
-  if (value === undefined || value === "") return randomBytes(seedBytes);
-  if (!seedPattern.test(value)) throw new Error("SIGILL_E2E_SEED must be 64 hex characters.");
+  if (value === undefined || value === "") {
+    return randomBytes(seedBytes);
+  }
+  if (!seedPattern.test(value)) {
+    throw new Error("SIGILL_E2E_SEED must be 64 hex characters.");
+  }
   return Buffer.from(value, "hex");
 }
 
@@ -109,10 +119,14 @@ export interface SizeOptions {
 /** A random canary size in `[min, max]` that size check (i) can search for. */
 export function pickCanarySize(random: SeededRandom, options: SizeOptions = {}): number {
   const { min = minCheckableSize, max = 1024 * 1024, chunkSize = defaultChunkSize } = options;
-  if (min < minCheckableSize || max < min) throw new Error(`Bad size range: ${min} to ${max}`);
+  if (min < minCheckableSize || max < min) {
+    throw new Error(`Bad size range: ${min} to ${max}`);
+  }
   for (;;) {
     const size = min + random.int(max - min + 1);
-    if (sizeIsCheckable(size, chunkSize)) return size;
+    if (sizeIsCheckable(size, chunkSize)) {
+      return size;
+    }
   }
 }
 

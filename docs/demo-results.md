@@ -2,7 +2,7 @@
 
 Manual test results for the first demo. Fill this in by hand after running it on real devices; see the README for how to run it. Replace "not tested yet" with what you saw.
 
-The automated end-to-end test (`pnpm --filter @sigill/web e2e`) covers headless Chromium only.
+The automated end-to-end test (`pnpm e2e`, `apps/e2e/tests/first-demo.spec.ts`) covers headless Chromium only.
 
 ## Browsers
 

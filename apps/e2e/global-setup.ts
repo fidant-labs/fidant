@@ -42,7 +42,9 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
       await stack.stop();
       const report = await sweepRun(registry, seed);
       // Throwing here makes the run fail even when every test passed.
-      if (report) throw new Error(`Run-level leak sweep: ${report}`);
+      if (report) {
+        throw new Error(`Run-level leak sweep: ${report}`);
+      }
     } finally {
       process.off("exit", removeRegistry);
       await rm(registry, { recursive: true, force: true });

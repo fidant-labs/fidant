@@ -11,7 +11,6 @@ Planning lives in Linear: workspace `sigill`, team `SIG`, issue keys like `SIG-2
 - `pnpm check`: lint, typecheck, unit tests and build across the workspace. Run it before every commit. The pre-push hook runs it too.
 - `pnpm format`: fixes formatting and safe lint issues.
 - `pnpm e2e`: builds the web client, starts the local stack and runs the Playwright suite in `apps/e2e` (Chromium). It is not part of `pnpm check`. Browser traffic and server logs are written to `apps/e2e/observations/`. Playwright traces and reports stay local and are never uploaded. One-time setup: `pnpm --filter @sigill/e2e exec playwright install chromium`.
-- `pnpm --filter @sigill/web e2e`: Playwright end-to-end test of the first demo in headless Chromium against the real server. Run `pnpm build` first. Install the browser once with `pnpm --filter @sigill/web exec playwright install chromium`. `pnpm check` does not run it; CI runs it as the `first-demo-e2e` job. SIG-41 moves it onto `apps/e2e`.
 
 ## Prerequisites
 
@@ -24,7 +23,6 @@ Planning lives in Linear: workspace `sigill`, team `SIG`, issue keys like `SIG-2
 ## Layout
 
 - `apps/*`: things we run or ship. `apps/web` is the Preact client, built by Vite into `apps/web/dist`. `apps/server` is the Node process that serves it and relays signaling messages between browsers over a WebSocket at `/signal`. `apps/e2e` is the end-to-end harness (see `docs/decisions/0001-e2e-tests-and-leak-model.md`).
-- `apps/web/e2e`: Playwright end-to-end tests for the first demo, with their own `tsconfig.json`. They move onto the shared e2e harness in SIG-41.
 - `packages/*`: code used by more than one app. Create a package only when a second consumer exists.
 - `packages/protocol` (`@sigill/protocol`): signaling message types, parsers and limits shared by the server and the web client.
 - `docs/decisions/`: decision records. See its README for the format.
@@ -34,6 +32,7 @@ Planning lives in Linear: workspace `sigill`, team `SIG`, issue keys like `SIG-2
 ## Conventions
 
 - Node runs `.ts` files directly through type stripping. Use only erasable TypeScript syntax (no `enum`, `namespace` or constructor parameter properties). Relative imports include the `.ts` extension.
+- `apps/web` is Preact 11 with Vite, not React or Next.js. React guidance, including the `vercel-react-best-practices` skill, applies only where Preact has the same API. Check the Preact docs (https://preactjs.com) before using an API, and import from `preact` and `preact/hooks`. Skip rules about Next.js, React Server Components, `React.cache`, `<Activity>` and server actions. `startTransition`, `useTransition` and `useDeferredValue` from `preact/compat` run updates synchronously with no deferral (`isPending` is always `false`), so rules that rely on them for responsiveness or pending UI don't apply. Don't add the libraries the skill suggests (SWR, `better-all`, `lru-cache`) without a separate decision.
 - Unit tests use `node:test` and sit next to the code as `*.test.ts`.
 - End-to-end specs live in `apps/e2e/tests/` and import `test` from `apps/e2e/src/fixtures.ts` and open browsers with its `actor` fixture, so traffic is recorded.
 - Dependencies: `pnpm add --filter <package> <dep>`. pnpm is strict, so each package declares everything it imports.

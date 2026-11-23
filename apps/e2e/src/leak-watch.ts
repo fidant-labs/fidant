@@ -12,8 +12,10 @@ import {
   buildNeedles,
   fileSecrets,
   keySecrets,
+  minWindow,
   type Needles,
   type Secret,
+  textSecrets,
 } from "./leaks/needles.ts";
 import { exemptTest, registerSecrets } from "./leaks/registry.ts";
 import { formatLeakReport, logViolations } from "./leaks/report.ts";
@@ -31,6 +33,8 @@ export interface Leaks {
   watch(file: CanaryFile, label?: string): CanaryFile;
   /** Watches a key: raw bytes, or text such as a fragment secret (searched as text and bytes). */
   watchKey(label: string, key: Uint8Array | string | CanaryKey, cls?: "K" | "S"): void;
+  /** Watches text such as a recipient name, which must not appear whole (NFC or NFD UTF-8). */
+  watchText(label: string, text: string): void;
   /** Scans everything observed so far in this test. Never throws for a leak. */
   scan(): Promise<Finding[]>;
   /**
@@ -91,6 +95,14 @@ export class LeakWatch implements Leaks {
     this.#add(keySecrets(label, value, cls));
   }
 
+  watchText(label: string, text: string): void {
+    // Shorter text would only fail later, when the needles are built for the scan or the sweep.
+    if (Buffer.byteLength(text) < minWindow) {
+      throw new Error(`Watched text for ${label} needs at least ${minWindow} bytes.`);
+    }
+    this.#add(textSecrets("M", label, text));
+  }
+
   expectLeaks(): void {
     this.#expectLeaks = true;
     this.exempt();
@@ -98,7 +110,9 @@ export class LeakWatch implements Leaks {
 
   /** Keeps this test's secrets out of the run-level sweep. */
   exempt(): void {
-    if (this.#registry) exemptTest(this.#registry, this.#test);
+    if (this.#registry) {
+      exemptTest(this.#registry, this.#test);
+    }
   }
 
   async scan(): Promise<Finding[]> {
@@ -118,7 +132,9 @@ export class LeakWatch implements Leaks {
 
   #add(secrets: Secret[]): void {
     // Registered first, so the sweep knows the secret even if the worker dies mid-test.
-    if (this.#registry) registerSecrets(this.#registry, this.#test, secrets);
+    if (this.#registry) {
+      registerSecrets(this.#registry, this.#test, secrets);
+    }
     this.#secrets.push(...secrets);
   }
 

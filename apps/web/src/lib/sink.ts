@@ -39,14 +39,20 @@ export class BlobSink {
   }
 
   async write(chunk: Uint8Array): Promise<void> {
-    if (this.finished) throw new Error("sink is closed");
+    if (this.finished) {
+      throw new Error("sink is closed");
+    }
     this.parts.push(chunk as Uint8Array<ArrayBuffer>);
     this.pending += chunk.length;
-    if (this.pending >= this.foldBytes) this.fold();
+    if (this.pending >= this.foldBytes) {
+      this.fold();
+    }
   }
 
   async close(): Promise<Blob> {
-    if (this.finished) throw new Error("sink is closed");
+    if (this.finished) {
+      throw new Error("sink is closed");
+    }
     this.fold();
     this.finished = true;
     return this.blob;
@@ -60,7 +66,9 @@ export class BlobSink {
   }
 
   private fold(): void {
-    if (this.parts.length === 0) return;
+    if (this.parts.length === 0) {
+      return;
+    }
     this.blob = new Blob([this.blob, ...this.parts], { type: BLOB_TYPE });
     this.parts = [];
     this.pending = 0;
@@ -86,19 +94,25 @@ export class FileSystemSink {
   }
 
   async write(chunk: Uint8Array): Promise<void> {
-    if (this.state !== "open") throw new Error("sink is closed");
+    if (this.state !== "open") {
+      throw new Error("sink is closed");
+    }
     await this.writable.write(chunk as Uint8Array<ArrayBuffer>);
   }
 
   async close(): Promise<undefined> {
-    if (this.state !== "open") throw new Error("sink is closed");
+    if (this.state !== "open") {
+      throw new Error("sink is closed");
+    }
     this.state = "closed";
     await this.writable.close();
     return undefined;
   }
 
   async abort(): Promise<void> {
-    if (this.state !== "open") return;
+    if (this.state !== "open") {
+      return;
+    }
     this.state = "aborted";
     try {
       await this.writable.abort();
@@ -124,7 +138,9 @@ export function canPickSaveFile(): boolean {
  */
 export function createSink(suggestedName: string): Promise<Sink> {
   const picker = savePicker();
-  if (!picker) return Promise.resolve(new BlobSink());
+  if (!picker) {
+    return Promise.resolve(new BlobSink());
+  }
   let handle: Promise<SaveFileHandle>;
   try {
     handle = picker.call(globalThis, { suggestedName });

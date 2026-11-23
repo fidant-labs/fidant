@@ -15,7 +15,9 @@ import {
 test("BlobSink keeps every byte in order across folds", async () => {
   const sink = new BlobSink(1000);
   const chunks = [10, 999, 1, 1500, 0, 3000, 7].map((n) => new Uint8Array(randomBytes(n)));
-  for (const chunk of chunks) await sink.write(chunk);
+  for (const chunk of chunks) {
+    await sink.write(chunk);
+  }
   const blob = await sink.close();
   const expected = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
   let offset = 0;

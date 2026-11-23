@@ -138,16 +138,22 @@ export function ReceivePage() {
     if (linger) {
       attempt.timers.push(setTimeout(() => attempt.peer?.close(), LINGER_MS));
     } else {
-      for (const timer of attempt.timers) clearTimeout(timer);
+      for (const timer of attempt.timers) {
+        clearTimeout(timer);
+      }
       attempt.peer?.close();
     }
   };
 
   const start = () => {
-    if (!link) return;
+    if (!link) {
+      return;
+    }
     const { linkId, secret } = link;
     const previous = attemptRef.current;
-    if (previous && !previous.ended) release(previous);
+    if (previous && !previous.ended) {
+      release(previous);
+    }
 
     const signaling = connectSignaling();
     const attempt: Attempt = {
@@ -167,14 +173,18 @@ export function ReceivePage() {
     const current = () => attemptRef.current === attempt && !attempt.ended;
     const lostMessage = () => (attempt.receiving ? LOST_RECEIVING : LOST);
     const finish = (next: View, linger = false) => {
-      if (!current()) return;
+      if (!current()) {
+        return;
+      }
       release(attempt, linger);
       setView(next);
     };
     // The peer dropped. If the sender's tab closed, `host-gone` arrives within
     // moments of the drop, before or after it; wait for it so the message says why.
     const lost = () => {
-      if (!current()) return;
+      if (!current()) {
+        return;
+      }
       if (attempt.hostGone) {
         finish({ s: "refused", message: OFFLINE });
         return;
@@ -186,8 +196,12 @@ export function ReceivePage() {
     };
 
     signaling.onClose(({ byClient }) => {
-      if (byClient || !current()) return;
-      if (attempt.channelOpen && !attempt.abort.signal.aborted) return;
+      if (byClient || !current()) {
+        return;
+      }
+      if (attempt.channelOpen && !attempt.abort.signal.aborted) {
+        return;
+      }
       finish({ s: "failed", message: attempt.channelOpen ? lostMessage() : SERVER });
     });
     signaling.subscribe((message) => {
@@ -218,7 +232,9 @@ export function ReceivePage() {
           finish({ s: "refused", message: OFFLINE });
           break;
         case "error":
-          if (!attempt.channelOpen) finish({ s: "failed", message: SERVER });
+          if (!attempt.channelOpen) {
+            finish({ s: "failed", message: SERVER });
+          }
           break;
         default:
           break;
@@ -226,7 +242,9 @@ export function ReceivePage() {
     });
 
     const onOpen = (channel: RTCDataChannel, maxMessageSize: number) => {
-      if (!current()) return;
+      if (!current()) {
+        return;
+      }
       attempt.channelOpen = true;
       let offered: FileOffer | undefined;
       receiveFile({
@@ -236,7 +254,9 @@ export function ReceivePage() {
         signal: attempt.abort.signal,
         onOffer(received) {
           return new Promise((resolve) => {
-            if (!current()) return;
+            if (!current()) {
+              return;
+            }
             const offer = { ...received, from: displayName(received.from) };
             offered = offer;
             attempt.decide = (sink) => {
@@ -251,13 +271,16 @@ export function ReceivePage() {
           });
         },
         onProgress(bytes) {
-          if (!current()) return;
+          if (!current()) {
+            return;
+          }
           setView((v) => (v.s === "receiving" ? { ...v, bytes } : v));
         },
       }).then(
         (result) => {
-          if (result.type === "declined") finish({ s: "declined" }, true);
-          else if (offered) {
+          if (result.type === "declined") {
+            finish({ s: "declined" }, true);
+          } else if (offered) {
             const sha256 = toHex(result.sha256);
             finish({ s: "done", offer: offered, blob: result.blob, sha256 }, true);
           }
@@ -265,10 +288,15 @@ export function ReceivePage() {
         (error: unknown) => {
           const reason = error instanceof ReceiveError ? error.reason : "connection";
           // RECEIPT went out for a mismatch: linger so it reaches the sender.
-          if (reason === "checksum") finish({ s: "failed", message: CHECKSUM }, true);
-          else if (reason === "invalid") finish({ s: "failed", message: INVALID });
-          else if (reason === "save") finish({ s: "failed", message: SAVE });
-          else lost();
+          if (reason === "checksum") {
+            finish({ s: "failed", message: CHECKSUM }, true);
+          } else if (reason === "invalid") {
+            finish({ s: "failed", message: INVALID });
+          } else if (reason === "save") {
+            finish({ s: "failed", message: SAVE });
+          } else {
+            lost();
+          }
         },
       );
     };
@@ -277,7 +305,9 @@ export function ReceivePage() {
       try {
         await signaling.ready;
         const signalKey = await deriveSignalKey(secret, linkId);
-        if (!current()) return;
+        if (!current()) {
+          return;
+        }
         attempt.peer = createRecipientPeer({
           signaling,
           linkId,
@@ -299,9 +329,14 @@ export function ReceivePage() {
       const attempt = attemptRef.current;
       attemptRef.current = undefined;
       if (attempt) {
-        for (const timer of attempt.timers) clearTimeout(timer);
-        if (!attempt.ended) release(attempt);
-        else attempt.peer?.close();
+        for (const timer of attempt.timers) {
+          clearTimeout(timer);
+        }
+        if (!attempt.ended) {
+          release(attempt);
+        } else {
+          attempt.peer?.close();
+        }
       }
     };
   }, []);
@@ -314,14 +349,18 @@ export function ReceivePage() {
       return;
     }
     const heading = document.querySelector<HTMLElement>("main h1");
-    if (!heading) return;
+    if (!heading) {
+      return;
+    }
     heading.tabIndex = -1;
     heading.focus();
   }, [view.s]);
 
   const onAccept = () => {
     const attempt = attemptRef.current;
-    if (view.s !== "offer" || !attempt?.decide || picking) return;
+    if (view.s !== "offer" || !attempt?.decide || picking) {
+      return;
+    }
     // First thing in the click handler: the save dialog needs the user gesture.
     const pending = createSink(view.offer.name);
     setPicking(true);
@@ -490,7 +529,9 @@ function OfferDetails({ offer, sha256 }: { offer: FileOffer; sha256?: string }) 
       "AES-256-GCM, end to end. The key is in your link and never leaves this browser.",
     ],
   ];
-  if (sha256) rows.push(["SHA-256, checked", <code key="sha256">{sha256}</code>]);
+  if (sha256) {
+    rows.push(["SHA-256, checked", <code key="sha256">{sha256}</code>]);
+  }
   return <TechDetails rows={rows} />;
 }
 
