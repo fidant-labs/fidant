@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { parseServerMessage } from "@sigill/protocol";
 import { WebSocket as WsClient } from "ws";
-import { ensureCert, serveApp, startServer } from "./server.ts";
+import { ensureCert, serveStatic, startServer } from "./server.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "sigill-server-"));
 const root = join(dir, "dist");
@@ -18,7 +18,7 @@ writeFileSync(join(root, "index.html"), "<!doctype html><title>Sigill</title>");
 writeFileSync(join(root, "assets", "app.js"), "console.log(1)");
 writeFileSync(join(dir, "secret.txt"), "outside the web root");
 
-const plain = createServer(serveApp(root));
+const plain = createServer(serveStatic(root));
 let base = "";
 before(async () => {
   await new Promise<void>((done) => plain.listen(0, done));
@@ -96,43 +96,6 @@ test("serves over https with a generated certificate", async () => {
   }
 });
 
-test("serves no ICE servers when TURN is not configured", async () => {
-  const res = await fetch(`${base}/ice-servers`);
-  assert.equal(res.status, 200);
-  assert.equal(res.headers.get("cache-control"), "no-store");
-  assert.deepEqual(await res.json(), { iceServers: [] });
-});
-
-test("serves fresh TURN credentials without the secret", async () => {
-  const secret = "test-secret-do-not-leak";
-  const urls = ["turn:127.0.0.1:3478?transport=udp", "turn:127.0.0.1:3478?transport=tcp"];
-  const app = createServer(serveApp(root, { urls, secret }));
-  await new Promise<void>((done) => app.listen(0, done));
-  try {
-    const url = `http://localhost:${(app.address() as AddressInfo).port}/ice-servers`;
-    const res = await fetch(url);
-    assert.equal(res.status, 200);
-    assert.equal(res.headers.get("content-type"), "application/json");
-    assert.equal(res.headers.get("cache-control"), "no-store");
-    assert.equal(res.headers.get("x-content-type-options"), "nosniff");
-    const text = await res.text();
-    assert.ok(!text.includes(secret));
-    const { iceServers } = JSON.parse(text);
-    assert.equal(iceServers.length, 1);
-    assert.deepEqual(iceServers[0].urls, urls);
-    const expiry = Number(iceServers[0].username) - Date.now() / 1000;
-    assert.ok(expiry > 12 * 3600 - 60 && expiry <= 12 * 3600, String(expiry));
-    assert.match(iceServers[0].credential, /^[A-Za-z0-9+/]{27}=$/);
-
-    const post = await fetch(url, { method: "POST" });
-    assert.equal(post.status, 405);
-    assert.equal(post.headers.get("allow"), "GET");
-    assert.ok(!(await post.text()).includes(secret));
-  } finally {
-    app.close();
-  }
-});
-
 /** Opens a /signal socket on a TLS server and returns its raw text frames as they arrive. */
 async function rawSocket(port: number): Promise<{ socket: WsClient; next(): Promise<string> }> {
   const socket = new WsClient(`wss://localhost:${port}/signal`, { rejectUnauthorized: false });
@@ -195,7 +158,7 @@ for (const turn of [false, true]) {
         const [ice] = message.iceServers;
         assert.deepEqual(ice?.urls, urls);
         const expiry = Number(ice?.username) - Date.now() / 1000;
-        assert.ok(expiry > 12 * 3600 - 60 && expiry <= 12 * 3600, String(expiry));
+        assert.ok(expiry > 5 * 60 - 60 && expiry <= 5 * 60, String(expiry));
         assert.match(ice?.credential ?? "", /^[A-Za-z0-9+/]{27}=$/);
         for (const line of logs) {
           assert.ok(!line.includes(secret) && !line.includes(ice?.credential ?? ""), line);

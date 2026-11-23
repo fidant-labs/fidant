@@ -6,7 +6,7 @@ import { createServer, type Server } from "node:https";
 import { isIP } from "node:net";
 import { extname, join, resolve, sep } from "node:path";
 import { attachSignaling, type Logger } from "./signaling.ts";
-import { type IceConfig, iceServersFor, serveIceServers } from "./turn.ts";
+import { type IceConfig, iceServersFor } from "./turn.ts";
 
 const contentTypes: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -26,7 +26,7 @@ const securityHeaders = {
   "x-content-type-options": "nosniff",
 };
 
-function serveStatic(root: string) {
+export function serveStatic(root: string) {
   const base = resolve(root);
   return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     if (req.method !== "GET" && req.method !== "HEAD") {
@@ -57,18 +57,6 @@ function serveStatic(root: string) {
       res.end(body);
     } catch {
       res.writeHead(404, securityHeaders).end();
-    }
-  };
-}
-
-export function serveApp(root: string, ice?: IceConfig) {
-  const staticFiles = serveStatic(root);
-  const iceServers = serveIceServers(ice, securityHeaders);
-  return (req: IncomingMessage, res: ServerResponse): void => {
-    if (req.url?.split("?")[0] === "/ice-servers") {
-      iceServers(req, res);
-    } else {
-      void staticFiles(req, res);
     }
   };
 }
@@ -114,7 +102,7 @@ export function startServer(options: {
 }): Promise<Server> {
   const server = createServer(
     ensureCert(options.certDir, options.hosts),
-    serveApp(options.root, options.ice),
+    serveStatic(options.root),
   );
   const signaling = attachSignaling(server, {
     log: options.log ?? (() => {}),
