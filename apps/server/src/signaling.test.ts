@@ -7,6 +7,7 @@ import {
   CONNECTION_PATHS,
   ERROR_CODES,
   type LogFields,
+  MAX_RELAY_DATA,
   parseServerMessage,
   REFUSE_REASONS,
   type ServerMessage,
@@ -485,4 +486,67 @@ test("keeps a socket under the message limit open across window resets", async (
   }
   assert.equal(client.socket.readyState, WebSocket.OPEN);
   assert.ok(!events.includes("rate-limited"));
+});
+
+/**
+ * Hosts a link on a server with a low buffer limit, joins a ws guest, and returns a function that
+ * relays large messages to the guest until `relay-dropped` is logged or `rounds` run out.
+ */
+async function bufferedRelay(t: { after(fn: () => void): void }) {
+  const events: string[] = [];
+  const limited = createServer();
+  const limitedSignaling = attachSignaling(limited, {
+    log: (event) => events.push(event),
+    limits: { bufferedBytes: 64 * 1024, messagesPerWindow: 100_000 },
+  });
+  t.after(() => {
+    limitedSignaling.close();
+    limited.close();
+  });
+  await new Promise<void>((done) => limited.listen(0, done));
+  const url = `ws://localhost:${(limited.address() as AddressInfo).port}/signal`;
+  const link = linkId();
+  const host = await connect(url);
+  host.send({ t: "host", links: [link] });
+  const guest = new WsClient(url);
+  t.after(() => guest.terminate());
+  let received = 0;
+  guest.on("message", () => {
+    received += 1;
+  });
+  guest.on("open", () => guest.send(JSON.stringify({ t: "join", link })));
+  assert.deepEqual(await host.next(), { t: "joined", link });
+  const data = "A".repeat(MAX_RELAY_DATA);
+  return {
+    events,
+    host,
+    guest,
+    received: () => received,
+    async flood(rounds: number) {
+      for (let round = 0; round < rounds && !events.includes("relay-dropped"); round += 1) {
+        for (let i = 0; i < 20; i += 1) {
+          host.send({ t: "relay", link, data });
+        }
+        await new Promise((done) => setTimeout(done, 5));
+      }
+    },
+  };
+}
+
+test("drops relays to a socket that stops reading and keeps the sender open", async (t) => {
+  const relay = await bufferedRelay(t);
+  relay.guest.pause();
+  await relay.flood(500);
+  assert.ok(relay.events.includes("relay-dropped"), "nothing was dropped");
+  assert.equal(relay.host.socket.readyState, WebSocket.OPEN);
+});
+
+test("drops nothing to a socket that keeps reading", async (t) => {
+  const relay = await bufferedRelay(t);
+  await relay.flood(10);
+  for (let wait = 0; wait < 200 && relay.received() < 200; wait += 1) {
+    await new Promise((done) => setTimeout(done, 5));
+  }
+  assert.equal(relay.received(), 200);
+  assert.ok(!relay.events.includes("relay-dropped"));
 });

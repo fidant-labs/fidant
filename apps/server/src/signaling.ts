@@ -27,7 +27,7 @@ export const SIGNAL_PATH = "/signal";
 
 export const HEARTBEAT_MS = 30_000;
 
-/** Caps on open sockets and incoming messages. Tests lower them through the `limits` option. */
+/** Caps on open sockets, incoming messages and bytes queued to a socket. Tests lower them through the `limits` option. */
 const LIMITS = {
   sockets: 1000,
   socketsPerAddress: 32,
@@ -35,6 +35,8 @@ const LIMITS = {
   // window boundary; a token bucket if that burst ever matters.
   /** Messages one socket may send per heartbeat window, counting ones that fail to parse. */
   messagesPerWindow: 1000,
+  /** Bytes queued to a socket beyond which relays to it are dropped, because it is not reading. */
+  bufferedBytes: 256 * 1024,
 };
 
 /** WebSocket close code for a protocol violation. */
@@ -310,8 +312,8 @@ export function attachSignaling(
       error(socket, "not-on-link");
       return;
     }
-    if (!target) {
-      // The other end left while this message was in flight.
+    // The other end left while this message was in flight, or is not reading what it is sent.
+    if (!target || target.bufferedAmount > limits.bufferedBytes) {
       log("relay-dropped", { link: short(link), bytes: data.length });
       return;
     }
