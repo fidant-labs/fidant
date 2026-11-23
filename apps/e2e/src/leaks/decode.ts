@@ -84,7 +84,7 @@ type Decoder = (
  * Every view of `blob` the detector searches: the raw bytes plus, recursively up to `maxDepth`:
  * JSON string escapes, percent and form encoding, quoted-printable, RFC 2047 words, a binary
  * string sent as UTF-8 (`latin1`), UTF-16LE/BE runs, base64/base64url runs at each of the 4
- * character offsets, hex runs at both nibble offsets (Postgres bytea is a hex run), and
+ * character offsets, hex runs at both nibble offsets, and
  * gzip/zlib/zstd streams found by their magic bytes or brotli/deflate named by `hints`.
  * Views are made breadth first until `maxBytes` is used up.
  */

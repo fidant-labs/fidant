@@ -74,7 +74,7 @@ test("decodes hex in either case at both nibble offsets", () => {
   assert.ok(pathsWith(`id=f${lower}`, secret).includes("hex@1"));
 });
 
-test("decodes Postgres bytea and separated hex", () => {
+test("decodes \\x-prefixed and separated hex", () => {
   assert.ok(
     pathsWith(`INSERT INTO t VALUES ('\\x${secret.toString("hex")}')`, secret).includes("hex@0"),
   );
