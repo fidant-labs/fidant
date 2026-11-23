@@ -17,13 +17,13 @@ const tailLines = 20;
 /** The Sigill server on a free port with a throwaway certificate. */
 export const server: Service = { name: "server", start: startServer };
 
-async function startServer(): Promise<RunningService> {
+async function startServer(stackEnv: Readonly<Record<string, string>>): Promise<RunningService> {
   const certDir = await mkdtemp(join(tmpdir(), "sigill-e2e-certs-"));
   const stdoutLog = createWriteStream(serverStdoutLog);
   const stderrLog = createWriteStream(serverStderrLog);
   const child = spawn(process.execPath, [serverMain], {
     cwd: repoRoot,
-    env: { ...process.env, PORT: "0", CERT_DIR: certDir },
+    env: { ...process.env, ...stackEnv, PORT: "0", CERT_DIR: certDir },
     stdio: ["ignore", "pipe", "pipe"],
   });
   // pipe() ends each log once the child's stream ends, so waiting for `close` drains them.
@@ -123,7 +123,7 @@ function waitForPort(child: ChildProcess, stderrTail: string[]): Promise<number>
  * SIGTERM, then SIGKILL if the process is still alive after the grace period. Resolves on
  * `close`, once the process has exited and its stdout and stderr are drained.
  */
-async function terminate(child: ChildProcess, closed: Promise<void>): Promise<void> {
+export async function terminate(child: ChildProcess, closed: Promise<void>): Promise<void> {
   let timer: NodeJS.Timeout | undefined;
   if (child.exitCode === null && child.signalCode === null) {
     child.kill("SIGTERM");

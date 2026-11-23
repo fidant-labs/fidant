@@ -42,3 +42,27 @@ test("stops the running services and rethrows when one fails to start", async ()
   await assert.rejects(startStack([fakeService("server", 51234, log), failing]), failure);
   assert.deepEqual(log, ["start server", "start storage", "stop server"]);
 });
+
+test("hands env to later services and keeps services without a url out of origins", async () => {
+  let seen: Readonly<Record<string, string>> = {};
+  const relay: Service = {
+    name: "relay",
+    start: async () => ({
+      name: "relay",
+      env: { TURN_URLS: "turn:127.0.0.1:3478" },
+      stop: async () => {},
+    }),
+  };
+  const web: Service = {
+    name: "server",
+    start: async (env) => {
+      seen = { ...env };
+      return { name: "server", url: "https://localhost:51234", stop: async () => {} };
+    },
+  };
+  const stack = await startStack([relay, web]);
+  assert.deepEqual(seen, { TURN_URLS: "turn:127.0.0.1:3478" });
+  assert.deepEqual(stack.origins, ["https://localhost:51234"]);
+  assert.deepEqual(stack.env, { TURN_URLS: "turn:127.0.0.1:3478" });
+  await stack.stop();
+});

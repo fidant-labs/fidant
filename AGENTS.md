@@ -26,6 +26,7 @@ Planning lives in Linear: workspace `sigill`, team `SIG`, issue keys like `SIG-2
 - gitleaks (`brew install gitleaks`). The pre-commit hook fails without it.
 - openssl, for the local certificate. macOS and Linux ship with it.
 - jq, for the Claude Code hooks. Recent macOS versions include it; on Linux, install it with the package manager.
+- coturn, only for `pnpm e2e` (`brew install coturn`; the `coturn` package on Linux). Without it the local run skips TURN; in CI it fails.
 - AWS CLI v2, only for deploying `apps/infra`. Its SSO profiles (`fidant-mgmt`, `fidant-dns`, `fidant-poc`) are in SIG-54.
 
 ## Layout

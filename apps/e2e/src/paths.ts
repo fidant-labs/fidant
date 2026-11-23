@@ -10,6 +10,8 @@ export const runDir = join(observationsDir, "run");
 /** The server's stdout (strict JSONL) and stderr (free text), for the whole run. */
 export const serverStdoutLog = join(runDir, "server.stdout.log");
 export const serverStderrLog = join(runDir, "server.stderr.log");
+/** coturn's own verbose log, for the whole run. */
+export const coturnLog = join(runDir, "coturn.log");
 
 /** Empties observations/ so a run only holds its own files. */
 export async function resetObservations(): Promise<void> {
