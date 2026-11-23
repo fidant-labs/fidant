@@ -3,16 +3,17 @@
 //
 // Message flow for one link:
 //
-//   recipient → server   join {link}
-//   server → sender      joined {link}            (sender: createSenderPeer)
+//   recipient → server   join {link, attempt}
+//   server → sender      joined {link, attempt}   (sender: createSenderPeer)
 //   sender → recipient   relay seal_s({kind:"offer", sdp})
 //   recipient → sender   relay seal_r({kind:"answer", sdp})
 //   both directions      relay seal({kind:"ice", candidate})   (trickle; null = end)
 //   sender ⇄ recipient   data channel "sigill" opens → onOpen(channel, info)
 //
 // seal_s/seal_r are sealSignal with direction "s"/"r"; the receiving side opens
-// with the other side's direction, so the server cannot reflect a message back
-// or swap one link's signals into another. The server only sees link IDs and
+// with the other side's direction, so the server cannot reflect a message back,
+// swap one link's signals into another, or replay one attempt's signals into
+// another (the attempt ID is in the AAD too; see keys.ts). The server only sees link IDs and
 // opaque blobs: no SDP, no candidates, no DTLS fingerprints.
 //
 // Outgoing signals are sealed and sent in order through one queue; incoming
@@ -68,6 +69,8 @@ export type PeerOptions = {
   /** Only `send` is used, so a fake works in place of a SignalingClient. */
   signaling: { send(message: ClientMessage): boolean };
   linkId: string;
+  /** The recipient's attempt ID from its join; bound into every sealed signal. */
+  attempt: string;
   /** From deriveSignalKey(secret, linkId). */
   signalKey: CryptoKey;
   /** From fetchIceServers(), fresh for each peer: TURN credentials expire. */
@@ -296,7 +299,7 @@ function toCandidate(candidate: RTCIceCandidate): SignalCandidate {
 }
 
 function startPeer(options: PeerOptions, side: Direction): Peer {
-  const { signaling, linkId, signalKey } = options;
+  const { signaling, linkId, attempt, signalKey } = options;
   const other: Direction = side === "s" ? "r" : "s";
 
   // Host candidates are enough on one network. The app server may add a TURN
@@ -352,7 +355,7 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
         return;
       }
       try {
-        const data = await sealSignal(signalKey, linkId, side, payload);
+        const data = await sealSignal(signalKey, linkId, attempt, side, payload);
         if (closed) {
           return;
         }
@@ -488,7 +491,7 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
         }
         let payload: SignalPayload | undefined;
         try {
-          payload = parseSignalPayload(await openSignal(signalKey, linkId, other, data));
+          payload = parseSignalPayload(await openSignal(signalKey, linkId, attempt, other, data));
         } catch {
           payload = undefined;
         }

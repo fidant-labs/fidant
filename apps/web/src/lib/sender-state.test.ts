@@ -77,7 +77,7 @@ test("a full delivery walks waiting → connecting → offered → receiving →
 
   const s1 = update(s0, { type: "joined", linkId, attempt: A });
   assert.equal(statusOf(s1.state, linkId), "connecting");
-  assert.deepEqual(s1.effects, [{ type: "start", linkId }]);
+  assert.deepEqual(s1.effects, [{ type: "start", linkId, attempt: A }]);
   assert.equal(statusOf(s0, linkId), "waiting", "previous state not mutated");
 
   const s2 = update(s1.state, { type: "channel-open", linkId });
@@ -168,7 +168,7 @@ test("a drop before delivery returns the recipient to waiting and frees the link
 
     const again = update(dropped.state, { type: "joined", linkId, attempt: A });
     assert.equal(statusOf(again.state, linkId), "connecting", "the same link starts over");
-    assert.deepEqual(again.effects, [{ type: "start", linkId }]);
+    assert.deepEqual(again.effects, [{ type: "start", linkId, attempt: A }]);
   }
 });
 
@@ -193,7 +193,7 @@ test("a drop or timeout refuses the attempt that started the connection, not a l
   const dropped = update(busy.state, { type: "dropped", linkId }).state;
   const next = run(dropped, { type: "joined", linkId, attempt: B }, { type: "dropped", linkId });
   assert.deepEqual(next.effects, [
-    { type: "start", linkId },
+    { type: "start", linkId, attempt: B },
     { type: "refuse", linkId, attempt: B, reason: "busy" },
     { type: "close", linkId },
   ]);
@@ -212,7 +212,7 @@ test("a channel that does not open in time is dropped and its joiner refused", (
 
   const again = update(result.state, { type: "joined", linkId, attempt: A });
   assert.equal(statusOf(again.state, linkId), "connecting", "the real recipient can join");
-  assert.deepEqual(again.effects, [{ type: "start", linkId }]);
+  assert.deepEqual(again.effects, [{ type: "start", linkId, attempt: A }]);
 });
 
 test("a timeout after the channel opened is ignored", () => {
@@ -296,7 +296,7 @@ test("a mismatching receipt fails the transfer and the next join retries", () =>
   const retried = findRecipient(retry.state, linkId);
   assert.equal(retried?.status, "connecting");
   assert.equal(retried && "error" in retried, false, "error cleared");
-  assert.deepEqual(retry.effects, [{ type: "start", linkId }]);
+  assert.deepEqual(retry.effects, [{ type: "start", linkId, attempt: A }]);
 });
 
 test("events that do not fit the current status are ignored", () => {
@@ -406,7 +406,9 @@ test("effects never contain a recipient name or secret", () => {
     assert.ok(!text.includes(link.url), text);
     assert.deepEqual(
       Object.keys(effect).sort(),
-      effect.type === "refuse" ? ["attempt", "linkId", "reason", "type"] : ["linkId", "type"],
+      { refuse: ["attempt", "linkId", "reason", "type"], start: ["attempt", "linkId", "type"] }[
+        effect.type as string
+      ] ?? ["linkId", "type"],
     );
   }
 });

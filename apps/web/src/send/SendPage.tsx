@@ -121,7 +121,7 @@ export function SendPage() {
     }
   };
 
-  const startConnection = async (linkId: string) => {
+  const startConnection = async (linkId: string, attempt: string) => {
     const recipient = findRecipient(senderRef.current, linkId);
     const signaling = signalingRef.current;
     if (!recipient || !signaling) {
@@ -158,6 +158,7 @@ export function SendPage() {
     connection.peer = createSenderPeer({
       signaling,
       linkId,
+      attempt,
       signalKey,
       iceServers,
       onOpen(channel, info) {
@@ -216,7 +217,7 @@ export function SendPage() {
   const runEffect = (effect: SenderEffect) => {
     switch (effect.type) {
       case "start":
-        void startConnection(effect.linkId);
+        void startConnection(effect.linkId, effect.attempt);
         break;
       case "close":
         closeConnection(effect.linkId);

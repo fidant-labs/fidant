@@ -107,7 +107,7 @@ export type SenderAction =
   | { type: "declined"; linkId: string };
 
 export type SenderEffect =
-  | { type: "start"; linkId: string }
+  | { type: "start"; linkId: string; attempt: string }
   | { type: "refuse"; linkId: string; attempt: string; reason: RefuseReason }
   | { type: "close"; linkId: string };
 
@@ -183,7 +183,7 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
       }
       return {
         state: replace(state, { ...reset(current, "connecting"), attempt }),
-        effects: [{ type: "start", linkId }],
+        effects: [{ type: "start", linkId, attempt }],
       };
     }
     case "channel-open":

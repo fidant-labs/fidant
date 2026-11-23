@@ -287,6 +287,7 @@ export function ReceivePage() {
         attempt.peer = createRecipientPeer({
           signaling,
           linkId,
+          attempt: attemptId,
           signalKey,
           iceServers,
           onOpen: (channel, info) => {
