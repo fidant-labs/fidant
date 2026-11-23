@@ -1,4 +1,4 @@
-// Pieces shared by the send and receive pages.
+// Pieces shared by the pages.
 
 import type { ComponentChildren } from "preact";
 import { FILE_DATA, LOGS, passedOn, type Relayed } from "./lib/server-facts.ts";
@@ -55,16 +55,51 @@ export function Icon({ name }: { name: IconName }) {
   );
 }
 
-export function Page({ children }: { children: ComponentChildren }) {
+type Section = "send" | "privacy";
+
+const MENU: ReadonlyArray<readonly [Section, string, string]> = [
+  ["send", "/", "Send a file"],
+  ["privacy", "/privacy", "Privacy"],
+];
+
+/**
+ * The send and receive pages hold a transfer only in memory, so from them the
+ * menu opens a new tab instead of leaving the page.
+ */
+function Menu({ current }: { current: Section | undefined }) {
+  const newTab = current !== "privacy";
   return (
-    <main>
-      <header>
+    <nav aria-label="Main">
+      <ul class="menu">
+        {MENU.map(([section, href, label]) => (
+          <li key={section}>
+            {section === current ? (
+              // Not a link: following it would reload the page and drop a transfer in progress.
+              <span aria-current="page">{label}</span>
+            ) : (
+              <a href={href} target={newTab ? "_blank" : undefined} rel="noopener">
+                {label}
+                {newTab && <span class="visually-hidden"> (opens in a new tab)</span>}
+              </a>
+            )}
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
+}
+
+export function Page({ children, current }: { children: ComponentChildren; current?: Section }) {
+  return (
+    <>
+      <header class="menu-bar">
         <p class="brand">
           <Icon name="lock" /> Sigill
         </p>
+        <Menu current={current} />
       </header>
-      {children}
-    </main>
+      <main>{children}</main>
+    </>
   );
 }
 
