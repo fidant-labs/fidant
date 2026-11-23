@@ -17,6 +17,7 @@ Planning lives in Linear: workspace `sigill`, team `SIG`, issue keys like `SIG-2
 - pnpm, at the version pinned in `package.json` (`packageManager`).
 - gitleaks (`brew install gitleaks`). The pre-commit hook fails without it.
 - openssl, for the local certificate. macOS and Linux ship with it.
+- jq, for the Claude Code hooks. Recent macOS versions include it; on Linux, install it with the package manager.
 
 ## Layout
 
