@@ -75,17 +75,18 @@ After each subagent returns, check `git -C <worktree> log -1 --stat` yourself. I
 
 ## 6. Review
 
-1. Spawn a `general-purpose` subagent to review `git diff origin/main...HEAD` in the worktree for correctness bugs, missing tests, and any break of the `AGENTS.md` invariants. It reports findings only and does not edit.
-2. Fix the real findings in small follow-up commits (`fix: ...`, `test: ...`), or with subagents for larger fixes.
-3. Run `pnpm check` in the worktree one last time and read the full diff yourself.
+1. With the shell in `<worktree>`, run the `review-changes` skill. It dispatches the reviewer agents, fixes blockers and majors, runs `pnpm check`, commits the fixes and marks the diff clean. The `gh pr create` hook in step 7 refuses until that mark matches the branch.
+2. Read the full diff yourself.
 
 ## 7. Open the pull request
 
 ```sh
 git -C <worktree> push -u origin <branch>
-gh pr create --repo sigill-labs/sigill --base main --head <branch> \
+cd <worktree> && gh pr create --repo sigill-labs/sigill --base main --head <branch> \
   --title "SIG-<number>: <issue title>" --body-file <scratchpad>/pr-body.md
 ```
+
+`<worktree>` must be the literal absolute path, because the review gate follows a literal `cd` and does not expand variables.
 
 PR body: fill in the sections of `.github/pull_request_template.md` (Linear issue, What and why, How it was checked) and add a commit walkthrough. For example:
 
