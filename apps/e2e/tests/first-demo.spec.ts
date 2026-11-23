@@ -178,6 +178,10 @@ test("delivers a file to two recipients with a verified checksum", async ({
   for (const name of names) {
     await expect(delivered(sender, name)).toBeVisible();
   }
+
+  const panel = sender.getByRole("region", { name: "What our server has right now" });
+  await expect(panel).toContainText("None. The file goes directly between browsers.");
+  await expect(panel).toContainText(/[1-9]\d* setup messages? \(/);
 });
 
 test("refuses used, unknown and malformed links", async ({ demo, leaks, canary, baseURL }) => {
