@@ -74,7 +74,7 @@ export const sv: Messages = {
     continue: "Fortsätt",
     back: "Tillbaka till filen",
     title: "Skicka en fil",
-    lede: "Din fil går direkt från den här webbläsaren till dem du väljer. Den krypteras på vägen och laddas aldrig upp eller sparas.",
+    lede: "Din fil skickas från den här webbläsaren till dem du väljer. Den är krypterad hela vägen och laddas aldrig upp eller sparas.",
     localhost:
       "Sidan är öppnad på localhost, så länkarna fungerar inte på andra datorer. Öppna i stället nätverksadressen som servern skrev ut.",
     lostServer:
@@ -109,7 +109,7 @@ export const sv: Messages = {
     fileFirst: "Välj en fil först.",
     full: (max: number) => `Du kan skicka till högst ${max} personer åt gången.`,
     oneLinkEach: "Varje person får en egen länk, som fungerar en gång.",
-    keepOpen: "Ha fliken öppen tills alla har fått filen. Den skickas direkt härifrån.",
+    keepOpen: "Ha fliken öppen tills alla har fått filen. Den skickas härifrån.",
     recipients: "Mottagare",
     status: {
       waiting: (name: string) => `Väntar på att ${name} ska öppna länken`,
@@ -139,16 +139,16 @@ export const sv: Messages = {
     download: "Ladda ner",
     decline: "Tacka nej",
     offerCaption: (from: string) =>
-      `Skickas direkt från ${from ? `datorn hos ${from}` : "avsändarens dator"} till din. Krypterad, sparas aldrig på någon server.`,
+      `Skickas från ${from ? `datorn hos ${from}` : "avsändarens dator"} till din. Krypterad, sparas aldrig på någon server.`,
     receivingTitle: "Laddar ner…",
     progressLabel: "Förlopp för nedladdningen",
-    receivingCaption: "Tar emot direkt från avsändaren. Ha fliken öppen tills det är klart.",
+    receivingCaption: "Tar emot från avsändaren. Ha fliken öppen tills det är klart.",
     doneTitle: "Nedladdningen är klar",
     verified: "Vi har kontrollerat den: det här är exakt den fil som skickades.",
     autoDownload: "Nedladdningen bör starta av sig själv.",
     savedWhereChosen: "Den är sparad där du valde.",
     saveFile: "Spara filen",
-    doneCaption: "Skickad direkt från avsändarens dator till din. Krypterad hela vägen.",
+    doneCaption: "Skickad från avsändarens dator till din. Krypterad hela vägen.",
     declinedTitle: "Du tackade nej till filen",
     declinedBody:
       "Du kan stänga fliken. Om du ändrar dig fungerar länken fortfarande medan avsändarens sida är öppen.",
@@ -209,7 +209,7 @@ export const sv: Messages = {
       },
       connect: {
         title: "Det gick inte att ansluta till avsändarens dator",
-        body: "Filen färdas direkt mellan era två datorer, och de kunde inte nå varandra.",
+        body: "Era två datorer kunde inte nå varandra.",
       },
       server: {
         title: "Det gick inte att nå servern",

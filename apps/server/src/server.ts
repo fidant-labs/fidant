@@ -26,7 +26,7 @@ const securityHeaders = {
   "x-content-type-options": "nosniff",
 };
 
-export function serveStatic(root: string) {
+function serveStatic(root: string) {
   const base = resolve(root);
   return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     if (req.method !== "GET" && req.method !== "HEAD") {
