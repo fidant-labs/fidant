@@ -33,7 +33,7 @@ import { useI18n } from "../i18n/I18n.tsx";
 import { displayName, formatBytes, formatProgress, toHex } from "../lib/format.ts";
 import { deriveSignalKey } from "../lib/keys.ts";
 import { parseRecipientLocation } from "../lib/link.ts";
-import { createRecipientPeer, type Peer } from "../lib/peer.ts";
+import { createRecipientPeer, fetchIceServers, type Peer } from "../lib/peer.ts";
 import type { FileOffer } from "../lib/receive-file.ts";
 import { ReceiveError, receiveFile } from "../lib/receive-file.ts";
 import { addRelay, NO_RELAYS, type Tie } from "../lib/server-facts.ts";
@@ -272,7 +272,10 @@ export function ReceivePage() {
         if (current()) {
           setTie("unpaired");
         }
-        const signalKey = await deriveSignalKey(secret, linkId);
+        const [signalKey, iceServers] = await Promise.all([
+          deriveSignalKey(secret, linkId),
+          fetchIceServers(),
+        ]);
         if (!current()) {
           return;
         }
@@ -280,6 +283,7 @@ export function ReceivePage() {
           signaling,
           linkId,
           signalKey,
+          iceServers,
           onOpen: (channel, info) => onOpen(channel, info.maxMessageSize),
           onClose: () => lost(),
         });

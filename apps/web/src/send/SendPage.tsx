@@ -30,7 +30,7 @@ import { formatBytes, toHex } from "../lib/format.ts";
 import { hasForbiddenCharacters, MAX_FROM_LENGTH, metaFits } from "../lib/frames.ts";
 import { deriveSignalKey } from "../lib/keys.ts";
 import { createLink } from "../lib/link.ts";
-import { createSenderPeer, type Peer } from "../lib/peer.ts";
+import { createSenderPeer, fetchIceServers, type Peer } from "../lib/peer.ts";
 import { hashFile, sendFile } from "../lib/send-file.ts";
 import {
   findRecipient,
@@ -127,8 +127,12 @@ export function SendPage() {
     }, SETUP_TIMEOUT_MS);
 
     let signalKey: CryptoKey;
+    let iceServers: RTCIceServer[];
     try {
-      signalKey = await deriveSignalKey(recipient.secret, linkId);
+      [signalKey, iceServers] = await Promise.all([
+        deriveSignalKey(recipient.secret, linkId),
+        fetchIceServers(),
+      ]);
     } catch {
       dispatch({ type: "dropped", linkId });
       return;
@@ -141,6 +145,7 @@ export function SendPage() {
       signaling,
       linkId,
       signalKey,
+      iceServers,
       onOpen(channel, info) {
         clearTimeout(connection.deadline);
         dispatch({ type: "channel-open", linkId });

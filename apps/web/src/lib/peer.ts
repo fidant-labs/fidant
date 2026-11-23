@@ -34,6 +34,9 @@ export const CHANNEL_LABEL = "sigill";
  */
 export const DEFAULT_MAX_MESSAGE_SIZE = 65536;
 
+/** How long to wait for /ice-servers before going on without a relay. */
+const ICE_FETCH_TIMEOUT_MS = 5000;
+
 export type PeerCloseReason =
   /** The data channel closed (the other side went away or closed it). */
   | "channel-closed"
@@ -59,6 +62,8 @@ export type PeerOptions = {
   linkId: string;
   /** From deriveSignalKey(secret, linkId). */
   signalKey: CryptoKey;
+  /** From fetchIceServers(), fresh for each peer: TURN credentials expire. */
+  iceServers: RTCIceServer[];
   /** The channel is open, ordered, reliable, binaryType "arraybuffer". */
   onOpen(channel: RTCDataChannel, info: PeerOpenInfo): void;
   /**
@@ -172,6 +177,59 @@ export function maxMessageSizeOf(pc: RTCPeerConnection): number {
   return size !== undefined && size > 0 ? size : DEFAULT_MAX_MESSAGE_SIZE;
 }
 
+/** The `iceServers` of a /ice-servers response, or undefined if it has the wrong shape. */
+export function parseIceServers(value: unknown): RTCIceServer[] | undefined {
+  if (typeof value !== "object" || value === null) {
+    return undefined;
+  }
+  const list = (value as { iceServers?: unknown }).iceServers;
+  if (!Array.isArray(list)) {
+    return undefined;
+  }
+  const servers: RTCIceServer[] = [];
+  for (const entry of list) {
+    if (typeof entry !== "object" || entry === null) {
+      return undefined;
+    }
+    const { urls, username, credential } = entry as Record<string, unknown>;
+    const validUrls =
+      typeof urls === "string" ||
+      (Array.isArray(urls) && urls.length > 0 && urls.every((u) => typeof u === "string"));
+    if (
+      !validUrls ||
+      (username !== undefined && typeof username !== "string") ||
+      (credential !== undefined && typeof credential !== "string")
+    ) {
+      return undefined;
+    }
+    const server: RTCIceServer = { urls: urls as string | string[] };
+    if (username !== undefined) {
+      server.username = username as string;
+    }
+    if (credential !== undefined) {
+      server.credential = credential as string;
+    }
+    servers.push(server);
+  }
+  return servers;
+}
+
+/**
+ * Fetches ICE servers from the app server. Never rejects: on any error or bad
+ * response it returns [], and browsers on one network still connect directly.
+ */
+export async function fetchIceServers(): Promise<RTCIceServer[]> {
+  try {
+    const response = await fetch("/ice-servers", {
+      cache: "no-store",
+      signal: AbortSignal.timeout(ICE_FETCH_TIMEOUT_MS),
+    });
+    return (response.ok && parseIceServers(await response.json())) || [];
+  } catch {
+    return [];
+  }
+}
+
 class PeerError extends Error {
   readonly reason: PeerCloseReason;
   constructor(reason: PeerCloseReason, message: string) {
@@ -193,10 +251,10 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
   const { signaling, linkId, signalKey } = options;
   const other: Direction = side === "s" ? "r" : "s";
 
-  // Sender and recipients are on the same network, so host candidates are
-  // enough. No STUN or TURN: the demo must run without internet, and a TURN
-  // relay is infrastructure we do not want in the path.
-  const pc = new RTCPeerConnection({ iceServers: [] });
+  // Host candidates are enough on one network. The app server may add a TURN
+  // relay for browsers that cannot reach each other; it sees only encrypted
+  // DTLS traffic. Without one (the local demo), iceServers is [].
+  const pc = new RTCPeerConnection({ iceServers: options.iceServers });
 
   let closed = false;
   let channel: RTCDataChannel | undefined;
