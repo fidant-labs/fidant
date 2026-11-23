@@ -73,7 +73,7 @@ test("finds content in a gzip body", () => {
   assert.deepEqual(found(body, { contentEncoding: "gzip" }), ["C file#1 @ gzip>hex@0"]);
 });
 
-test("finds content as Postgres bytea", () => {
+test("finds content as \\x-prefixed hex", () => {
   const statement = `INSERT INTO blobs VALUES ('\\x${file.bytes.subarray(0, 32).toString("hex")}')`;
   assert.deepEqual(found(statement), ["C file#1 @ hex@0"]);
 });

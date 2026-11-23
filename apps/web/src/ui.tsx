@@ -1,4 +1,4 @@
-// Pieces shared by the send and receive pages.
+// Pieces shared by the pages.
 
 import type { ComponentChildren } from "preact";
 import { FILE_DATA, LOGS, passedOn, type Relayed } from "./lib/server-facts.ts";
@@ -70,8 +70,7 @@ export const linkButton = `${buttonBase} p-1 text-primary underline`;
 
 type Section = "send" | "privacy";
 
-const menuLink =
-  "block rounded-lg px-[0.7rem] py-[0.35rem] text-foreground no-underline hover:bg-card hover:underline";
+const menuItem = "block rounded-lg px-[0.7rem] py-[0.35rem] text-foreground no-underline";
 
 const MENU: ReadonlyArray<readonly [Section, string, string]> = [
   ["send", "/", "Send a file"],
@@ -87,26 +86,29 @@ function Menu({ current }: { current: Section | undefined }) {
   return (
     <nav aria-label="Main">
       <ul class="flex gap-1">
-        {MENU.map(([section, href, label]) =>
-          section === current ? (
-            <li key={section}>
-              <a
-                href={href}
+        {MENU.map(([section, href, label]) => (
+          <li key={section}>
+            {section === current ? (
+              // Not a link: following it would reload the page and drop a transfer in progress.
+              <span
                 aria-current="page"
-                class={`${menuLink} bg-card font-semibold inset-ring inset-ring-border`}
+                class={`${menuItem} bg-card font-semibold inset-ring inset-ring-border`}
               >
                 {label}
-              </a>
-            </li>
-          ) : (
-            <li key={section}>
-              <a href={href} target={newTab ? "_blank" : undefined} rel="noopener" class={menuLink}>
+              </span>
+            ) : (
+              <a
+                href={href}
+                target={newTab ? "_blank" : undefined}
+                rel="noopener"
+                class={`${menuItem} hover:bg-card hover:underline`}
+              >
                 {label}
                 {newTab && <span class="sr-only"> (opens in a new tab)</span>}
               </a>
-            </li>
-          ),
-        )}
+            )}
+          </li>
+        ))}
       </ul>
     </nav>
   );
