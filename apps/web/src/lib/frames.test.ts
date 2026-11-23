@@ -437,6 +437,8 @@ test("decodeMeta rejects malformed padding and JSON", () => {
   const { from: _, ...noFrom } = meta(10);
   assert.throws(() => decodeMeta(rawMeta(JSON.stringify(noFrom))));
   assert.throws(() => decodeMeta(rawMeta(JSON.stringify({ ...meta(10), from: 1 }))));
+  const longFrom = "x".repeat(MAX_FROM_LENGTH + 1);
+  assert.throws(() => decodeMeta(rawMeta(JSON.stringify({ ...meta(10), from: longFrom }))));
   assert.throws(() => decodeMeta(rawMeta("not json")));
   assert.throws(() => decodeMeta(rawMeta("")));
 });

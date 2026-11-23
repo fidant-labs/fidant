@@ -7,7 +7,7 @@ test("displayName drops names with nothing visible to show", () => {
   assert.equal(displayName("李"), "李");
   assert.equal(displayName(""), "");
   assert.equal(displayName("   "), "");
-  assert.equal(displayName("​ㅤ﻿"), "");
+  assert.equal(displayName(String.fromCodePoint(0x200b, 0x3164, 0xfeff)), "");
   assert.equal(displayName("!!!"), "");
 });
 
