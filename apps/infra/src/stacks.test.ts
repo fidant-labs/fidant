@@ -47,21 +47,76 @@ function stacksFor(currentAccount: string | undefined): Stack[] {
   return app.node.children.filter((child) => child instanceof Stack);
 }
 
-test("the fidant-dns account gets only the protected DNS stack", () => {
+test("the fidant-dns account gets the protected DNS stack and the CI stack", () => {
   const stacks = stacksFor(dnsAccount);
   assert.deepEqual(
     stacks.map((stack) => [stack.stackName, stack.region, stack.terminationProtection]),
-    [["FidantDns", "eu-north-1", true]],
+    [
+      ["FidantDns", "eu-north-1", true],
+      ["FidantCi", "eu-north-1", false],
+    ],
   );
 });
 
-test("the fidant-poc account gets only the site stack, in us-east-1", () => {
+test("the fidant-poc account gets the site stack and the CI stack, in us-east-1", () => {
   const stacks = stacksFor(pocAccount);
   assert.deepEqual(
     stacks.map((stack) => [stack.stackName, stack.region]),
-    [["FidantSite", "us-east-1"]],
+    [
+      ["FidantSite", "us-east-1"],
+      ["FidantCi", "us-east-1"],
+    ],
   );
   Template.fromStack(stacks[0] as Stack);
+});
+
+function ciTemplate(currentAccount: string): Template {
+  const stack = stacksFor(currentAccount).find((child) => child.stackName === "FidantCi");
+  return Template.fromStack(stack as Stack);
+}
+
+test("only this repository's production environment can assume the CI role", () => {
+  for (const currentAccount of [dnsAccount, pocAccount]) {
+    const ci = ciTemplate(currentAccount);
+    ci.resourceCountIs("AWS::IAM::Role", 1);
+    ci.hasResourceProperties("AWS::IAM::OIDCProvider", {
+      Url: "https://token.actions.githubusercontent.com",
+      ClientIdList: ["sts.amazonaws.com"],
+    });
+    const [providerId] = Object.keys(ci.findResources("AWS::IAM::OIDCProvider"));
+    const [role] = Object.values(ci.findResources("AWS::IAM::Role"));
+    assert.equal(role?.Properties.RoleName, "fidant-ci-deploy");
+    assert.deepEqual(role?.Properties.AssumeRolePolicyDocument.Statement, [
+      {
+        Action: "sts:AssumeRoleWithWebIdentity",
+        Effect: "Allow",
+        Principal: { Federated: { Ref: providerId } },
+        Condition: {
+          StringEquals: {
+            "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+            "token.actions.githubusercontent.com:sub":
+              "repo:sigill-labs@360211033/sigill@1468787132:environment:production",
+          },
+        },
+      },
+    ]);
+  }
+});
+
+test("the CI role may only assume its own account's CDK bootstrap roles", () => {
+  const ci = ciTemplate(pocAccount);
+  const [role] = Object.values(ci.findResources("AWS::IAM::Role"));
+  assert.equal(role?.Properties.ManagedPolicyArns, undefined);
+  assert.equal(role?.Properties.Policies, undefined);
+  const policies = Object.values(ci.findResources("AWS::IAM::Policy"));
+  assert.equal(policies.length, 1);
+  assert.deepEqual(policies[0]?.Properties.PolicyDocument.Statement, [
+    {
+      Action: "sts:AssumeRole",
+      Effect: "Allow",
+      Resource: `arn:aws:iam::${pocAccount}:role/cdk-hnb659fds-*`,
+    },
+  ]);
 });
 
 test("any other account gets no stacks", () => {
