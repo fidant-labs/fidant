@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "e2e": "playwright test --pass-with-no-tests",
-    "typecheck": "tsc --noEmit -p ."
+    "typecheck": "tsc --noEmit -p .",
+    "test": "node --test \"src/**/*.test.ts\""
   },
   "devDependencies": {
     "@playwright/test": "catalog:",
