@@ -155,7 +155,7 @@ test("the app box is open only on 80 and 443, and on 22 only to Lightsail's brow
     /^www\.fidant\.se, fidant\.eu, www\.fidant\.eu, fidant\.org, www\.fidant\.org \{\n\timport hsts\n\tredir https:\/\/fidant\.se\{uri\} permanent$/m,
   );
   assert.doesNotMatch(instance?.Properties.UserData, /@[A-Z_]+@/);
-  const topLevel = String(instance?.Properties.UserData).split("<<'EOF'")[0];
+  const topLevel = String(instance?.Properties.UserData).split("<<'EOF'")[0] ?? "";
   assert.match(topLevel, /^#!\/bin\/sh\n.*\nset -eux\n/);
   assert.doesNotMatch(topLevel, /pipefail|\[\[/);
 });
