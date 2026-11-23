@@ -73,12 +73,62 @@ test("any other account gets no stacks", () => {
   );
 });
 
-test("the committed config synthesizes and keeps the Proton verification record", () => {
-  const [stack] = stacksFor(dnsAccount);
-  Template.fromStack(stack as Stack).hasResourceProperties("AWS::Route53::RecordSet", {
+const recordSet = "AWS::Route53::RecordSet";
+const committed = Template.fromStack(stacksFor(dnsAccount)[0] as Stack);
+
+test("the committed config keeps the certificate valid and every site name pointed at CloudFront", () => {
+  for (const name of siteNames) {
+    const escaped = name.replaceAll(".", "\\.");
+    committed.resourcePropertiesCountIs(
+      recordSet,
+      {
+        Type: "CNAME",
+        Name: Match.stringLikeRegexp(`^_[0-9a-f]{32}\\.${escaped}\\.$`),
+        ResourceRecords: [
+          Match.stringLikeRegexp("^_[0-9a-f]{32}\\.[a-z0-9]+\\.acm-validations\\.aws\\.$"),
+        ],
+      },
+      1,
+    );
+    for (const type of ["A", "AAAA"]) {
+      committed.hasResourceProperties(recordSet, {
+        Name: `${name}.`,
+        Type: type,
+        AliasTarget: { DNSName: Match.stringLikeRegexp("^d[a-z0-9]+\\.cloudfront\\.net$") },
+      });
+    }
+  }
+});
+
+test("the committed config keeps fidant.se's Proton mail records", () => {
+  for (const value of [
+    '^"protonmail-verification=[0-9a-f]{40}"$',
+    '^"v=spf1 include:_spf\\.protonmail\\.ch [~-]all"$',
+  ]) {
+    committed.hasResourceProperties(recordSet, {
+      Name: "fidant.se.",
+      Type: "TXT",
+      ResourceRecords: Match.arrayWith([Match.stringLikeRegexp(value)]),
+    });
+  }
+  committed.hasResourceProperties(recordSet, {
     Name: "fidant.se.",
+    Type: "MX",
+    ResourceRecords: ["10 mail.protonmail.ch", "20 mailsec.protonmail.ch"],
+  });
+  for (const key of ["protonmail", "protonmail2", "protonmail3"]) {
+    committed.hasResourceProperties(recordSet, {
+      Name: `${key}._domainkey.fidant.se.`,
+      Type: "CNAME",
+      ResourceRecords: [
+        Match.stringLikeRegexp(`^${key}\\.domainkey\\.[a-z0-9]+\\.domains\\.proton\\.ch\\.$`),
+      ],
+    });
+  }
+  committed.hasResourceProperties(recordSet, {
+    Name: "_dmarc.fidant.se.",
     Type: "TXT",
-    ResourceRecords: Match.arrayWith([Match.stringLikeRegexp('^"protonmail-verification=')]),
+    ResourceRecords: [Match.stringLikeRegexp('^"v=DMARC1; p=(quarantine|reject)[;"]')],
   });
 });
 

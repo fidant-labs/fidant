@@ -12,10 +12,32 @@ export type Mail = {
 };
 
 export const mail: Mail = {
-  apexTxt: ["protonmail-verification=14191306dac563a6cf145d0c0777d212920f3bf6"],
-  mx: [],
-  cnames: [],
-  dmarc: undefined,
+  apexTxt: [
+    "protonmail-verification=14191306dac563a6cf145d0c0777d212920f3bf6",
+    "v=spf1 include:_spf.protonmail.ch ~all",
+  ],
+  mx: [
+    { priority: 10, hostName: "mail.protonmail.ch" },
+    { priority: 20, hostName: "mailsec.protonmail.ch" },
+  ],
+  cnames: [
+    {
+      name: "protonmail._domainkey",
+      value:
+        "protonmail.domainkey.dhkoy2kpqzgitcjo5lp2rla56inbsysez2ptt23kic7qovs46e27q.domains.proton.ch.",
+    },
+    {
+      name: "protonmail2._domainkey",
+      value:
+        "protonmail2.domainkey.dhkoy2kpqzgitcjo5lp2rla56inbsysez2ptt23kic7qovs46e27q.domains.proton.ch.",
+    },
+    {
+      name: "protonmail3._domainkey",
+      value:
+        "protonmail3.domainkey.dhkoy2kpqzgitcjo5lp2rla56inbsysez2ptt23kic7qovs46e27q.domains.proton.ch.",
+    },
+  ],
+  dmarc: "v=DMARC1; p=quarantine",
 };
 
 // Copied by hand from FidantSite, which deploys to another account.
