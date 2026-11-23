@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { formatBytes, formatProgress, toHex } from "./format.ts";
+import { displayName, formatBytes, formatProgress, toHex } from "./format.ts";
+
+test("displayName drops names with nothing visible to show", () => {
+  assert.equal(displayName("  Åsa Öberg "), "Åsa Öberg");
+  assert.equal(displayName("李"), "李");
+  assert.equal(displayName(""), "");
+  assert.equal(displayName("   "), "");
+  assert.equal(displayName("​ㅤ﻿"), "");
+  assert.equal(displayName("!!!"), "");
+});
 
 test("toHex pads every byte", () => {
   assert.equal(toHex(new Uint8Array([0, 15, 16, 255])), "000f10ff");

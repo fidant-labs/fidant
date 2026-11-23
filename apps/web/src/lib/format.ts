@@ -22,6 +22,11 @@ export function formatBytes(bytes: number): string {
   return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${unit}`;
 }
 
+/** A name typed by someone else, trimmed, or "" if it has no letter or digit to show. */
+export function displayName(typed: string): string {
+  return /(?!\p{Default_Ignorable_Code_Point})[\p{L}\p{N}]/u.test(typed) ? typed.trim() : "";
+}
+
 /** "45% · 1.1 MB of 2.4 MB". An empty file counts as done. */
 export function formatProgress(bytes: number, total: number): string {
   const percent = total > 0 ? Math.min(100, Math.floor((bytes / total) * 100)) : 100;

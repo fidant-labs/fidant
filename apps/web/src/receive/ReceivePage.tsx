@@ -26,7 +26,7 @@
 
 import type { ComponentChildren } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
-import { formatBytes, formatProgress, toHex } from "../lib/format.ts";
+import { displayName, formatBytes, formatProgress, toHex } from "../lib/format.ts";
 import { deriveSignalKey } from "../lib/keys.ts";
 import { parseRecipientLocation } from "../lib/link.ts";
 import { createRecipientPeer, type Peer } from "../lib/peer.ts";
@@ -86,7 +86,7 @@ const OFFLINE: Message = {
 };
 const LOST: Message = {
   title: "The connection to the sender was lost",
-  body: "Nothing was saved.",
+  body: "The download may not be complete. Try again to get the whole file.",
 };
 const CHECKSUM: Message = {
   title: "The file didn't arrive intact",
@@ -229,9 +229,10 @@ export function ReceivePage() {
         maxMessageSize,
         secret,
         signal: attempt.abort.signal,
-        onOffer(offer) {
+        onOffer(received) {
           return new Promise((resolve) => {
             if (!current()) return;
+            const offer = { ...received, from: displayName(received.from) };
             offered = offer;
             attempt.decide = (sink) => {
               attempt.decide = undefined;
@@ -384,8 +385,8 @@ export function ReceivePage() {
           </div>
           <Direct from={offer.from || "Sender"} to="You" state="ready" />
           <p class="caption">
-            Sent straight from {owner(offer.from)} computer to yours. Encrypted, never stored on a
-            server.
+            Sent straight from {offer.from ? `${offer.from}'s` : "the sender's"} computer to yours.
+            Encrypted, never stored on a server.
           </p>
           <OfferDetails offer={offer} />
         </Page>
@@ -405,10 +406,9 @@ export function ReceivePage() {
             />
             <span class="progress-text">{formatProgress(bytes, offer.size)}</span>
           </div>
-          <Direct from={offer.from || "Sender"} to="You" state="active" />
+          <Direct from="Sender" to="You" state="active" />
           <p class="caption">
-            Receiving directly from {offer.from || "the sender"}. Keep this tab open until it's
-            done.
+            Receiving directly from the sender. Keep this tab open until it's done.
           </p>
         </Page>
       );
@@ -431,9 +431,9 @@ export function ReceivePage() {
           ) : (
             <p class="muted">It's saved where you chose.</p>
           )}
-          <Direct from={offer.from || "Sender"} to="You" state="done" />
+          <Direct from="Sender" to="You" state="done" />
           <p class="caption">
-            Sent straight from {owner(offer.from)} computer to yours. Encrypted the whole way.
+            Sent straight from the sender's computer to yours. Encrypted the whole way.
           </p>
           <OfferDetails offer={offer} sha256={sha256} />
         </Page>
@@ -459,10 +459,6 @@ export function ReceivePage() {
         </Page>
       );
   }
-}
-
-function owner(from: string): string {
-  return from ? `${from}'s` : "the sender's";
 }
 
 function OfferDetails({ offer, sha256 }: { offer: FileOffer; sha256?: string }) {
