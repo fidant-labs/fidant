@@ -62,9 +62,6 @@ importers:
         specifier: ^11.2.0
         version: 11.2.0
     devDependencies:
-      '@playwright/test':
-        specifier: 'catalog:'
-        version: 1.65.1
       '@types/node':
         specifier: ^24.19.2
         version: 24.19.2

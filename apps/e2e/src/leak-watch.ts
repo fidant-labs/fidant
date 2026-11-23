@@ -14,6 +14,8 @@ import {
   keySecrets,
   type Needles,
   type Secret,
+  type SecretClass,
+  textSecrets,
 } from "./leaks/needles.ts";
 import { exemptTest, registerSecrets } from "./leaks/registry.ts";
 import { formatLeakReport, logViolations } from "./leaks/report.ts";
@@ -31,6 +33,8 @@ export interface Leaks {
   watch(file: CanaryFile, label?: string): CanaryFile;
   /** Watches a key: raw bytes, or text such as a fragment secret (searched as text and bytes). */
   watchKey(label: string, key: Uint8Array | string | CanaryKey, cls?: "K" | "S"): void;
+  /** Watches text such as a recipient name, which must not appear whole (NFC or NFD UTF-8). */
+  watchText(label: string, text: string, cls?: SecretClass): void;
   /** Scans everything observed so far in this test. Never throws for a leak. */
   scan(): Promise<Finding[]>;
   /**
@@ -89,6 +93,10 @@ export class LeakWatch implements Leaks {
   watchKey(label: string, key: Uint8Array | string | CanaryKey, cls: "K" | "S" = "K"): void {
     const value = typeof key === "string" || key instanceof Uint8Array ? key : key.text;
     this.#add(keySecrets(label, value, cls));
+  }
+
+  watchText(label: string, text: string, cls: SecretClass = "M"): void {
+    this.#add(textSecrets(cls, label, text));
   }
 
   expectLeaks(): void {
