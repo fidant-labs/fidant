@@ -1,20 +1,22 @@
-// One row per recipient: name, link, copy button, status and progress.
+// One card per recipient: status, progress, link, copy and remove.
 //
-// Only the status text sits in the polite live region, so screen readers hear
-// "Receiving", "Delivered, checksum verified" and so on, not every progress
+// Only the status sentence sits in the polite live region, so screen readers
+// hear "Sending to Anna", "Delivered through Anna's link" and so on, not every progress
 // tick.
 
 import { useEffect, useRef, useState } from "preact/hooks";
-import { formatBytes } from "../lib/format.ts";
+import { formatProgress } from "../lib/format.ts";
 import type { Recipient, RecipientStatus } from "../lib/sender-state.ts";
+import { Direct, Icon } from "../ui.tsx";
 
-const STATUS_TEXT: Record<RecipientStatus, string> = {
-  waiting: "Waiting",
-  connecting: "Connecting",
-  offered: "Waiting for accept",
-  receiving: "Receiving",
-  delivered: "Delivered, checksum verified",
-  failed: "Failed: checksum mismatch",
+const STATUS_TEXT: Record<RecipientStatus, (name: string) => string> = {
+  waiting: (name) => `Waiting for ${name} to open the link`,
+  connecting: (name) => `Connecting to ${name}…`,
+  offered: (name) => `${name}'s link has been opened`,
+  receiving: (name) => `Sending to ${name}`,
+  delivered: (name) => `Delivered through ${name}'s link`,
+  failed: (name) =>
+    `The file didn't arrive intact for ${name}. They can open the link again to retry.`,
 };
 
 type Props = {
@@ -64,43 +66,43 @@ function RecipientRow({ recipient, fileSize, onRemove }: RowProps) {
       await navigator.clipboard.writeText(url);
       showNote("Copied");
     } catch {
-      showNote("Could not copy. Select the link and copy it yourself.");
+      showNote("Couldn't copy. Select the link below and copy it yourself.");
     }
   };
 
-  const percent = fileSize > 0 ? Math.min(100, Math.floor((bytesSent / fileSize) * 100)) : 100;
+  const shareable = status === "waiting" || status === "failed";
 
   return (
     <li class={`recipient status-${status}`}>
-      <div class="recipient-head">
-        <span class="recipient-name">{name}</span>
-        <span class="recipient-status" aria-live="polite">
-          {STATUS_TEXT[status]}
-        </span>
-      </div>
-      <output class="link" aria-label={`Link for ${name}`}>
-        {url}
-      </output>
+      <p class="recipient-status" aria-live="polite">
+        {status === "delivered" && <Icon name="check" />}
+        {status === "failed" && <Icon name="alert" />}
+        <span>{STATUS_TEXT[status](name)}</span>
+      </p>
       {status === "receiving" && (
-        <div class="progress-row">
-          <progress
-            aria-label={`Progress for ${name}`}
-            max={Math.max(fileSize, 1)}
-            value={fileSize > 0 ? bytesSent : 0}
-          />
-          <span class="progress-text">
-            {percent}% · {formatBytes(bytesSent)} of {formatBytes(fileSize)}
-          </span>
-        </div>
+        <>
+          <Direct from="You" to={name} state="active" />
+          <div class="progress-row">
+            <progress
+              aria-label={`Progress for ${name}`}
+              max={Math.max(fileSize, 1)}
+              value={fileSize > 0 ? bytesSent : 0}
+            />
+            <span class="progress-text">{formatProgress(bytesSent, fileSize)}</span>
+          </div>
+        </>
       )}
       <div class="recipient-actions">
-        <button type="button" onClick={copy}>
-          Copy link
-        </button>
+        {shareable && (
+          <button type="button" aria-label={`Copy link for ${name}`} onClick={copy}>
+            Copy link
+          </button>
+        )}
         <button
           type="button"
-          class="secondary"
+          class="link"
           aria-label={`Remove ${name}`}
+          data-remove={linkId}
           onClick={() => onRemove(linkId)}
         >
           Remove
@@ -109,6 +111,11 @@ function RecipientRow({ recipient, fileSize, onRemove }: RowProps) {
           {copyNote}
         </span>
       </div>
+      {shareable && (
+        <output class="link-text" aria-label={`Link for ${name}`}>
+          {url}
+        </output>
+      )}
     </li>
   );
 }

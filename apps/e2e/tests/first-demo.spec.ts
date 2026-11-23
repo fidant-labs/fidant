@@ -7,7 +7,7 @@ import { base32Token, type CanaryFile, type SeededRandom } from "../src/leaks/ca
 // The first demo end to end: a sender page sends one file to named recipients, each recipient on
 // their own link and in their own browser context. The harness's leak check runs after every test
 // and searches everything the browsers sent and received and everything the server logged for the
-// file, its name, type and size, the link secrets and the recipient names.
+// file, its name, type and size, the link secrets and the sender and recipient names.
 
 const MiB = 1024 * 1024;
 
@@ -76,31 +76,35 @@ function makeFile(leaks: Leaks, canary: SeededRandom, size: number): CanaryFile 
   return leaks.watch(canaryFile(canary.fork("file"), { size }));
 }
 
-/** A watched recipient name, unique to this run. */
+/** A watched person's name, unique to this run. */
 function makeName(leaks: Leaks, canary: SeededRandom, first: string): string {
   const name = `${first}-${base32Token(canary.fork(`name ${first}`), 8)}`;
-  leaks.watchText(`recipient name ${first}`, name);
+  leaks.watchText(`name ${first}`, name);
   return name;
 }
 
-/** Opens the sender page and chooses the file. */
-async function openSender(demo: Demo, file: CanaryFile): Promise<Page> {
+/** Opens the sender page, types the sender's name if given, and chooses the file. */
+async function openSender(demo: Demo, file: CanaryFile, from = ""): Promise<Page> {
   const page = await demo.open("sender");
   await page.goto("/");
-  await page.getByLabel("File").setInputFiles({
+  if (from) {
+    await page.getByLabel("Your name").fill(from);
+  }
+  await page.getByLabel("Choose a file").setInputFiles({
     name: file.name,
     mimeType: file.mime,
     buffer: file.bytes,
   });
-  await expect(page.getByText(`SHA-256: ${sha256Hex(file.bytes)}`)).toBeVisible();
+  await page.getByText("Technical details").click();
+  await expect(page.getByText(sha256Hex(file.bytes))).toBeVisible();
   return page;
 }
 
 /** Adds a recipient on the sender page and returns their link, with its secret watched. */
 async function addRecipient(leaks: Leaks, sender: Page, name: string): Promise<string> {
-  await sender.getByLabel("Recipient name").fill(name);
-  await sender.getByRole("button", { name: "Add recipient" }).click();
-  const link = (await sender.getByLabel(`Link for ${name}`).textContent()) ?? "";
+  await sender.getByLabel("Who is it for?").fill(name);
+  await sender.getByRole("button", { name: "Add", exact: true }).click();
+  const link = (await sender.getByLabel(`Link for ${name}`, { exact: true }).textContent()) ?? "";
   const secret = new URL(link).hash.slice(1);
   expect(secret, `link secret for ${name}`).toMatch(/^[A-Za-z0-9_-]{43}$/);
   leaks.watchKey(`link secret for ${name}`, secret);
@@ -110,26 +114,42 @@ async function addRecipient(leaks: Leaks, sender: Page, name: string): Promise<s
 const recipientRow = (sender: Page, name: string) =>
   sender.getByRole("list", { name: "Recipients" }).getByRole("listitem").filter({ hasText: name });
 
-/** Opens a link as `actor`, checks the offer, accepts and returns the downloaded bytes. */
+const delivered = (sender: Page, name: string) =>
+  recipientRow(sender, name).getByText(`Delivered through ${name}'s link`);
+
+/** Opens a link as `actor`, checks the offer, downloads, and returns the bytes of the automatic download. */
 async function receive(
   demo: Demo,
   actor: string,
   link: string,
   file: CanaryFile,
   sizeText: string,
+  from = "",
 ) {
   const page = await demo.open(actor);
   await page.goto(link);
-  await expect(page.getByRole("heading", { name: file.name })).toBeVisible();
+  const heading = from ? `${from} wants to send you a file` : "You've been sent a file";
+  await expect(page.getByRole("heading", { name: heading })).toBeFocused();
+  await expect(page.getByText("Name typed by the sender, not verified.")).toHaveCount(from ? 1 : 0);
+  await expect(page.getByText(file.name)).toBeVisible();
   await expect(page.getByText(sizeText, { exact: true })).toBeVisible();
+  await page.getByText("Technical details").click();
   await expect(page.getByText(`${file.size.toLocaleString("en-US")} bytes`)).toBeVisible();
-  await page.getByRole("button", { name: "Accept" }).click();
-  await expect(page.getByText("Checksum verified")).toBeVisible({ timeout: 60_000 });
-  const [download] = await Promise.all([
-    page.waitForEvent("download"),
-    page.getByRole("link", { name: "Save file" }).click(),
-  ]);
+  const downloading = page.waitForEvent("download", { timeout: 60_000 });
+  await page.getByRole("button", { name: "Download" }).click();
+  await expect(page.getByText("this is exactly the file that was sent")).toBeVisible({
+    timeout: 60_000,
+  });
+  const download = await downloading;
   expect(download.suggestedFilename()).toBe(file.name);
+  await expect(page.getByRole("heading", { name: "Download complete" })).toBeFocused();
+  // The typed name is unverified, so it stays on the offer screen only.
+  if (from) {
+    await expect(page.getByText(from)).toHaveCount(0);
+  }
+  const again = page.waitForEvent("download");
+  await page.getByRole("link", { name: "Save file" }).click();
+  expect((await again).suggestedFilename()).toBe(file.name);
   return { page, bytes: await readFile(await download.path()) };
 }
 
@@ -140,7 +160,8 @@ test("delivers a file to two recipients with a verified checksum", async ({
 }) => {
   // Odd size so the last chunk is partial and padding is exercised.
   const file = makeFile(leaks, canary, 8 * MiB + 321);
-  const sender = await openSender(demo, file);
+  const from = makeName(leaks, canary, "David");
+  const sender = await openSender(demo, file, from);
   const names = [makeName(leaks, canary, "Anna"), makeName(leaks, canary, "Erik")];
   const links: string[] = [];
   for (const name of names) {
@@ -148,16 +169,14 @@ test("delivers a file to two recipients with a verified checksum", async ({
   }
 
   const received = await Promise.all(
-    links.map((link, i) => receive(demo, `recipient-${i + 1}`, link, file, "8.4 MB")),
+    links.map((link, i) => receive(demo, `recipient-${i + 1}`, link, file, "8.4 MB", from)),
   );
   for (const { bytes } of received) {
     expect(sha256Hex(bytes)).toBe(sha256Hex(file.bytes));
   }
 
   for (const name of names) {
-    await expect(
-      recipientRow(sender, name).getByText("Delivered, checksum verified"),
-    ).toBeVisible();
+    await expect(delivered(sender, name)).toBeVisible();
   }
 });
 
@@ -169,7 +188,7 @@ test("refuses used, unknown and malformed links", async ({ demo, leaks, canary, 
 
   const first = await receive(demo, "recipient", link, file, "100 KB");
   expect(sha256Hex(first.bytes)).toBe(sha256Hex(file.bytes));
-  await expect(recipientRow(sender, name).getByText("Delivered, checksum verified")).toBeVisible();
+  await expect(delivered(sender, name)).toBeVisible();
   await first.page.context().close();
 
   const reopened = await demo.open("reopened");
@@ -182,14 +201,18 @@ test("refuses used, unknown and malformed links", async ({ demo, leaks, canary, 
   const linkId = canary.fork("unlisted link id").bytes(16).toString("base64url");
   const unlisted = await demo.open("unlisted");
   await unlisted.goto(`${baseURL}/r/${linkId}#${unlistedSecret}`);
-  await expect(unlisted.getByText("Link not found")).toBeVisible();
+  await expect(unlisted.getByText("This link isn't active")).toBeVisible();
 
   const malformed = await demo.open("malformed");
   await malformed.goto("/r/not-a-link#nope");
-  await expect(malformed.getByText("This link is not valid")).toBeVisible();
+  await expect(malformed.getByText("This link doesn't work")).toBeVisible();
 });
 
-test("a declined offer puts the recipient back to waiting", async ({ demo, leaks, canary }) => {
+test("a declined offer puts the recipient back to waiting, and can be reopened", async ({
+  demo,
+  leaks,
+  canary,
+}) => {
   const file = makeFile(leaks, canary, 100_001);
   const sender = await openSender(demo, file);
   const name = makeName(leaks, canary, "Erik");
@@ -197,10 +220,71 @@ test("a declined offer puts the recipient back to waiting", async ({ demo, leaks
 
   const recipient = await demo.open("recipient");
   await recipient.goto(link);
-  await expect(recipientRow(sender, name).getByText("Waiting for accept")).toBeVisible();
+  const opened = recipientRow(sender, name).getByText(`${name}'s link has been opened`);
+  await expect(opened).toBeVisible();
   await recipient.getByRole("button", { name: "Decline" }).click();
   await expect(recipient.getByText("You declined the file")).toBeVisible();
-  await expect(recipientRow(sender, name).getByText("Waiting", { exact: true })).toBeVisible();
+  await expect(
+    recipientRow(sender, name).getByText(`Waiting for ${name} to open the link`),
+  ).toBeVisible();
+
+  await recipient.getByRole("button", { name: "Show the file again" }).click();
+  await expect(recipient.getByRole("button", { name: "Download" })).toBeVisible();
+  await expect(opened).toBeVisible();
+});
+
+test("the sender's name must fit with the file name, and stray drops are ignored", async ({
+  demo,
+  leaks,
+  canary,
+}) => {
+  const fileName = `${base32Token(canary.fork("long file name"), 8)}${"r".repeat(872)}.bin`;
+  leaks.watchText("long file name", fileName);
+  const page = await demo.open("sender");
+  await page.goto("/");
+  await page.getByLabel("Your name").fill("x".repeat(100));
+  await page.getByLabel("Choose a file").setInputFiles({
+    name: fileName,
+    mimeType: "application/octet-stream",
+    buffer: Buffer.from("hello"),
+  });
+  const drop = (id: string, fill: string) => `(() => {
+    const dt = new DataTransfer();
+    ${fill};
+    const e = new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: dt });
+    document.getElementById("${id}").dispatchEvent(e);
+    return e.defaultPrevented;
+  })()`;
+  const file = `dt.items.add(new File(["x"], "x.bin"))`;
+  const text = `dt.setData("text/plain", "x")`;
+  expect(await page.evaluate(drop("file", file))).toBe(false);
+  expect(await page.evaluate(drop("file", text))).toBe(true);
+  expect(await page.evaluate(drop("recipient-name", text))).toBe(false);
+  expect(await page.evaluate(drop("recipient-name", file))).toBe(true);
+  const name = makeName(leaks, canary, "Anna");
+  await page.getByLabel("Who is it for?").fill(name);
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(page.getByText("Your name and the file name are too long together")).toBeVisible();
+  await expect(page.getByRole("list", { name: "Recipients" })).toHaveCount(0);
+
+  const from = makeName(leaks, canary, "Al");
+  await page.getByLabel("Your name").fill(from);
+  const link = await addRecipient(leaks, page, name);
+  await expect(page.getByLabel("Your name")).toBeDisabled();
+
+  expect(await page.evaluate(drop("from", text))).toBe(true);
+  const strayDrop = `(() => {
+    const drop = new DragEvent("drop", { bubbles: true, cancelable: true });
+    document.body.dispatchEvent(drop);
+    return drop.defaultPrevented;
+  })()`;
+  expect(await page.evaluate(strayDrop)).toBe(true);
+
+  const recipient = await demo.open("recipient");
+  await recipient.goto(link);
+  await expect(
+    recipient.getByRole("heading", { name: `${from} wants to send you a file` }),
+  ).toBeVisible();
 });
 
 test("a waiting recipient sees when the sender goes offline", async ({ demo, leaks, canary }) => {
@@ -210,7 +294,7 @@ test("a waiting recipient sees when the sender goes offline", async ({ demo, lea
 
   const recipient = await demo.open("recipient");
   await recipient.goto(link);
-  await expect(recipient.getByRole("button", { name: "Accept" })).toBeVisible();
+  await expect(recipient.getByRole("button", { name: "Download" })).toBeVisible();
   await sender.close();
-  await expect(recipient.getByText("The sender is offline")).toBeVisible();
+  await expect(recipient.getByText("The sender's page is closed")).toBeVisible();
 });

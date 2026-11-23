@@ -21,7 +21,7 @@
 import { MAX_LINKS } from "@sigill/protocol";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { formatBytes, toHex } from "../lib/format.ts";
-import { hasForbiddenCharacters, metaFits } from "../lib/frames.ts";
+import { hasForbiddenCharacters, MAX_FROM_LENGTH, metaFits } from "../lib/frames.ts";
 import { deriveSignalKey } from "../lib/keys.ts";
 import { createLink } from "../lib/link.ts";
 import { createSenderPeer, type Peer } from "../lib/peer.ts";
@@ -37,6 +37,7 @@ import {
   update,
 } from "../lib/sender-state.ts";
 import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
+import { FileCard, Icon, Page, TechDetails } from "../ui.tsx";
 import { RecipientList } from "./RecipientList.tsx";
 
 type Hash =
@@ -61,9 +62,13 @@ export function SendPage() {
   const [lostServer, setLostServer] = useState(false);
   const [nameError, setNameError] = useState("");
   const [fileError, setFileError] = useState("");
+  const [from, setFrom] = useState("");
+  const [fromError, setFromError] = useState("");
 
   // Mutable state used from network callbacks, outside render.
   const senderRef = useRef<SenderState>(initialSenderState);
+  // Set when the first recipient is added; the name field stays locked while anyone is on the list.
+  const fromRef = useRef("");
   const fileRef = useRef<{ file: File; sha256: Promise<Uint8Array> } | undefined>(undefined);
   const hashAbortRef = useRef<AbortController | undefined>(undefined);
   const signalingRef = useRef<SignalingClient | undefined>(undefined);
@@ -130,6 +135,7 @@ export function SendPage() {
           channel,
           maxMessageSize: info.maxMessageSize,
           file: chosen.file,
+          from: fromRef.current,
           secret: recipient.secret,
           sha256: chosen.sha256,
           signal: connection.abort.signal,
@@ -301,121 +307,177 @@ export function SendPage() {
       return;
     }
     setNameError("");
+    if (sender.recipients.length === 0) {
+      const typed = from.trim();
+      const problem = hasForbiddenCharacters(typed)
+        ? "Your name contains characters that can't be sent. Remove them and try again."
+        : file && !metaFits(file, typed)
+          ? "Your name and the file name are too long together. Shorten your name or rename the file."
+          : "";
+      setFromError(problem);
+      if (problem) {
+        document.getElementById("from")?.focus();
+        return;
+      }
+      fromRef.current = typed;
+    }
     dispatchRef.current({ type: "add", link: createLink(location.origin), name });
     form.reset();
     input.focus();
   };
 
-  const onRemove = (linkId: string) => dispatchRef.current({ type: "remove", linkId });
+  const onRemove = (linkId: string) => {
+    const list = senderRef.current.recipients;
+    const index = list.findIndex((r) => r.linkId === linkId);
+    const neighbour = list[index + 1] ?? list[index - 1];
+    dispatchRef.current({ type: "remove", linkId });
+    // The removed card held focus; keep the keyboard user in the list once it has re-rendered.
+    requestAnimationFrame(() => {
+      const target = neighbour
+        ? document.querySelector<HTMLElement>(`[data-remove="${neighbour.linkId}"]`)
+        : document.getElementById("recipient-name");
+      target?.focus();
+    });
+  };
 
   const hasRecipients = sender.recipients.length > 0;
   const full = sender.recipients.length >= MAX_LINKS;
   const isLocalhost = LOCAL_HOSTS.has(location.hostname);
+  const unfinished = sender.recipients.some((r) => r.status !== "delivered");
 
   return (
-    <main>
-      <header>
-        <h1>Sigill</h1>
-        <p class="lede">
-          Send a file straight from this browser. It is encrypted here and only the people you add
-          can open it.
-        </p>
-      </header>
+    <Page>
+      <h1>Send a file</h1>
+      <p class="lede">
+        Your file goes straight from this browser to the people you choose. It's encrypted on the
+        way and never uploaded or stored.
+      </p>
 
       {isLocalhost && (
         <p class="notice warning">
-          You opened this page on localhost, so the links won't work on other devices. Open it at
-          the network address the server printed instead.
+          This page is open on localhost, so the links won't work on other computers. Open the
+          network address the server printed instead.
         </p>
       )}
       {lostServer && (
         <p class="notice error" role="alert">
-          Lost connection to the server. Files that recipients are already receiving can finish, but
-          offers not yet accepted end and nobody new can connect. Reload the page to start over.
+          Lost the connection to the server. Files already on their way can finish, but nobody new
+          can connect. Reload the page to start again.
         </p>
       )}
 
-      <section>
-        <h2>1. Choose a file</h2>
-        <div class="field">
-          <label for="file">File</label>
+      <div class="field">
+        <label for="from">
+          Your name <span class="muted">(optional)</span>
+        </label>
+        <input
+          id="from"
+          type="text"
+          autocomplete="name"
+          maxLength={MAX_FROM_LENGTH}
+          value={from}
+          onInput={(event) => setFrom(event.currentTarget.value)}
+          disabled={hasRecipients}
+          aria-invalid={fromError ? "true" : "false"}
+          aria-describedby={fromError ? "from-error from-hint" : "from-hint"}
+        />
+        {fromError && (
+          <p id="from-error" class="field-error">
+            {fromError}
+          </p>
+        )}
+        <p id="from-hint" class="hint">
+          Shown to the people you send to.
+        </p>
+      </div>
+
+      {!hasRecipients && (
+        <div class="drop">
           <input
             id="file"
             type="file"
             onChange={onFileChange}
-            disabled={hasRecipients}
             aria-invalid={fileError ? "true" : "false"}
-            aria-describedby={fileError ? "file-error file-hint" : "file-hint"}
+            aria-describedby={fileError ? "file-error" : undefined}
+          />
+          <label for="file">
+            <Icon name="file" />
+            <span>
+              <strong>{file ? "Choose a different file" : "Choose a file"}</strong> or drop it here
+            </span>
+          </label>
+        </div>
+      )}
+      {fileError && (
+        <p id="file-error" class="field-error">
+          {fileError}
+        </p>
+      )}
+      {file && (
+        <>
+          <FileCard name={file.name} size={formatBytes(file.size)} />
+          {hash.status === "preparing" && (
+            <p class="muted" role="status">
+              Getting the file ready…
+            </p>
+          )}
+          {hash.status === "failed" && (
+            <p class="field-error" role="alert">
+              Couldn't read the file. Choose it again.
+            </p>
+          )}
+          <TechDetails
+            rows={[
+              ["Size", `${file.size.toLocaleString("en-US")} bytes`],
+              ["Type", file.type || "Not given"],
+              ["SHA-256", hash.status === "ready" ? <code>{hash.hex}</code> : "Not ready yet"],
+            ]}
+          />
+        </>
+      )}
+      {hasRecipients && <p class="hint">Remove everyone to change your name or file.</p>}
+
+      <form class="add-recipient" onSubmit={onAdd} noValidate>
+        <div class="field">
+          <label for="recipient-name">Who is it for?</label>
+          <input
+            id="recipient-name"
+            name="name"
+            type="text"
+            placeholder="Their name"
+            autocomplete="off"
+            maxLength={100}
+            disabled={!file || full}
+            aria-invalid={nameError ? "true" : "false"}
+            aria-describedby={nameError ? "name-error recipient-hint" : "recipient-hint"}
           />
         </div>
-        {fileError && (
-          <p id="file-error" class="field-error">
-            {fileError}
-          </p>
-        )}
-        <p id="file-hint" class="hint">
-          {hasRecipients
-            ? "Remove all recipients to choose a different file."
-            : "The file never leaves this browser unencrypted, and nothing about it is sent to the server."}
+        <button type="submit" disabled={!file || full}>
+          Add
+        </button>
+      </form>
+      {nameError && (
+        <p id="name-error" class="field-error">
+          {nameError}
         </p>
-        {file && (
-          <div class="file-info">
-            <p>
-              <strong class="file-name">{file.name}</strong>{" "}
-              <span title={`${file.size} bytes`}>{formatBytes(file.size)}</span>
-            </p>
-            <p class="hash">
-              {hash.status === "preparing" && "Preparing…"}
-              {hash.status === "ready" && (
-                <>
-                  SHA-256: <code>{hash.hex}</code>
-                </>
-              )}
-              {hash.status === "failed" && "Could not read the file. Choose it again."}
-            </p>
-          </div>
-        )}
-      </section>
-
-      <section>
-        <h2>2. Add recipients</h2>
-        <form class="add-recipient" onSubmit={onAdd} noValidate>
-          <div class="field">
-            <label for="recipient-name">Recipient name</label>
-            <input
-              id="recipient-name"
-              name="name"
-              type="text"
-              autocomplete="off"
-              maxLength={100}
-              disabled={!file || full}
-              aria-invalid={nameError ? "true" : "false"}
-              aria-describedby={nameError ? "name-error recipient-hint" : "recipient-hint"}
-            />
-          </div>
-          <button type="submit" disabled={!file || full}>
-            Add recipient
-          </button>
-        </form>
-        {nameError && (
-          <p id="name-error" class="field-error">
-            {nameError}
-          </p>
-        )}
-        <p id="recipient-hint" class="hint">
-          {file
-            ? "Each recipient gets their own link, which works once. Names stay in this browser."
-            : "Choose a file first."}
+      )}
+      <p id="recipient-hint" class="hint">
+        {!file
+          ? "Choose a file first."
+          : full
+            ? `You can send to up to ${MAX_LINKS} people at a time.`
+            : "Each person gets their own link, which works once."}
+      </p>
+      <RecipientList
+        recipients={sender.recipients}
+        fileSize={file?.size ?? 0}
+        onRemove={onRemove}
+      />
+      {unfinished && (
+        <p class="hint">
+          Keep this tab open until everyone has the file. It's sent straight from here.
         </p>
-        <RecipientList
-          recipients={sender.recipients}
-          fileSize={file?.size ?? 0}
-          onRemove={onRemove}
-        />
-        {hasRecipients && (
-          <p class="hint">Keep this tab open until every recipient has their file.</p>
-        )}
-      </section>
-    </main>
+      )}
+    </Page>
   );
 }

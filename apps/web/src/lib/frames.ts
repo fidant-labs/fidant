@@ -13,7 +13,8 @@
 // |------|---------|-----|--------------------------------------------------|
 // |    0 | INIT    |  s  | transferId (16), in clear, seq 0, see below      |
 // |    1 | META    |  s  | exactly 1024 bytes: length(2, u16 big-endian) || |
-// |      |         |     | UTF-8 JSON {name, size, type, chunkSize} || zeros |
+// |      |         |     | UTF-8 JSON {name, size, type, chunkSize, from}   |
+// |      |         |     | || zeros (from: the sender's typed name, or "")  |
 // |    2 | CHUNK   |  s  | exactly chunkSize bytes: file bytes, then zeros  |
 // |      |         |     | after the end of the file (see Padding)          |
 // |    3 | END     |  s  | sha256(32) || size(8, u64 big-endian)            |
@@ -56,10 +57,12 @@ export const META_PADDED_BYTES = 1024;
 /** META's length prefix. */
 const META_LENGTH_BYTES = 2;
 /**
- * Longest MIME type META accepts. The file name has no separate limit: name
- * and type together must fit in META_PADDED_BYTES (see metaFits).
+ * Longest MIME type META accepts. The file name has no separate limit: name,
+ * type and sender name together must fit in META_PADDED_BYTES (see metaFits).
  */
 export const MAX_TYPE_LENGTH = 255;
+/** Longest sender name META accepts, in UTF-16 code units like `maxLength`. */
+export const MAX_FROM_LENGTH = 100;
 
 export const SenderKind = { INIT: 0, META: 1, CHUNK: 2, END: 3 } as const;
 export const RecipientKind = { ACCEPT: 16, RECEIPT: 17, DECLINE: 18 } as const;
@@ -231,12 +234,19 @@ export class FrameReader {
   }
 }
 
-export type FileMeta = { name: string; size: number; type: string; chunkSize: number };
+export type FileMeta = {
+  name: string;
+  size: number;
+  type: string;
+  chunkSize: number;
+  /** The name the sender typed for themselves, unverified. Empty if they typed none. */
+  from: string;
+};
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
 
-/** Thrown by encodeMeta when the file name and type do not fit in META_PADDED_BYTES. */
+/** Thrown by encodeMeta when the file name, type and sender name do not fit in META_PADDED_BYTES. */
 export class MetaTooLargeError extends Error {
   constructor() {
     super("file metadata does not fit in the META frame");
@@ -265,12 +275,13 @@ export function encodeMeta(meta: FileMeta): Uint8Array<ArrayBuffer> {
 }
 
 /**
- * Whether a file with this name, type and size can be offered: its META fits
- * for any chunk size. Check it when the file is chosen.
+ * Whether a file with this name, type and size can be offered by a sender
+ * named `from`: its META fits for any chunk size.
  */
-export function metaFits(file: { name: string; type: string; size: number }): boolean {
+export function metaFits(file: { name: string; type: string; size: number }, from = ""): boolean {
   try {
-    encodeMeta({ name: file.name, type: file.type, size: file.size, chunkSize: MAX_CHUNK_BYTES });
+    const { name, type, size } = file;
+    encodeMeta({ name, type, size, chunkSize: MAX_CHUNK_BYTES, from });
     return true;
   } catch {
     return false;
@@ -316,7 +327,7 @@ function isZero(bytes: Uint8Array): boolean {
 const FORBIDDEN_CHARACTERS = /[\p{Cc}\u200E\u200F\u202A-\u202E\u2066-\u2069]/u;
 
 /**
- * Whether a file name or type contains characters META refuses: control
+ * Whether a file name, type or sender name contains characters META refuses: control
  * characters, which could break how the name is shown or saved, and direction
  * controls, which can make a name ending in ".exe" display as if it ended in
  * ".pdf". The sender checks it when a file is chosen; decodeMeta rejects such names.
@@ -330,10 +341,10 @@ function parseMeta(value: unknown): FileMeta | undefined {
     return undefined;
   }
   const keys = Object.keys(value).sort().join(",");
-  if (keys !== "chunkSize,name,size,type") {
+  if (keys !== "chunkSize,from,name,size,type") {
     return undefined;
   }
-  const { name, size, type, chunkSize } = value as Record<string, unknown>;
+  const { name, size, type, chunkSize, from } = value as Record<string, unknown>;
   if (typeof name !== "string" || name.length === 0 || hasForbiddenCharacters(name)) {
     return undefined;
   }
@@ -351,11 +362,14 @@ function parseMeta(value: unknown): FileMeta | undefined {
   ) {
     return undefined;
   }
+  if (typeof from !== "string" || from.length > MAX_FROM_LENGTH || hasForbiddenCharacters(from)) {
+    return undefined;
+  }
   // The padded transfer length must stay a safe integer too.
   if (size > MAX_PADDABLE_SIZE) {
     return undefined;
   }
-  return { name, size, type, chunkSize };
+  return { name, size, type, chunkSize, from };
 }
 
 /**
