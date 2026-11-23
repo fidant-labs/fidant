@@ -18,6 +18,6 @@ export const mail: Mail = {
   dmarc: undefined,
 };
 
-// Copied by hand from FidantCertificate and FidantSite, which deploy to another account.
+// Copied by hand from FidantSite, which deploys to another account.
 export const certificateValidation: DnsRecord[] = [];
 export const distributionDomain: string | undefined = undefined;
