@@ -8,6 +8,7 @@
 
 import type { Server as HttpServer, IncomingMessage } from "node:http";
 import type { Server as HttpsServer } from "node:https";
+import { isIP } from "node:net";
 import type { Duplex } from "node:stream";
 import {
   type ClientMessage,
@@ -26,6 +27,12 @@ export const SIGNAL_PATH = "/signal";
 
 export const HEARTBEAT_MS = 30_000;
 
+/** Caps on open sockets. Tests lower them through the `limits` option. */
+const LIMITS = {
+  sockets: 1000,
+  socketsPerAddress: 32,
+};
+
 /** WebSocket close code for a protocol violation. */
 const POLICY_VIOLATION = 1008;
 
@@ -36,6 +43,8 @@ type Peer = {
   /** The link this socket is bound to as a guest. */
   joined: string | undefined;
   alive: boolean;
+  /** The client address this socket counts against. Never logged. */
+  address: string;
 };
 
 function short(link: string): string {
@@ -48,9 +57,57 @@ function send(socket: WebSocket, message: ServerMessage): void {
   }
 }
 
-function rejectUpgrade(socket: Duplex, status: 403 | 404): void {
-  const text = status === 403 ? "Forbidden" : "Not Found";
+const STATUS_TEXT = {
+  403: "Forbidden",
+  404: "Not Found",
+  429: "Too Many Requests",
+  503: "Service Unavailable",
+};
+
+function rejectUpgrade(socket: Duplex, status: keyof typeof STATUS_TEXT): void {
+  const text = STATUS_TEXT[status];
   socket.end(`HTTP/1.1 ${status} ${text}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
+}
+
+/** Maps an IPv4-mapped IPv6 address to IPv4 and drops an IPv6 zone. */
+function normalize(ip: string): string {
+  const lower = ip.toLowerCase().split("%")[0] ?? "";
+  return /^::ffff:\d+\.\d+\.\d+\.\d+$/.test(lower) ? lower.slice(7) : lower;
+}
+
+/** The first 64 bits of an IPv6 address, written as a /64 prefix. */
+function prefix64(ip: string): string {
+  const [head = "", tail = ""] = ip.split("::");
+  const front = head ? head.split(":") : [];
+  const back = tail ? tail.split(":") : [];
+  const groups = ip.includes("::")
+    ? [...front, ...Array<string>(Math.max(0, 8 - front.length - back.length)).fill("0"), ...back]
+    : front;
+  return `${groups
+    .slice(0, 4)
+    .map((group) => Number.parseInt(group, 16).toString(16))
+    .join(":")}::/64`;
+}
+
+/**
+ * The address a socket counts against for the per-address cap. X-Forwarded-For is trusted only
+ * from loopback (a reverse proxy on the same host), and only its rightmost entry, which that
+ * proxy wrote. IPv6 clients are keyed by their /64, since one host usually owns a whole /64.
+ * The result is used only as a map key and is never logged.
+ */
+export function clientAddress(
+  remote: string | undefined,
+  forwardedFor: string | string[] | undefined,
+): string {
+  let ip = normalize(remote ?? "");
+  if (ip === "::1" || ip.startsWith("127.")) {
+    const header = Array.isArray(forwardedFor) ? forwardedFor.join(",") : (forwardedFor ?? "");
+    const forwarded = normalize(header.split(",").at(-1)?.trim() ?? "");
+    if (isIP(forwarded) !== 0) {
+      ip = forwarded;
+    }
+  }
+  return isIP(ip) === 6 ? prefix64(ip) : ip;
 }
 
 /** True if the request has no Origin header or one whose host matches the Host header. */
@@ -68,13 +125,16 @@ function sameOrigin(req: IncomingMessage): boolean {
 
 export function attachSignaling(
   server: HttpServer | HttpsServer,
-  options: { log: Logger; heartbeatMs?: number },
+  options: { log: Logger; heartbeatMs?: number; limits?: Partial<typeof LIMITS> },
 ): { close(): void } {
   const { log } = options;
+  const limits = { ...LIMITS, ...options.limits };
   const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
   const peers = new Map<WebSocket, Peer>();
   const hosts = new Map<string, WebSocket>();
   const guests = new Map<string, WebSocket>();
+  /** Open sockets per client address. */
+  const perAddress = new Map<string, number>();
 
   function onUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
     let pathname: string;
@@ -93,12 +153,31 @@ export function attachSignaling(
       rejectUpgrade(socket, 403);
       return;
     }
-    wss.handleUpgrade(req, socket, head, (ws) => connect(ws));
+    if (peers.size >= limits.sockets) {
+      log("upgrade-rejected", { reason: "full" });
+      rejectUpgrade(socket, 503);
+      return;
+    }
+    const address = clientAddress(req.socket.remoteAddress, req.headers["x-forwarded-for"]);
+    if ((perAddress.get(address) ?? 0) >= limits.socketsPerAddress) {
+      log("upgrade-rejected", { reason: "address" });
+      rejectUpgrade(socket, 429);
+      return;
+    }
+    // Without verifyClient, ws calls back synchronously, so the counts above are current.
+    wss.handleUpgrade(req, socket, head, (ws) => connect(ws, address));
   }
 
-  function connect(socket: WebSocket): void {
-    const peer: Peer = { role: "none", hosted: new Set(), joined: undefined, alive: true };
+  function connect(socket: WebSocket, address: string): void {
+    const peer: Peer = {
+      role: "none",
+      hosted: new Set(),
+      joined: undefined,
+      alive: true,
+      address,
+    };
     peers.set(socket, peer);
+    perAddress.set(address, (perAddress.get(address) ?? 0) + 1);
     socket.on("pong", () => {
       peer.alive = true;
     });
@@ -256,6 +335,12 @@ export function attachSignaling(
 
   function disconnect(socket: WebSocket, peer: Peer): void {
     peers.delete(socket);
+    const count = (perAddress.get(peer.address) ?? 1) - 1;
+    if (count > 0) {
+      perAddress.set(peer.address, count);
+    } else {
+      perAddress.delete(peer.address);
+    }
     if (peer.hosted.size > 0) {
       log("host-closed", { links: peer.hosted.size });
       for (const link of peer.hosted) {

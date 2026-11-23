@@ -13,7 +13,7 @@ import {
   UPGRADE_REJECT_REASONS,
 } from "@sigill/protocol";
 import { WebSocket as WsClient } from "ws";
-import { attachSignaling, HEARTBEAT_MS } from "./signaling.ts";
+import { attachSignaling, clientAddress, HEARTBEAT_MS } from "./signaling.ts";
 
 const logLines: { event: string; fields: LogFields | undefined }[] = [];
 const server = createServer((_req, res) => res.writeHead(404).end());
@@ -252,11 +252,14 @@ test("closes the socket with 1008 on an invalid message", async () => {
   assert.equal(await binary.closed, 1008);
 });
 
-function upgradeStatus(path: string, headers: Record<string, string> = {}): Promise<number> {
+function upgradeStatus(
+  path: string,
+  headers: Record<string, string> = {},
+  to: { host: string; port: number } = { host: "localhost", port },
+): Promise<number> {
   return new Promise((done, fail) => {
     const req = request({
-      host: "localhost",
-      port,
+      ...to,
       path,
       headers: {
         connection: "Upgrade",
@@ -360,4 +363,82 @@ test("terminates a guest that never answers pings and tells the host it left", a
   const joinedAt = performance.now();
   assert.deepEqual(await host.next(), { t: "left", link });
   assert.ok(performance.now() - joinedAt < 200, "the silent guest outlived two heartbeats");
+});
+
+test("keys clients by address, trusting X-Forwarded-For only from loopback", () => {
+  assert.equal(clientAddress("203.0.113.7", undefined), "203.0.113.7");
+  assert.equal(clientAddress("::ffff:203.0.113.7", undefined), "203.0.113.7");
+  assert.equal(clientAddress("203.0.113.7", "198.51.100.1"), "203.0.113.7");
+  assert.equal(clientAddress("127.0.0.1", undefined), "127.0.0.1");
+  assert.equal(clientAddress("127.0.0.1", "198.51.100.1"), "198.51.100.1");
+  assert.equal(clientAddress("::1", "198.51.100.1"), "198.51.100.1");
+  assert.equal(clientAddress("::ffff:127.0.0.1", "198.51.100.1"), "198.51.100.1");
+  assert.equal(clientAddress("127.0.0.1", "10.0.0.1, 198.51.100.1"), "198.51.100.1");
+  assert.equal(clientAddress("127.0.0.1", ["10.0.0.1", "198.51.100.1"]), "198.51.100.1");
+  assert.equal(clientAddress("127.0.0.1", "::ffff:198.51.100.1"), "198.51.100.1");
+  assert.equal(clientAddress("127.0.0.1", "not-an-ip"), "127.0.0.1");
+  assert.equal(clientAddress("2001:db8:1:2:3:4:5:6", undefined), "2001:db8:1:2::/64");
+  assert.equal(clientAddress("2001:DB8:1:2::9", undefined), "2001:db8:1:2::/64");
+  assert.equal(clientAddress("2001:db8::1", undefined), "2001:db8:0:0::/64");
+  assert.equal(clientAddress("fe80::1%en0", undefined), "fe80:0:0:0::/64");
+  assert.equal(clientAddress("::1", undefined), "0:0:0:0::/64");
+  assert.equal(clientAddress("127.0.0.1", "2001:db8:1:2::9"), "2001:db8:1:2::/64");
+});
+
+/**
+ * Starts a second signaling server with lowered limits on 127.0.0.1, so every client in the test
+ * counts against the same address.
+ */
+async function limitedServer(
+  t: { after(fn: () => void): void },
+  limits: { sockets?: number; socketsPerAddress?: number },
+): Promise<{ host: string; port: number }> {
+  const limited = createServer();
+  const limitedSignaling = attachSignaling(limited, { log: () => {}, limits });
+  t.after(() => {
+    limitedSignaling.close();
+    limited.close();
+  });
+  await new Promise<void>((done) => limited.listen(0, "127.0.0.1", done));
+  return { host: "127.0.0.1", port: (limited.address() as AddressInfo).port };
+}
+
+/** Retries an upgrade until the server has noticed a close and freed the slot. */
+async function upgradeAfterClose(
+  to: { host: string; port: number },
+  headers: Record<string, string> = {},
+) {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const status = await upgradeStatus("/signal", headers, to);
+    if (status === 101) {
+      return status;
+    }
+    await new Promise((done) => setTimeout(done, 10));
+  }
+  return 0;
+}
+
+test("rejects upgrades with 503 once the server holds its total of sockets", async (t) => {
+  const limited = await limitedServer(t, { sockets: 2 });
+  const url = `ws://127.0.0.1:${limited.port}/signal`;
+  const first = await connect(url);
+  await connect(url);
+  const other = { "x-forwarded-for": "198.51.100.1" };
+  assert.equal(await upgradeStatus("/signal", other, limited), 503);
+  first.socket.close();
+  await first.closed;
+  assert.equal(await upgradeAfterClose(limited, other), 101);
+});
+
+test("rejects upgrades with 429 once one address holds its share of sockets", async (t) => {
+  const limited = await limitedServer(t, { socketsPerAddress: 2 });
+  const url = `ws://127.0.0.1:${limited.port}/signal`;
+  const first = await connect(url);
+  await connect(url);
+  assert.equal(await upgradeStatus("/signal", {}, limited), 429);
+  const proxied = { "x-forwarded-for": "198.51.100.1" };
+  assert.equal(await upgradeStatus("/signal", proxied, limited), 101);
+  first.socket.close();
+  await first.closed;
+  assert.equal(await upgradeAfterClose(limited), 101);
 });

@@ -97,7 +97,7 @@ test("fails counts that are not non-negative integers", () => {
 });
 
 test("fails an unknown reason or code", () => {
-  assert.deepEqual(rules(line({ event: "refused", reason: "full" })), ["reason"]);
+  assert.deepEqual(rules(line({ event: "refused", reason: "gone" })), ["reason"]);
   assert.deepEqual(rules(line({ event: "error", code: "oops" })), ["code"]);
   assert.deepEqual(rules(line({ event: "error", code: null })), ["code"]);
 });
