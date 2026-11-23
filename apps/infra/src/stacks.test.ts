@@ -82,6 +82,28 @@ test("the committed config synthesizes and keeps the Proton verification record"
   });
 });
 
+test("the committed config keeps a validation record and an alias for every site name", () => {
+  const [stack] = stacksFor(dnsAccount);
+  const template = Template.fromStack(stack as Stack);
+  for (const name of siteNames) {
+    template.hasResourceProperties("AWS::Route53::RecordSet", {
+      Name: Match.stringLikeRegexp(`^_[0-9a-f]+\\.${name.replaceAll(".", "\\.")}\\.$`),
+      Type: "CNAME",
+      ResourceRecords: [Match.stringLikeRegexp("\\.acm-validations\\.aws\\.$")],
+    });
+    for (const type of ["A", "AAAA"]) {
+      template.hasResourceProperties("AWS::Route53::RecordSet", {
+        Name: `${name}.`,
+        Type: type,
+        AliasTarget: {
+          DNSName: Match.stringLikeRegexp("^d[0-9a-z]+\\.cloudfront\\.net$"),
+          HostedZoneId: "Z2FDTNDATAQYW2",
+        },
+      });
+    }
+  }
+});
+
 test("the hosted zones survive the stack being deleted", () => {
   const zones = Object.values(dns.findResources("AWS::Route53::HostedZone"));
   assert.equal(zones.length, 3);
