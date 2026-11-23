@@ -14,3 +14,6 @@ observations/
 
 .claude/settings.local.json
 .claude/worktrees/
+
+# Raw downloads of the split-key bench runner.
+spikes/split-key/.runs/

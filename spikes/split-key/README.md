@@ -75,6 +75,66 @@ The e2e harness (`apps/e2e`) currently sets `serviceWorkers: "block"`, so a
 service worker download in the app would need that changed, and the
 recorder may not see requests a service worker answers.
 
+### Runner
+
+```sh
+pnpm --filter @sigill/spike-split-key bench:run
+pnpm --filter @sigill/spike-split-key bench:run --engines webkit --sizes 1GiB,5GiB
+```
+
+`src/runner/run.ts` builds the page, serves it with `serve.ts` on free
+`127.0.0.1` ports and drives it in Chromium, Firefox and WebKit through
+Playwright, headless. Install the two extra engines once, with the
+repository's Playwright version:
+
+```sh
+pnpm --filter @sigill/e2e exec playwright install firefox webkit
+```
+
+Per engine it launches a fresh browser with a new persistent profile under
+`.runs/` (WebKit has no OPFS in Playwright's ephemeral contexts:
+`getDirectory()` fails with `UnknownError`), runs the microbenchmarks once, then every size × sink × chunk size of the pipeline from
+the seeded generator. For each run it:
+
+- samples the browser's resident memory every 250 ms (`src/runner/rss.ts`),
+- waits for the page's download of `bench-output.bin` and checks its size and
+  SHA-256 against Node regenerating the same seeded stream
+  (`src/runner/verify.ts`),
+- deletes the download and clicks "Clear OPFS".
+
+| Flag         | Default                   | Values                                          |
+| ------------ | ------------------------- | ----------------------------------------------- |
+| `--engines`  | `chromium,firefox,webkit` |                                                 |
+| `--sizes`    | `64MiB`                   | presets `64MiB,1GiB,5GiB` or any whole MiB      |
+| `--sinks`    | `opfs,fsa-opfs,blob,sw`   | `fsa` needs a save picker; `fsa-opfs` stands in |
+| `--chunks`   | `256KiB,1MiB`             | `48KiB,256KiB,1MiB,4MiB`                        |
+| `--seed`     | `1`                       |                                                 |
+| `--micro`    | `256MiB`                  | bytes per microbenchmark stage, `0` skips       |
+| `--out`      | `results/`                | where `<YYYY-MM-DD>-<engine>.json` goes         |
+| `--runs-dir` | `.runs/`                  | profiles and downloads, removed as it goes      |
+| `--headed`   | off                       | show the browser windows                        |
+| `--no-build` | off                       | serve the existing `dist/`                      |
+
+A run may take a minute plus half a second per MiB before the runner gives up
+on it, so 5 GiB runs (only with `--sizes`) allow about 45 minutes each. They
+need about twice the file size free on disk: the ciphertext in OPFS and the
+download.
+
+The results file is rewritten after every run, so an interrupted grid keeps
+what it measured. Per run it holds the page's record (phases, MB/s, storage,
+delivery, error), whether the download matched, and the RSS window: summed RSS
+just before the click and the peak until the download finished. An outcome of
+`mismatch` means the page reported success but the file was wrong;
+`runner-error` means the runner timed out or no download came.
+
+Which processes count as the browser: descendants of the runner (outside the
+bench server), plus processes that launchd started from the engine's build in
+Playwright's cache. The second rule is for WebKit on macOS, whose WebContent,
+Networking and GPU processes are XPC services with parent pid 1, not
+descendants of the runner. Another Playwright WebKit running at the same time
+would be counted too. Summed RSS counts shared pages once per process, so it
+overstates the footprint; compare a run's peak with its baseline.
+
 ## Fragment handoff check
 
 `/handoff.html` on the bench server checks whether a link fragment survives
