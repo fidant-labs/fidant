@@ -8,7 +8,7 @@ description: Sigill's review flow. Use before calling a code change done, before
 
 Run this from the **main session**. Subagents cannot launch subagents, so the reviewers, verifiers and fixers are all dispatched from here. When builder subagents wrote the code, review their combined diff after they return; a builder never reviews its own work.
 
-**Gates.** `pnpm check` (lint, typecheck, tests, build) is the slowest step, so it runs **once**, in step 7, after the review is clean. Before that, builders and fixers run narrow gates only: `pnpm lint`, `pnpm --filter <package> typecheck`, `pnpm --filter <package> test`. Reviewers and verifiers run no gates.
+**Gates.** `pnpm check` (lint, typecheck, tests, build) takes seconds in this repo. It runs in step 7 after the review is clean, and `AGENTS.md` requires it before every commit, so whoever commits runs it first. Builders and fixers otherwise run narrow gates only: `pnpm lint`, `pnpm --filter <package> typecheck`, `pnpm --filter <package> test`. Reviewers and verifiers run no gates.
 
 ## 1. Scope
 
@@ -29,24 +29,24 @@ Write a briefing of at most 15 lines to the session's scratchpad (never inside t
 
 Dispatch every matching lane in **one message** so they run in parallel. Cap at 8; queue the rest for a second round. Pass `model` explicitly on every call. The agents live in `.claude/agents/`.
 
-| Lane (`subagent_type`)                                | When                                                                                                                                                                  | Model  |
-| ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| `Code Reviewer`                                       | always                                                                                                                                                                | opus   |
-| Over-engineering lane (`Code Reviewer`, prompt below) | always                                                                                                                                                                | opus   |
-| `Software Architect`                                  | over 200 lines or 5 files, or a new app, package or module boundary                                                                                                   | opus   |
-| `Application Security Engineer`                       | `apps/server`, crypto or key handling, URLs, logging, identity, uploads, anything near the `AGENTS.md` invariants, `.github/workflows/`, `.claude/` hooks and scripts | opus   |
-| `Backend Architect`                                   | `apps/server` or server-side packages                                                                                                                                 | opus   |
-| `Frontend Developer`                                  | `apps/web` components or client state                                                                                                                                 | opus   |
-| `Database Optimizer`                                  | schema, migrations or queries                                                                                                                                         | opus   |
-| `Accessibility Auditor`                               | UI markup or interaction                                                                                                                                              | sonnet |
-| `API Tester`                                          | HTTP routes, signaling or other contracts                                                                                                                             | sonnet |
-| `Test Results Analyzer`                               | test files changed, or production code changed without tests                                                                                                          | sonnet |
-| `UX Architect`                                        | user-facing copy or layout                                                                                                                                            | sonnet |
-| `Performance Benchmarker`                             | transfer paths, loops over file data, bundle size                                                                                                                     | sonnet |
+| Lane (`subagent_type`)                                | When                                                                                                                                                               | Model  |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ |
+| `Code Reviewer`                                       | always                                                                                                                                                             | opus   |
+| Over-engineering lane (`Code Reviewer`, prompt below) | always                                                                                                                                                             | opus   |
+| `Software Architect`                                  | over 200 lines or 5 files, or a new app, package or module boundary                                                                                                | opus   |
+| `Application Security Engineer`                       | `apps/server`, crypto or key handling, URLs, logging, identity, uploads, anything near the `AGENTS.md` invariants, `.github/workflows/`, anything under `.claude/` | opus   |
+| `Backend Architect`                                   | `apps/server` or server-side packages                                                                                                                              | opus   |
+| `Frontend Developer`                                  | `apps/web` components or client state                                                                                                                              | opus   |
+| `Database Optimizer`                                  | schema, migrations or queries                                                                                                                                      | opus   |
+| `Accessibility Auditor`                               | UI markup or interaction                                                                                                                                           | sonnet |
+| `API Tester`                                          | HTTP routes, signaling or other contracts                                                                                                                          | sonnet |
+| `Test Results Analyzer`                               | test files changed, or production code changed without tests                                                                                                       | sonnet |
+| `UX Architect`                                        | user-facing copy or layout                                                                                                                                         | sonnet |
+| `Performance Benchmarker`                             | transfer paths, loops over file data, bundle size                                                                                                                  | sonnet |
 
-**Tiny diff** (under 50 lines or a single file): only `Code Reviewer` and the over-engineering lane.
+**Tiny diff** (under 50 lines or a single file): only `Code Reviewer`, the over-engineering lane, and `Application Security Engineer` when its row matches.
 
-**Docs-only diff** (every changed path is `.md` or `.txt`, and none is an agent, skill or command file under `.claude/`): only `Code Reviewer`, one round, no fix loop beyond it.
+**Docs-only diff** (every changed path is `.md` or `.txt`, and none is `AGENTS.md`, `CLAUDE.md` or under `.claude/`): only `Code Reviewer`, one round, no fix loop beyond it.
 
 Every reviewer prompt contains:
 
@@ -89,18 +89,24 @@ Dispatch in parallel one `Reality Checker` (opus) for blockers and one for major
 
 ## 6. Fix loop
 
-Before dispatching, snapshot the tree: `snap=$(git stash create)`, falling back to `git rev-parse HEAD` when it prints nothing. `git diff $snap` is then this round's fix delta.
+Snapshot the working tree twice with the command below: once before dispatching the fixers and once after they return. It prints a tree id and leaves the real index alone.
+
+```
+idx=$(git rev-parse --path-format=absolute --git-path review-snap-index) && GIT_INDEX_FILE=$idx git read-tree HEAD && GIT_INDEX_FILE=$idx git add -A && GIT_INDEX_FILE=$idx git write-tree
+```
+
+The round's fix delta is `git diff <before> <after>`. Write both tree ids out literally in the reviewer prompts.
 
 For every remaining blocker and major inside the diff, dispatch one fix subagent (`general-purpose`, sonnet). Never hand a finding back to the builder that wrote the code. Minors and nits are never fixed in this loop; every extra edit is new surface for the next round. Run fixes in parallel only when they touch different files. Each fixer gets the finding, the briefing and these rules:
 
 - Fix the class, not the line: sweep the whole diff for the same pattern and fix every occurrence.
 - When the finding is about behaviour, add a `node:test` test that fails before the fix.
 - Run the narrow gates for the touched packages. Stay inside the finding's scope.
-- Never commit; the main session commits once the round's fixes are in.
+- Never commit. Run `git add -N` on every file you create, so it shows in `git status` and `git diff` as a new file and the mark refuses until it is committed.
 
 Findings outside the diff and architect "restructure the module" findings are not fixed here. They go into a follow-ups list for the pull request body.
 
-Then re-run only the lanes whose paths the fixes touched, verify their new findings, and repeat. From round 2 on, a re-run lane reviews the fix delta (`git diff $snap`), not the whole branch diff; it gets the findings it is checking and may read surrounding code for context. A round-2+ finding on lines the delta did not change is something round 1 missed: it drops to `minor` and goes to the report, unless it is a security hole or data loss.
+Then re-run only the lanes whose paths the fixes touched, verify their new findings, and repeat. From round 2 on, a re-run lane reviews the fix delta (`git diff <before> <after>`), not the whole branch diff; it gets the findings it is checking and may read surrounding code for context. A round-2+ finding on lines the delta did not change is something round 1 missed: it drops to `minor` and goes to the report, unless it is a security hole or data loss.
 
 - **Clean:** 0 blockers and 0 majors. Stop.
 - **No progress:** a round fixed nothing while blockers or majors remain. Stop and report.
@@ -110,11 +116,11 @@ A stopped loop means the work is not done. Never open a pull request or call the
 
 ## 7. Gate, report and mark
 
-When the loop is clean, run `pnpm check` once. On failure, dispatch a fixer for the cause with narrow gates, re-run only the lanes the fix touched on its delta, then run `pnpm check` once more.
+When the loop is clean, run `pnpm check`. On failure, dispatch a fixer for the cause with narrow gates, re-run only the lanes the fix touched on its delta, then run `pnpm check` again.
 
 Tell the user: which lanes ran and which were skipped, kept, dropped and downgraded counts per severity, what was fixed, the gate result, and every remaining minor and nit (not fixed, listed for the user to decide). Keep it short.
 
-When the result is clean and the gate is green, commit the reviewed changes, then record the result from the repo or worktree root as a **command of its own**. The `gh pr create` hook checks before anything in the same command runs, so `mark && gh pr create` is always blocked:
+When the result is clean and the gate is green, commit the reviewed changes once (outside a worktree, ask first), then record the result from the repo or worktree root as a **command of its own**. The `gh pr create` hook checks before anything in the same command runs, so `mark && gh pr create` is always blocked:
 
 ```
 bash .claude/scripts/review-gate.sh mark
