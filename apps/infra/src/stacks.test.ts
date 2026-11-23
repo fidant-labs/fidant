@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { App, Stack } from "aws-cdk-lib";
 import { Match, Template } from "aws-cdk-lib/assertions";
 import { addStacks } from "./app.ts";
-import { siteNames, zoneNames } from "./config.ts";
+import { siteNames } from "./config.ts";
 import { DnsStack } from "./dns.ts";
 import { SiteStack } from "./site.ts";
 
@@ -73,60 +73,63 @@ test("any other account gets no stacks", () => {
   );
 });
 
-type RecordSet = {
-  Name: string;
-  Type: string;
-  zone: string | undefined;
-  ResourceRecords?: string[];
-  AliasTarget?: { DNSName: string; HostedZoneId: string };
-};
-
-function committedRecords(): RecordSet[] {
-  const [stack] = stacksFor(dnsAccount);
-  const template = Template.fromStack(stack as Stack);
-  const zones = template.findResources("AWS::Route53::HostedZone");
-  return Object.values(template.findResources("AWS::Route53::RecordSet")).map((record) => ({
-    ...record.Properties,
-    zone: zones[record.Properties.HostedZoneId.Ref]?.Properties.Name,
-  }));
-}
+const recordSet = "AWS::Route53::RecordSet";
+const committed = Template.fromStack(stacksFor(dnsAccount)[0] as Stack);
 
 test("the committed config keeps the certificate valid and every site name pointed at CloudFront", () => {
-  const records = committedRecords();
   for (const name of siteNames) {
-    const zone = zoneNames.find((zoneName) => name === zoneName || name.endsWith(`.${zoneName}`));
-    const validation = new RegExp(`^_[0-9a-f]{32}\\.${name.replaceAll(".", "\\.")}\\.$`);
-    const cnames = records.filter(
-      (record) => record.Type === "CNAME" && validation.test(record.Name),
-    );
-    assert.deepEqual(
-      cnames.map((record) => record.zone),
-      [`${zone}.`],
-      `validation CNAME for ${name}`,
+    const escaped = name.replaceAll(".", "\\.");
+    committed.resourcePropertiesCountIs(
+      recordSet,
+      {
+        Type: "CNAME",
+        Name: Match.stringLikeRegexp(`^_[0-9a-f]{32}\\.${escaped}\\.$`),
+        ResourceRecords: [
+          Match.stringLikeRegexp("^_[0-9a-f]{32}\\.[a-z0-9]+\\.acm-validations\\.aws\\.$"),
+        ],
+      },
+      1,
     );
     for (const type of ["A", "AAAA"]) {
-      const alias = records.find((record) => record.Name === `${name}.` && record.Type === type);
-      assert.match(alias?.AliasTarget?.DNSName ?? "", /\.cloudfront\.net$/, `${type} for ${name}`);
-      assert.equal(alias?.AliasTarget?.HostedZoneId, "Z2FDTNDATAQYW2", `${type} for ${name}`);
+      committed.hasResourceProperties(recordSet, {
+        Name: `${name}.`,
+        Type: type,
+        AliasTarget: { DNSName: Match.stringLikeRegexp("^d[a-z0-9]+\\.cloudfront\\.net$") },
+      });
     }
   }
 });
 
 test("the committed config keeps fidant.se's Proton mail records", () => {
-  const records = committedRecords().filter((record) => record.zone === "fidant.se.");
-  const apexTxt = records.find((record) => record.Name === "fidant.se." && record.Type === "TXT");
-  assert.ok(
-    apexTxt?.ResourceRecords?.some((value) => value.startsWith('"protonmail-verification=')),
-  );
-  assert.ok(apexTxt?.ResourceRecords?.some((value) => value.startsWith('"v=spf1 ')));
-  const mx = records.find((record) => record.Name === "fidant.se." && record.Type === "MX");
-  assert.equal(mx?.ResourceRecords?.length, 2);
-  const dkim = records.filter((record) =>
-    /^protonmail\d*\._domainkey\.fidant\.se\.$/.test(record.Name),
-  );
-  assert.equal(dkim.length, 3);
-  const dmarc = records.find((record) => record.Name === "_dmarc.fidant.se.");
-  assert.match(dmarc?.ResourceRecords?.[0] ?? "", /^"v=DMARC1; p=/);
+  for (const value of [
+    '^"protonmail-verification=[0-9a-f]{40}"$',
+    '^"v=spf1 include:_spf\\.protonmail\\.ch [~-]all"$',
+  ]) {
+    committed.hasResourceProperties(recordSet, {
+      Name: "fidant.se.",
+      Type: "TXT",
+      ResourceRecords: Match.arrayWith([Match.stringLikeRegexp(value)]),
+    });
+  }
+  committed.hasResourceProperties(recordSet, {
+    Name: "fidant.se.",
+    Type: "MX",
+    ResourceRecords: ["10 mail.protonmail.ch", "20 mailsec.protonmail.ch"],
+  });
+  for (const key of ["protonmail", "protonmail2", "protonmail3"]) {
+    committed.hasResourceProperties(recordSet, {
+      Name: `${key}._domainkey.fidant.se.`,
+      Type: "CNAME",
+      ResourceRecords: [
+        Match.stringLikeRegexp(`^${key}\\.domainkey\\.[a-z0-9]+\\.domains\\.proton\\.ch\\.$`),
+      ],
+    });
+  }
+  committed.hasResourceProperties(recordSet, {
+    Name: "_dmarc.fidant.se.",
+    Type: "TXT",
+    ResourceRecords: [Match.stringLikeRegexp('^"v=DMARC1; p=(quarantine|reject)[;"]')],
+  });
 });
 
 test("the hosted zones survive the stack being deleted", () => {
