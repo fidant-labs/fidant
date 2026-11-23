@@ -13,7 +13,6 @@ import {
   type ClientMessage,
   type ErrorCode,
   type LogFields,
-  type LogReason,
   parseClientMessage,
   type RefuseReason,
   type ServerMessage,

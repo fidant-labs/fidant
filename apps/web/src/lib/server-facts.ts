@@ -19,7 +19,7 @@ export function passedOn(relayed: Relayed): string {
 
 export function senderHolds(state: { online: boolean; links: number; connected: number }): string {
   if (!state.online) {
-    return "Nothing now. It forgot your links when the connection to it closed.";
+    return "Nothing once it notices the connection has closed. That takes up to a minute if the network dropped.";
   }
   if (state.links === 0) {
     return "No links yet.";
@@ -35,10 +35,10 @@ export function senderHolds(state: { online: boolean; links: number; connected: 
   return `${ids} ${who} connected right now.`;
 }
 
-export function recipientHolds(active: boolean): string {
-  return active
-    ? "The ID of your link, never the part that unlocks the file, and that you're connected to the sender."
-    : "Nothing now. It forgot your link when this page disconnected from it.";
+export function recipientHolds(connected: boolean): string {
+  return connected
+    ? "The ID of your link, never the part that unlocks the file, and that this page is connected to the sender."
+    : "Nothing about this page once it notices the connection has closed, which takes up to a minute if the network dropped. Only the sender's page can keep your link's ID there.";
 }
 
 export const LOG_FIELD_PHRASES = {
@@ -61,6 +61,6 @@ export const SEES_SENDER =
 export const SEES_RECIPIENT = "Your IP address and the usual browser details any website gets.";
 export const FILE_DATA = "None. The file goes directly between browsers.";
 export const AFTERWARDS_SENDER =
-  "When you close this tab, the server forgets your links. Its log lines stay.";
+  "When you close this tab, the server forgets your links, within a minute at most. Its log lines stay.";
 export const AFTERWARDS_RECIPIENT =
-  "The server forgets your link as soon as this page disconnects from it. Its log lines stay.";
+  "When this page disconnects, the server drops what it has about this page, within a minute at most. Its log lines stay.";

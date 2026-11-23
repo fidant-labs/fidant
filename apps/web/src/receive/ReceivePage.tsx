@@ -137,11 +137,13 @@ export function ReceivePage() {
   const [picking, setPicking] = useState(false);
   const [relayed, setRelayed] = useState(NO_RELAYS);
   const [reachedServer, setReachedServer] = useState(false);
+  const [connected, setConnected] = useState(false);
   const attemptRef = useRef<Attempt | undefined>(undefined);
 
   /** Closes everything an attempt holds. `linger` keeps the peer up for a moment. */
   const release = (attempt: Attempt, linger = false) => {
     attempt.ended = true;
+    setConnected(false);
     attempt.abort.abort(new Error("attempt ended"));
     attempt.signaling.close();
     if (linger) {
@@ -210,6 +212,7 @@ export function ReceivePage() {
       if (byClient || !current()) {
         return;
       }
+      setConnected(false);
       if (attempt.channelOpen && !attempt.abort.signal.aborted) {
         return;
       }
@@ -232,6 +235,7 @@ export function ReceivePage() {
           }
           break;
         case "host-gone":
+          setConnected(false);
           // A transfer under way can finish without the server; the peer
           // closing ends it if the sender really went away. Before that,
           // browsers can take many seconds to notice a closed tab over the
@@ -327,7 +331,9 @@ export function ReceivePage() {
           onOpen: (channel, info) => onOpen(channel, info.maxMessageSize),
           onClose: () => lost(),
         });
-        signaling.send({ t: "join", link: linkId });
+        if (signaling.send({ t: "join", link: linkId })) {
+          setConnected(true);
+        }
       } catch {
         finish({ s: "failed", message: SERVER });
       }
@@ -420,11 +426,10 @@ export function ReceivePage() {
     );
   }
 
-  const active = view.s === "connecting" || view.s === "offer" || view.s === "receiving";
   const panel = reachedServer ? (
     <ServerPanel
       sees={SEES_RECIPIENT}
-      holds={recipientHolds(active)}
+      holds={recipientHolds(connected)}
       relayed={relayed}
       afterwards={AFTERWARDS_RECIPIENT}
     />

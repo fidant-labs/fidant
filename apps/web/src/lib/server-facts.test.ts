@@ -44,18 +44,18 @@ test("senderHolds follows links, connections and the server connection", () => {
   );
   assert.equal(
     senderHolds({ online: false, links: 3, connected: 1 }),
-    "Nothing now. It forgot your links when the connection to it closed.",
+    "Nothing once it notices the connection has closed. That takes up to a minute if the network dropped.",
   );
 });
 
 test("recipientHolds while active and after the attempt ends", () => {
   assert.equal(
     recipientHolds(true),
-    "The ID of your link, never the part that unlocks the file, and that you're connected to the sender.",
+    "The ID of your link, never the part that unlocks the file, and that this page is connected to the sender.",
   );
   assert.equal(
     recipientHolds(false),
-    "Nothing now. It forgot your link when this page disconnected from it.",
+    "Nothing about this page once it notices the connection has closed, which takes up to a minute if the network dropped. Only the sender's page can keep your link's ID there.",
   );
 });
 

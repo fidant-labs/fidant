@@ -135,6 +135,9 @@ async function receive(
   await expect(page.getByText(sizeText, { exact: true })).toBeVisible();
   await page.getByText("Technical details").click();
   await expect(page.getByText(`${file.size.toLocaleString("en-US")} bytes`)).toBeVisible();
+  await expect(page.getByRole("region", { name: "What our server has right now" })).toContainText(
+    "this page is connected to the sender",
+  );
   const downloading = page.waitForEvent("download", { timeout: 60_000 });
   await page.getByRole("button", { name: "Download" }).click();
   await expect(page.getByText("this is exactly the file that was sent")).toBeVisible({
@@ -190,7 +193,7 @@ test("delivers a file to two recipients with a verified checksum", async ({
     throw new Error("no recipient");
   }
   await expect(recipientPanel).toContainText(
-    "Nothing now. It forgot your link when this page disconnected from it.",
+    "Nothing about this page once it notices the connection has closed",
   );
   await expect(recipientPanel).toContainText(/[1-9]\d* setup messages? \(/);
 });
