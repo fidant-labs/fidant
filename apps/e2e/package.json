@@ -10,5 +10,8 @@
   "devDependencies": {
     "@playwright/test": "catalog:",
     "@types/node": "^24.19.2"
+  },
+  "dependencies": {
+    "@sigill/protocol": "workspace:*"
   }
 }

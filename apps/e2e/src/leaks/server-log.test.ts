@@ -1,23 +1,24 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { ERROR_CODES, REFUSE_REASONS, UPGRADE_REJECT_REASONS } from "@sigill/protocol";
 import { canaryKey, SeededRandom } from "./canary.ts";
 import {
   checkServerLog,
-  firstDemoLogAllowlist,
   formatLogViolation,
   type LogRule,
+  serverLogAllowlist,
 } from "./server-log.ts";
 
 const random = SeededRandom.fromLabel("server log test");
 
 /** The rules each line breaks, in order. */
 function rules(...lines: string[]): LogRule[] {
-  return checkServerLog(lines, firstDemoLogAllowlist).map((violation) => violation.rule);
+  return checkServerLog(lines, serverLogAllowlist).map((violation) => violation.rule);
 }
 
 const line = (fields: Record<string, unknown>) => JSON.stringify(fields);
 
-test("passes the lines the first demo server writes", () => {
+test("passes the lines the server writes", () => {
   const lines = [
     line({ event: "listening", port: 8443 }),
     line({ event: "upgrade-rejected", reason: "origin" }),
@@ -29,7 +30,17 @@ test("passes the lines the first demo server writes", () => {
     "",
     "   ",
   ];
-  assert.deepEqual(checkServerLog(lines, firstDemoLogAllowlist), []);
+  assert.deepEqual(checkServerLog(lines, serverLogAllowlist), []);
+});
+
+test("passes every reason and code that @sigill/protocol defines", () => {
+  const lines = [
+    ...[...REFUSE_REASONS, ...UPGRADE_REJECT_REASONS].map((reason) =>
+      line({ event: "refused", reason }),
+    ),
+    ...ERROR_CODES.map((code) => line({ event: "error", code })),
+  ];
+  assert.deepEqual(checkServerLog(lines, serverLogAllowlist), []);
 });
 
 test("fails text that is not JSON", () => {
@@ -87,7 +98,7 @@ test("fails an unknown reason or code", () => {
 test("reports every broken rule with its line number", () => {
   const violations = checkServerLog(
     [line({ event: "host" }), "", line({ event: "nope", extra: 1 })],
-    firstDemoLogAllowlist,
+    serverLogAllowlist,
   );
   assert.deepEqual(
     violations.map((v) => [v.line, v.rule]),
@@ -103,6 +114,6 @@ test("reports every broken rule with its line number", () => {
 
 test("cuts long excerpts", () => {
   const long = `not json ${"x".repeat(500)}`;
-  const [violation] = checkServerLog([long], firstDemoLogAllowlist);
+  const [violation] = checkServerLog([long], serverLogAllowlist);
   assert.equal(violation?.excerpt, `${long.slice(0, 120)}…`);
 });

@@ -1,3 +1,5 @@
+import { ERROR_CODES, REFUSE_REASONS, UPGRADE_REJECT_REASONS } from "@sigill/protocol";
+
 /**
  * The values server stdout may carry (0001, "Server stdout"). Every field is an enum value, a
  * 6-character link prefix or a count, so no free text can reach the log.
@@ -35,10 +37,11 @@ export interface LogViolation {
 }
 
 /**
- * Today's values, from SIG-21 (`@sigill/protocol` on branch sig-21-first-demo, PR #10).
- * SIG-41 replaces this constant with imports from @sigill/protocol.
+ * The allowlist for today's server. Reasons and codes come from @sigill/protocol, so a new enum
+ * value there is allowed here too. Protocol does not export the event names (the server passes
+ * them as strings to its logger), so they are listed here; a new event needs a reviewed change.
  */
-export const firstDemoLogAllowlist: LogAllowlist = {
+export const serverLogAllowlist: LogAllowlist = {
   events: new Set([
     "listening",
     "upgrade-rejected",
@@ -53,10 +56,9 @@ export const firstDemoLogAllowlist: LogAllowlist = {
     "relay-dropped",
     "left",
   ]),
-  // LogReason: RefuseReason ("used", "busy", "unknown") plus UpgradeRejectReason.
-  reasons: new Set(["used", "busy", "unknown", "path", "origin"]),
-  // ErrorCode.
-  codes: new Set(["bad-message", "wrong-role", "already-hosted", "already-joined", "not-on-link"]),
+  // LogReason in @sigill/protocol.
+  reasons: new Set<string>([...REFUSE_REASONS, ...UPGRADE_REJECT_REASONS]),
+  codes: new Set<string>(ERROR_CODES),
 };
 
 const excerptLength = 120;
