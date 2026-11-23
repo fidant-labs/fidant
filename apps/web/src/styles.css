@@ -498,19 +498,32 @@ progress {
   color: var(--muted);
 }
 
-.tech dl {
+.tech dl,
+.server-panel dl {
   margin: 0.75rem 0 0;
   display: grid;
   gap: 0.5rem;
 }
 
-.tech dt {
+.tech dt,
+.server-panel dt {
   color: var(--muted);
 }
 
-.tech dd {
+.tech dd,
+.server-panel dd {
   margin: 0;
   overflow-wrap: anywhere;
+}
+
+.server-panel {
+  margin-top: 2rem;
+  font-size: 0.9rem;
+}
+
+.server-panel h2 {
+  margin: 0;
+  font-size: 1rem;
 }
 
 .tech code {

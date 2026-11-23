@@ -30,14 +30,22 @@ import {
   findRecipient,
   hostedLinks,
   initialSenderState,
+  isActive,
   SETUP_TIMEOUT_MS,
   type SenderAction,
   type SenderEffect,
   type SenderState,
   update,
 } from "../lib/sender-state.ts";
+import {
+  AFTERWARDS_SENDER,
+  addRelay,
+  NO_RELAYS,
+  SEES_SENDER,
+  senderHolds,
+} from "../lib/server-facts.ts";
 import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
-import { FileCard, Icon, Page, TechDetails } from "../ui.tsx";
+import { FileCard, Icon, Page, ServerPanel, TechDetails } from "../ui.tsx";
 import { RecipientList } from "./RecipientList.tsx";
 
 type Hash =
@@ -60,6 +68,7 @@ export function SendPage() {
   const [hash, setHash] = useState<Hash>({ status: "none" });
   const [sender, setSender] = useState<SenderState>(initialSenderState);
   const [lostServer, setLostServer] = useState(false);
+  const [relayed, setRelayed] = useState(NO_RELAYS);
   const [nameError, setNameError] = useState("");
   const [fileError, setFileError] = useState("");
   const [from, setFrom] = useState("");
@@ -193,7 +202,9 @@ export function SendPage() {
 
   // Runs once on mount: everything it uses is read through refs.
   useEffect(() => {
-    const signaling = connectSignaling();
+    const signaling = connectSignaling({
+      onRelay: (bytes) => setRelayed((r) => addRelay(r, bytes)),
+    });
     signalingRef.current = signaling;
     let disposed = false;
     const dispatch = (action: SenderAction) => dispatchRef.current(action);
@@ -343,6 +354,8 @@ export function SendPage() {
   const hasRecipients = sender.recipients.length > 0;
   const full = sender.recipients.length >= MAX_LINKS;
   const isLocalhost = LOCAL_HOSTS.has(location.hostname);
+  // ponytail: counts by status, so it over-counts if a recipient's signaling drops mid-transfer; track joined/left if that matters
+  const connected = sender.recipients.filter(isActive).length;
   const unfinished = sender.recipients.some((r) => r.status !== "delivered");
 
   return (
@@ -478,6 +491,12 @@ export function SendPage() {
           Keep this tab open until everyone has the file. It's sent straight from here.
         </p>
       )}
+      <ServerPanel
+        sees={SEES_SENDER}
+        holds={senderHolds({ online: !lostServer, links: sender.recipients.length, connected })}
+        relayed={relayed}
+        afterwards={AFTERWARDS_SENDER}
+      />
     </Page>
   );
 }

@@ -32,9 +32,16 @@ import { parseRecipientLocation } from "../lib/link.ts";
 import { createRecipientPeer, type Peer } from "../lib/peer.ts";
 import type { FileOffer } from "../lib/receive-file.ts";
 import { ReceiveError, receiveFile } from "../lib/receive-file.ts";
+import {
+  AFTERWARDS_RECIPIENT,
+  addRelay,
+  NO_RELAYS,
+  recipientHolds,
+  SEES_RECIPIENT,
+} from "../lib/server-facts.ts";
 import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
 import { createSink, isPickerCancel, type Sink } from "../lib/sink.ts";
-import { Direct, FileCard, Icon, Page, Problem, TechDetails } from "../ui.tsx";
+import { Direct, FileCard, Icon, Page, Problem, ServerPanel, TechDetails } from "../ui.tsx";
 
 type Message = { title: string; body: string; detail?: string };
 
@@ -128,11 +135,15 @@ export function ReceivePage() {
   const link = useMemo(() => parseRecipientLocation(location), []);
   const [view, setView] = useState<View>({ s: "connecting" });
   const [picking, setPicking] = useState(false);
+  const [relayed, setRelayed] = useState(NO_RELAYS);
+  const [reachedServer, setReachedServer] = useState(false);
+  const [connected, setConnected] = useState(false);
   const attemptRef = useRef<Attempt | undefined>(undefined);
 
   /** Closes everything an attempt holds. `linger` keeps the peer up for a moment. */
   const release = (attempt: Attempt, linger = false) => {
     attempt.ended = true;
+    setConnected(false);
     attempt.abort.abort(new Error("attempt ended"));
     attempt.signaling.close();
     if (linger) {
@@ -155,7 +166,9 @@ export function ReceivePage() {
       release(previous);
     }
 
-    const signaling = connectSignaling();
+    const signaling = connectSignaling({
+      onRelay: (bytes) => setRelayed((r) => addRelay(r, bytes)),
+    });
     const attempt: Attempt = {
       abort: new AbortController(),
       signaling,
@@ -199,6 +212,7 @@ export function ReceivePage() {
       if (byClient || !current()) {
         return;
       }
+      setConnected(false);
       if (attempt.channelOpen && !attempt.abort.signal.aborted) {
         return;
       }
@@ -221,6 +235,7 @@ export function ReceivePage() {
           }
           break;
         case "host-gone":
+          setConnected(false);
           // A transfer under way can finish without the server; the peer
           // closing ends it if the sender really went away. Before that,
           // browsers can take many seconds to notice a closed tab over the
@@ -304,6 +319,7 @@ export function ReceivePage() {
     void (async () => {
       try {
         await signaling.ready;
+        setReachedServer(true);
         const signalKey = await deriveSignalKey(secret, linkId);
         if (!current()) {
           return;
@@ -315,7 +331,9 @@ export function ReceivePage() {
           onOpen: (channel, info) => onOpen(channel, info.maxMessageSize),
           onClose: () => lost(),
         });
-        signaling.send({ t: "join", link: linkId });
+        if (signaling.send({ t: "join", link: linkId })) {
+          setConnected(true);
+        }
       } catch {
         finish({ s: "failed", message: SERVER });
       }
@@ -408,17 +426,28 @@ export function ReceivePage() {
     );
   }
 
+  const panel = reachedServer ? (
+    <ServerPanel
+      sees={SEES_RECIPIENT}
+      holds={recipientHolds(connected)}
+      relayed={relayed}
+      afterwards={AFTERWARDS_RECIPIENT}
+    />
+  ) : null;
+
   switch (view.s) {
     case "connecting":
       return (
         <Page>
           <h1>Connecting to the sender…</h1>
+          {panel}
         </Page>
       );
     case "refused":
       return (
         <Page>
           <Problem {...view.message} />
+          {panel}
         </Page>
       );
     case "offer": {
@@ -444,6 +473,7 @@ export function ReceivePage() {
             Encrypted, never stored on a server.
           </p>
           <OfferDetails offer={offer} />
+          {panel}
         </Page>
       );
     }
@@ -465,6 +495,7 @@ export function ReceivePage() {
           <p class="caption">
             Receiving directly from the sender. Keep this tab open until it's done.
           </p>
+          {panel}
         </Page>
       );
     }
@@ -491,6 +522,7 @@ export function ReceivePage() {
             Sent straight from the sender's computer to yours. Encrypted the whole way.
           </p>
           <OfferDetails offer={offer} sha256={sha256} />
+          {panel}
         </Page>
       );
     }
@@ -505,6 +537,7 @@ export function ReceivePage() {
           <button type="button" class="link" onClick={start}>
             Show the file again
           </button>
+          {panel}
         </Page>
       );
     case "failed":
@@ -515,6 +548,7 @@ export function ReceivePage() {
             Try again
           </button>
           {view.message.detail && <TechDetails rows={[["What happened", view.message.detail]]} />}
+          {panel}
         </Page>
       );
   }
