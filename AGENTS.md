@@ -7,7 +7,8 @@ Planning lives in Linear: workspace `sigill`, team `SIG`, issue keys like `SIG-2
 ## Commands
 
 - `pnpm install`: installs dependencies and the git hooks.
-- `pnpm check`: lint, typecheck and unit tests across the workspace. Run it before every commit. The pre-push hook runs it too.
+- `pnpm start`: builds the web client and serves it over HTTPS on `PORT` (default 8443), on all network interfaces, and prints the addresses to open. The first start creates a self-signed certificate in `.certs/`; browsers show a warning once. On macOS, a browser on another laptop needs Local Network access (System Settings → Privacy & Security → Local Network) or the page "can't be reached", even though `curl` works.
+- `pnpm check`: lint, typecheck, unit tests and build across the workspace. Run it before every commit. The pre-push hook runs it too.
 - `pnpm format`: fixes formatting and safe lint issues.
 
 ## Prerequisites
@@ -15,10 +16,11 @@ Planning lives in Linear: workspace `sigill`, team `SIG`, issue keys like `SIG-2
 - Node 24 (see `.node-version`).
 - pnpm, at the version pinned in `package.json` (`packageManager`).
 - gitleaks (`brew install gitleaks`). The pre-commit hook fails without it.
+- openssl, for the local certificate. macOS and Linux ship with it.
 
 ## Layout
 
-- `apps/*`: things we run or ship, such as the server and the web client.
+- `apps/*`: things we run or ship. `apps/web` is the Preact client, built by Vite into `apps/web/dist`. `apps/server` is the Node process that serves it.
 - `packages/*`: code used by more than one app. Create a package only when a second consumer exists.
 - Workspace packages export TypeScript source directly (`"exports": { ".": "./src/index.ts" }`). Internal packages have no build step.
 - Every package with TypeScript has a `typecheck` script (`tsc --noEmit -p .`) and, if it has tests, a `test` script. The root scripts run them recursively.
