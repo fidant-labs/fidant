@@ -9,7 +9,6 @@ const h3 = "mt-6 mb-2 font-bold";
 
 // Written for people who aren't technical. Keep every sentence true of what the
 // code does today: `server` in the dictionaries and apps/server/src/signaling.ts are the source.
-// `logFields` lists every field the server stores; it is keyed by LogFields, so it cannot fall behind.
 // The text lives in i18n/en.ts and i18n/sv.ts under `privacy`.
 
 function Facts({ rows }: { rows: ReadonlyArray<readonly [string, string]> }) {

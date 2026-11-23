@@ -4,8 +4,12 @@ import type { LogFields } from "@sigill/protocol";
 import type { Tie } from "../lib/server-facts.ts";
 import type { Messages } from "./en.ts";
 
-// Samma fält som logFields i en.ts.
-const logFields: Record<keyof LogFields, readonly [string, string]> = {
+// Samma fält som logFields i en.ts, inklusive `event`.
+const logFields: Record<"event" | keyof LogFields, readonly [string, string]> = {
+  event: [
+    "vad som hände, till exempel att en länk öppnades eller en anslutning nekades",
+    "För att se hur tjänsten beter sig och hitta vad som gick fel.",
+  ],
   link: [
     "de 6 första tecknen i ett länk-ID",
     "Så att vi kan följa en länk genom loggen när något går fel, utan att kunna hitta själva länken.",
@@ -311,7 +315,9 @@ export const sv: Messages = {
     logs: `Vad som hände, till exempel att en länk öppnades, med ${new Intl.ListFormat("sv", {
       type: "conjunction",
     }).format(
-      Object.values(logFields).map(([what]) => what),
+      Object.entries(logFields)
+        .filter(([field]) => field !== "event")
+        .map(([, [what]]) => what),
     )}. Aldrig namn, nycklar, filinnehåll eller IP-adresser.`,
   },
   privacy: {

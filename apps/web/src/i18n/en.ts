@@ -4,9 +4,14 @@
 import type { LogFields } from "@sigill/protocol";
 import type { Tie } from "../lib/server-facts.ts";
 
-// Every field a server log line can carry: what it is, and why we keep it. Keyed by LogFields,
-// so a new log field fails the typecheck until it is described here and in sv.ts.
-const logFields: Record<keyof LogFields, readonly [string, string]> = {
+// Every field a server log line can carry (plus `event`, which names the log line), with what it is
+// and why we keep it. Keyed by LogFields, so a new field fails the typecheck until it is described
+// here and in sv.ts. Event names are typed by LogEvent in @sigill/protocol.
+const logFields: Record<"event" | keyof LogFields, readonly [string, string]> = {
+  event: [
+    "what happened, like a link being opened or a connection being refused",
+    "So we can see how the service behaves and find what went wrong.",
+  ],
   link: [
     "the first 6 characters of a link ID",
     "So we can follow one link through the log when something goes wrong, without being able to find the link itself.",
@@ -25,7 +30,7 @@ const logFields: Record<keyof LogFields, readonly [string, string]> = {
     "whether each connection was direct, went through our relay or failed",
     "To know how often connections need our relay, which tells us how big it must be.",
   ],
-  port: ["the port it listens on", "To confirm the server started where it should."],
+  port: ["the port the server listens on", "To confirm the server started where it should."],
 };
 
 export const en = {
@@ -317,7 +322,9 @@ export const en = {
     logs: `What happened, like a link being opened, with ${new Intl.ListFormat("en", {
       type: "conjunction",
     }).format(
-      Object.values(logFields).map(([what]) => what),
+      Object.entries(logFields)
+        .filter(([field]) => field !== "event")
+        .map(([, [what]]) => what),
     )}. Never names, keys, file data or IP addresses.`,
   },
   privacy: {
