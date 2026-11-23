@@ -6,6 +6,7 @@ import { createServer, type Server } from "node:https";
 import { isIP } from "node:net";
 import { extname, join, resolve, sep } from "node:path";
 import { attachSignaling, type Logger } from "./signaling.ts";
+import { type IceConfig, serveIceServers } from "./turn.ts";
 
 const contentTypes: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -60,6 +61,18 @@ export function serveStatic(root: string) {
   };
 }
 
+export function serveApp(root: string, ice?: IceConfig) {
+  const staticFiles = serveStatic(root);
+  const iceServers = serveIceServers(ice, securityHeaders);
+  return (req: IncomingMessage, res: ServerResponse): void => {
+    if (req.url?.split("?")[0] === "/ice-servers") {
+      iceServers(req, res);
+    } else {
+      void staticFiles(req, res);
+    }
+  };
+}
+
 export function ensureCert(dir: string, hosts: string[]): { key: Buffer; cert: Buffer } {
   const keyPath = join(dir, "key.pem");
   const certPath = join(dir, "cert.pem");
@@ -96,11 +109,12 @@ export function startServer(options: {
   root: string;
   certDir: string;
   hosts: string[];
+  ice?: IceConfig | undefined;
   log?: Logger;
 }): Promise<Server> {
   const server = createServer(
     ensureCert(options.certDir, options.hosts),
-    serveStatic(options.root),
+    serveApp(options.root, options.ice),
   );
   const signaling = attachSignaling(server, { log: options.log ?? (() => {}) });
   server.on("close", () => signaling.close());
