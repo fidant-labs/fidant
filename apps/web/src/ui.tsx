@@ -6,7 +6,7 @@ import { buttonVariants } from "#components/ui/button";
 import { Card, CardContent } from "#components/ui/card";
 import { useI18n } from "./i18n/I18n.tsx";
 import { LANGUAGE_NAMES } from "./i18n/language.ts";
-import { FILE_DATA, LOGS, passedOn, type Relayed } from "./lib/server-facts.ts";
+import { FILE_DATA, passedOn, type Relayed } from "./lib/server-facts.ts";
 
 const ICONS = {
   computer: (
@@ -226,12 +226,13 @@ export function ServerPanel({
   relayed: Relayed;
   afterwards: string;
 }) {
+  const { t } = useI18n();
   const rows: ReadonlyArray<readonly [string, string]> = [
     ["Sees", sees],
     ["Holds", holds],
     ["Passed on", passedOn(relayed)],
     ["File data", FILE_DATA],
-    ["Logs", LOGS],
+    ["Logs", t.server.logs],
     ["Afterwards", afterwards],
   ];
   return (

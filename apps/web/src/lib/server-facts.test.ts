@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   addRelay,
-  LOGS,
   NO_RELAYS,
   passedOn,
   recipientHolds,
@@ -65,12 +64,5 @@ test("recipientHolds for a paired, unpaired and closed page", () => {
   assert.equal(
     recipientHolds("closed"),
     "Nothing about this page once it notices the connection has closed, which takes up to a minute if the network dropped. Only the sender's page can keep your link's ID there.",
-  );
-});
-
-test("LOGS lists every log field and what the server never logs", () => {
-  assert.equal(
-    LOGS,
-    "What happened, like a link being opened, with the first 6 characters of a link ID, how many links a sender has, message sizes, why a link or connection was refused, error codes, and the port it listens on. Never names, keys, file data or IP addresses.",
   );
 });

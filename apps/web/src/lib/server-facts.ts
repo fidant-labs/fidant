@@ -1,4 +1,3 @@
-import type { LogFields } from "@sigill/protocol";
 import { formatBytes } from "./format.ts";
 
 export type Relayed = { readonly messages: number; readonly bytes: number };
@@ -47,21 +46,6 @@ export function recipientHolds(tie: Tie): string {
       return "Nothing about this page once it notices the connection has closed, which takes up to a minute if the network dropped. Only the sender's page can keep your link's ID there.";
   }
 }
-
-const LOG_FIELD_PHRASES = {
-  link: "the first 6 characters of a link ID",
-  links: "how many links a sender has",
-  bytes: "message sizes",
-  reason: "why a link or connection was refused",
-  code: "error codes",
-  port: "the port it listens on",
-} satisfies Record<keyof LogFields, string>;
-
-const phrases = new Intl.ListFormat("en", { type: "conjunction" }).format(
-  Object.values(LOG_FIELD_PHRASES),
-);
-
-export const LOGS = `What happened, like a link being opened, with ${phrases}. Never names, keys, file data or IP addresses.`;
 
 export const SEES_SENDER =
   "Your IP address and the usual browser details any website gets, and the same for each recipient when they open their link.";
