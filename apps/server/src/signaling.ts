@@ -48,6 +48,8 @@ type Peer = {
   hosted: Set<string>;
   /** The link this socket is bound to as a guest. */
   joined: string | undefined;
+  /** The attempt ID the guest joined with. Never logged. */
+  attempt: string | undefined;
   alive: boolean;
   /** Messages received in the current heartbeat window. */
   messages: number;
@@ -181,6 +183,7 @@ export function attachSignaling(
       role: "none",
       hosted: new Set(),
       joined: undefined,
+      attempt: undefined,
       alive: true,
       messages: 0,
       address,
@@ -221,13 +224,13 @@ export function attachSignaling(
         host(socket, peer, message.links);
         return;
       case "join":
-        join(socket, peer, message.link);
+        join(socket, peer, message.link, message.attempt);
         return;
       case "relay":
         relay(socket, peer, message.link, message.data);
         return;
       case "refuse":
-        refuse(socket, peer, message.link, message.reason);
+        refuse(socket, peer, message.link, message.attempt, message.reason);
         return;
       case "path":
         reportPath(socket, peer, message.link, message.path);
@@ -274,12 +277,13 @@ export function attachSignaling(
     const guestPeer = peers.get(guest);
     if (guestPeer) {
       guestPeer.joined = undefined;
+      guestPeer.attempt = undefined;
     }
     log("host-gone", { link: short(link) });
     send(guest, { t: "host-gone" });
   }
 
-  function join(socket: WebSocket, peer: Peer, link: string): void {
+  function join(socket: WebSocket, peer: Peer, link: string, attempt: string): void {
     if (peer.role === "host") {
       error(socket, "wrong-role");
       return;
@@ -298,8 +302,9 @@ export function attachSignaling(
     }
     guests.set(link, socket);
     peer.joined = link;
+    peer.attempt = attempt;
     log("joined", { link: short(link) });
-    send(hostSocket, { t: "joined", link });
+    send(hostSocket, { t: "joined", link, attempt });
   }
 
   function relay(socket: WebSocket, peer: Peer, link: string, data: string): void {
@@ -321,19 +326,27 @@ export function attachSignaling(
     send(target, { t: "relay", link, data });
   }
 
-  function refuse(socket: WebSocket, peer: Peer, link: string, reason: RefuseReason): void {
+  function refuse(
+    socket: WebSocket,
+    peer: Peer,
+    link: string,
+    attempt: string,
+    reason: RefuseReason,
+  ): void {
     if (!peer.hosted.has(link)) {
       error(socket, "not-on-link");
       return;
     }
     const guest = guests.get(link);
-    if (!guest) {
+    const guestPeer = guest && peers.get(guest);
+    // A late refusal of an earlier attempt must not turn away the guest that joined since.
+    if (!guest || guestPeer?.attempt !== attempt) {
       return;
     }
     guests.delete(link);
-    const guestPeer = peers.get(guest);
     if (guestPeer) {
       guestPeer.joined = undefined;
+      guestPeer.attempt = undefined;
     }
     log("refused", { link: short(link), reason });
     send(guest, { t: "refused", reason });
@@ -371,6 +384,7 @@ export function attachSignaling(
     if (link !== undefined && guests.get(link) === socket) {
       guests.delete(link);
       peer.joined = undefined;
+      peer.attempt = undefined;
       log("left", { link: short(link) });
       const hostSocket = hosts.get(link);
       if (hostSocket) {

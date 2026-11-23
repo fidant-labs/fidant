@@ -18,7 +18,8 @@
 //   the server to refuse the joiner.
 //
 // Names, the file and link secrets stay in this tab. The server only ever
-// gets link IDs, opaque sealed signals, refusal reasons and connection paths.
+// gets link IDs, attempt IDs, opaque sealed signals, refusal reasons and
+// connection paths.
 
 import { type ConnectionPath, MAX_LINKS } from "@sigill/protocol";
 import { useEffect, useReducer, useRef, useState } from "preact/hooks";
@@ -221,7 +222,12 @@ export function SendPage() {
         closeConnection(effect.linkId);
         break;
       case "refuse":
-        signalingRef.current?.send({ t: "refuse", link: effect.linkId, reason: effect.reason });
+        signalingRef.current?.send({
+          t: "refuse",
+          link: effect.linkId,
+          attempt: effect.attempt,
+          reason: effect.reason,
+        });
         break;
     }
   };
@@ -264,7 +270,7 @@ export function SendPage() {
     signaling.subscribe((message) => {
       switch (message.t) {
         case "joined":
-          dispatch({ type: "joined", linkId: message.link });
+          dispatch({ type: "joined", linkId: message.link, attempt: message.attempt });
           break;
         case "left":
           dispatch({ type: "left", linkId: message.link });

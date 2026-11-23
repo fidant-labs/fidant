@@ -111,11 +111,13 @@ async function hostFor(...links: string[]): Promise<Client> {
   return host;
 }
 
-async function joinAs(link: string, host: Client): Promise<Client> {
+/** Joins a fresh guest to a link with a fresh attempt ID and waits until the host hears of it. */
+async function joinAs(link: string, host: Client): Promise<Client & { attempt: string }> {
   const guest = await connect();
-  guest.send({ t: "join", link });
-  assert.deepEqual(await host.next(), { t: "joined", link });
-  return guest;
+  const attempt = randomBytes(16).toString("base64url");
+  guest.send({ t: "join", link, attempt });
+  assert.deepEqual(await host.next(), { t: "joined", link, attempt });
+  return Object.assign(guest, { attempt });
 }
 
 test("relays messages between host and guest in both directions", async () => {
@@ -130,7 +132,7 @@ test("relays messages between host and guest in both directions", async () => {
 
 test("refuses a join for a link nobody hosts", async () => {
   const guest = await connect();
-  guest.send({ t: "join", link: linkId() });
+  guest.send({ t: "join", link: linkId(), attempt: linkId() });
   assert.deepEqual(await guest.next(), { t: "refused", reason: "unknown" });
 });
 
@@ -139,25 +141,54 @@ test("refuses a second concurrent guest as busy and frees the link when the firs
   const host = await hostFor(link);
   const first = await joinAs(link, host);
   const second = await connect();
-  second.send({ t: "join", link });
+  second.send({ t: "join", link, attempt: linkId() });
   assert.deepEqual(await second.next(), { t: "refused", reason: "busy" });
 
   first.socket.close();
   assert.deepEqual(await host.next(), { t: "left", link });
   // A refused guest may try again once the link is free.
-  second.send({ t: "join", link });
-  assert.deepEqual(await host.next(), { t: "joined", link });
+  const attempt = linkId();
+  second.send({ t: "join", link, attempt });
+  assert.deepEqual(await host.next(), { t: "joined", link, attempt });
 });
 
 test("forwards the sender's refusal to the guest and unbinds it", async () => {
   const link = linkId();
   const host = await hostFor(link);
   const guest = await joinAs(link, host);
-  host.send({ t: "refuse", link, reason: "used" });
+  host.send({ t: "refuse", link, attempt: guest.attempt, reason: "used" });
   assert.deepEqual(await guest.next(), { t: "refused", reason: "used" });
   guest.send({ t: "relay", link, data: "bGF0ZQ" });
   assert.deepEqual(await guest.next(), { t: "error", code: "not-on-link" });
   // The link is free again for the next opener.
+  await joinAs(link, host);
+});
+
+test("ignores a refusal of an earlier attempt once another guest is bound", async () => {
+  const link = linkId();
+  const host = await hostFor(link);
+  const first = await joinAs(link, host);
+  first.socket.close();
+  assert.deepEqual(await host.next(), { t: "left", link });
+  const second = await joinAs(link, host);
+  const before = logLines.length;
+  host.send({ t: "refuse", link, attempt: first.attempt, reason: "used" });
+  // Had the refusal reached the second guest, it would arrive before this relay.
+  host.send({ t: "relay", link, data: "c3RpbGw" });
+  assert.deepEqual(await second.next(), { t: "relay", link, data: "c3RpbGw" });
+  second.send({ t: "relay", link, data: "Ym91bmQ" });
+  assert.deepEqual(await host.next(), { t: "relay", link, data: "Ym91bmQ" });
+  assert.ok(!logLines.slice(before).some((line) => line.event === "refused"));
+});
+
+test("ignores a refusal when no guest is bound", async () => {
+  const link = linkId();
+  const host = await hostFor(link);
+  host.send({ t: "refuse", link, attempt: linkId(), reason: "busy" });
+  // The refusal gets no reply, so the next message's answer is the first one.
+  host.send({ t: "relay", link: linkId(), data: "sync" });
+  assert.deepEqual(await host.next(), { t: "error", code: "not-on-link" });
+  // The link is still open to the next opener.
   await joinAs(link, host);
 });
 
@@ -169,7 +200,7 @@ test("tells the guest when the host goes away and frees its links", async () => 
   assert.deepEqual(await guest.next(), { t: "host-gone" });
 
   const late = await connect();
-  late.send({ t: "join", link });
+  late.send({ t: "join", link, attempt: linkId() });
   assert.deepEqual(await late.next(), { t: "refused", reason: "unknown" });
   // Another sender may now host the same link.
   await hostFor(link);
@@ -212,16 +243,16 @@ test("rejects messages from a socket that is not on the link or has the wrong ro
   const stranger = await connect();
   stranger.send({ t: "relay", link, data: "eA" });
   assert.deepEqual(await stranger.next(), { t: "error", code: "not-on-link" });
-  stranger.send({ t: "refuse", link, reason: "used" });
+  stranger.send({ t: "refuse", link, attempt: linkId(), reason: "used" });
   assert.deepEqual(await stranger.next(), { t: "error", code: "not-on-link" });
   stranger.send({ t: "path", link, path: "relay" });
   assert.deepEqual(await stranger.next(), { t: "error", code: "not-on-link" });
-  host.send({ t: "join", link: linkId() });
+  host.send({ t: "join", link: linkId(), attempt: linkId() });
   assert.deepEqual(await host.next(), { t: "error", code: "wrong-role" });
   const guest = await joinAs(link, host);
   guest.send({ t: "host", links: [linkId()] });
   assert.deepEqual(await guest.next(), { t: "error", code: "wrong-role" });
-  guest.send({ t: "join", link: linkId() });
+  guest.send({ t: "join", link: linkId(), attempt: linkId() });
   assert.deepEqual(await guest.next(), { t: "error", code: "already-joined" });
   guest.send({ t: "path", link, path: "direct" });
   assert.deepEqual(await guest.next(), { t: "error", code: "not-on-link" });
@@ -301,7 +332,7 @@ test("logs only allowlisted fields and never relay payloads", async () => {
   guest.send({ t: "relay", link, data: marker });
   assert.deepEqual(await host.next(), { t: "relay", link, data: marker });
   host.send({ t: "path", link, path: "stun" });
-  host.send({ t: "refuse", link, reason: "busy" });
+  host.send({ t: "refuse", link, attempt: guest.attempt, reason: "busy" });
   assert.deepEqual(await guest.next(), { t: "refused", reason: "busy" });
   const bad = await connect();
   bad.send(`{"t":"relay","data":"${marker}"}`);
@@ -317,6 +348,7 @@ test("logs only allowlisted fields and never relay payloads", async () => {
     const text = JSON.stringify(line);
     assert.ok(!text.includes(marker), `payload leaked into the log: ${text}`);
     assert.ok(!text.includes(link), `full link ID leaked into the log: ${text}`);
+    assert.ok(!text.includes(guest.attempt.slice(0, 6)), `attempt ID leaked into the log: ${text}`);
     for (const [key, value] of Object.entries(line.fields ?? {})) {
       assert.ok(allowed.has(key), `field ${key} is not allowlisted`);
       if (key === "link") {
@@ -359,8 +391,9 @@ test("terminates a guest that never answers pings and tells the host it left", a
   assert.deepEqual(await host.next(), { t: "error", code: "not-on-link" });
 
   const guest = new WsClient(url, { autoPong: false });
-  guest.on("open", () => guest.send(JSON.stringify({ t: "join", link })));
-  assert.deepEqual(await host.next(), { t: "joined", link });
+  const attempt = linkId();
+  guest.on("open", () => guest.send(JSON.stringify({ t: "join", link, attempt })));
+  assert.deepEqual(await host.next(), { t: "joined", link, attempt });
   const joinedAt = performance.now();
   assert.deepEqual(await host.next(), { t: "left", link });
   assert.ok(performance.now() - joinedAt < 200, "the silent guest outlived two heartbeats");
@@ -514,8 +547,9 @@ async function bufferedRelay(t: { after(fn: () => void): void }) {
   guest.on("message", () => {
     received += 1;
   });
-  guest.on("open", () => guest.send(JSON.stringify({ t: "join", link })));
-  assert.deepEqual(await host.next(), { t: "joined", link });
+  const attempt = linkId();
+  guest.on("open", () => guest.send(JSON.stringify({ t: "join", link, attempt })));
+  assert.deepEqual(await host.next(), { t: "joined", link, attempt });
   const data = "A".repeat(MAX_RELAY_DATA);
   return {
     events,

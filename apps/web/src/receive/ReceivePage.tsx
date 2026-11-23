@@ -4,7 +4,8 @@
 // One attempt (see lib/peer.ts and lib/receive-file.ts):
 // - Connect to the signaling server, derive the link's signal key, create the
 //   recipient peer, and only then send `join`, so the sender's offer always
-//   finds a peer to answer it.
+//   finds a peer to answer it. Each attempt joins with a fresh random attempt
+//   ID, so a sender's late refusal of an earlier attempt cannot end this one.
 // - `relay` goes to the peer. `refused` ends the attempt with the matching
 //   message, and so does `host-gone` until the file starts arriving. A
 //   transfer under way no longer needs the server (the sender may only have
@@ -30,9 +31,10 @@ import { useEffect, useMemo, useReducer, useRef, useState } from "preact/hooks";
 import { Button, buttonVariants } from "#components/ui/button";
 import type { Messages } from "../i18n/en.ts";
 import { useI18n } from "../i18n/I18n.tsx";
+import { encodeBase64url } from "../lib/base64url.ts";
 import { displayName, formatBytes, formatProgress, toHex } from "../lib/format.ts";
 import { deriveSignalKey } from "../lib/keys.ts";
-import { parseRecipientLocation } from "../lib/link.ts";
+import { LINK_ID_BYTES, parseRecipientLocation } from "../lib/link.ts";
 import { createRecipientPeer, fetchIceServers, type Peer } from "../lib/peer.ts";
 import type { FileOffer } from "../lib/receive-file.ts";
 import { ReceiveError, receiveFile } from "../lib/receive-file.ts";
@@ -116,6 +118,8 @@ export function ReceivePage() {
       release(previous);
     }
 
+    // A fresh ID per attempt, so the sender's refusal can name the attempt it refuses.
+    const attemptId = encodeBase64url(crypto.getRandomValues(new Uint8Array(LINK_ID_BYTES)));
     const signaling = connectSignaling({ onRelay: countRelay });
     const attempt: Attempt = {
       abort: new AbortController(),
@@ -296,7 +300,7 @@ export function ReceivePage() {
           },
           onClose: () => lost(),
         });
-        if (signaling.send({ t: "join", link: linkId })) {
+        if (signaling.send({ t: "join", link: linkId, attempt: attemptId })) {
           // ponytail: paired as soon as join is sent; the server sends no ack, so a refused join over-claims for one round trip
           setTie("paired");
         }

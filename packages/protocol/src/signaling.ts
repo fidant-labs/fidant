@@ -56,20 +56,24 @@ export type LogFields = {
 
 /** The sender announces its full list of link IDs. Re-sent whenever the list changes. */
 export type HostMessage = { t: "host"; links: string[] };
-/** A recipient asks to be connected to the sender hosting a link. */
-export type JoinMessage = { t: "join"; link: string };
+/**
+ * A recipient asks to be connected to the sender hosting a link. `attempt` is a fresh random ID
+ * (same shape as a link ID) for this join, so a refusal can name the attempt it refuses. It is
+ * not secret, but the server never logs it.
+ */
+export type JoinMessage = { t: "join"; link: string; attempt: string };
 /** An encrypted payload for the other end of a link. */
 export type RelayMessage = { t: "relay"; link: string; data: string };
-/** The sender turns away the recipient on a link. */
-export type RefuseMessage = { t: "refuse"; link: string; reason: RefuseReason };
+/** The sender turns away the recipient on a link, if it is still the one from `attempt`. */
+export type RefuseMessage = { t: "refuse"; link: string; attempt: string; reason: RefuseReason };
 
 /** The sender reports how its connection on a link ended up. */
 export type PathMessage = { t: "path"; link: string; path: ConnectionPath };
 
 export type ClientMessage = HostMessage | JoinMessage | RelayMessage | RefuseMessage | PathMessage;
 
-/** Tells the sender that a recipient joined a link. */
-export type JoinedMessage = { t: "joined"; link: string };
+/** Tells the sender that a recipient joined a link, and with which attempt. */
+export type JoinedMessage = { t: "joined"; link: string; attempt: string };
 /** Tells the sender that the recipient on a link went away. */
 export type LeftMessage = { t: "left"; link: string };
 /** Tells a recipient why it cannot connect. */
@@ -164,20 +168,23 @@ export function parseClientMessage(raw: string): ClientMessage | undefined {
       return { t: "host", links: [...links] };
     }
     case "join":
-      if (!hasKeys(value, ["t", "link"]) || !isLinkId(value.link)) {
+      if (!hasKeys(value, ["t", "link", "attempt"])) {
         return undefined;
       }
-      return { t: "join", link: value.link };
+      if (!isLinkId(value.link) || !isLinkId(value.attempt)) {
+        return undefined;
+      }
+      return { t: "join", link: value.link, attempt: value.attempt };
     case "relay":
       return parseRelay(value);
     case "refuse":
-      if (!hasKeys(value, ["t", "link", "reason"])) {
+      if (!hasKeys(value, ["t", "link", "attempt", "reason"])) {
         return undefined;
       }
-      if (!isLinkId(value.link) || !isRefuseReason(value.reason)) {
+      if (!isLinkId(value.link) || !isLinkId(value.attempt) || !isRefuseReason(value.reason)) {
         return undefined;
       }
-      return { t: "refuse", link: value.link, reason: value.reason };
+      return { t: "refuse", link: value.link, attempt: value.attempt, reason: value.reason };
     case "path":
       if (!hasKeys(value, ["t", "link", "path"])) {
         return undefined;
@@ -199,11 +206,18 @@ export function parseServerMessage(raw: string): ServerMessage | undefined {
   }
   switch (value.t) {
     case "joined":
+      if (!hasKeys(value, ["t", "link", "attempt"])) {
+        return undefined;
+      }
+      if (!isLinkId(value.link) || !isLinkId(value.attempt)) {
+        return undefined;
+      }
+      return { t: "joined", link: value.link, attempt: value.attempt };
     case "left":
       if (!hasKeys(value, ["t", "link"]) || !isLinkId(value.link)) {
         return undefined;
       }
-      return { t: value.t, link: value.link };
+      return { t: "left", link: value.link };
     case "relay":
       return parseRelay(value);
     case "refused":
