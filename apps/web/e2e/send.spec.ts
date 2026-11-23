@@ -57,7 +57,7 @@ async function addRecipient(sigill: Sigill, sender: Page, name: string): Promise
   sigill.forbid(`recipient name ${name}`, name);
   await sender.getByLabel("Who is it for?").fill(name);
   await sender.getByRole("button", { name: "Add", exact: true }).click();
-  const link = (await sender.getByLabel(`Link for ${name}`).textContent()) ?? "";
+  const link = (await sender.getByLabel(`Link for ${name}`, { exact: true }).textContent()) ?? "";
   const secret = new URL(link).hash.slice(1);
   expect(secret, `link secret for ${name}`).toMatch(/^[A-Za-z0-9_-]{43}$/);
   sigill.forbid(`link secret for ${name}`, secret);
@@ -72,7 +72,7 @@ async function receive(sigill: Sigill, link: string, file: TestFile, sizeText: s
   const page = await sigill.openPage();
   await page.goto(link);
   const heading = from ? `${from} wants to send you a file` : "You've been sent a file";
-  await expect(page.getByRole("heading", { name: heading })).toBeVisible();
+  await expect(page.getByRole("heading", { name: heading })).toBeFocused();
   await expect(page.getByText("Name typed by the sender, not verified.")).toHaveCount(from ? 1 : 0);
   await expect(page.getByText(file.name)).toBeVisible();
   await expect(page.getByText(sizeText, { exact: true })).toBeVisible();
@@ -85,6 +85,12 @@ async function receive(sigill: Sigill, link: string, file: TestFile, sizeText: s
   });
   const download = await downloading;
   expect(download.suggestedFilename()).toBe(file.name);
+  await expect(page.getByRole("heading", { name: "Download complete" })).toBeFocused();
+  // The typed name is unverified, so it stays on the offer screen only.
+  if (from) await expect(page.getByText(from)).toHaveCount(0);
+  const again = page.waitForEvent("download");
+  await page.getByRole("link", { name: "Save file" }).click();
+  expect((await again).suggestedFilename()).toBe(file.name);
   return { page, bytes: await readFile(await download.path()) };
 }
 
@@ -103,7 +109,9 @@ test("delivers a file to two recipients with a verified checksum", async ({ sigi
   for (const { bytes } of received) expect(sha256Hex(bytes)).toBe(file.sha256);
 
   for (const name of names) {
-    await expect(recipientRow(sender, name).getByText(`${name} has the file`)).toBeVisible();
+    await expect(
+      recipientRow(sender, name).getByText(`Delivered through ${name}'s link`),
+    ).toBeVisible();
   }
 });
 
@@ -115,7 +123,9 @@ test("refuses used, unknown and malformed links", async ({ sigill }) => {
 
   const first = await receive(sigill, link, file, "100 KB");
   expect(sha256Hex(first.bytes)).toBe(file.sha256);
-  await expect(recipientRow(sender, name).getByText(`${name} has the file`)).toBeVisible();
+  await expect(
+    recipientRow(sender, name).getByText(`Delivered through ${name}'s link`),
+  ).toBeVisible();
   await first.page.context().close();
 
   const reopened = await sigill.openPage();
@@ -136,7 +146,9 @@ test("refuses used, unknown and malformed links", async ({ sigill }) => {
   await expect(malformed.getByText("This link doesn't work")).toBeVisible();
 });
 
-test("a declined offer puts the recipient back to waiting", async ({ sigill }) => {
+test("a declined offer puts the recipient back to waiting, and can be reopened", async ({
+  sigill,
+}) => {
   const file = makeFile(sigill, 100_000);
   const sender = await openSender(sigill, file);
   const name = `Erik-${randomTag()}`;
@@ -144,11 +156,58 @@ test("a declined offer puts the recipient back to waiting", async ({ sigill }) =
 
   const recipient = await sigill.openPage();
   await recipient.goto(link);
-  await expect(recipientRow(sender, name).getByText(`${name} has opened the link`)).toBeVisible();
+  await expect(
+    recipientRow(sender, name).getByText(`${name}'s link has been opened`),
+  ).toBeVisible();
   await recipient.getByRole("button", { name: "Decline" }).click();
   await expect(recipient.getByText("You declined the file")).toBeVisible();
   await expect(
     recipientRow(sender, name).getByText(`Waiting for ${name} to open the link`),
+  ).toBeVisible();
+
+  await recipient.getByRole("button", { name: "Show the file again" }).click();
+  await expect(recipient.getByRole("button", { name: "Download" })).toBeVisible();
+  await expect(
+    recipientRow(sender, name).getByText(`${name}'s link has been opened`),
+  ).toBeVisible();
+});
+
+test("the sender's name must fit with the file name, and stray drops are ignored", async ({
+  sigill,
+}) => {
+  const fileName = `${randomTag()}${"r".repeat(872)}.bin`;
+  sigill.forbid("long file name", fileName);
+  const page = await sigill.openPage();
+  await page.goto(sigill.baseURL);
+  await page.getByLabel("Your name").fill("x".repeat(100));
+  await page.getByLabel("Choose a file").setInputFiles({
+    name: fileName,
+    mimeType: "application/octet-stream",
+    buffer: Buffer.from("hello"),
+  });
+  const name = `Anna-${randomTag()}`;
+  await page.getByLabel("Who is it for?").fill(name);
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(page.getByText("Your name and the file name are too long together")).toBeVisible();
+  await expect(page.getByRole("list", { name: "Recipients" })).toHaveCount(0);
+
+  const from = `Al-${randomTag()}`;
+  sigill.forbid("sender name", from);
+  await page.getByLabel("Your name").fill(from);
+  const link = await addRecipient(sigill, page, name);
+  await expect(page.getByLabel("Your name")).toBeDisabled();
+
+  const strayDrop = `(() => {
+    const drop = new DragEvent("drop", { bubbles: true, cancelable: true });
+    document.body.dispatchEvent(drop);
+    return drop.defaultPrevented;
+  })()`;
+  expect(await page.evaluate(strayDrop)).toBe(true);
+
+  const recipient = await sigill.openPage();
+  await recipient.goto(link);
+  await expect(
+    recipient.getByRole("heading", { name: `${from} wants to send you a file` }),
   ).toBeVisible();
 });
 

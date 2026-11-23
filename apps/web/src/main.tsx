@@ -25,5 +25,14 @@ function App() {
   return <SendPage />;
 }
 
+/** Only the file input takes drops. Anywhere else the browser would open the file and lose the page. */
+function ignoreStrayDrop(event: DragEvent) {
+  if ((event.target as Element | null)?.id === "file") return;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "none";
+}
+window.addEventListener("dragover", ignoreStrayDrop);
+window.addEventListener("drop", ignoreStrayDrop);
+
 const root = document.getElementById("app");
 if (root) render(<App />, root);

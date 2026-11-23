@@ -297,7 +297,19 @@ export function SendPage() {
     input.focus();
   };
 
-  const onRemove = (linkId: string) => dispatchRef.current({ type: "remove", linkId });
+  const onRemove = (linkId: string) => {
+    const list = senderRef.current.recipients;
+    const index = list.findIndex((r) => r.linkId === linkId);
+    const neighbour = list[index + 1] ?? list[index - 1];
+    dispatchRef.current({ type: "remove", linkId });
+    // The removed card held focus; keep the keyboard user in the list once it has re-rendered.
+    requestAnimationFrame(() => {
+      const target = neighbour
+        ? document.querySelector<HTMLElement>(`[data-remove="${neighbour.linkId}"]`)
+        : document.getElementById("recipient-name");
+      target?.focus();
+    });
+  };
 
   const hasRecipients = sender.recipients.length > 0;
   const full = sender.recipients.length >= MAX_LINKS;

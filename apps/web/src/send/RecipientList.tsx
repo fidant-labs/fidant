@@ -12,9 +12,9 @@ import { Direct, Icon } from "../ui.tsx";
 const STATUS_TEXT: Record<RecipientStatus, (name: string) => string> = {
   waiting: (name) => `Waiting for ${name} to open the link`,
   connecting: (name) => `Connecting to ${name}…`,
-  offered: (name) => `${name} has opened the link`,
+  offered: (name) => `${name}'s link has been opened`,
   receiving: (name) => `Sending to ${name}`,
-  delivered: (name) => `${name} has the file`,
+  delivered: (name) => `Delivered through ${name}'s link`,
   failed: (name) =>
     `The file didn't arrive intact for ${name}. They can open the link again to retry.`,
 };
@@ -90,7 +90,7 @@ function RecipientRow({ recipient, fileSize, onRemove }: RowProps) {
       )}
       <div class="recipient-actions">
         {shareable && (
-          <button type="button" onClick={copy}>
+          <button type="button" aria-label={`Copy link for ${name}`} onClick={copy}>
             Copy link
           </button>
         )}
@@ -98,6 +98,7 @@ function RecipientRow({ recipient, fileSize, onRemove }: RowProps) {
           type="button"
           class="link"
           aria-label={`Remove ${name}`}
+          data-remove={linkId}
           onClick={() => onRemove(linkId)}
         >
           Remove

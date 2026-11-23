@@ -30,7 +30,7 @@ Send a file:
 4. Add each recipient by name. Each one gets their own link. Names stay in the sender's browser.
 5. Copy each link and send it to that person yourself, for example in a chat.
 6. The recipient opens the link, sees the file name and size, and clicks Download. Browsers with a save picker (desktop Chrome and Edge) ask where to save the file; others start the download by themselves when the transfer is done, with a "Save file" button as a fallback.
-7. The sender's card for that recipient changes to "<name> has the file" when the recipient's checksum matches.
+7. The sender's card for that recipient changes to "Delivered through <name>'s link" when the recipient's checksum matches.
 
 Keep the sender's tab open until every recipient has the file. The file goes directly from the sender's browser to each recipient's browser, so it is only available while that tab is open.
 

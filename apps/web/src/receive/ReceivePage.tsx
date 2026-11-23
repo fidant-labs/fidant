@@ -86,7 +86,11 @@ const OFFLINE: Message = {
 };
 const LOST: Message = {
   title: "The connection to the sender was lost",
-  body: "The download may not be complete. Try again to get the whole file.",
+  body: "Nothing was saved.",
+};
+const LOST_RECEIVING: Message = {
+  title: "The connection to the sender was lost",
+  body: "The file may not have been saved. Try again to make sure you get it.",
 };
 const CHECKSUM: Message = {
   title: "The file didn't arrive intact",
@@ -161,6 +165,7 @@ export function ReceivePage() {
     setView({ s: "connecting" });
 
     const current = () => attemptRef.current === attempt && !attempt.ended;
+    const lostMessage = () => (attempt.receiving ? LOST_RECEIVING : LOST);
     const finish = (next: View, linger = false) => {
       if (!current()) return;
       release(attempt, linger);
@@ -176,14 +181,14 @@ export function ReceivePage() {
       }
       attempt.abort.abort(new Error("connection lost"));
       attempt.timers.push(
-        setTimeout(() => finish({ s: "failed", message: LOST }), HOST_GONE_GRACE_MS),
+        setTimeout(() => finish({ s: "failed", message: lostMessage() }), HOST_GONE_GRACE_MS),
       );
     };
 
     signaling.onClose(({ byClient }) => {
       if (byClient || !current()) return;
       if (attempt.channelOpen && !attempt.abort.signal.aborted) return;
-      finish({ s: "failed", message: attempt.channelOpen ? LOST : SERVER });
+      finish({ s: "failed", message: attempt.channelOpen ? lostMessage() : SERVER });
     });
     signaling.subscribe((message) => {
       switch (message.t) {
@@ -196,7 +201,7 @@ export function ReceivePage() {
           // on this attempt (its peer failed or never connected), not that the
           // link is in use or used: the sender only signals a join it took.
           if (attempt.heardSender) {
-            finish({ s: "failed", message: attempt.channelOpen ? LOST : CONNECT });
+            finish({ s: "failed", message: attempt.channelOpen ? lostMessage() : CONNECT });
           } else {
             finish({ s: "refused", message: REFUSED[message.reason] });
           }
@@ -301,6 +306,19 @@ export function ReceivePage() {
     };
   }, []);
 
+  // Each step replaces the button that had focus, so focus moves to the new step's heading.
+  const firstView = useRef(true);
+  useEffect(() => {
+    if (firstView.current) {
+      firstView.current = false;
+      return;
+    }
+    const heading = document.querySelector<HTMLElement>("main h1");
+    if (!heading) return;
+    heading.tabIndex = -1;
+    heading.focus();
+  }, [view.s]);
+
   const onAccept = () => {
     const attempt = attemptRef.current;
     if (view.s !== "offer" || !attempt?.decide || picking) return;
@@ -355,9 +373,7 @@ export function ReceivePage() {
     case "connecting":
       return (
         <Page>
-          <div role="status">
-            <h1>Connecting to the sender…</h1>
-          </div>
+          <h1>Connecting to the sender…</h1>
         </Page>
       );
     case "refused":
@@ -417,7 +433,7 @@ export function ReceivePage() {
       const { offer, blob, sha256 } = view;
       return (
         <Page>
-          <div class="success" role="status">
+          <div class="success">
             <Icon name="check" />
             <h1>Download complete</h1>
           </div>
@@ -442,10 +458,14 @@ export function ReceivePage() {
     case "declined":
       return (
         <Page>
-          <div role="status">
-            <h1>You declined the file</h1>
-            <p>You can close this tab.</p>
-          </div>
+          <h1>You declined the file</h1>
+          <p>
+            You can close this tab. If you change your mind, the link still works while the sender's
+            page is open.
+          </p>
+          <button type="button" class="link" onClick={start}>
+            Show the file again
+          </button>
         </Page>
       );
     case "failed":
