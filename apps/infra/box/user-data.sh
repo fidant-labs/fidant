@@ -1,6 +1,6 @@
-#!/bin/bash
-# Lightsail runs this once, as root, on first boot; box.ts names the instance after its hash, so a change replaces the box.
-set -euxo pipefail
+#!/bin/sh
+# Lightsail runs this once as root through /bin/sh after a script of its own, so it must stay POSIX sh.
+set -eux
 
 fallocate -l 2G /swapfile
 chmod 600 /swapfile
@@ -9,8 +9,8 @@ swapon /swapfile
 echo '/swapfile none swap sw 0 0' >>/etc/fstab
 
 export DEBIAN_FRONTEND=noninteractive
-apt-get update
-apt-get install -y caddy git xz-utils
+apt-get -o DPkg::Lock::Timeout=600 update
+apt-get -o DPkg::Lock::Timeout=600 install -y caddy git xz-utils
 
 cd /tmp
 dist=https://nodejs.org/dist/latest-v@NODE_MAJOR@.x
@@ -18,27 +18,26 @@ curl -fsSLO "$dist/SHASUMS256.txt"
 tarball=$(awk '/linux-x64\.tar\.xz$/ {print $2}' SHASUMS256.txt)
 curl -fsSLO "$dist/$tarball"
 grep " $tarball\$" SHASUMS256.txt | sha256sum -c -
-tar -xJf "$tarball" -C /usr/local --strip-components=1
+tar --no-same-owner -xJf "$tarball" -C /usr/local --strip-components=1
 npm install -g pnpm@@PNPM_VERSION@
 
-useradd --system --create-home --home-dir /opt/sigill --shell /usr/sbin/nologin sigill
+useradd --system --create-home --home-dir /var/lib/sigill --shell /usr/sbin/nologin sigill
 install -d -o sigill -g sigill /opt/sigill/releases
 
 cat >/usr/local/bin/sigill-deploy <<'EOF'
 #!/bin/bash
 set -euo pipefail
 repo=https://github.com/sigill-labs/sigill.git
-sha=$(git ls-remote "$repo" refs/heads/main | cut -f1)
+sha=$(git ls-remote "$repo" refs/heads/main | awk '$2 == "refs/heads/main" {print $1}')
 [[ $sha =~ ^[0-9a-f]{40}$ ]]
 dir=/opt/sigill/releases/$sha
 previous=$(readlink /opt/sigill/current || true)
 [ "$previous" = "$dir" ] && exit 0
 [ -e "/opt/sigill/failed-$sha" ] && exit 0
-as_sigill() { runuser -u sigill -- env HOME=/opt/sigill bash -euo pipefail -c "$1"; }
-rm -rf "$dir"
-as_sigill "git clone --quiet --filter=blob:none --no-checkout $repo $dir && cd $dir && git checkout --quiet $sha && pnpm install --frozen-lockfile"
+as_sigill() { runuser -u sigill -- env HOME=/var/lib/sigill bash -euo pipefail -c "$1"; }
+as_sigill "rm -rf $dir && git clone --quiet --filter=blob:none --no-checkout $repo $dir && cd $dir && git checkout --quiet $sha && pnpm install --frozen-lockfile"
 if ! as_sigill "cd $dir && pnpm build"; then
-  rm -rf "$dir"
+  as_sigill "rm -rf $dir"
   touch "/opt/sigill/failed-$sha"
   exit 1
 fi
@@ -49,14 +48,15 @@ switch() {
 }
 switch "$dir"
 for _ in $(seq 20); do
-  if curl -fsk -o /dev/null https://127.0.0.1:8443/; then
-    ls -1dt /opt/sigill/releases/*/ | tail -n +4 | xargs -r rm -rf
+  if curl -fsk --max-time 2 -o /dev/null https://127.0.0.1:8443/; then
+    as_sigill "ls -1dt /opt/sigill/releases/*/ | tail -n +4 | xargs -r rm -rf --"
     exit 0
   fi
   sleep 1
 done
 touch "/opt/sigill/failed-$sha"
 [ -n "$previous" ] && switch "$previous"
+as_sigill "rm -rf $dir"
 exit 1
 EOF
 chmod 755 /usr/local/bin/sigill-deploy
@@ -83,6 +83,7 @@ Description=Deploy the newest commit on main
 
 [Service]
 Type=oneshot
+TimeoutStartSec=20min
 ExecStart=/usr/local/bin/sigill-deploy
 EOF
 
@@ -96,6 +97,13 @@ WantedBy=timers.target
 EOF
 
 cat >/etc/caddy/Caddyfile <<'EOF'
+{
+	admin off
+	log default {
+		exclude http.log.error
+	}
+}
+
 (hsts) {
 	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
 }
