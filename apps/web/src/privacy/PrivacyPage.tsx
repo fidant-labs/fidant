@@ -1,5 +1,7 @@
+import { Alert, AlertDescription } from "#components/ui/alert";
+import { Card, CardContent } from "#components/ui/card";
 import { LOGS } from "../lib/server-facts.ts";
-import { lede, notice, Page } from "../ui.tsx";
+import { lede, Page } from "../ui.tsx";
 
 const section = "mt-10";
 const h2 = "mb-3 text-[1.25rem] font-bold";
@@ -32,14 +34,18 @@ const SEES: ReadonlyArray<readonly [string, string]> = [
 
 function Facts({ rows }: { rows: ReadonlyArray<readonly [string, string]> }) {
   return (
-    <dl class="divide-y divide-border rounded-lg border border-border bg-card">
-      {rows.map(([term, value]) => (
-        <div key={term} class="px-4 py-3">
-          <dt class="font-semibold">{term}</dt>
-          <dd class="mt-[0.15rem] text-muted-foreground">{value}</dd>
-        </div>
-      ))}
-    </dl>
+    <Card>
+      <CardContent>
+        <dl class="divide-y divide-border">
+          {rows.map(([term, value]) => (
+            <div key={term} class="py-3 first:pt-0 last:pb-0">
+              <dt class="font-semibold">{term}</dt>
+              <dd class="mt-[0.15rem] text-muted-foreground">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -103,9 +109,11 @@ export function PrivacyPage() {
           Because the two browsers connect directly, each can see the other's network address (IP
           address), the same as on a video call.
         </p>
-        <p class={`${notice} border-border bg-warning-bg`}>
-          Anyone who has the link can open the file. Send each link only to the person it is for.
-        </p>
+        <Alert role="note" className="my-4">
+          <AlertDescription>
+            Anyone who has the link can open the file. Send each link only to the person it is for.
+          </AlertDescription>
+        </Alert>
       </section>
 
       <section class={section} aria-labelledby="server-heading">
