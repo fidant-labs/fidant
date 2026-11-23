@@ -261,6 +261,15 @@ export const sv: Messages = {
         ? "Inget ännu."
         : `${messages} ${messages === 1 ? "uppkopplingsmeddelande" : "uppkopplingsmeddelanden"} (${size}), alla krypterade så att servern inte kan läsa dem.`,
     fileData: "Inget. Filen går direkt mellan webbläsarna.",
+    fileDataRelayed:
+      "Inget. Webbläsarna kunde inte ansluta direkt, så filen går krypterad via vårt relä i stället.",
+    relaySeesLabel: "Vårt relä ser",
+    relaySees:
+      "Båda webbläsarnas IP-adresser och den krypterade filen som passerar, med storleken avrundad uppåt så att den exakta storleken inte syns. Reläet kan inte låsa upp filen.",
+    relayLogsLabel: "Vårt relä loggar",
+    relayLogs: "Anslutningstider och IP-adresser. Aldrig namn, nycklar eller filinnehåll.",
+    relayKeepsLabel: "Vårt relä sparar",
+    relayKeeps: "Ingenting av filen när den har passerat. Loggraderna finns kvar.",
     senderAfterwards: (online: boolean) =>
       online
         ? "När du stänger den här fliken glömmer servern dina länkar, inom högst en minut. Loggraderna finns kvar."
@@ -314,7 +323,7 @@ export const sv: Messages = {
       ". Webbläsare skickar aldrig den delen till någon webbplats, inte heller till vår. Därför kan vi inte låsa upp din fil, ens om vi ville.",
     ],
     direct:
-      "Eftersom de två webbläsarna ansluter direkt till varandra kan båda se den andras nätverksadress (IP-adress), precis som i ett videosamtal.",
+      "Eftersom de två webbläsarna ansluter direkt till varandra kan båda se den andras nätverksadress (IP-adress), precis som i ett videosamtal. Om ett nätverk blockerar det går filen i stället via vårt relä, fortfarande låst. Reläet ser då båda IP-adresserna och ungefär hur stor filen är, men kan inte låsa upp den.",
     linkWarning:
       "Alla som har länken kan öppna filen. Skicka varje länk bara till den som den är avsedd för.",
     serverHeading: "Vad vår server vet",

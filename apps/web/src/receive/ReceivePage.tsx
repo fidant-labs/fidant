@@ -87,6 +87,7 @@ export function ReceivePage() {
   const [relayed, countRelay] = useReducer(addRelay, NO_RELAYS);
   const [reachedServer, setReachedServer] = useState(false);
   const [tie, setTie] = useState<Tie>("closed");
+  const [viaRelay, setViaRelay] = useState(false);
   const attemptRef = useRef<Attempt | undefined>(undefined);
 
   /** Closes everything an attempt holds. `linger` keeps the peer up for a moment. */
@@ -284,7 +285,15 @@ export function ReceivePage() {
           linkId,
           signalKey,
           iceServers,
-          onOpen: (channel, info) => onOpen(channel, info.maxMessageSize),
+          onOpen: (channel, info) => {
+            // A short transfer can end before the path resolves; it still went through the relay.
+            void info.path.then((path) => {
+              if (path === "relay" && attemptRef.current === attempt) {
+                setViaRelay(true);
+              }
+            });
+            onOpen(channel, info.maxMessageSize);
+          },
           onClose: () => lost(),
         });
         if (signaling.send({ t: "join", link: linkId })) {
@@ -386,6 +395,7 @@ export function ReceivePage() {
       holds={t.server.recipientHolds(tie)}
       relayed={relayed}
       afterwards={t.server.afterwardsRecipient}
+      viaRelay={viaRelay}
     />
   ) : null;
 

@@ -268,6 +268,15 @@ export const en = {
         ? "Nothing yet."
         : `${messages} ${messages === 1 ? "setup message" : "setup messages"} (${size}), all encrypted so the server can't read them.`,
     fileData: "None. The file goes directly between browsers.",
+    fileDataRelayed:
+      "None. The browsers couldn't connect directly, so the file passes encrypted through our relay instead.",
+    relaySeesLabel: "Our relay sees",
+    relaySees:
+      "Both browsers' IP addresses and the encrypted file passing through, with its size rounded up so the exact size stays hidden. It can't unlock the file.",
+    relayLogsLabel: "Our relay logs",
+    relayLogs: "Connection times and IP addresses. Never names, keys or file data.",
+    relayKeepsLabel: "Our relay keeps",
+    relayKeeps: "Nothing of the file once it has passed through. Its log lines stay.",
     senderAfterwards: (online: boolean): string =>
       online
         ? "When you close this tab, the server forgets your links, within a minute at most. Its log lines stay."
@@ -323,7 +332,7 @@ export const en = {
       " sign. Browsers never send that part to any website, ours included. That is why we can't unlock your file even if we wanted to.",
     ] as readonly [string, string],
     direct:
-      "Because the two browsers connect directly, each can see the other's network address (IP address), the same as on a video call.",
+      "Because the two browsers connect directly, each can see the other's network address (IP address), the same as on a video call. If a network blocks that, the file passes through our relay instead, still locked. The relay then sees both IP addresses and roughly how big the file is, and can't unlock it.",
     linkWarning:
       "Anyone who has the link can open the file. Send each link only to the person it is for.",
     serverHeading: "What our server knows",

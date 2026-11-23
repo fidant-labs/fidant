@@ -81,6 +81,7 @@ export function SendPage() {
   const [sender, setSender] = useState<SenderState>(initialSenderState);
   const [lostServer, setLostServer] = useState(false);
   const [relayed, countRelay] = useReducer(addRelay, NO_RELAYS);
+  const [viaRelay, setViaRelay] = useState(false);
   const [nameError, setNameError] = useState<ErrorOf<"nameError">>("");
   const [fileError, setFileError] = useState<ErrorOf<"fileError">>("");
   const [from, setFrom] = useState("");
@@ -165,6 +166,10 @@ export function SendPage() {
         void info.path.then((path) => {
           if (findRecipient(senderRef.current, linkId)) {
             sendPath(linkId, connection, path);
+            // ponytail: sticky for the page, since the relay's log lines stay after the transfer
+            if (path === "relay") {
+              setViaRelay(true);
+            }
           }
         });
         dispatch({ type: "channel-open", linkId });
@@ -557,6 +562,7 @@ export function SendPage() {
           })}
           relayed={relayed}
           afterwards={t.server.senderAfterwards(!lostServer)}
+          viaRelay={viaRelay}
         />
       </div>
 
