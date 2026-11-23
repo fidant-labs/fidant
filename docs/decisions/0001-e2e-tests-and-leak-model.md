@@ -1,8 +1,8 @@
 # 0001: End-to-end tests and leak model
 
-Status: Accepted
-Date: 2026-11-23
-Linear: SIG-38
+- Status: Accepted
+- Date: 2026-11-23
+- Linear: SIG-38
 
 ## Context
 
@@ -30,7 +30,7 @@ The project must run fully local. The stack the tests will run against:
 | App server                | Serves the web client, signaling, API         |
 | Postgres                  | Transfers, server key halves, receipts, audit |
 | Object storage            | Encrypted files for stored transfers          |
-| Mail catcher              | Links and notifications sent by mail          |
+| Mail catcher              | Notices sent by mail, never a key             |
 | coturn                    | TURN relay for peer-to-peer transfers         |
 | BankID simulator          | Identity and signing                          |
 | Local timestamp authority | Timestamps on receipts and the audit log      |
