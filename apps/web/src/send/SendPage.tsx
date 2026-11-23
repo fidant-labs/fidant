@@ -6,7 +6,7 @@
 //   list; re-host the full list after every add or remove.
 // - Server `joined` → reducer `joined`, whose `start` effect derives the
 //   link's signal key and creates a sender peer. `relay` goes to that peer.
-//   `left` → `dropped`.
+//   `left` → reducer `left`, which only matters before the channel opens.
 // - When the data channel opens, sendFile runs the transfer and reports
 //   accepted, progress, declined and receipt back to the reducer.
 // - Effects run outside render: `close` tears the peer down, `refuse` tells
@@ -174,7 +174,7 @@ export function SendPage() {
           dispatch({ type: "joined", linkId: message.link });
           break;
         case "left":
-          dispatch({ type: "dropped", linkId: message.link });
+          dispatch({ type: "left", linkId: message.link });
           break;
         case "relay":
           void connectionsRef.current.get(message.link)?.peer?.handleRelay(message.data);

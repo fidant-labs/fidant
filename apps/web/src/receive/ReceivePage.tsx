@@ -5,8 +5,12 @@
 // - Connect to the signaling server, derive the link's signal key, create the
 //   recipient peer, and only then send `join`, so the sender's offer always
 //   finds a peer to answer it.
-// - `relay` goes to the peer. `refused` and `host-gone` end the attempt with
-//   the matching message.
+// - `relay` goes to the peer. `refused` ends the attempt with the matching
+//   message, and so does `host-gone` until the file starts arriving. A
+//   transfer under way no longer needs the server (the sender may only have
+//   lost its signaling connection), so then `host-gone` is only remembered: if
+//   the sender's tab really closed, the peer drops too (at the latest when ICE
+//   consent runs out) and the drop is reported as "The sender is offline".
 // - When the data channel opens, receiveFile runs the transfer. The offer
 //   screen resolves its decision with a Sink (Accept) or undefined (Decline).
 //
@@ -46,6 +50,10 @@ type Attempt = {
   peer?: Peer;
   /** Set once the data channel opened; signaling problems no longer matter then. */
   channelOpen: boolean;
+  /** Set once the recipient accepted and the file started arriving. */
+  receiving: boolean;
+  /** The server said the sender is gone while the file was arriving. */
+  hostGone: boolean;
   /** Set once the attempt reached its final view. Later events are ignored. */
   ended: boolean;
   /** Resolves the offer: a Sink to accept, undefined to decline. */
@@ -97,6 +105,8 @@ export function ReceivePage() {
       abort: new AbortController(),
       signaling,
       channelOpen: false,
+      receiving: false,
+      hostGone: false,
       ended: false,
       timers: [],
     };
@@ -110,10 +120,14 @@ export function ReceivePage() {
       release(attempt, linger);
       setView(next);
     };
-    // The peer dropped. If the sender's tab closed, `host-gone` usually follows
-    // within moments; wait for it so the message says why.
+    // The peer dropped. If the sender's tab closed, `host-gone` arrives within
+    // moments of the drop, before or after it; wait for it so the message says why.
     const lost = () => {
       if (!current()) return;
+      if (attempt.hostGone) {
+        finish({ s: "refused", text: OFFLINE_TEXT });
+        return;
+      }
       attempt.abort.abort(new Error("connection lost"));
       attempt.timers.push(
         setTimeout(() => finish({ s: "failed", text: LOST_TEXT }), HOST_GONE_GRACE_MS),
@@ -134,6 +148,14 @@ export function ReceivePage() {
           finish({ s: "refused", text: REFUSED_TEXT[message.reason] });
           break;
         case "host-gone":
+          // A transfer under way can finish without the server; the peer
+          // closing ends it if the sender really went away. Before that,
+          // browsers can take many seconds to notice a closed tab over the
+          // data channel, so trust the server.
+          if (attempt.receiving && !attempt.abort.signal.aborted) {
+            attempt.hostGone = true;
+            break;
+          }
           finish({ s: "refused", text: OFFLINE_TEXT });
           break;
         case "error":
@@ -159,7 +181,10 @@ export function ReceivePage() {
             offered = offer;
             attempt.decide = (sink) => {
               attempt.decide = undefined;
-              if (sink) setView({ s: "receiving", offer, bytes: 0 });
+              if (sink) {
+                attempt.receiving = true;
+                setView({ s: "receiving", offer, bytes: 0 });
+              }
               resolve(sink);
             };
             setView({ s: "offer", offer });
@@ -220,7 +245,12 @@ export function ReceivePage() {
     pending.then(
       (sink) => {
         setPicking(false);
-        if (attemptRef.current !== attempt || attempt.ended || !attempt.decide) {
+        if (
+          attemptRef.current !== attempt ||
+          attempt.ended ||
+          attempt.abort.signal.aborted ||
+          !attempt.decide
+        ) {
           void sink.abort();
           return;
         }
@@ -229,7 +259,14 @@ export function ReceivePage() {
       (error: unknown) => {
         setPicking(false);
         // Cancelling the save dialog leaves the offer open.
-        if (isPickerCancel(error) || attemptRef.current !== attempt || attempt.ended) return;
+        if (
+          isPickerCancel(error) ||
+          attemptRef.current !== attempt ||
+          attempt.ended ||
+          attempt.abort.signal.aborted
+        ) {
+          return;
+        }
         release(attempt);
         setView({ s: "failed", text: "Transfer failed. Could not create the file." });
       },

@@ -19,6 +19,7 @@
 // | receiving                     | receipt(true)  | delivered  | close       |
 // | receiving                     | receipt(false) | failed     | close       |
 // | connecting, offered, receiving| dropped        | waiting    | close       |
+// | connecting                    | left           | waiting    | close       |
 // | (not on the list)             | joined         | -          | refuse unknown |
 //
 // Rules:
@@ -28,6 +29,12 @@
 //   is refused with "busy". The server normally refuses a second joiner
 //   itself; the sender is the authority either way.
 // - A join for a link ID not on the list is refused with "unknown".
+// - `left` (the server says the recipient's signaling socket closed) ends an
+//   attempt only while it is still connecting. Once the data channel is open
+//   the socket no longer matters: the recipient closes it right after sending
+//   RECEIPT or DECLINE, so `left` can arrive before that frame is decrypted,
+//   and a recipient whose socket drops mid-transfer can still finish. From
+//   then on only the peer closing (dropped), a receipt or a decline end it.
 // - A drop or decline before delivery returns the recipient to "waiting" with
 //   bytesSent 0. There is no resume: the next join starts over.
 // - A mismatching RECEIPT marks the recipient "failed" with an error. The link
@@ -75,6 +82,7 @@ export type SenderAction =
   | { type: "progress"; linkId: string; bytesSent: number }
   | { type: "receipt"; linkId: string; match: boolean }
   | { type: "dropped"; linkId: string }
+  | { type: "left"; linkId: string }
   | { type: "declined"; linkId: string };
 
 export type SenderEffect =
@@ -171,6 +179,12 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
     }
     case "dropped":
       if (!isActive(current)) return { state, effects: [] };
+      return {
+        state: replace(state, reset(current, "waiting")),
+        effects: [{ type: "close", linkId }],
+      };
+    case "left":
+      if (current.status !== "connecting") return { state, effects: [] };
       return {
         state: replace(state, reset(current, "waiting")),
         effects: [{ type: "close", linkId }],

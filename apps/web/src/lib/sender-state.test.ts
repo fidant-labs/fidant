@@ -159,6 +159,35 @@ test("a drop before delivery returns the recipient to waiting with no progress",
   }
 });
 
+test("left while connecting returns the recipient to waiting", () => {
+  const { state: s0, linkId } = withRecipient();
+  const { state } = run(s0, { type: "joined", linkId });
+  const result = update(state, { type: "left", linkId });
+  assert.deepEqual(findRecipient(result.state, linkId), findRecipient(s0, linkId));
+  assert.deepEqual(result.effects, [{ type: "close", linkId }]);
+});
+
+test("left once the channel is open is ignored; a receipt after it still delivers", () => {
+  const { state: s0, linkId } = withRecipient();
+  const offered = run(s0, { type: "joined", linkId }, { type: "channel-open", linkId }).state;
+  const leftOffered = update(offered, { type: "left", linkId });
+  assert.equal(leftOffered.state, offered);
+  assert.deepEqual(leftOffered.effects, []);
+
+  const receiving = run(offered, { type: "accepted", linkId }).state;
+  const leftReceiving = update(receiving, { type: "left", linkId });
+  assert.equal(leftReceiving.state, receiving);
+  assert.deepEqual(leftReceiving.effects, []);
+
+  const delivered = update(leftReceiving.state, { type: "receipt", linkId, match: true });
+  assert.equal(statusOf(delivered.state, linkId), "delivered");
+  assert.deepEqual(delivered.effects, [{ type: "close", linkId }]);
+
+  // A decline that arrives after `left` still counts too.
+  const declined = update(leftOffered.state, { type: "declined", linkId });
+  assert.equal(statusOf(declined.state, linkId), "waiting");
+});
+
 test("a decline returns the recipient to waiting", () => {
   const { state: s0, linkId } = withRecipient();
   const { state } = run(s0, { type: "joined", linkId }, { type: "channel-open", linkId });
@@ -198,6 +227,7 @@ test("events that do not fit the current status are ignored", () => {
     { type: "progress", linkId, bytesSent: 10 },
     { type: "receipt", linkId, match: true },
     { type: "dropped", linkId },
+    { type: "left", linkId },
     { type: "declined", linkId },
   ];
   for (const action of outOfPlace) {
