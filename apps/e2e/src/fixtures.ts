@@ -6,6 +6,8 @@ import {
   type Page,
 } from "@playwright/test";
 import { parseStackOrigins } from "./hosts.ts";
+import { type Leaks, LeakWatch } from "./leak-watch.ts";
+import { runSeed, SeededRandom } from "./leaks/canary.ts";
 import {
   assertActorName,
   type BlockedRecord,
@@ -16,6 +18,8 @@ import { observationsDir } from "./paths.ts";
 import { Recorder } from "./recorder.ts";
 
 export { expect } from "@playwright/test";
+export type { Leaks } from "./leak-watch.ts";
+export { canaryFile, canaryKey } from "./leaks/canary.ts";
 
 /** A browser context of its own, such as the sender or the recipient, with one page open. */
 export interface Actor {
@@ -39,6 +43,14 @@ interface Fixtures {
    * the test, for a test that checks the blocker itself. They are still aborted and recorded.
    */
   allowBlocked: boolean;
+  /** Registers this test's secrets. Its teardown fails the test if any of them leaked. */
+  leaks: Leaks;
+  /**
+   * Random bytes for canaries, from the run seed and this test's title, so the same seed
+   * (printed at the start of the run) makes the same canaries. Fork it per canary.
+   */
+  canary: SeededRandom;
+  _leakWatch: LeakWatch;
   _recorders: Map<string, Recorder>;
   _actorContextOptions: BrowserContextOptions;
   _noUnrecordedContexts: undefined;
@@ -47,12 +59,38 @@ interface Fixtures {
 export const test = base.extend<Fixtures>({
   allowBlocked: [false, { option: true }],
 
+  // `_recorders` depends on this, so this is set up first and torn down last: the scan runs once
+  // every context has closed and `_recorders` has completed and written the records.
+  _leakWatch: [
+    // biome-ignore lint/correctness/noEmptyPattern: Playwright reads dependencies from the pattern.
+    async ({}, use, testInfo) => {
+      const watch = await LeakWatch.start(testDirName(testInfo), process.env.SIGILL_E2E_REGISTRY);
+      await use(watch);
+      const report = await watch.check();
+      if (report) throw new Error(report);
+    },
+    { auto: true },
+  ],
+
+  leaks: async ({ _leakWatch }, use) => {
+    await use(_leakWatch);
+  },
+
+  // biome-ignore lint/correctness/noEmptyPattern: Playwright reads dependencies from the pattern.
+  canary: async ({}, use, testInfo) => {
+    const seed = process.env.SIGILL_E2E_SEED;
+    if (!seed) throw new Error("SIGILL_E2E_SEED is not set. Run the suite through global setup.");
+    const path = [testInfo.project.name, ...testInfo.titlePath];
+    await use(new SeededRandom(runSeed(seed)).fork(JSON.stringify(path)));
+  },
+
   // Auto, so it is set up before any context and torn down after every context has closed.
   // Writing here means records that arrive while a context closes (websocket-close,
   // requestfailed, late blocks) still reach the file.
   _recorders: [
-    async ({ allowBlocked }, use, testInfo) => {
+    async ({ allowBlocked, _leakWatch }, use, testInfo) => {
       const recorders = new Map<string, Recorder>();
+      _leakWatch.recorders = recorders;
       await use(recorders);
       const dir = join(observationsDir, testDirName(testInfo));
       for (const recorder of recorders.values()) {

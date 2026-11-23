@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { finished } from "node:stream/promises";
-import { repoRoot, runDir } from "../paths.ts";
+import { repoRoot, runDir, serverStderrLog, serverStdoutLog } from "../paths.ts";
 import { parsePort } from "./port.ts";
 import type { RunningService, Service } from "./service.ts";
 
@@ -19,8 +19,8 @@ export const server: Service = { name: "server", start: startServer };
 
 async function startServer(): Promise<RunningService> {
   const certDir = await mkdtemp(join(tmpdir(), "sigill-e2e-certs-"));
-  const stdoutLog = createWriteStream(join(runDir, "server.stdout.log"));
-  const stderrLog = createWriteStream(join(runDir, "server.stderr.log"));
+  const stdoutLog = createWriteStream(serverStdoutLog);
+  const stderrLog = createWriteStream(serverStderrLog);
   const child = spawn(process.execPath, [serverMain], {
     cwd: repoRoot,
     env: { ...process.env, PORT: "0", CERT_DIR: certDir },

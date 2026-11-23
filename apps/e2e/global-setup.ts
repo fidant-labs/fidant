@@ -1,17 +1,51 @@
-import { existsSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { formatSeed, runSeed } from "./src/leaks/canary.ts";
 import { repoRoot, resetObservations } from "./src/paths.ts";
 import { startStack } from "./src/stack/index.ts";
+import { sweepRun } from "./src/sweep.ts";
 
 export default async function globalSetup(): Promise<() => Promise<void>> {
   if (!existsSync(join(repoRoot, "apps", "web", "dist", "index.html"))) {
     throw new Error("The web client is not built. Run `pnpm e2e` from the repository root.");
   }
+  // Canaries come from this seed. It is not a key, so it is printed for replaying a failure.
+  const seed = formatSeed(runSeed());
+  process.env.SIGILL_E2E_SEED = seed;
+  console.log(`Canary seed: ${seed} (set SIGILL_E2E_SEED to replay it)`);
+
   await resetObservations();
-  const stack = await startStack();
+  // The registry holds the secrets tests watch, so it stays out of observations/, which CI uploads.
+  const registry = await mkdtemp(join(tmpdir(), "sigill-e2e-registry-"));
+  process.env.SIGILL_E2E_REGISTRY = registry;
+  const removeRegistry = () => rmSync(registry, { recursive: true, force: true });
+  // Backstop for a run that ends without global teardown. Only synchronous work runs on exit.
+  process.once("exit", removeRegistry);
+
+  let stack: Awaited<ReturnType<typeof startStack>>;
+  try {
+    stack = await startStack();
+  } catch (error) {
+    removeRegistry();
+    throw error;
+  }
   // Workers start after global setup and inherit this, so the config's use.baseURL sees it.
   process.env.SIGILL_E2E_BASE_URL = stack.baseURL;
   // The recording fixture blocks every origin not in this comma-separated list.
   process.env.SIGILL_E2E_STACK_ORIGINS = stack.origins.join(",");
-  return stack.stop;
+
+  return async () => {
+    try {
+      // Stopped first, so the server logs are complete when the sweep reads them.
+      await stack.stop();
+      const report = await sweepRun(registry, seed);
+      // Throwing here makes the run fail even when every test passed.
+      if (report) throw new Error(`Run-level leak sweep: ${report}`);
+    } finally {
+      process.off("exit", removeRegistry);
+      await rm(registry, { recursive: true, force: true });
+    }
+  };
 }

@@ -2,9 +2,23 @@ import { createHash } from "node:crypto";
 
 export type Headers = Record<string, string>;
 
-/** One observed browser event, written as one JSON line. No bodies here: SIG-40 adds them. */
+/** What a request record says about the request body. */
+export interface RequestBody {
+  /** The body as base64, when Playwright exposed it. */
+  body?: string;
+  /**
+   * Set when the request may have had a body that Playwright did not expose, such as a stream.
+   * The scan cannot see such a body; the recording proxy of 0001 is the source for those.
+   */
+  bodyMissing?: true;
+}
+
+/**
+ * One observed browser event, written as one JSON line. Response bodies are not recorded: data
+ * the server sends to the browser is not a leak to infrastructure.
+ */
 export type ObservationRecord =
-  | { type: "request"; time: string; method: string; url: string; headers: Headers }
+  | ({ type: "request"; time: string; method: string; url: string; headers: Headers } & RequestBody)
   | { type: "response"; time: string; url: string; status: number; headers: Headers }
   | { type: "requestfailed"; time: string; url: string; failure: string }
   | { type: "websocket-open"; time: string; url: string }
