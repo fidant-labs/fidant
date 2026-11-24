@@ -336,7 +336,7 @@ test("the app box routes 443 by SNI to Caddy and to coturn's TLS, and copies Cad
     order.toSorted((a, b) => a - b),
   );
 
-  assert.ok(userData.includes("\nOnActiveSec=1min\nOnUnitInactiveSec=1h\n"));
+  assert.ok(userData.includes("\nOnActiveSec=1min\nOnUnitInactiveSec=5min\n"));
   const syncStart = userData.indexOf("\ncat >/usr/local/sbin/sigill-turn-cert <<'EOF'\n");
   const sync = userData.slice(syncStart, userData.indexOf("\nEOF\n", syncStart));
   assert.match(sync, /^set -eu$/m);

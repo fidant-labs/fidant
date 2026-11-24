@@ -267,7 +267,7 @@ EOF
 cat >/etc/systemd/system/sigill-turn-cert.timer <<'EOF'
 [Timer]
 OnActiveSec=1min
-OnUnitInactiveSec=1h
+OnUnitInactiveSec=5min
 
 [Install]
 WantedBy=timers.target
