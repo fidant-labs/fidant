@@ -28,11 +28,13 @@ async function expectNoOverflow(page: Page) {
     const menu = [...document.querySelectorAll("header nav li")];
     return {
       scroll: document.documentElement.scrollWidth,
+      items: menu.length,
       menu: Math.max(...menu.map((item) => item.getBoundingClientRect().right)),
       inner: innerWidth,
     };
   });
   expect(width.scroll).toBeLessThanOrEqual(width.inner);
+  expect(width.items).toBeGreaterThan(0);
   expect(width.menu).toBeLessThanOrEqual(width.inner);
 }
 
@@ -84,6 +86,14 @@ test("the landing page links to the six steps, which end with a link to /privacy
     "href",
     "/how",
   );
+});
+
+test("the top nav links to How it works between Send a file and Privacy", async ({ page }) => {
+  await page.goto("/how");
+  const links = page.locator("header nav").getByRole("link");
+  await expect(links).toHaveText(["Send a file", "How it works", "Privacy"]);
+  await expect(links.nth(1)).toHaveAttribute("href", "/how");
+  await expect(links.nth(1)).toHaveAttribute("aria-current", "page");
 });
 
 test.describe("in Swedish", () => {
