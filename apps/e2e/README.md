@@ -41,7 +41,7 @@ Import `test` and `expect` from `src/fixtures.ts`, not from `@playwright/test`.
 
 - `restartServer()` from `src/stack/server.ts` restarts the server on the same port and resolves once it listens again, like a deploy or a crash: browsers lose their signaling sockets and the server forgets every link. Global setup's server service does the restart (it starts the server again whenever it exits on SIGTERM), and both runs write to the same logs, so the leak checks cover them. The specs run one at a time (`workers: 1`), so a restart cannot break another test. Local stack only: `pnpm e2e:networks` has no restart.
 
-Requests outside the stack are aborted and fail the test.
+Requests outside the stack are aborted and fail the test. A test may still route the stack's own sockets with `page.routeWebSocket`, as `tamperSignal` in `tests/first-demo.spec.ts` does to alter signaling: a page route takes precedence over the recorder's context route and bypasses its off-stack block for every URL it matches. Match only stack URLs. The recorder still sees the frames on the wire, as the server sends and receives them (what the page sends after the edit, what the server sends before it).
 
 ## What is scanned
 
