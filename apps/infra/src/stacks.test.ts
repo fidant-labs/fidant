@@ -417,6 +417,15 @@ test("the journal is the only place the box's services keep log lines", () => {
   assert.doesNotMatch(userData, /^\s*Standard(Output|Error)=/m);
 });
 
+test("the app server's memory never goes to swap", () => {
+  const userData = renderUserData();
+  const unit = userData.slice(
+    userData.indexOf("\ncat >/etc/systemd/system/sigill.service <<'EOF'\n"),
+  );
+  const service = unit.slice(unit.indexOf("\n[Service]\n"), unit.indexOf("\n[Install]\n"));
+  assert.ok(service.split("\n").includes("MemorySwapMax=0"));
+});
+
 function credentialHelper(): { helper: string; rest: string } {
   const userData = renderUserData();
   const start = userData.indexOf("\ncat >/usr/local/bin/sigill-credential <<'EOF'\n");

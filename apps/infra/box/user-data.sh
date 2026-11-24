@@ -134,6 +134,7 @@ Environment=PORT=8443
 ExecStart=/usr/local/bin/node apps/server/src/main.ts
 Restart=always
 RestartSec=2
+MemorySwapMax=0
 
 [Install]
 WantedBy=multi-user.target
