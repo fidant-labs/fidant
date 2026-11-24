@@ -1,0 +1,49 @@
+{
+  "ci": {
+    "collect": {
+      "numberOfRuns": 3,
+      "url": [
+        "https://localhost:8444/",
+        "https://localhost:8444/send",
+        "https://localhost:8444/about",
+        "https://localhost:8444/privacy",
+        "https://localhost:8444/terms",
+        "https://localhost:8444/security"
+      ],
+      "settings": {
+        "chromeFlags": "--headless=new --no-sandbox --ignore-certificate-errors"
+      },
+      "startServerCommand": "PORT=8444 pnpm --filter @sigill/server start",
+      "startServerReadyPattern": "listening"
+    },
+    "assert": {
+      "assertions": {
+        "categories:performance": [
+          "error",
+          {
+            "minScore": 0.9,
+            "aggregationMethod": "median-run"
+          }
+        ],
+        "categories:accessibility": [
+          "error",
+          {
+            "minScore": 1
+          }
+        ],
+        "categories:best-practices": [
+          "error",
+          {
+            "minScore": 1
+          }
+        ],
+        "categories:seo": [
+          "error",
+          {
+            "minScore": 1
+          }
+        ]
+      }
+    }
+  }
+}

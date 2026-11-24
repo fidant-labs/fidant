@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { en } from "./en.ts";
 import { pickLanguage } from "./language.ts";
@@ -38,4 +39,9 @@ test("server.logs lists every log field and what the server never logs", () => {
     sv.server.logs,
     "Vad som hände, till exempel att en länk öppnades, med de 6 första tecknen i ett länk-ID, hur många länkar en avsändare har, meddelandens storlek, varför en länk eller anslutning nekades, felkoder, om varje anslutning gick direkt, via vårt relä eller misslyckades och porten servern lyssnar på. Aldrig namn, nycklar, filinnehåll eller IP-adresser.",
   );
+});
+
+test("index.html's meta description is the English tagline", () => {
+  const html = readFileSync(new URL("../../index.html", import.meta.url), "utf8");
+  assert.ok(html.includes(`<meta name="description" content="${en.footer.tagline}" />`));
 });

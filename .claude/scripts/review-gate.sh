@@ -18,6 +18,7 @@ if [ "${1:-}" = mark ]; then
   id=$(diff_id)
   [ -n "$id" ] || { echo "not marked: branch has no diff against its base" >&2; exit 1; }
   echo "$id" > "$(marker)"
+  git rev-parse HEAD > "$(marker)-head"
   echo "review marked clean: $id"
   exit 0
 fi
