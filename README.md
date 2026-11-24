@@ -38,7 +38,7 @@ A link works once: after a confirmed delivery, opening it again shows "This link
 
 ## Network tips
 
-- Sender and recipients must be on the same network. A local `pnpm start` uses no STUN or TURN servers unless `TURN_URLS` is set, so browsers connect only over local addresses.
+- With a local `pnpm start`, sender and recipients must be on the same network: it hands out no STUN or TURN servers unless `TURN_URLS` and `TURN_SECRET_FILE` are set, so browsers connect only over local addresses.
 - The hosted site at https://fidant.se has a STUN and TURN relay, so browsers there can be on different networks.
 - A phone hotspot is a reliable network for a demo.
 - Guest Wi-Fi with client isolation does not work: devices on it can't reach each other.
