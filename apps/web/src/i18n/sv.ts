@@ -161,6 +161,8 @@ export const sv: Messages = {
       failed: (name: string) =>
         `Filen kom inte fram oskadd via länken till ${name}. Länken kan öppnas igen för att försöka på nytt.`,
     },
+    noRelay: (name: string) =>
+      `Länken till ${name} öppnades men kunde inte ansluta direkt. Om du tillåter vårt relä kan den kanske ansluta när de försöker igen.`,
     progressFor: (name: string) => `Förlopp för ${name}`,
     copy: "Kopiera länk",
     copyFor: (name: string) => `Kopiera länken till ${name}`,
@@ -255,6 +257,10 @@ export const sv: Messages = {
       connect: {
         title: "Det gick inte att ansluta till avsändarens dator",
         body: "Era två datorer kunde inte nå varandra.",
+      },
+      noRelay: {
+        title: "Det gick inte att ansluta direkt till avsändaren",
+        body: "Avsändaren tillåter inte vårt relä, och era nätverk kunde inte ansluta direkt till varandra. Ett annat nätverk kan fungera, till exempel mobildata i din telefon.",
       },
       server: {
         title: "Det gick inte att nå servern",

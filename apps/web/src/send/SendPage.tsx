@@ -15,8 +15,10 @@
 //   that has not opened SETUP_TIMEOUT_MS after the join → `timeout`. Both
 //   refuse the joiner so the server unbinds it (see sender-state.ts).
 // - Each connection reports its path to the server once: direct, stun or
-//   relay when the channel opens, failed on an ICE failure or a timeout. An
-//   open channel's path also goes to the reducer, for the recipient's card.
+//   relay when the channel opens, failed on an ICE failure or a timeout. A
+//   relay path under a refused relay counts as failed too, and the reducer
+//   then ends the attempt. An open channel's path also goes to the reducer,
+//   for the recipient's card.
 // - Effects run outside render: `close` tears the peer down, `refuse` tells
 //   the server to refuse the joiner.
 //
@@ -172,10 +174,11 @@ export function SendPage() {
         // connection; send it while the link is still hosted.
         void info.path.then((path) => {
           if (findRecipient(senderRef.current, linkId)) {
-            sendPath(linkId, connection, path);
+            const refused = path === "relay" && recipient.turn === false;
+            sendPath(linkId, connection, refused ? "failed" : path);
             dispatch({ type: "path", linkId, attempt, path });
             // ponytail: sticky for the page, since the relay's log lines stay after the transfer
-            if (path === "relay") {
+            if (path === "relay" && !refused) {
               setViaRelay(true);
             }
           }
@@ -282,6 +285,7 @@ export function SendPage() {
             linkId: message.link,
             attempt: message.attempt,
             iceServers: message.iceServers,
+            turn: message.turn,
           });
           break;
         case "left":

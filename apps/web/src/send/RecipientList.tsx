@@ -48,7 +48,7 @@ type CopyNote = keyof Messages["send"]["copyNote"];
 type RowProps = { recipient: Recipient; fileSize: number; onRemove(linkId: string): void };
 
 function RecipientRow({ recipient, fileSize, onRemove }: RowProps) {
-  const { name, url, status, bytesSent, linkId, path } = recipient;
+  const { name, url, status, bytesSent, linkId, path, noRelay } = recipient;
   const { t, lang } = useI18n();
   const [copyNote, setCopyNote] = useState<CopyNote | "">("");
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -80,12 +80,12 @@ function RecipientRow({ recipient, fileSize, onRemove }: RowProps) {
       <Card>
         <CardContent>
           <p
-            class={`m-0 flex items-center gap-[0.4rem] font-semibold wrap-anywhere ${STATUS_COLOR[status] ?? ""}`}
+            class={`m-0 flex items-center gap-[0.4rem] font-semibold wrap-anywhere ${noRelay ? "text-destructive" : (STATUS_COLOR[status] ?? "")}`}
             aria-live="polite"
           >
             {status === "delivered" && <Icon name="check" />}
-            {status === "failed" && <Icon name="alert" />}
-            <span>{t.send.status[status](name)}</span>
+            {(status === "failed" || noRelay) && <Icon name="alert" />}
+            <span>{noRelay ? t.send.noRelay(name) : t.send.status[status](name)}</span>
           </p>
           {path && <PathLine path={path} />}
           {status === "receiving" && (

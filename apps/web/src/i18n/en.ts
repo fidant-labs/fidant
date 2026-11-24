@@ -161,6 +161,8 @@ export const en = {
       failed: (name: string) =>
         `The file didn't arrive intact through ${name}'s link. The link can be opened again to retry.`,
     },
+    noRelay: (name: string) =>
+      `${name}'s link was opened but couldn't connect directly. Allowing our relay may let it connect when they try again.`,
     progressFor: (name: string) => `Progress for ${name}`,
     copy: "Copy link",
     copyFor: (name: string) => `Copy link for ${name}`,
@@ -255,6 +257,10 @@ export const en = {
       connect: {
         title: "Couldn't connect to the sender's computer",
         body: "Your two computers couldn't reach each other.",
+      },
+      noRelay: {
+        title: "Couldn't connect directly to the sender",
+        body: "The sender doesn't allow our relay, and your networks couldn't connect directly. Another network may work, for example your phone's mobile data.",
       },
       server: {
         title: "Couldn't reach the server",

@@ -82,6 +82,8 @@ type Attempt = {
   receiving: boolean;
   /** The server said the sender is gone while the file was arriving. */
   hostGone: boolean;
+  /** The sender refused our relay for this attempt, as the server's `joined` said. */
+  relayRefused: boolean;
   /** Set once the attempt reached its final view. Later events are ignored. */
   ended: boolean;
   /** Resolves the offer: a Sink to accept, undefined to decline. */
@@ -144,6 +146,7 @@ export function ReceivePage() {
       heardSender: false,
       receiving: false,
       hostGone: false,
+      relayRefused: false,
       ended: false,
       timers: [],
     };
@@ -155,6 +158,9 @@ export function ReceivePage() {
     const current = () => attemptRef.current === attempt && !attempt.ended;
     const lostMessage = () => (attempt.receiving ? "lostReceiving" : "lost");
     const offlineMessage = () => (attempt.receiving ? "offlineReceiving" : "offline");
+    // Before the channel opens, a refused relay is the likely reason the browsers never connected.
+    const unopened = (problem: ProblemKey): ProblemKey =>
+      attempt.relayRefused && !attempt.channelOpen ? "noRelay" : problem;
     const finish = (next: View, linger = false) => {
       if (!current()) {
         return;
@@ -174,14 +180,17 @@ export function ReceivePage() {
       }
       attempt.abort.abort(new Error("connection lost"));
       attempt.timers.push(
-        setTimeout(() => finish({ s: "failed", problem: lostMessage() }), HOST_GONE_GRACE_MS),
+        setTimeout(
+          () => finish({ s: "failed", problem: unopened(lostMessage()) }),
+          HOST_GONE_GRACE_MS,
+        ),
       );
     };
     // Without it, a sender whose signals never arrive leaves "Connecting…" up for good.
     attempt.timers.push(
       setTimeout(() => {
         if (!attempt.channelOpen) {
-          finish({ s: "failed", problem: attempt.peer ? "connect" : "server" });
+          finish({ s: "failed", problem: attempt.peer ? unopened("connect") : "server" });
         }
       }, CONNECT_TIMEOUT_MS),
     );
@@ -211,6 +220,7 @@ export function ReceivePage() {
             break;
           }
           setTie("paired");
+          attempt.relayRefused = !message.turn;
           try {
             attempt.peer = createRecipientPeer({
               signaling,
@@ -246,7 +256,10 @@ export function ReceivePage() {
           // on this attempt (its peer failed or never connected), not that the
           // link is in use or used: the sender only signals a join it took.
           if (attempt.heardSender) {
-            finish({ s: "failed", problem: attempt.channelOpen ? lostMessage() : "connect" });
+            finish({
+              s: "failed",
+              problem: attempt.channelOpen ? lostMessage() : unopened("connect"),
+            });
           } else {
             finish({ s: "refused", problem: message.reason });
           }
