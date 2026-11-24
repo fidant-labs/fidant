@@ -1,17 +1,18 @@
 # How Fidant works
 
-This is the source of truth for how Fidant moves a file and why no infrastructure can read it. It describes the code on `main` today. Planned work is marked as planned.
+This is the source of truth for how Fidant moves a file and why no infrastructure can read it, except through a peer-to-peer link that Fidant emails (see "Emailed links"). It describes the code on `main` today. Planned work is marked as planned.
 
 A change to security or data flow updates this document in the same pull request, and then the web pages that explain it (see "Keeping this true" at the end).
 
 ## Parts
 
-| Part                  | Where                                    | What it does                                                                                                      |
-| --------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| Web app               | `apps/web`, runs in each browser         | Creates links and keys, encrypts and decrypts, checks the file. All cryptography happens here.                    |
-| Server                | `apps/server`, the box at fidant.se      | Serves the web app over HTTPS and passes setup messages between browsers on the `/signal` WebSocket.              |
-| Relay (STUN and TURN) | coturn at `turn.fidant.se`, the same box | Tells browsers their public address (STUN) and carries encrypted traffic when they can't connect directly (TURN). |
-| Shared protocol       | `packages/protocol`                      | Signaling message types, parsers and limits used by both the server and the web app.                              |
+| Part                  | Where                                    | What it does                                                                                                                                           |
+| --------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Web app               | `apps/web`, runs in each browser         | Creates links and keys, encrypts and decrypts, checks the file. All cryptography happens here.                                                         |
+| Server                | `apps/server`, the box at fidant.se      | Serves the web app over HTTPS, passes setup messages between browsers on the `/signal` WebSocket and, when mail is configured, emails links and codes. |
+| Relay (STUN and TURN) | coturn at `turn.fidant.se`, the same box | Tells browsers their public address (STUN) and carries encrypted traffic when they can't connect directly (TURN).                                      |
+| Shared protocol       | `packages/protocol`                      | Signaling message types, parsers and limits used by both the server and the web app.                                                                   |
+| Mail service          | SMTP, from `apps/server/src/mail.ts`     | Delivers the emails the server sends for emailed links. Mailpit locally; see "Emailed links" for production.                                           |
 
 The box is an AWS Lightsail instance in Stockholm (eu-north-1). There are no accounts, no database and no file storage. The server holds what it knows only in memory.
 
@@ -26,9 +27,9 @@ https://fidant.se/r/<link ID>#<secret>
 ```
 
 - **Link ID**: 16 random bytes, base64url (22 characters). The server sees it and uses it only to pair the two browsers.
-- **Secret**: 32 random bytes, base64url (43 characters), in the URL fragment. Browsers don't send the fragment to servers, and the site sets `Referrer-Policy: no-referrer`. The app never sends the secret anywhere; it only derives keys from it. The router reads the fragment only on `/how`, where it is a section anchor.
+- **Secret**: 32 random bytes, base64url (43 characters), in the URL fragment. Browsers don't send the fragment to servers, and the site sets `Referrer-Policy: no-referrer`. The app sends the secret nowhere except in the one message that asks our server to email that link (see "Emailed links"); apart from that it only derives keys from it. The router reads the fragment only on `/how`, where it is a section anchor.
 
-Both come from `crypto.getRandomValues`. Every recipient gets their own link ID and secret.
+Both come from `crypto.getRandomValues`. Every recipient gets their own link ID and secret. A link Fidant emails carries a marked fragment, `#e.<value>.<secret>` (see "Emailed links").
 
 ## Keys
 
@@ -48,8 +49,9 @@ The transfer ID is fresh and random for each transfer attempt, so a retry never 
 `apps/web/src/lib/peer.ts`, `apps/web/src/lib/signaling-client.ts`, `apps/server/src/signaling.ts`, `packages/protocol/src/signaling.ts`
 
 ```
+server    → each page  hello {mail}
 sender    → server     host {links, turn}
-recipient → server     join {link, attempt}
+recipient → server     join {link, attempt}                 with a token on an emailed link
 server    → both       joined {link, attempt, iceServers, turn}
 sender    → recipient  relay seal_s({offer, sdp})
 recipient → sender     relay seal_r({answer, sdp})
@@ -57,12 +59,13 @@ both                   relay seal({ice, candidate})        trickle
 sender ⇄ recipient     WebRTC data channel "sigill" opens
 ```
 
+- On connect the server sends `hello`, saying whether it can send mail. The send page offers an email address field only when it can.
 - The sender's page registers its link IDs with `host`, along with whether it allows our relay (`turn`).
 - The recipient's page joins with the link ID and an attempt ID: random, new for each page load, each "Try again" and each automatic retry.
 - The server binds at most one recipient page to a link and sends `joined` to both. It keeps no record of used links. The sender's page decides and answers with `refuse` (`used`, `busy`, `unknown` or `drop`).
-- Every SDP and ICE message is sealed with the signal key: `base64url(iv(12) ‖ AES-GCM ciphertext ‖ tag(16))` with the additional data `sigill/v1/signal|<link ID>|<attempt>|<direction>`. The server can't read or change them, can't reflect a message to its sender, can't move it to another link, and can't replay it into another attempt.
-- The SDP carries the DTLS certificate fingerprints of the WebRTC connection. Because the server can't change them, it can't put itself between the browsers.
-- If the WebSocket drops, the two pages behave differently. The sender's page opens a new socket after a growing, jittered delay (`signaling-client.ts`) and sends `host` again with all its links (`SendPage.tsx`). A recipient whose data channel hasn't opened, on a socket that had opened, starts a new attempt at once with a new socket and a new attempt ID, up to 4 times (`MAX_REJOINS`), then fails; a socket that never opened is left to the signaling client's own retries (`ReceivePage.tsx`). After a drop, `refused: unknown` makes the recipient wait and try again, because a restarted server only knows the link once the sender hosts it again. Once the data channel is open, the transfer no longer needs the server, so a drop only closes signaling.
+- Every SDP and ICE message is sealed with the signal key: `base64url(iv(12) ‖ AES-GCM ciphertext ‖ tag(16))` with the additional data `sigill/v1/signal|<link ID>|<attempt>|<direction>`. The server can't read or change them, can't reflect a message to its sender, can't move it to another link, and can't replay it into another attempt. All of this rests on the server not having the secret, which holds for every link except one Fidant emails.
+- The SDP carries the DTLS certificate fingerprints of the WebRTC connection. Because the server can't change them, it can't put itself between the browsers. For an emailed link it could, until check words exist (SIG-109, planned).
+- If the WebSocket drops, the two pages behave differently. The sender's page opens a new socket after a growing, jittered delay (`signaling-client.ts`) and sends `host` again with all its links except emailed ones (`SendPage.tsx`): the server dropped their email binding with the old socket, so the page stops hosting them and their card says the emailed link stopped working (`server-lost` in `sender-state.ts`). A recipient whose data channel hasn't opened, on a socket that had opened, starts a new attempt at once with a new socket and a new attempt ID, up to 4 times (`MAX_REJOINS`), then fails; a socket that never opened is left to the signaling client's own retries (`ReceivePage.tsx`). After a drop, `refused: unknown` makes the recipient wait and try again, because a restarted server only knows the link once the sender hosts it again. A recipient on an emailed link sends `gate` first on every attempt; once the sender's socket has dropped or the server has restarted, no binding matches its value, so the page shows that the link no longer works (`unbound`). Once the data channel is open, the transfer no longer needs the server, so a drop only closes signaling.
 - Accepted residue: the sender learns the attempt ID from the server's `joined`, so a lying server could replay one old attempt's recipient signals to the sender. That only breaks that attempt: the replayed answer names a DTLS fingerprint of a closed connection, so no channel opens.
 
 ## Two layers of encryption
@@ -114,7 +117,7 @@ iv     = direction(1: 0 sender, 1 recipient) ‖ 00 00 00 ‖ seq(8)
 
 ### Names
 
-META refuses names, types and sender names containing control characters or Unicode direction controls (U+200E, U+200F, U+202A–202E, U+2066–2069), so a name ending in `.exe` can't be displayed as one ending in `.pdf`. The sender's name is typed by the sender and not verified.
+META refuses names, types and sender names containing control characters, line and paragraph separators (U+2028, U+2029) or Unicode direction controls (U+200E, U+200F, U+202A–202E, U+2066–2069), so a name ending in `.exe` can't be displayed as one ending in `.pdf`. The sender's name is typed by the sender and not verified.
 
 ## Padding
 
@@ -164,14 +167,94 @@ The send page has "Allow our relay if a direct connection isn't possible", on by
 - Until then the link can be opened again: after a decline, a dropped connection, a setup timeout (20 s) or a checksum mismatch. Each attempt has a new transfer ID and so a new file key.
 - Nothing is stored, so a link works only while the sender's page is open. When the sender's socket closes, the server forgets its links, within a minute at most (heartbeat every 30 s).
 
+## Emailed links
+
+`apps/server/src/signaling.ts`, `apps/server/src/mail.ts`, `apps/web/src/send/SendPage.tsx`, `apps/web/src/receive/ReceivePage.tsx`, `docs/decisions/0012-email-recipients.md`
+
+The sender can give a recipient an email address. Fidant then emails that recipient their link, and the recipient's browser can connect only after they enter a one-time code sent to the same address. This is the one case where a link's secret leaves the browser: our server and the mail service see it. Recipients without an address work as described above.
+
+### Registering an emailed link
+
+```
+server → sender    hello {mail: true}
+sender → server    host {links, turn}                      the new link included
+sender → server    email {link, to, secret, from, lang}    once per link
+server → mail      notice to `to` with <PUBLIC_ORIGIN>/r/<link ID>#e.<value>.<secret>
+server → sender    email {link, status, mark}              sent or failed, with the value
+```
+
+- Adding a recipient with an address hosts the link as usual, then sends one `email` message with the link ID, the address, the link's secret, the name the sender typed for themselves and the page language. `host` carries only link IDs, never any of these.
+- The protocol parser checks every field first: a valid link ID; a secret of exactly the link secret's form (43 base64url characters that decode to 32 bytes); an address that `<input type="email">` accepts, at most 254 characters; a typed name that passes META's rule above, at most 100 characters; and `lang` `sv` or `en`.
+- The server answers `wrong-role` to a recipient's socket and `not-on-link` for a link the socket doesn't host. It answers `failed` when it has no mail service, or when the link has already had an `email` or a guest while hosted, and `limit` when a notice limit is reached. None of these sends mail or changes a binding.
+- Otherwise the server picks a random value for this registration (16 bytes from `randomBytes`, base64url), never derived from the secret and never chosen by a client, and binds the link to the address, the language and the value. It then makes one attempt to hand the notice to the mail service, bounded by nodemailer's timeouts (10 s to connect, 10 s for the greeting, 20 s of silence). A notice the mail service doesn't take is never queued or retried.
+- The link in the notice is built from the configured `PUBLIC_ORIGIN`, never from the request, so the server can only email links to its own site.
+- The secret and the typed name exist on the server only in that send attempt, until it ends. They are never stored or logged.
+- The reply to the sender carries the value, never the secret: `sent`, or `failed` if the attempt failed or timed out. A failed notice leaves the link email-bound, because a timed-out notice may still arrive. To send again, the sender removes the recipient and adds them again, which makes a new link.
+- The sender's card offers no link until the reply arrives. With a value, the page builds the same marked link from its own secret and shows and copies only that. After a refusal without a value, it offers the plain link.
+- The notice is plain text, from `MAIL_FROM` to that one address, with no Reply-To. Its subject names neither the sender nor the file. Its body has the typed name marked as not verified ("Someone" when it is empty) and the link. No email names the file or gives its size or type.
+
+### Opening an emailed link
+
+```
+recipient → server     gate {link, mark}
+server    → recipient  gate {link, to}                  the masked address, or ""
+recipient → server     send-code {link, mark}
+server    → mail       code email to the bound address
+server    → recipient  code {link, result}              sent, wait, limit or failed
+server    → sender     email {link, status: verifying}
+recipient → server     code {link, code, mark}
+server    → recipient  token {link, token}              or code {link, result: wrong, expired or tries}
+server    → sender     email {link, status: verified}
+recipient → server     join {link, attempt, token}
+```
+
+- The recipient page reads the value from `#e.<value>.<secret>` and sends `gate` with it before every `join`, rejoins and reloads included. The server answers with the masked address (`a***@example.se`) only when the value matches the link's current binding. Any other `gate` (no value, a wrong value, a link that is not email-bound or unknown) gets `to: ""`, the same answer as for a plain link. So someone with only the link ID can't see the masked address or cause code emails.
+- For a marked link, `to: ""` means the binding is gone: the page joins nothing and says the link no longer works (`unbound`).
+- `send-code` and `code` carry the value too and do nothing for a wrong one. A code is 6 digits from `randomInt`, works for 10 minutes and 5 wrong tries, and replaces any earlier code for the link. The server compares it with `timingSafeEqual`. A right code gets a token of 16 random bytes, base64url.
+- The page keeps the token in that tab's `sessionStorage` under `token:<link ID>` and joins with it. A reload or a rejoin in the same tab reuses it. Another tab or browser needs its own code, except a tab the browser copies sessionStorage into, such as a duplicated tab.
+- The server refuses a `join` on an email-bound link without a token its current binding issued, and a `join` that carries a token on any other link. It logs `refused` with reason `unverified` and answers `gate {link, to: ""}`, never the masked address. The page then drops its token and, for a marked link, asks `gate` again.
+- The page shows no sender name before the code. As for any link, the recipient reads it from META.
+
+### What the server keeps, and limits
+
+- While the sender's page hosts the link, the server holds in memory the address, the language, the value, the latest code with its expiry and tries, when the link's codes went out, and the tokens.
+- Unhosting the link (a `host` without it, which is what removing the recipient sends, or the sender's socket closing) drops all of it, and so does a server restart. The emailed link then connects to nothing, even if someone hosts the same link ID again as a plain link.
+- The limits are `LIMITS` and the code constants in `apps/server/src/signaling.ts`:
+
+| Limit                                             | Value                     |
+| ------------------------------------------------- | ------------------------- |
+| Notices from one sender socket                    | 20 an hour                |
+| Notices from one client address (IPv6 by its /64) | 50 an hour                |
+| Notices to one email address                      | 5 an hour                 |
+| Codes for one link                                | 5 while it is hosted      |
+| Time between two codes for one link               | 30 s                      |
+| Codes to one email address                        | 10 an hour                |
+| A code's life                                     | 10 minutes, 5 wrong tries |
+
+- The counters per email address and per client address hold only send times, under an HMAC-SHA-256 of the lowercased address or the client address with a 32-byte random key made when the server starts. They outlive the link, stay in memory for at most an hour and are pruned on the heartbeat. The per-socket count lives on the socket and goes with it.
+
+### The mail service
+
+- The server sends mail over SMTP with nodemailer only when `MAIL_SMTP_URL`, `MAIL_FROM` and `PUBLIC_ORIGIN` are all set (`apps/server/src/main.ts`). Without them `hello` says `mail: false` and every `email` gets `failed`. An SMTP password comes only from the file named by `MAIL_PASSWORD_FILE`, never from the URL. `smtps://` uses TLS from the start, and `smtp://` requires STARTTLS whenever a password is set. Certificate verification stays on.
+- Mail service errors can quote the address, so the server keeps none of them and logs only the outcome.
+- Locally, `pnpm e2e` runs Mailpit, which catches every mail and never sends it on. `pnpm start` sends no mail unless those variables are set.
+- In production the mail service will be Amazon SES in eu-north-1 (planned, SIG-108). Until then the box sets no mail variables, so fidant.se offers no email field.
+
+### Who can read an emailed link's key
+
+- Our server, while it builds and sends the notice, and the mail service.
+- Anyone who can read the mail in transit, the recipient's mailbox provider for as long as the mail is kept, and link scanners that fetch it. A scanner can't connect without the code.
+- Anyone who can read that mailbox, who can also get the code and so the file.
+- With the key, our server could open that link's sealed setup messages, swap the DTLS fingerprints and sit in the middle of the transfer. The code doesn't stop this, because Fidant sends the code. Check words that both screens show will close the gap (SIG-109, planned). A sender who doesn't want any of this leaves the email field empty and passes the link on themselves.
+
 ## What the server and relay see, keep and log
 
-|            | Server                                                                                                                                                                                                                                                                                                                     | Relay                                                                                                                      |
-| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| Sees       | IP addresses and browser details of each page; link IDs; the sender's relay choice; the connection path the sender reports for each attempt (direct, stun, relay or failed); whether a link was already used (the sender's refuse reasons); when each side connects and disconnects; sealed setup messages and their sizes | Both browsers' IP addresses; encrypted packets, with the file size only roughly                                            |
-| Never sees | the file, its name, type or exact size, the secret, the keys, the content of setup messages                                                                                                                                                                                                                                | the same                                                                                                                   |
-| Keeps      | in memory only, while the pages are connected; forgotten within a minute after a page disconnects                                                                                                                                                                                                                          | nothing of the file once it has passed                                                                                     |
-| Logs       | events with a fixed set of fields (`LogEvent`, `LogFields` in `packages/protocol`): the first 6 characters of a link ID, link counts, message sizes, refuse and error codes, the connection path, the port. Never names, keys, file data or IP addresses. Deleted after 30 days (journald, `MaxRetentionSec=29day`).       | nothing by default. Only to fix a fault or stop abuse: connection times, IP addresses and data volumes, for at most 7 days |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Sees       | IP addresses and browser details of each page; link IDs; the sender's relay choice; the connection path the sender reports for each attempt (direct, stun, relay or failed); whether a link was already used (the sender's refuse reasons); when each side connects and disconnects; sealed setup messages and their sizes; for an emailed link, the address, the secret and the sender's typed name in its `email` message, and the value, codes and tokens the server makes | Both browsers' IP addresses; encrypted packets, with the file size only roughly                                            |
+| Never sees | the file, its name, type or exact size; the secret, the keys and the content of setup messages, except for an emailed link                                                                                                                                                                                                                                                                                                                                                    | the file, its name, type or exact size; any secret or key                                                                  |
+| Keeps      | in memory only, while the pages are connected; forgotten within a minute after a page disconnects. Except: an emailed link's binding while it is hosted, its secret and typed name until the send attempt ends, and the email counters (HMACs only) for up to an hour                                                                                                                                                                                                         | nothing of the file once it has passed                                                                                     |
+| Logs       | events with a fixed set of fields (`LogEvent`, `LogFields` in `packages/protocol`): the first 6 characters of a link ID, link counts, message sizes, refuse and error codes, the outcome of each email and code (`email`, `code`, `verified`), the connection path, the port. Never names, email addresses, codes, tokens, the email marker's value, keys, file data or IP addresses. Deleted after 30 days (journald, `MaxRetentionSec=29day`).                              | nothing by default. Only to fix a fault or stop abuse: connection times, IP addresses and data volumes, for at most 7 days |
 
 /privacy lists every log field, generated from the same type.
 
@@ -184,14 +267,15 @@ The send page has "Allow our relay if a direct connection isn't possible", on by
 - No cookies, no third-party scripts, fonts or trackers.
 - Static files are served only from the build directory; path traversal is refused.
 - The WebSocket accepts upgrades only on `/signal`, and refuses one whose `Origin` is another site.
-- Limits: 1,000 sockets, 32 per client address (an IPv6 address counts by its /64), 1,000 messages per socket per 30-second window, 256 links per sender, 16,384 characters per relayed setup message, 256 KiB queued to a socket that isn't reading.
+- Limits: 1,000 sockets, 32 per client address (an IPv6 address counts by its /64), 1,000 messages per socket per 30-second window, 256 links per sender, 16,384 characters per relayed setup message, 256 KiB queued to a socket that isn't reading, and the email and code limits under "Emailed links".
 
 ## What Fidant doesn't protect against
 
-- **The link is the key.** Anyone who gets a link can open its file until it is used. Send each link only to its recipient, over a channel you trust.
+- **The link is the key.** Anyone who gets a link can open its file until it is used. A link Fidant emails also needs a code sent to the same address, so it opens for anyone who can read that mailbox. Send each link only to its recipient, over a channel you trust.
+- **Emailed links.** Our server, the mail service and the recipient's mailbox see the key, and our server could sit in the middle of that transfer until check words exist (SIG-109). See "Emailed links".
 - **The served code.** The browser runs the code our server sends. A server that sent different code could read files. The code is public, but a browser can't yet check that what it received matches it.
 - **Unverified sender name.** Typed by the sender.
-- **Metadata.** The other browser sees your IP address. The networks and, on the relay path, our relay see both IP addresses, timing and the rough size. Our server sees both IP addresses, which recipient connects to which sender, when, and how many recipients a sender has. So it learns who sends to whom, though not what.
+- **Metadata.** The other browser sees your IP address. The networks and, on the relay path, our relay see both IP addresses, timing and the rough size. Our server sees both IP addresses, which recipient connects to which sender, when, and how many recipients a sender has, and for an emailed link the recipient's email address. So it learns who sends to whom, though not what, unless it sits in the middle of an emailed link's transfer.
 - **Compromised devices.** Malware on either computer can read the file before encryption or after decryption.
 - **No independent audit yet.**
 
