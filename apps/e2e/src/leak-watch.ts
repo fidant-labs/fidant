@@ -14,6 +14,7 @@ import { allowEmailed } from "./leaks/carriers.ts";
 import {
   type Allowed,
   buildNeedles,
+  contentSecrets,
   fileSecrets,
   keySecrets,
   minWindow,
@@ -61,6 +62,8 @@ export interface Leaks {
    * `allowed` names where an emailed link's typed name or address may appear (decision 0012).
    */
   watchText(label: string, text: string, allowed?: Allowed): void;
+  /** Watches text as content (C), such as a shared text: its UTF-8 bytes and their SHA-256. */
+  watchContent(label: string, text: string): void;
   /** Scans everything observed so far in this test. Never throws for a leak. */
   scan(): Promise<Finding[]>;
   /**
@@ -150,6 +153,10 @@ export class LeakWatch implements Leaks {
     this.#add(
       textSecrets("M", label, text).map((secret) => (allowed ? { ...secret, allowed } : secret)),
     );
+  }
+
+  watchContent(label: string, text: string): void {
+    this.#add(contentSecrets(label, Buffer.from(text)));
   }
 
   expectLeaks(): void {

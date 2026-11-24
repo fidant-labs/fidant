@@ -39,7 +39,8 @@ export const en = {
   tabTitles: {
     landing: "Fidant: private file transfer",
     send: "Send a file – Fidant",
-    receive: "Receive a file – Fidant",
+    secret: "Share a secret – Fidant",
+    receive: "Receive – Fidant",
     privacy: "Privacy – Fidant",
     how: "How it works – Fidant",
     about: "About – Fidant",
@@ -53,6 +54,7 @@ export const en = {
     themes: { system: "System", light: "Light", dark: "Dark" },
     label: "Main",
     send: "Send a file",
+    secret: "Share a secret",
     how: "How it works",
     privacy: "Privacy",
   },
@@ -370,6 +372,66 @@ export const en = {
       },
     },
   },
+  secret: {
+    lede: "Paste a password, an API key or any short text. It goes from this browser to the people you choose, encrypted the whole way, and is never uploaded or stored.",
+    label: "Your text",
+    hint: (max: number) => `Up to ${max.toLocaleString("en-US")} characters.`,
+    lostServer:
+      "Lost the connection to the server. Trying to reconnect… Texts already on their way can finish. Nobody new can connect until it's back, so keep this page open.",
+    // Only the problems after an offer whose file wording would be wrong; the rest come from receive.problems.
+    problems: {
+      offline: {
+        title: "The sender's page is closed",
+        body: "The text comes straight from their browser, so it has to stay open. Ask them for a new link.",
+      },
+      offlineReceiving: {
+        title: "The sender's page is closed",
+        body: "The text comes straight from their browser, so it has to stay open. The text wasn't shown. Ask them for a new link.",
+      },
+      lost: {
+        title: "The connection to the sender was lost",
+        body: "The text wasn't shown.",
+      },
+      lostReceiving: {
+        title: "The connection to the sender was lost",
+        body: "The text wasn't shown. Try again to make sure you get it.",
+      },
+      checksum: {
+        title: "The text didn't arrive intact",
+        body: "It was changed or damaged on the way, so it was not shown. Try again, and tell the sender if it keeps happening.",
+        detail: "The SHA-256 checksum of the received text did not match the sender's.",
+      },
+      invalid: {
+        title: "Something went wrong with the transfer",
+        body: "The sender's browser sent data we couldn't read, so nothing was shown.",
+        detail: "A frame from the sender failed to decrypt or broke the transfer format.",
+      },
+    },
+    back: "Back to the text",
+    first: "Write or paste the text first.",
+    locked: "Remove everyone to change your name or text.",
+    keepOpen: "Keep this tab open until everyone has the text. It's sent from here.",
+    // Only the statuses whose file wording would be wrong; the rest come from send.status.
+    status: {
+      declined: (name: string) =>
+        `${name}'s link was opened and the text was declined. The link still works.`,
+      failed: (name: string) =>
+        `The text didn't arrive intact through ${name}'s link. The link can be opened again to retry.`,
+    },
+    offerTitle: (from: string) => (from ? `${from} sent you a text` : "You've been sent a text"),
+    show: "Show",
+    receivingTitle: "Opening the text…",
+    doneTitle: "Here's the text",
+    textLabel: "The text",
+    notSaved: "It isn't saved anywhere. Copy it before you close this tab.",
+    copy: "Copy text",
+    copyNote: {
+      copied: "Copied",
+      failed: "Couldn't copy. Select the text and copy it yourself.",
+    },
+    declinedTitle: "You declined the text",
+    showAgain: "Show the text again",
+  },
   server: {
     heading: "What our server has right now",
     seesLabel: "Sees",
@@ -664,6 +726,18 @@ export const en = {
         body: [
           "Anyone who can see the encrypted traffic, such as the networks on the way or our relay, sees how big the frames are. So the size is rounded up with the Padmé scheme, which adds at most 12 %, and then to whole chunks. Every chunk frame has the same size, and the padding is zeros that the recipient checks.",
           "The exact size travels only inside the encrypted META and END. META always has the same size, so the length of the file name doesn't show either.",
+          "A shared text is at most 32 KiB, and every text is padded to exactly one chunk, as long as the connection allows large enough messages. With every browser we tested in November 2026 (Chromium, Firefox and WebKit), that chunk is 48 KiB. So every text looks the same on the wire, whatever its length, and the same as any file of up to 48 KiB.",
+        ],
+      },
+      {
+        heading: "Sharing a text",
+        body: [
+          "The Share a secret page sends a typed or pasted text the same way as a file: the same keys, frames, checks and one-time links. Nothing is stored, so the sender's page must stay open until each recipient has the text.",
+          "The sender's browser turns the text into a file that exists only in memory, with a fixed name and a type that marks it as a text. Like any file's, the name and type travel only inside the encrypted META. A text can have up to 10,000 characters, which is at most 30,000 bytes.",
+          "The text box tells the browser to turn off spell checking, autocorrect, automatic capitals, autocomplete, writing suggestions and translation for it.",
+          "The recipient's browser treats an offer as a text only if it has exactly that type and is at most 32 KiB. Anything else is offered as a file. For a text, the recipient sees the sender's typed name but not the size, and chooses Show or Decline. After Decline the link still works.",
+          "Show keeps the text in the browser's memory, never in a save dialog or a download. Only once the checks against END pass is the text decoded and shown, as plain text with translation off. The page inserts it as text and never reads it as HTML. It isn't in a form field, whose contents a browser can save with the session. The Copy text button puts it on the clipboard.",
+          "Our server and relay handle a text like any file. When the Share a secret page is loaded from our server, by typing its address, reloading or following a link, our server can see that someone opened it. The page then opens a signaling connection like every sender page, and moving to it inside the app opens one too. The server never gets the text or its length, and a connection doesn't say which page opened it, but after a full load the server can tie the connection that follows from the same address to the visit and infer that this visitor shares a text and with how many links. Page visits aren't logged.",
         ],
       },
       {
@@ -704,9 +778,9 @@ export const en = {
       {
         heading: "What our server and relay see and keep",
         body: [
-          "Our server sees each page's IP address and browser details, the link IDs, the sender's relay choice, the connection path the sender reports for each attempt (direct, STUN, relay or failed), whether a link was already used, when each side connects and disconnects, and the encrypted setup messages and their sizes. It never sees the file, its name, its type or its exact size. It never sees the secret or the keys and can't read the setup messages, except for a link we email: then it gets that link's secret once to write the email, along with the recipient's email address and the sender's typed name. It keeps what it knows in memory only, and forgets a page within a minute after it disconnects. The exceptions are an emailed link's address, codes and tokens, which stay until the sender's page lets the link go, and the email counts, which last an hour.",
+          "Our server sees each page's IP address and browser details, the link IDs, the sender's relay choice, the connection path the sender reports for each attempt (direct, STUN, relay or failed), whether a link was already used, when each side connects and disconnects, and the encrypted setup messages and their sizes. It never sees the file, its name, its type or its exact size, or a shared text or its length. It never sees the secret or the keys and can't read the setup messages, except for a link we email: then it gets that link's secret once to write the email, along with the recipient's email address and the sender's typed name. It keeps what it knows in memory only, and forgets a page within a minute after it disconnects. The exceptions are an emailed link's address, codes and tokens, which stay until the sender's page lets the link go, and the email counts, which last an hour.",
           "Its log lines use a fixed list of fields, such as the first 6 characters of a link ID and whether a connection was direct. Never names, email addresses, codes, keys, file data or IP addresses. They are deleted after 30 days.",
-          "Our relay sees both IP addresses and the encrypted traffic, so the file's size only roughly. It keeps no log. Only to fix a fault or stop abuse do we turn one on, with connection times, IP addresses and data volumes, for at most 7 days.",
+          "Our relay sees both IP addresses and the encrypted traffic, so the file's size only roughly and nothing of a text's length. It keeps no log. Only to fix a fault or stop abuse do we turn one on, with connection times, IP addresses and data volumes, for at most 7 days.",
         ],
         link: ["Every log field, on the privacy page", "/privacy"],
       },
@@ -721,12 +795,13 @@ export const en = {
       {
         heading: "What it doesn't protect against",
         body: [
-          "The link is the key. Anyone who gets a link can open its file until it has been used. A link we email also needs a code sent to the same address, so anyone who can read that mailbox can open it. Send each link only to the person it is for, over a channel you trust.",
+          "The link is the key. Anyone who gets a link can open its file or text until it has been used. A link we email also needs a code sent to the same address, so anyone who can read that mailbox can open it. Send each link only to the person it is for, over a channel you trust.",
           "For a link we email, our server, our mail service and the recipient's mailbox have the key, and until check words exist our server could put itself between the two browsers.",
           "Your browser runs the code our server sends it. A server that sent different code could read files. The code is public, but browsers can't yet check that what they got matches it.",
           "The sender's name is typed by the sender and not verified.",
           "The other browser sees your IP address. The networks on the way, and our relay when it is used, see both IP addresses, when the transfer happens and roughly how big the file is. Our server sees both IP addresses, which recipient connects to which sender and when, and how many recipients a sender has, and for a link we email, the recipient's email address. So it learns who sends to whom, though not what, unless it puts itself in the middle of a link we emailed.",
           "Malware on either computer can read the file before it is encrypted or after it is decrypted.",
+          "When the recipient copies a text, it goes to the device's clipboard, where clipboard history, clipboard sync to other devices and other apps can read it. Once a text has been shown, Fidant can't reach it: it can't take it back or delete it.",
           "Fidant has not been independently audited yet.",
         ],
       },
@@ -745,7 +820,7 @@ export const en = {
   },
   privacy: {
     title: "Privacy",
-    lede: "Your file goes from your browser to the browser of the person you send it to, directly when your networks allow it and otherwise through our relay. It's locked before it leaves your computer, and only the person with the link can unlock it. We never get the file or its name, and never the key unless you ask us to email the link.",
+    lede: "Your file goes from your browser to the browser of the person you send it to, directly when your networks allow it and otherwise through our relay. It's locked before it leaves your computer, and only the person with the link can unlock it. We never get the file, its name or a text you share from the Share a secret page, and never the key unless you ask us to email the link.",
     howHeading: "How sending works",
     // [bold, rest]: the bold part opens each step.
     steps: [
@@ -786,8 +861,12 @@ export const en = {
     never: [
       ["Your file", "Not the contents, not the file name, not its size or type."],
       [
+        "Your text",
+        "Not the text you share from the Share a secret page, and not its length: every text is padded to the same size before it leaves your browser.",
+      ],
+      [
         "The key, unless we email the link for you",
-        "The part of the link that unlocks the file never reaches us, unless you ask us to email the link. Then our server uses it once to write the email, and doesn't store or log it.",
+        "The part of the link that unlocks the file or text never reaches us, unless you ask us to email the link. Then our server uses it once to write the email, and doesn't store or log it.",
       ],
       [
         "Recipients' names",

@@ -77,7 +77,14 @@ export class BoxStack extends Stack {
     });
     fn.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ["lightsail:GetInstanceMetricData", "lightsail:PutInstancePublicPorts"],
+        actions: ["lightsail:GetInstanceMetricData"],
+        // Lightsail has no resource-level permissions for this action, so it only matches "*".
+        resources: ["*"],
+      }),
+    );
+    fn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["lightsail:PutInstancePublicPorts"],
         resources: [box.attrInstanceArn],
       }),
     );

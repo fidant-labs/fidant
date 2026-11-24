@@ -21,13 +21,16 @@ const STATUS_COLOR: Partial<Record<RecipientStatus, string>> = {
   declined: "text-muted-foreground",
 };
 
+type StatusText = Messages["send"]["status"];
+
 type Props = {
   recipients: readonly Recipient[];
   fileSize: number;
+  statusText: StatusText;
   onRemove(linkId: string): void;
 };
 
-export function RecipientList({ recipients, fileSize, onRemove }: Props) {
+export function RecipientList({ recipients, fileSize, statusText, onRemove }: Props) {
   const { t } = useI18n();
   if (recipients.length === 0) {
     return null;
@@ -39,6 +42,7 @@ export function RecipientList({ recipients, fileSize, onRemove }: Props) {
           key={recipient.linkId}
           recipient={recipient}
           fileSize={fileSize}
+          statusText={statusText}
           onRemove={onRemove}
         />
       ))}
@@ -48,9 +52,14 @@ export function RecipientList({ recipients, fileSize, onRemove }: Props) {
 
 type CopyNote = keyof Messages["send"]["copyNote"];
 
-type RowProps = { recipient: Recipient; fileSize: number; onRemove(linkId: string): void };
+type RowProps = {
+  recipient: Recipient;
+  fileSize: number;
+  statusText: StatusText;
+  onRemove(linkId: string): void;
+};
 
-function RecipientRow({ recipient, fileSize, onRemove }: RowProps) {
+function RecipientRow({ recipient, fileSize, statusText, onRemove }: RowProps) {
   const { name, url, status, bytesSent, linkId, path, noRelay, email, mail, unbound } = recipient;
   const { t, lang } = useI18n();
   const [copyNote, setCopyNote] = useState<CopyNote | "">("");
@@ -92,7 +101,7 @@ function RecipientRow({ recipient, fileSize, onRemove }: RowProps) {
             {status === "delivered" && <Icon name="check" />}
             {(status === "failed" || noRelay) && <Icon name="alert" />}
             {status === "declined" && !noRelay && <Icon name="declined" />}
-            <span>{noRelay ? t.send.noRelay(name) : t.send.status[status](name)}</span>
+            <span>{noRelay ? t.send.noRelay(name) : statusText[status](name)}</span>
           </p>
           {email && mail && (
             <p

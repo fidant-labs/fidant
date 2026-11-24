@@ -1,6 +1,7 @@
 // Pieces shared by the pages.
 
 import type { AnchorHTMLAttributes, ComponentChildren } from "preact";
+import { useId } from "preact/hooks";
 import { DropdownMenu } from "radix-ui";
 import { Alert, AlertDescription, AlertTitle } from "#components/ui/alert";
 import { buttonVariants } from "#components/ui/button";
@@ -113,6 +114,7 @@ export const display = "font-display font-normal tracking-tight";
 export type Route =
   | "landing"
   | "send"
+  | "secret"
   | "privacy"
   | "how"
   | "receive"
@@ -154,8 +156,9 @@ export function Link({
   );
 }
 
-const MENU: ReadonlyArray<readonly ["send" | "how" | "privacy", string]> = [
+const MENU: ReadonlyArray<readonly ["send" | "secret" | "how" | "privacy", string]> = [
   ["send", "/send"],
+  ["secret", "/secret"],
   ["how", "/how"],
   ["privacy", "/privacy"],
 ];
@@ -265,7 +268,7 @@ export function Header({ current, theme, onTheme }: { current: Route } & ThemePr
         <nav aria-label={t.menu.label}>
           <ul class="flex items-center gap-0.5 sm:gap-1">
             {MENU.map(([section, href]) => (
-              <li key={section}>
+              <li key={section} class={section === "secret" ? "max-md:hidden" : undefined}>
                 <Link
                   href={href}
                   aria-current={section === current ? "page" : undefined}
@@ -295,9 +298,10 @@ export function Header({ current, theme, onTheme }: { current: Route } & ThemePr
 }
 
 const FOOTER_LINKS: ReadonlyArray<
-  readonly ["how" | "privacy" | "about" | "terms" | "security", string]
+  readonly ["how" | "secret" | "privacy" | "about" | "terms" | "security", string]
 > = [
   ["how", "/how"],
+  ["secret", "/secret"],
   ["about", "/about"],
   ["privacy", "/privacy"],
   ["terms", "/terms"],
@@ -320,7 +324,9 @@ export function Footer({ theme, onTheme }: ThemeProps) {
             {FOOTER_LINKS.map(([page, href]) => (
               <li key={page}>
                 <Link href={href} class={link}>
-                  {page === "how" || page === "privacy" ? t.menu[page] : t.footer[page]}
+                  {page === "how" || page === "secret" || page === "privacy"
+                    ? t.menu[page]
+                    : t.footer[page]}
                 </Link>
               </li>
             ))}
@@ -474,6 +480,7 @@ export function ServerPanel({
   emailed: boolean;
 }) {
   const { t, lang } = useI18n();
+  const headingId = useId();
   const rows: ReadonlyArray<readonly [string, string]> = [
     [t.server.seesLabel, sees],
     [t.server.holdsLabel, holds],
@@ -493,8 +500,8 @@ export function ServerPanel({
       : []),
   ];
   return (
-    <section class="mt-8 text-[0.9rem]" aria-labelledby="server-panel-heading">
-      <h2 id="server-panel-heading" class="m-0 text-[1rem] font-bold">
+    <section class="mt-8 text-[0.9rem]" aria-labelledby={headingId}>
+      <h2 id={headingId} class="m-0 text-[1rem] font-bold">
         {t.server.heading}
       </h2>
       <Facts rows={rows} />

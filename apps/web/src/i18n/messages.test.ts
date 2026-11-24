@@ -19,6 +19,14 @@ test("Swedish and English have the same keys", () => {
   assert.deepEqual(shape(sv).sort(), shape(en).sort());
 });
 
+test("every text problem overrides a file problem", () => {
+  for (const lang of [en, sv]) {
+    for (const key of Object.keys(lang.secret.problems)) {
+      assert.ok(key in lang.receive.problems, key);
+    }
+  }
+});
+
 test("pickLanguage prefers the stored choice, then a Swedish browser", () => {
   assert.equal(pickLanguage("en", "sv-SE"), "en");
   assert.equal(pickLanguage("sv", "en-US"), "sv");
