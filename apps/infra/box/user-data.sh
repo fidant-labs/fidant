@@ -22,7 +22,7 @@ mkswap /swapfile
 swapon /swapfile
 echo '/swapfile none swap sw 0 0' >>/etc/fstab
 
-# Caddy from its own apt repository: Ubuntu's 2.6 can't read the PROXY protocol (decision 0009).
+# Caddy from its own apt repository: Ubuntu's 2.6 can't read the PROXY protocol (decision 0010).
 # Error-Mode=any stops the boot if that repository can't be read, instead of installing 2.6.
 install -d -m 755 /etc/apt/keyrings
 curl --retry 5 --retry-all-errors -fsSL -o /etc/apt/keyrings/caddy-stable.asc https://dl.cloudsmith.io/public/caddy/stable/gpg.key
@@ -176,7 +176,7 @@ systemctl enable sigill
 systemctl enable --now sigill-deploy.timer
 systemctl restart caddy
 
-# HAProxy holds 443 and routes by SNI without decrypting (decision 0009). No log line: it logs nothing.
+# HAProxy holds 443 and routes by SNI without decrypting (decision 0010). No log line: it logs nothing.
 systemctl mask haproxy
 apt-get -o DPkg::Lock::Timeout=600 install -y haproxy
 cat >/etc/haproxy/haproxy.cfg <<'EOF'
@@ -231,7 +231,7 @@ cat >>/etc/turnserver.conf <<'EOF'
 @TURNSERVER_CONF@
 EOF
 # relay-ip: coturn otherwise relays from the address a client came in on, and HAProxy's TLS
-# clients come in on 127.0.0.1 (decision 0009).
+# clients come in on 127.0.0.1 (decision 0010).
 { printf 'external-ip=@BOX_ADDRESS@/%s\nrelay-ip=%s\nstatic-auth-secret=' "$private_ip" "$private_ip"; cat /etc/sigill/turn-secret; } >>/etc/turnserver.conf
 install -d /etc/systemd/system/coturn.service.d
 cat >/etc/systemd/system/coturn.service.d/online.conf <<'EOF'
