@@ -443,7 +443,7 @@ export const sv: Messages = {
   },
   privacy: {
     title: "Integritet",
-    lede: "Din fil går direkt från din webbläsare till webbläsaren hos den du skickar till. Den låses innan den lämnar din dator, och bara den som har länken kan låsa upp den. Vi får aldrig filen, dess namn eller nyckeln.",
+    lede: "Din fil går från din webbläsare till webbläsaren hos den du skickar till, direkt när era nätverk tillåter det och annars via vårt relä. Den låses innan den lämnar din dator, och bara den som har länken kan låsa upp den. Vi får aldrig filen, dess namn eller nyckeln.",
     howHeading: "Så går det till att skicka",
     steps: [
       [
@@ -460,8 +460,8 @@ export const sv: Messages = {
       ],
       ["De ser filens namn och storlek och väljer att ladda ner den, eller tackar nej.", ""],
       [
-        "Filen går direkt från din dator till deras, låst hela vägen.",
-        "Deras webbläsare låser upp den och kontrollerar att det är exakt den fil du skickade.",
+        "Filen går från din dator till deras, låst hela vägen.",
+        "Den går direkt när era nätverk tillåter det, annars via vårt relä. Deras webbläsare låser upp den och kontrollerar att det är exakt den fil du skickade.",
       ],
     ],
     keepOpen:

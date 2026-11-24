@@ -453,7 +453,7 @@ export const en = {
   },
   privacy: {
     title: "Privacy",
-    lede: "Your file goes straight from your browser to the browser of the person you send it to. It's locked before it leaves your computer, and only the person with the link can unlock it. We never get the file, its name or the key.",
+    lede: "Your file goes from your browser to the browser of the person you send it to, directly when your networks allow it and otherwise through our relay. It's locked before it leaves your computer, and only the person with the link can unlock it. We never get the file, its name or the key.",
     howHeading: "How sending works",
     // [bold, rest]: the bold part opens each step.
     steps: [
@@ -471,8 +471,8 @@ export const en = {
       ],
       ["They see the file name and size and choose to download it, or decline.", ""],
       [
-        "The file goes directly from your computer to theirs, locked the whole way.",
-        "Their browser unlocks it and checks that it is exactly the file you sent.",
+        "The file goes from your computer to theirs, locked the whole way.",
+        "It goes directly when your networks allow it, otherwise through our relay. Their browser unlocks it and checks that it is exactly the file you sent.",
       ],
     ] as ReadonlyArray<readonly [string, string]>,
     keepOpen:
