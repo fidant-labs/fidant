@@ -57,6 +57,23 @@ export async function resumeRelay(): Promise<void> {
   }
 }
 
+/** Sends `payload` from router-a to coturn's port in UDP datagrams, for the leak self-test. */
+export async function sendToRelay(payload: Uint8Array): Promise<void> {
+  const sending = run("docker", [
+    ...compose,
+    "exec",
+    "-T",
+    "router-a",
+    "nc",
+    "-u",
+    "-w1",
+    turnIp,
+    "3478",
+  ]);
+  sending.child.stdin?.end(payload);
+  await sending;
+}
+
 /** Fails at once with a clear message when Docker or Compose v2 is missing or not running. */
 export function assertDocker(): void {
   try {

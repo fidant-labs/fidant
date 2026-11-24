@@ -135,3 +135,26 @@ services:
       - ${SIGILL_E2E_RUN_DIR:?}:${SIGILL_E2E_RUN_DIR:?}
     networks:
       public: { ipv4_address: 198.51.100.20 }
+
+  # Every packet to and from coturn, for the leak scan: observations/run/coturn.pcap. It runs as
+  # root in coturn's network namespace with NET_RAW, so the host needs no sudo. The file is made
+  # first and given to the host user; tcpdump keeps that owner when it truncates the file.
+  # -U writes each packet as it arrives, so a test can scan its packets right after it ends.
+  pcap:
+    <<: *tools
+    cap_add: [NET_RAW, NET_ADMIN]
+    network_mode: service:coturn
+    environment:
+      PCAP: ${SIGILL_E2E_RUN_DIR:?}/coturn.pcap
+      OWNER: ${SIGILL_E2E_UID:?}:${SIGILL_E2E_GID:?}
+    volumes:
+      - ${SIGILL_E2E_RUN_DIR:?}:${SIGILL_E2E_RUN_DIR:?}
+    command:
+      - sh
+      - -c
+      - 'touch "$$PCAP" && chown "$$OWNER" "$$PCAP" && exec tcpdump -i any -U -Z root -w "$$PCAP"'
+    healthcheck:
+      # tcpdump opens the file once it is capturing. The file stays empty until the first packet.
+      test: ["CMD-SHELL", 'ls -l /proc/*/fd 2>/dev/null | grep -q " -> $$PCAP$$"']
+      interval: 1s
+      retries: 30

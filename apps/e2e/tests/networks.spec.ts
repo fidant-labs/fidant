@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { buffer } from "node:stream/consumers";
 import type { Page } from "@playwright/test";
-import { canaryFile, expect, type Leaks, type Observed, test } from "../src/fixtures.ts";
+import { canaryFile, canaryKey, expect, type Leaks, type Observed, test } from "../src/fixtures.ts";
 import { readPeerConnections, recordPeerConnections, selectedPair } from "../src/ice.ts";
 import { serverStdoutLog } from "../src/paths.ts";
 import {
@@ -11,6 +11,7 @@ import {
   remoteBrowsers,
   resumeRelay,
   routerMode,
+  sendToRelay,
 } from "../src/stack/networks.ts";
 
 // Transfers between browsers in Docker networks behind NAT routers (networks/compose.yaml).
@@ -134,6 +135,19 @@ async function expectSignaling(observed: (name: string) => Observed, baseURL: st
 const sizeOf = async (file: string) => (await readFile(file).catch(() => Buffer.alloc(0))).length;
 
 test.describe.configure({ timeout: 90_000 });
+
+test("the leak scan sees what reaches coturn", async ({ leaks, canary }) => {
+  const file = leaks.watch(canaryFile(canary.fork("file"), { size: 4_001 }));
+  const key = canaryKey(canary.fork("key"));
+  leaks.watchKey("planted key", key.text);
+  await sendToRelay(Buffer.concat([file.bytes.subarray(1000, 1200), Buffer.from(key.text)]));
+
+  const found = (await leaks.scan())
+    .filter((finding) => finding.point === "observations/run/coturn.pcap")
+    .map((finding) => finding.label);
+  expect(found).toEqual(expect.arrayContaining(["file#1", "planted key text"]));
+  leaks.expectLeaks();
+});
 
 for (const row of scenarios) {
   test.describe(row.title, () => {
