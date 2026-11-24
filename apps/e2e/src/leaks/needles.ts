@@ -40,6 +40,19 @@ export interface FileSecretOptions {
   chunkSize?: number;
 }
 
+/** What content must never leak: the bytes and their SHA-256 (C). */
+export function contentSecrets(label: string, bytes: Uint8Array): Secret[] {
+  const secrets: Secret[] = [];
+  if (bytes.length >= minWindow) {
+    secrets.push({ class: "C", label, bytes });
+  }
+  // SHA-256 of no bytes is a well-known constant that shows up legitimately.
+  if (bytes.length > 0) {
+    secrets.push({ class: "C", label: `${label} sha256`, bytes: sha256(bytes) });
+  }
+  return secrets;
+}
+
 /**
  * Everything a canary file must never leak: its bytes and their SHA-256 (C); the tokens in its
  * name and MIME type, the SHA-256 of its name, and its size when check (i) applies (M).
@@ -49,14 +62,7 @@ export function fileSecrets(
   file: CanaryFile,
   options: FileSecretOptions = {},
 ): Secret[] {
-  const secrets: Secret[] = [];
-  if (file.bytes.length >= minWindow) {
-    secrets.push({ class: "C", label, bytes: file.bytes });
-  }
-  // SHA-256 of no bytes is a well-known constant that shows up legitimately.
-  if (file.bytes.length > 0) {
-    secrets.push({ class: "C", label: `${label} sha256`, bytes: sha256(file.bytes) });
-  }
+  const secrets: Secret[] = contentSecrets(label, file.bytes);
   secrets.push(
     tokenSecret("M", `${label} name`, file.token),
     tokenSecret("M", `${label} type`, file.mimeToken),

@@ -6,6 +6,7 @@
         "https://localhost:8444/",
         "https://localhost:8444/how",
         "https://localhost:8444/send",
+        "https://localhost:8444/secret",
         "https://localhost:8444/about",
         "https://localhost:8444/privacy",
         "https://localhost:8444/terms",
