@@ -55,6 +55,7 @@ Every reviewer prompt contains:
 2. The briefing, verbatim.
 3. The severity scale and output contract below.
 4. `You are one of N parallel reviewers. Report only findings within your lane. Do not repeat general feedback other lanes cover.`
+5. `Report every instance now. When a finding belongs to a class, such as every file a credentialed job reads or every caller of a changed function, list the whole class. Later rounds only check fixes.`
 
 Security findings about authorisation must name the concrete capability an attacker gains beyond the access the role already has. Without that they are not blockers.
 
@@ -109,11 +110,11 @@ Findings outside the diff and architect "restructure the module" findings are no
 
 Read each fix delta yourself. A fix is **mechanical** when it only edits comments or docs prose, corrects a typo, removes an unused import or export, or deletes code that nothing references. Every other fix, and any fix you are unsure about, is a behaviour fix. When every fix in the round is mechanical and the narrow gates pass, the loop is clean and no reviewer round follows.
 
-Otherwise re-run the lanes that raised the behaviour findings, plus `Code Reviewer`, verify their new findings, and repeat. From round 2 on, a re-run lane reviews the fix delta (`git diff <before> <after>`), not the whole branch diff; it gets the findings it is checking and may read surrounding code for context. A round-2+ finding on lines the delta did not change is something round 1 missed: it drops to `minor` and goes to the report, unless it is a security hole or data loss.
+Otherwise re-run the lanes that raised the behaviour findings, plus `Code Reviewer`, verify their new findings, and repeat. From round 2 on, a re-run lane reviews the fix delta (`git diff <before> <after>`), not the whole branch diff; it gets the findings it is checking and may read surrounding code for context. A round-2+ finding on lines the delta did not change is something round 1 missed: it drops to `minor` and goes to the report, unless it is a blocker that names the concrete capability an attacker gains or the data that is lost.
 
 - **Clean:** 0 blockers and 0 majors. Stop.
 - **No progress:** a round fixed nothing while blockers or majors remain. Stop and report.
-- **Cap:** 3 rounds. Stop and report.
+- **Cap:** 3 rounds, with no exception for security. Stop, list the open blockers and majors, and ask the user with `AskUserQuestion` whether to run another round, fix them without another review, or stop. New work that is not a fix gets its own review and its own count.
 
 A stopped loop means the work is not done. Never open a pull request or call the work finished with known blockers or majors.
 
