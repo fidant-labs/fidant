@@ -88,8 +88,9 @@
 // - A recipient added with an email address starts at mail "sending"; `email`
 //   then records what the server said. The latest status wins, because a
 //   timed-out notice may still arrive and every new code says "verifying",
-//   except that "verified" stays once reached. Recipients without an address
-//   ignore it. A reply with a mark means the server took the link and emailed
+//   except that "verified" stays once reached and a late notice reply
+//   ("sent", "failed", "limit") never replaces "verifying". Recipients without
+//   an address ignore it. A reply with a mark means the server took the link and emailed
 //   the marked copy, so the recipient's `url` becomes that copy. A refusal
 //   without one (`limit`, or `failed` before anything went out) keeps the
 //   plain link.
@@ -338,7 +339,10 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
       if (current.mail === undefined || current.unbound) {
         return { state, effects: [] };
       }
-      const mail = current.mail === "verified" ? current.mail : action.status;
+      const keep =
+        current.mail === "verified" ||
+        (current.mail === "verifying" && action.status !== "verified");
+      const mail = keep ? current.mail : action.status;
       const mark = current.mark ?? action.mark;
       if (mail === current.mail && mark === current.mark) {
         return { state, effects: [] };

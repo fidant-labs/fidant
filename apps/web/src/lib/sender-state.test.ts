@@ -684,7 +684,7 @@ test("add with an email starts its mail at sending and keeps both through attemp
   assert.equal(findRecipient(state, linkId)?.mail, "sent");
 });
 
-test("email keeps the latest status, except that verified stays", () => {
+test("email keeps the latest status, except that verified stays and a notice reply never replaces a code", () => {
   const link = createLink(ORIGIN);
   const { linkId } = link;
   const added = run(initialSenderState, {
@@ -709,7 +709,10 @@ test("email keeps the latest status, except that verified stays", () => {
   );
   assert.equal(mailAfter("failed", "verifying"), "verifying", "a timed-out notice arrived");
   assert.equal(mailAfter("failed", "verifying", "verified"), "verified");
-  assert.equal(mailAfter("verifying", "sent"), "sent");
+  for (const late of ["sent", "failed", "limit"] as const) {
+    assert.equal(mailAfter("verifying", late), "verifying", `a late ${late} after a code`);
+    assert.equal(mailAfter("verifying", "verified", late), "verified", `a late ${late}`);
+  }
 
   const verified = run(added, { type: "email", linkId, status: "verified" }).state;
   const late = update(verified, { type: "email", linkId, status: "verifying" });
@@ -752,6 +755,12 @@ test("a mark makes the recipient's link the one the server emailed; a refusal ke
     assert.equal(recipient?.url, `${ORIGIN}/r/${link.linkId}#e.${mark}.${link.secret}`);
     assert.equal(recipient?.mail, "verifying");
   }
+  const { link: early, recipient: late } = after(
+    { type: "email", status: "verifying" },
+    { type: "email", status: "sent", mark },
+  );
+  assert.equal(late?.mail, "verifying", "the notice reply came after a code");
+  assert.equal(late?.url, `${ORIGIN}/r/${early.linkId}#e.${mark}.${early.secret}`);
   for (const status of ["limit", "failed"] as const) {
     const { link, recipient } = after({ type: "email", status });
     assert.equal(recipient?.mark, undefined);
