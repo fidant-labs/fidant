@@ -4,7 +4,12 @@
 // Wiring (see lib/peer.ts and lib/sender-state.ts):
 // - On mount, connect to the signaling server and host every link ID on the
 //   list, with whether recipients may use our TURN relay; re-host the full
-//   list after every add or remove and every change of the relay checkbox.
+//   list after every add or remove, every change of the relay checkbox and
+//   every reconnect, and again REHOST_AFTER_MS after `already-hosted` while
+//   the server still holds the old socket. When the socket drops, recipients
+//   still connecting go back to waiting (reducer `server-lost`, which never
+//   blames the relay); the page says the server is gone
+//   only after LOST_AFTER_MS without it.
 // - Server `joined` → reducer `joined`, whose `start` effect derives the
 //   link's signal key and creates a sender peer with the ICE servers from
 //   `joined`. `relay` goes to that peer.
@@ -77,6 +82,10 @@ type Connection = {
 type ErrorOf<K extends "fromError" | "fileError" | "nameError"> = keyof Messages["send"][K] | "";
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+/** How long the server may stay unreachable before the page says so. */
+const LOST_AFTER_MS = 10_000;
+/** How long to wait before hosting again when the server still holds a link for our old socket. */
+const REHOST_AFTER_MS = 5000;
 
 const field = "flex flex-1 flex-col gap-1";
 const fieldError = "mt-1 mb-0 text-destructive";
@@ -269,18 +278,23 @@ export function SendPage() {
     let disposed = false;
     const dispatch = (action: SenderAction) => dispatchRef.current(action);
 
-    signaling.ready.then(
-      () => host(),
-      () => {
-        if (!disposed) {
-          setLostServer(true);
-        }
-      },
-    );
+    let lost: ReturnType<typeof setTimeout> | undefined;
+    let rehost: ReturnType<typeof setTimeout> | undefined;
+
+    signaling.onOpen(() => {
+      clearTimeout(lost);
+      lost = undefined;
+      setLostServer(false);
+      host();
+    });
     signaling.onClose(({ byClient }) => {
-      if (!byClient && !disposed) {
-        setLostServer(true);
+      if (byClient || disposed) {
+        return;
       }
+      // The server forgot these joins with the socket; the recipients will join again.
+      dispatch({ type: "server-lost" });
+      // Short drops (a server restart) reconnect quietly.
+      lost ??= setTimeout(() => setLostServer(true), LOST_AFTER_MS);
     });
     signaling.subscribe((message) => {
       switch (message.t) {
@@ -298,6 +312,13 @@ export function SendPage() {
           break;
         case "relay":
           void connectionsRef.current.get(message.link)?.peer?.handleRelay(message.data);
+          break;
+        case "error":
+          // After a reconnect the server may not have noticed the old socket close yet.
+          if (message.code === "already-hosted") {
+            clearTimeout(rehost);
+            rehost = setTimeout(host, REHOST_AFTER_MS);
+          }
           break;
         default:
           break;
@@ -322,6 +343,8 @@ export function SendPage() {
 
     return () => {
       disposed = true;
+      clearTimeout(lost);
+      clearTimeout(rehost);
       window.removeEventListener("beforeunload", onBeforeUnload);
       window.removeEventListener("pagehide", onPageHide);
       hashAbortRef.current?.abort();
