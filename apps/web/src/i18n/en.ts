@@ -971,7 +971,7 @@ export const en = {
       ],
     ] as ReadonlyArray<readonly [string, string]>,
     keepHeading: "What we keep",
-    keep: "We have no accounts, no database, no cookies and no tracking. Apart from the log lines below, a relay log while we fix a fault or stop abuse, the email counts above, which last an hour, and our mail service's list of bounced addresses, nothing is kept once the sender's page is closed, within a minute at most.",
+    keep: "We have no accounts, no database, no cookies and no tracking. Apart from the log lines below, a relay log while we fix a fault or stop abuse, the email counts above, which last an hour, and our mail service's list of bounced addresses, nothing is kept once the sender's page is closed, within 2 minutes at most.",
     logFields,
     logRetention: "Log lines are deleted after 30 days.",
     relayLog:
