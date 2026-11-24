@@ -1,7 +1,7 @@
 {
   "ci": {
     "collect": {
-      "numberOfRuns": 3,
+      "numberOfRuns": 1,
       "url": [
         "https://localhost:8444/",
         "https://localhost:8444/how",
