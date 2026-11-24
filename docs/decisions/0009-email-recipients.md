@@ -60,7 +60,7 @@ Who can read the key under option 3:
 - The recipient's mailbox provider, for as long as the mail is kept.
 - Recipient-side link scanners, for example Microsoft Safe Links, which may rewrite the link and fetch it, fragment included.
 
-Check words close the gap only if both screens derive them from the DTLS certificate fingerprints that each browser's own connection used, never from the link secret or any value the server can choose. The server must also be unable to pick its certificate after it learns what the words depend on: the words need a commitment first, as in ZRTP's short authentication string, or enough bits that no search finishes while the handshake waits. SIG-109 must meet both.
+Check words close the gap only if both screens derive them from the DTLS certificate fingerprints that each browser's own connection used, never from the link secret or anything other than those two fingerprints. The server must also be unable to pick its certificate after it learns what the words depend on: the words need a commitment first, as in ZRTP's short authentication string, unless they carry enough bits (about 64) that no search finishes while the handshake waits. SIG-109 must meet both.
 
 ## Decision
 
@@ -76,11 +76,11 @@ Fidant emails the full link, key included, for now (option 3). A one-time code t
 - Email is optional per recipient. A recipient without one works exactly as today.
 - The name stays required. It is the sender's label for that recipient and never reaches the server.
 - When the sender gives an address, the send page registers the email-bound link with one message on `/signal`. It carries the link ID, the address, the link's secret, the sender's typed name and the page language. The server builds the link from its configured public origin, never from anything in the request, and the link ID, so it can only email links to this site.
-- Later `host` messages carry the link ID, never the secret, the address or the typed name. `host` cannot create an email binding. Unhosting a link, by a `host` that leaves it out or by closing the socket, drops its binding with everything else.
-- The server refuses a second registering message for a link ID, a registering message for a link that socket does not host, and any change to the address of a link that is already email-bound. To send again, the sender removes the recipient and adds them again, which makes a new link.
-- The server refuses a registering message unless the link ID is a valid link ID, the secret has the link secret's exact form (43 base64url characters), the address is one plain address (no CR, LF, comma, angle bracket or whitespace), the typed name passes the rule below, and the language is one the site ships.
+- Later `host` messages carry the link ID, never the secret, the address or the typed name. `host` cannot create an email binding. Unhosting a link, by a `host` that leaves it out or by closing the socket, drops its email binding: the address, the secret, the typed name, the codes and the tokens.
+- The server refuses a second registering message for a link while it is hosted, a registering message for a link that socket does not host, a registering message for a link that has or has had a guest, and any change to the address of a link that is already email-bound. To send again, the sender removes the recipient and adds them again, which makes a new link. The send page never hosts an email-bound link again once its binding is dropped; the sender adds the recipient again.
+- The server refuses a registering message unless the link ID is a valid link ID, the secret has the link secret's exact form (43 base64url characters that decode to exactly 32 bytes), the address is a valid email address as the HTML standard defines it (what `<input type="email">` accepts), at most 254 characters, the typed name passes the rule below, and the language is one the site ships.
 - The server refuses a registering message whose typed name breaks META's `from` rule (the length cap, no control or direction characters) or contains a line or paragraph separator (U+2028, U+2029), so nobody can forge lines after the not-verified marker in mail Fidant signs. The typed name goes only in the notice body, never in the notice's subject, headers or envelope.
-- The server makes one attempt to hand one notice to the mail service, with a timeout. At most one notice goes out per link, and none when the server refuses the message or the attempt fails. The secret and the typed name stay in server memory only until the server refuses the message, the attempt ends (success or failure), or the sender's socket closes, whichever comes first. The server never keeps them for a retry. The sender's card shows "Email sent" or "Email not sent".
+- The server makes one attempt to hand one notice to the mail service, with a timeout. At most one notice goes out per link, and none when the server refuses the message. A failed or timed-out attempt shows "Email not sent", though the notice may still arrive. The secret and the typed name stay in server memory only until the server refuses the message, the attempt ends (success or failure), or the sender's socket closes before the attempt starts, whichever comes first. The server never keeps them for a retry. The sender's card shows "Email sent" or "Email not sent".
 - The notice is plain text. It shows the sender's typed name, marked as not verified, or "Someone" when the name is empty. No mail names the file or gives its size or type.
 - The recipient page shows the masked address, for example `a***@example.se`, and asks the recipient to request a code. It shows no sender name before the code is entered.
 - The server emails a one-time code to the same address. A correct code gives a token for that browser, and the server tells the sender the link is verified.
@@ -88,15 +88,14 @@ Fidant emails the full link, key included, for now (option 3). A one-time code t
 - The token is bound to that link and that browser. It survives a rejoin of the same link from the same browser, and it is refused on any other link and in any other browser. A link can be joined again after a decline or a dropped connection, and a forwarded copy must not inherit an earlier verification.
 - Codes and outgoing mail are rate-limited. Wrong guesses per code are capped, and a code expires. SIG-105 holds the limits.
 - The check lives inside signaling, in server memory next to the link. There are no HTTP routes and no database.
-- When the sender's socket closes, the server drops the address, the secret, the typed name, the codes and the tokens with the link.
 
 ### The mail service
 
 - The leak model below speaks of the mail service. In production that is Amazon SES in eu-north-1. Locally and in tests it is Mailpit.
 - AWS already runs the server that sees the key, so SES adds no new company that sees keys.
 - The notice's From address is on a sending subdomain whose domain publishes a null MX, and the notice has no Reply-To, so replies never reach a mailbox.
-- Bounces and complaints go back to the mail service itself (its own bounce domain as MAIL FROM, or a custom MAIL FROM whose only MX is the mail service's feedback endpoint). They never reach a mailbox that Fidant or another company keeps: no feedback forwarding by email, and any bounce or complaint notification goes to a channel that stores nothing and has no email subscription.
-- The mail service does not keep the address after delivery, for example in a suppression list, unless /privacy states how long it keeps it.
+- Bounces and complaints go back to the mail service itself (its own bounce domain as MAIL FROM, or a custom MAIL FROM whose only MX is the mail service's feedback endpoint). They never reach a mailbox that Fidant or another company keeps: no feedback forwarding by email, and any bounce or complaint notification goes to a channel that stores nothing and has no email subscription. No DMARC record for the sending domains asks for failure reports (`ruf`).
+- The mail service does not keep the address after delivery, except in its suppression lists, and /privacy states what it keeps there and for how long. SIG-108 turns off any suppression list it can and names on /privacy the one it cannot (SES keeps a global suppression list of hard-bounced addresses).
 - Another mail service needs no new record as long as everything here holds for it. It is a new company that sees keys, though, so the issue that switches to it names the service.
 
 ### Leak model: replacements to 0001 and 0002
@@ -105,7 +104,7 @@ This record amends 0001 and 0002 the way 0003 and 0004 did. 0001 and 0002 are no
 
 | Where 0001 or 0002 says                                                                                                                      | Read                                                                                                                                                                                      |
 | -------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Class K: "the fragment secret, the full key, every derived key (signaling key, file and chunk keys), and the receipt salt. Allowed nowhere." | The same, except the secret of a link Fidant emails. It is allowed in the four places under "The link secret" below. Derived keys, the receipt salt and the ICE pwd stay allowed nowhere. |
+| Class K: "the fragment secret, the full key, every derived key (signaling key, file and chunk keys), and the receipt salt. Allowed nowhere." | The same, except the secret of a link Fidant emails. It is allowed in the five places under "The link secret" below. Derived keys, the receipt salt and the ICE pwd stay allowed nowhere. |
 | Stack table, mail catcher: "Notices sent by mail, never a key"                                                                               | Notices sent by mail. The notice for a link Fidant emails carries that link's secret. No other mail carries a key.                                                                        |
 | Class M: "Labels must never appear in `host` or `join` frames."                                                                              | Unchanged. The label the sender types for a recipient still never reaches the server. The email address is a separate value and replaces nothing here.                                    |
 | `from` (0002): "`from` is the name the sender typed for themselves, unverified (SIG-55)."                                                    | The same, and: class M for the detector in peer-to-peer mode. For an emailed link it is also allowed in the places under "The sender's typed name" below.                                 |
@@ -114,23 +113,25 @@ This record amends 0001 and 0002 the way 0003 and 0004 did. 0001 and 0002 are no
 
 #### The link secret
 
-The secret of a link Fidant emails may appear in exactly these four places:
+The secret of a link Fidant emails may appear in exactly these five places:
 
 1. the sender's message that registers the email-bound link, on `/signal`;
-2. server memory, only until the server refuses the message, its one send attempt ends (successfully or not), or the sender's socket closes;
+2. server memory, only until the server refuses the message, its one send attempt ends (successfully or not), or the sender's socket closes before the attempt starts;
 3. the mail service's send request for that notice (SES in production, Mailpit locally);
-4. the body of the one notice email for that link, to that one address.
+4. the body of the one notice email for that link, to that one address;
+5. a bounce or complaint about that notice that quotes it, received only by the mail service's bounce and complaint handling (see "The mail service").
 
 It never appears in logs, the code email, the notice's subject, headers or envelope, any server response, signaling to the recipient, DynamoDB, coturn or anywhere else.
 
 #### The sender's typed name
 
-Today it leaves the browser only inside META. For an emailed link it may also appear in exactly these four places:
+Today it leaves the browser only inside META. For an emailed link it may also appear in exactly these five places:
 
 1. the message that registers the email-bound link;
-2. server memory, only until the server refuses the message, its one send attempt ends (successfully or not), or the sender's socket closes;
+2. server memory, only until the server refuses the message, its one send attempt ends (successfully or not), or the sender's socket closes before the attempt starts;
 3. the mail service's send request for that notice;
-4. the body of that notice.
+4. the body of that notice;
+5. a bounce or complaint about that notice that quotes it, received only by the mail service's bounce and complaint handling (see "The mail service").
 
 It never appears in logs, the code email, the notice's subject, headers or envelope, or anything the server sends to the recipient page. The recipient still reads it from META, as today.
 
@@ -144,34 +145,34 @@ No class in 0001 covers an email address. It is new personal data on the server.
 - the envelope, headers and body of mail to that address;
 - a masked form, for example `a***@example.se`, in what the server sends to the recipient page;
 - the mail service's bounce and complaint handling, which stores nothing;
-- the mail service's suppression list, only if /privacy states how long it keeps it.
+- the mail service's suppression lists, as /privacy states.
 
-The one-time code and the token are secrets too, and neither is ever logged. The code appears only in the code email, the recipient's message that submits it and server memory. The token appears only in the server's reply to that browser, that browser's storage and its `join`, and server memory.
+The one-time code and the token are secrets too, and neither is ever logged. The code appears only in the mail service's send request for the code email, the code email, the recipient's message that submits it and server memory. The token appears only in the server's reply to that browser, that tab's sessionStorage and its `join`, and server memory.
 
-Rate-limit counters per address hold only an HMAC of the normalized address under a random key per process. They stay in memory for at most an hour. The address is never logged and never written to a database or disk. /privacy and the live server panel list it.
+Rate-limit counters per address hold only an HMAC of the normalized address under a random key per process. They stay in memory for at most an hour. Our server never logs the address and never writes it to a database or disk. /privacy and the live server panel list it.
 
 Nothing outside these lists is allowed.
 
 #### Exception (a) and emailed links
 
-For an emailed link the server held the key once. So ciphertext under that key, such as `relay.data` and META, no longer meets "a key no infrastructure holds". It stays exempt in the scan, because the secret itself is the needle: the scan catches it anywhere outside the four places above. What the scan cannot show is a server that kept the key in memory and used it. That is the gap check words close.
+For an emailed link the server held the key once. So ciphertext under that key, such as `relay.data` and META, no longer meets "a key no infrastructure holds". It stays exempt in the scan, because the secret itself is the needle: the scan catches it anywhere outside the five places above. What the scan cannot show is a server that kept the key in memory and used it. That is the gap check words close.
 
 ### Observation point: Mailpit
 
 - Mail becomes an e2e observation point in SIG-107, pulled forward from SIG-43. It is captured as 0001's Mail observation point says.
-- The server reaches the mail service over SMTP in tests and in production, so the e2e scan sees the same send path.
+- The server reaches the mail service over SMTP in tests and in production, so the e2e scan sees the same send path. In production that connection uses TLS with certificate verification.
 - The leak scan allows the link secret in exactly two carriers: the sender's registering frame on `/signal`, which the browser-traffic scan sees, and the notice email for that same link. At most one message, the notice for that link, carries the link secret. Its only envelope recipient and its To are the registered address, it has no Cc or Bcc, and the secret is allowed only in its body, raw or decoded, never in its headers or envelope. The scan fails on the secret anywhere else, including any other email.
-- The two carriers cover the four places. Server memory cannot be observed, and Mailpit keeps what the server sent it, so the send request and the notice are one message.
-- The scan checks the sender's typed name and the address against their lists above in the same way.
+- The two carriers cover the places the scan can observe. Server memory and the mail service's bounce handling cannot be observed, and Mailpit keeps what the server sent it, so the send request and the notice are one message.
+- The scan checks the sender's typed name and the address against their lists above in the same way, and the token against its list. The six-digit code is too short for the scan, so review checks that it is never logged.
 - The deliberate-leak self-test puts a link secret in the code email and asserts that the scan catches it. It also checks that a second copy of the notice is flagged.
 
 ## Consequences
 
-- **Fidant can act as the recipient of an emailed link**, and so can anyone who can read both the notice and the code mail. The list under option 3 says who can read the key. Senders who do not want this leave the email field empty and pass the link on themselves, as today. This is accepted, link scanners included: they can read the key but cannot join without the code.
-- **Site copy.** The landing lede ("nobody in between, us included, can read it") stays. Where the sender enters an email, the send page says that Fidant emails this link, so our server sees its key once and does not store or log it. Every claim that the key, the setup messages or the typed name never reach us, every claim about how long anything is kept (the address counters last an hour), and "Anyone who has the link can open the file." (an emailed link also needs the code) gets the exception or a correction. That covers /terms, /privacy (including its how-sending-works steps and the lists the landing page shows), /security, /about, /how and the live server panel.
+- **Fidant can act as the recipient of an emailed link**, and so can anyone who can read both the notice and the code mail. After the sender's tab closes, anyone who holds the key can also host the link as a plain link, as with any link today. The list under option 3 says who can read the key. Senders who do not want this leave the email field empty and pass the link on themselves, as today. This is accepted, link scanners included: they can read the key but cannot join without the code.
+- **Site copy.** The landing lede ("nobody in between, us included, can read it") stays. Where the sender enters an email, the send page says that Fidant emails this link, so our server sees its key once and does not store or log it. Every claim that the key or the typed name never reaches us, or that our server cannot read the setup messages, every claim about how long anything is kept (the address counters last an hour), and every claim that anyone with the link can open the file (an emailed link also needs the code) gets the exception or a correction. That covers /terms, /privacy (including its how-sending-works steps and the lists the landing page shows), /security, /about, /how and the live server panel.
 - **0001 and 0002** stand, read with the replacements above. 0001 is not superseded.
 - **AGENTS.md** names this exception in its opening line and its invariants.
-- **SIG-109** adds check words, which close the gap the key in the email opens.
+- **SIG-109** adds check words.
 - **SIG-110** decides how the audit log records who verified and received, after SIG-12.
 - **SIG-107** wires Mailpit as an e2e observation point. The e2e README's table of observation points lists mail under SIG-107 instead of SIG-43.
 - **SIG-108** sets up SES: a domain identity, DNS records, a credential for the app on the box and production access. It also meets the requirements under "The mail service". 0003 already accepts an IAM access key on the box.
