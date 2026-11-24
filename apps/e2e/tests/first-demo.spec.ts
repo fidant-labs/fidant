@@ -567,8 +567,10 @@ type Tamper = "flip" | "drop-last" | "reorder" | "repeat" | "other";
  * and a TURN relay only see DTLS records, which they can't alter into well-formed frames, so
  * tampering below the app's AES-GCM layer, in the sender, stands in for a broken or hostile
  * transport. It reads only the plaintext header: byte 1 is the kind (see apps/web/src/lib/frames.ts).
- * `other` sends, on each later channel, the frame the first channel sent at the same index:
- * another transfer's ciphertext under this link. It keeps INIT, so the substitute is the ciphertext.
+ * `other` records the first channel that reaches END and, instead of sending that END, closes the
+ * channel, so the transfer is never delivered and the link stays usable. On each later channel it sends the recorded frame at
+ * the same index in place of its own, except INIT: an earlier transfer's META, CHUNKs and END
+ * under this transfer's fresh transferId, on the same link.
  */
 function tamperSender(mode: Tamper) {
   const INIT = 0;
@@ -576,6 +578,7 @@ function tamperSender(mode: Tamper) {
   const END = 3;
   const send = RTCDataChannel.prototype.send;
   const sent = new Map<RTCDataChannel, Uint8Array[]>();
+  let source: Uint8Array[] | undefined;
   let held: Uint8Array | undefined;
   let chunks = 0;
   RTCDataChannel.prototype.send = function (this: RTCDataChannel, data: Uint8Array) {
@@ -585,11 +588,14 @@ function tamperSender(mode: Tamper) {
     if (mode === "other") {
       const own = sent.get(this) ?? [];
       sent.set(this, own);
-      const first = sent.values().next().value ?? own;
-      if (own !== first && kind !== INIT) {
-        frame = first[own.length] ?? frame;
+      if (source && source !== own && kind !== INIT) {
+        frame = source[own.length] ?? frame;
       }
       own.push(frame);
+      if (kind === END && !source) {
+        source = own;
+        return this.close();
+      }
       return out(frame);
     }
     if (kind !== CHUNK) {
@@ -642,16 +648,16 @@ type Signal = { t: string; data: string };
 /**
  * Passes `page`'s signaling socket through `edit`, as a hostile server could: `sent` is true for
  * what the page sends. Register it before the page loads. A page route takes precedence over the
- * recorder's context route, which still blocks every other socket, and the recorder still sees the
- * frames as the page sends and receives them.
+ * recorder's context route, which then no longer blocks the sockets this one matches, so match only
+ * the stack's own. The recorder still sees the frames on the wire, as the server sends and receives
+ * them: what the page sends after `edit`, what the server sends before it.
  */
 function tamperSignal(page: Page, edit: (message: Signal, sent: boolean) => Signal) {
   const pass = (text: string | Buffer, sent: boolean) =>
     JSON.stringify(edit(JSON.parse(text.toString()) as Signal, sent));
   return page.routeWebSocket(
-    // Only the stack's own socket, so the recorder still blocks a `/signal` on any other host.
-    (url) =>
-      url.href === new URL("/signal", process.env.SIGILL_E2E_BASE_URL).href.replace(/^http/, "ws"),
+    // A relative pattern resolves against baseURL, so this matches only the stack's own socket.
+    "/signal",
     (ws) => {
       const server = ws.connectToServer();
       ws.onMessage((text) => server.send(pass(text, true)));
@@ -696,7 +702,7 @@ test.describe("a hostile path", () => {
     });
   }
 
-  test("a recipient refuses another transfer's frames on its link", async ({
+  test("a recipient refuses an earlier transfer's frames replayed on its link", async ({
     demo,
     leaks,
     canary,
@@ -705,20 +711,19 @@ test.describe("a hostile path", () => {
     const sender = await openSender(demo, file, "", (page) =>
       page.addInitScript(tamperSender, "other" as const),
     );
-    const anna = makeName(leaks, canary, "Anna");
-    const erik = makeName(leaks, canary, "Erik");
-    const annaLink = await addRecipient(leaks, sender, anna);
-    const erikLink = await addRecipient(leaks, sender, erik);
+    const name = makeName(leaks, canary, "Anna");
+    const link = await addRecipient(leaks, sender, name);
 
-    const first = await receive(demo, "recipient-1", annaLink, file, "100 KB");
-    expect(sha256Hex(first.bytes)).toBe(sha256Hex(file.bytes));
-    await expect(delivered(sender, anna)).toBeVisible();
+    // Attempt 1 is recorded, and the sender closes the channel instead of sending END.
+    const recipient = await demo.open("recipient");
+    await recipient.goto(link);
+    await recipient.getByRole("button", { name: "Download" }).click();
+    await expect(recipient.getByText("The connection to the sender was lost")).toBeVisible();
 
-    const second = await demo.open("recipient-2");
-    const refused = expectRefusal(second);
-    await second.goto(erikLink);
-    await refused(sender, erik);
-    await expect(second.getByRole("button", { name: "Download" })).toHaveCount(0);
+    // Attempt 2 is the same link and tab: a fresh transferId, attempt 1's frames. Its META fails to open, so there is no offer to download.
+    const refused = expectRefusal(recipient);
+    await recipient.getByRole("button", { name: "Try again" }).click();
+    await refused(sender, name);
   });
 
   // The server relays signals it can't open: changing or moving their sealed bytes makes them fail
@@ -751,15 +756,14 @@ test.describe("a hostile path", () => {
 
   test("a sender refuses its own offer reflected as the answer", async ({
     demo,
+    observed,
     leaks,
     canary,
   }) => {
     let offer: string | undefined;
     let reflected = false;
-    const warnings: string[] = [];
-    const sender = await openSender(demo, makeFile(leaks, canary, 10), "", (page) => {
-      page.on("console", (message) => warnings.push(message.text()));
-      return tamperSignal(page, (message, sent) => {
+    const sender = await openSender(demo, makeFile(leaks, canary, 10), "", (page) =>
+      tamperSignal(page, (message, sent) => {
         if (message.t !== "relay") {
           return message;
         }
@@ -772,15 +776,17 @@ test.describe("a hostile path", () => {
         }
         reflected = true;
         return { ...message, data: offer };
-      });
-    });
+      }),
+    );
+    const warnings = async () =>
+      (await observed("sender").records()).flatMap((r) => (r.type === "console" ? [r.text] : []));
     const name = makeName(leaks, canary, "Anna");
     const link = await addRecipient(leaks, sender, name);
     const recipient = await demo.open("recipient");
     const failed = expectNoConnection(recipient);
     await recipient.goto(link);
     await expect
-      .poll(() => warnings, { timeout: 10_000 })
+      .poll(warnings, { timeout: 10_000 })
       .toContain("sigill: sender dropped a connection: bad-signal");
     await failed(sender, name);
     expect(reflected, "reflected the offer").toBe(true);
