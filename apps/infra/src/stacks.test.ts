@@ -317,6 +317,20 @@ test("the app box routes 443 by SNI to Caddy and to coturn's TLS, and copies Cad
     "\tserver coturn 127.0.0.1:5349",
     "\tserver caddy 127.0.0.1:8444 send-proxy-v2",
   ]);
+  // Only the relay keeps an idle connection for an hour. One IPv4 address, or one IPv6 /64 as in
+  // decision 0006, holds at most 128 connections.
+  assert.deepEqual(haproxy.match(/^\t(timeout|stick-table|tcp-request connection) .*/gm), [
+    "\ttimeout connect 5s",
+    "\ttimeout client 2m",
+    "\ttimeout server 2m",
+    "\ttimeout client-fin 30s",
+    "\ttimeout server-fin 30s",
+    "\tstick-table type ipv6 size 100k expire 2m store conn_cur",
+    "\ttcp-request connection track-sc0 src,ipmask(32,64)",
+    "\ttcp-request connection reject if { sc0_conn_cur gt 128 }",
+    "\ttimeout tunnel 1h",
+  ]);
+  assert.match(haproxy, /^backend coturn\n(?:\t#.*\n)*\ttimeout tunnel 1h\n/m);
 
   const caddy = userData.indexOf("\nsystemctl restart caddy\n");
   const order = [

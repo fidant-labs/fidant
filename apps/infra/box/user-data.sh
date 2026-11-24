@@ -187,19 +187,27 @@ global
 defaults
 	mode tcp
 	timeout connect 5s
-	timeout client 1h
-	timeout server 1h
+	# Idle limit for the site. The app pings each /signal WebSocket every 30 s.
+	timeout client 2m
+	timeout server 2m
 	timeout client-fin 30s
 	timeout server-fin 30s
 
 frontend tls
 	bind :::443 v4v6
+	# One IPv4 address, or one IPv6 /64 as in decision 0006, holds at most 128 connections: the
+	# app's 32 sockets per address with their pages and relay connections, behind one NAT.
+	stick-table type ipv6 size 100k expire 2m store conn_cur
+	tcp-request connection track-sc0 src,ipmask(32,64)
+	tcp-request connection reject if { sc0_conn_cur gt 128 }
 	tcp-request inspect-delay 5s
 	tcp-request content accept if { req.ssl_hello_type 1 }
 	use_backend coturn if { req.ssl_sni -i turn.@DOMAIN@ } !{ req.ssl_alpn acme-tls/1 }
 	default_backend caddy
 
 backend coturn
+	# A relayed transfer can sit idle for a while: keep it for an hour once routed.
+	timeout tunnel 1h
 	server coturn 127.0.0.1:5349
 
 backend caddy
