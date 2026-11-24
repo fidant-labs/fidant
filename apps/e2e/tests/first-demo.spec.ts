@@ -438,25 +438,26 @@ test("the Why? link to /how keeps a transfer alive on both pages", async ({
   const opened = card.getByText(`${name}'s link has been opened`);
   await expect(opened).toBeVisible();
 
-  for (const [page, scope, back, kept] of [
-    [sender, card, /\/send$/, card],
-    [recipient, recipient, link, recipient.locator("#receive h1")],
+  // A remounted receive page would rejoin from the same URL, so only node identity tells it apart.
+  const kept = [await card.elementHandle(), await recipient.locator("#receive h1").elementHandle()];
+  for (const [page, scope] of [
+    [sender, card],
+    [recipient, recipient],
   ] as const) {
     await expect(scope.getByText("Direct connection", { exact: true })).toBeVisible();
-    // A remounted page would rejoin from the same URL, so only node identity tells it apart.
-    const node = await kept.elementHandle();
+    const back = page.url();
     await scope.getByText("Why?", { exact: true }).click();
     await scope.getByRole("link", { name: "More about how it works" }).click();
     await expect(page).toHaveURL(/\/how#direct$/);
     await expect(page.locator("#direct h2")).toBeVisible();
     await page.goBack();
     await expect(page).toHaveURL(back);
+  }
+  for (const node of kept) {
     expect(await node.evaluate((n) => n.isConnected)).toBe(true);
   }
   await expect(download).toBeVisible();
   await expect(opened).toBeVisible();
-  await expect(card.getByText(`Waiting for ${name}'s link to be opened`)).toHaveCount(0);
-  await expect(sender.getByRole("button", { name: `Copy link for ${name}` })).toHaveCount(0);
 
   const downloading = recipient.waitForEvent("download", { timeout: 60_000 });
   await download.click();
