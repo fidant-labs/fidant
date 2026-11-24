@@ -147,7 +147,7 @@ export const en = {
   },
   connection: {
     why: "Why?",
-    more: "More about how it works (opens in a new tab)",
+    more: "More about how it works",
     direct: {
       label: "Direct connection",
       explain:

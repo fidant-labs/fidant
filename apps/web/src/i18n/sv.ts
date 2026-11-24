@@ -147,7 +147,7 @@ export const sv: Messages = {
   },
   connection: {
     why: "Varför?",
-    more: "Mer om hur det fungerar (öppnas i en ny flik)",
+    more: "Mer om hur det fungerar",
     direct: {
       label: "Direkt anslutning",
       explain:

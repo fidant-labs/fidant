@@ -432,7 +432,6 @@ export function PathLine({ path }: { path: OpenPath }) {
   const { t } = useI18n();
   const kind = path === "relay" ? "relay" : "direct";
   const { label, explain } = t.connection[kind];
-  // The link opens a new tab because leaving this page would end the transfer.
   return (
     <details class="mt-2 text-[0.9rem]">
       <summary class="cursor-pointer">
@@ -441,14 +440,9 @@ export function PathLine({ path }: { path: OpenPath }) {
       </summary>
       <p class="mt-1 mb-0 text-muted-foreground">
         {explain}{" "}
-        <a
-          href={`/how#${kind}`}
-          target="_blank"
-          rel="noopener"
-          class="rounded-sm font-medium underline underline-offset-4"
-        >
+        <Link href={`/how#${kind}`} class="rounded-sm font-medium underline underline-offset-4">
           {t.connection.more}
-        </a>
+        </Link>
       </p>
     </details>
   );
