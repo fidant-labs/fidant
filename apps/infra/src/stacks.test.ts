@@ -206,7 +206,7 @@ test("the app box runs coturn after the site is up, with a secret that stays on 
     assert.ok(lines.includes(line), line);
   }
   assert.ok(!lines.includes("no-tls"));
-  assert.ok(userData.includes(`external-ip=${boxAddress}/`));
+  assert.ok(userData.includes(`external-ip=${boxAddress}/%s\\nrelay-ip=%s\\n`));
   const denied = lines.filter((line) => line.startsWith("denied-peer-ip="));
   assert.deepEqual(denied, [
     "denied-peer-ip=0.0.0.0-0.255.255.255",
@@ -264,7 +264,7 @@ test("the app box runs coturn after the site is up, with a secret that stays on 
   assert.doesNotMatch(userData.slice(0, caddy), /coturn|turn-secret/);
 
   assert.deepEqual(userData.match(/static-auth-secret=.*/g), [
-    'static-auth-secret=\' "$private_ip"; cat /etc/sigill/turn-secret; } >>/etc/turnserver.conf',
+    'static-auth-secret=\' "$private_ip" "$private_ip"; cat /etc/sigill/turn-secret; } >>/etc/turnserver.conf',
   ]);
   assert.doesNotMatch(userData, /\$\(openssl/);
   assert.deepEqual(userData.match(/.*rand -hex.*/g), [
@@ -300,6 +300,10 @@ test("the app box routes 443 by SNI to Caddy and to coturn's TLS, and copies Cad
     userData.includes(
       "\tadmin off\n\thttps_port 8444\n\tauto_https disable_redirects\n\tservers :8444 {\n\t\tlistener_wrappers {\n\t\t\tproxy_protocol {\n\t\t\t\tallow 127.0.0.1/32\n\t\t\t}\n\t\t\ttls\n\t\t}\n\t\tprotocols h1 h2\n\t}\n",
     ),
+  );
+  assert.match(
+    userData,
+    /\treverse_proxy https:\/\/127\.0\.0\.1:8443 \{\n(?:\t\t#.*\n)*\t\theader_up Host \{host\}\n/,
   );
   assert.ok(userData.includes("\nhttp:// {\n\tredir https://{host}{uri} permanent\n}\n"));
   assert.ok(userData.includes("\nturn.fidant.se {\n\trespond 404\n}\n"));

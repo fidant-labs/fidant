@@ -148,6 +148,9 @@ cat >/etc/caddy/Caddyfile <<'EOF'
 	import hsts
 	encode zstd gzip
 	reverse_proxy https://127.0.0.1:8443 {
+		# Caddy 2.10+ sends an HTTPS upstream its own address as Host; the app's /signal origin
+		# check needs the site's.
+		header_up Host {host}
 		transport http {
 			tls_insecure_skip_verify
 		}
@@ -227,7 +230,9 @@ install -m 640 -g turnserver /dev/null /etc/turnserver.conf
 cat >>/etc/turnserver.conf <<'EOF'
 @TURNSERVER_CONF@
 EOF
-{ printf 'external-ip=@BOX_ADDRESS@/%s\nstatic-auth-secret=' "$private_ip"; cat /etc/sigill/turn-secret; } >>/etc/turnserver.conf
+# relay-ip: coturn otherwise relays from the address a client came in on, and HAProxy's TLS
+# clients come in on 127.0.0.1 (decision 0009).
+{ printf 'external-ip=@BOX_ADDRESS@/%s\nrelay-ip=%s\nstatic-auth-secret=' "$private_ip" "$private_ip"; cat /etc/sigill/turn-secret; } >>/etc/turnserver.conf
 install -d /etc/systemd/system/coturn.service.d
 cat >/etc/systemd/system/coturn.service.d/online.conf <<'EOF'
 [Unit]
