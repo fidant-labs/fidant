@@ -15,9 +15,21 @@ export function heredocs(text: string): Map<string, string> {
 /**
  * The files the box container needs, built from the rendered user data, with the modes the
  * user data gives them. Differences from production: Caddy uses its own CA (offline), coturn
- * has no external-ip (the container sits on the public network itself), and two test-only files.
+ * has no external-ip and relays from `ip` (the container sits on the public network itself), coturn's TLS pair is the
+ * run's own certificate (`turnCert`) in place of the one sigill-turn-cert copies from Caddy, and
+ * two test-only files.
  */
-export function boxFiles({ secret }: { secret: string }): Map<string, BoxFile> {
+export function boxFiles({
+  ip,
+  secret,
+  turnCert,
+}: {
+  /** The container's address, for coturn's relay-ip, which production sets to its private one. */
+  ip: string;
+  secret: string;
+  /** PEM certificate and key for turn.fidant.se, which the browsers trust by public key. */
+  turnCert: { cert: string; key: string };
+}): Map<string, BoxFile> {
   const userData = renderUserData();
   const docs = heredocs(userData);
   const doc = (path: string) => {
@@ -34,6 +46,12 @@ export function boxFiles({ secret }: { secret: string }): Map<string, BoxFile> {
   const caddyfile = doc("/etc/caddy/Caddyfile");
   if (!caddyfile.startsWith("{\n")) {
     throw new Error("The box's Caddyfile does not start with a global options block");
+  }
+  const turnserverConf = doc("/etc/turnserver.conf");
+  const certPath = /^cert=(\S+)$/m.exec(turnserverConf)?.[1];
+  const keyPath = /^pkey=(\S+)$/m.exec(turnserverConf)?.[1];
+  if (certPath === undefined || keyPath === undefined) {
+    throw new Error("The box's turnserver.conf names no cert or pkey");
   }
   const unit = "/etc/systemd/system/sigill.service";
   return new Map([
@@ -54,10 +72,16 @@ export function boxFiles({ secret }: { secret: string }): Map<string, BoxFile> {
     [
       "/etc/turnserver.conf",
       {
-        content: `${doc("/etc/turnserver.conf")}static-auth-secret=${secret}\n`,
+        content: `${turnserverConf}relay-ip=${ip}\nstatic-auth-secret=${secret}\n`,
         mode: 0o640,
       },
     ],
+    ["/etc/haproxy/haproxy.cfg", { content: doc("/etc/haproxy/haproxy.cfg"), mode: 0o644 }],
+    // ponytail: the pair is in place from boot, as if sigill-turn-cert had run, so its script and
+    // timer are left out. A test that waits for the timer to copy Caddy's local-CA certificate,
+    // with Chrome trusting that CA, would exercise them. The Dockerfile gives the key to turnserver.
+    [certPath, { content: turnCert.cert, mode: 0o644 }],
+    [keyPath, { content: turnCert.key, mode: 0o600 }],
     [
       "/etc/systemd/system/coturn.service.d/online.conf",
       { content: doc("/etc/systemd/system/coturn.service.d/online.conf"), mode: 0o644 },

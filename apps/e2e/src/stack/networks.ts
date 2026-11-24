@@ -148,7 +148,8 @@ async function startNetworks(): Promise<RunningService> {
   await run("openssl", [
     ...["req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1", "-nodes"],
     ...["-days", "1", "-subj", `/CN=${turnHost}`],
-    ...["-addext", `subjectAltName=DNS:${turnHost},IP:${turnIp}`],
+    // turn.fidant.se too: the box's coturn serves the same pair, so one public key covers both.
+    ...["-addext", `subjectAltName=DNS:${turnHost},DNS:turn.fidant.se,IP:${turnIp}`],
     ...["-keyout", join(dir, "turn.key"), "-out", join(dir, "turn.crt")],
   ]);
   const spki = new X509Certificate(await readFile(join(dir, "turn.crt"))).publicKey.export({
@@ -159,7 +160,11 @@ async function startNetworks(): Promise<RunningService> {
   const config = coturnConfig({ ip: turnIp, port: 3478, secret, stateDir: "/tmp", tls });
   await writeFile(join(dir, "turnserver.conf"), config, { mode: 0o600 });
   const boxDir = await mkdtemp(join(tmpdir(), "sigill-e2e-box-"));
-  for (const [path, file] of boxFiles({ secret })) {
+  const turnCert = {
+    cert: await readFile(join(dir, "turn.crt"), "utf8"),
+    key: await readFile(join(dir, "turn.key"), "utf8"),
+  };
+  for (const [path, file] of boxFiles({ ip: boxIp, secret, turnCert })) {
     const target = join(boxDir, path);
     // The user data makes /etc/sigill with mode 700; the other directories are the default 755.
     await mkdir(dirname(target), {

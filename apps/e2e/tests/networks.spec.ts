@@ -382,10 +382,12 @@ test.describe("the box", () => {
     await expect(recipient.page.getByText(verifiedText)).toBeVisible({ timeout: 60_000 });
     const download = await downloading;
     expect(sha256Hex(await buffer(await download.createReadStream()))).toBe(sha256Hex(file.bytes));
-    // Relayed by the box's coturn: the box's server hands out only turn.fidant.se.
+    // Relayed by the box's coturn over TLS on 443, through HAProxy, as in production. The box
+    // hands out only turn.fidant.se, and Chrome resolves that name through --host-resolver-rules
+    // for TCP only: its UDP STUN and TURN lookups fail here.
     await expect
       .poll(async () => `${await pathOf(sender.page)} ${await pathOf(recipient.page)}`)
-      .toMatch(/relay/);
+      .toMatch(/relay\+tls\//);
     await watchIcePasswords(leaks, "sender", sender.page);
     await watchIcePasswords(leaks, "recipient", recipient.page);
     await expectSignaling(observed, baseURL);
@@ -407,7 +409,9 @@ test.describe("the box", () => {
     await expect
       .poll(async () => {
         journal = await inBox(
-          ..."journalctl -o json --all --no-pager -u sigill -u caddy -u coturn".split(" "),
+          ..."journalctl -o json --all --no-pager -u sigill -u haproxy -u caddy -u coturn".split(
+            " ",
+          ),
         );
         // The decoded messages as plain lines, which is what the leak scanner reads; JSON
         // escapes and decimal byte arrays would hide a canary from it. Kept on every attempt.
@@ -439,7 +443,8 @@ test.describe("the box", () => {
       })
       .toBe(true);
 
-    const services = /\s(node|caddy|turnserver|coturn)(\[\d+\])?:|(sigill|caddy|coturn)\.service/;
+    const services =
+      /\s(node|haproxy|caddy|turnserver|coturn)(\[\d+\])?:|(sigill|haproxy|caddy|coturn)\.service/;
     expect(syslog.split("\n").filter((line) => services.test(line))).toEqual([]);
 
     const { files, settings } = winningJournald(

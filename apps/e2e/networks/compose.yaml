@@ -163,10 +163,10 @@ services:
       interval: 1s
       retries: 30
 
-  # The POC box: systemd with the app server, Caddy, coturn and rsyslog, configured from the
+  # The POC box: systemd with the app server, HAProxy, Caddy, coturn and rsyslog, configured from the
   # rendered user data (box/Dockerfile). The browsers reach it as fidant.se and turn.fidant.se.
   box:
-    image: sigill-e2e-box:4
+    image: sigill-e2e-box:5
     build: box
     privileged: true
     tmpfs: [/run, /run/lock]
@@ -181,6 +181,6 @@ services:
       # exits at once and restarts.
       test:
         - CMD-SHELL
-        - for u in sigill caddy coturn rsyslog; do systemctl is-active --quiet $$u || exit 1; done && curl -fsk --max-time 2 -o /dev/null https://127.0.0.1:8443/
+        - for u in sigill haproxy caddy coturn rsyslog; do systemctl is-active --quiet $$u || exit 1; done && curl -fsk --max-time 2 -o /dev/null https://127.0.0.1:8443/
       interval: 1s
       retries: 90
