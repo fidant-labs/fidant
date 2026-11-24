@@ -89,6 +89,19 @@ export const en = {
     you: "You",
     sender: "Sender",
   },
+  connection: {
+    why: "Why?",
+    direct: {
+      label: "Direct connection",
+      explain:
+        "The file goes straight between the two devices. Each side can see the other's internet address, like on a video call.",
+    },
+    relay: {
+      label: "Through our relay",
+      explain:
+        "The two networks couldn't connect directly, which is common on mobile data and office Wi-Fi. So the file goes through our relay in Stockholm. It stays locked the whole way, and the relay can't open it or keep it. The relay sees both devices' internet addresses and roughly how big the file is.",
+    },
+  },
   format: {
     bytes: (n: number) => (n === 1 ? "1 byte" : `${n.toLocaleString("en-US")} bytes`),
     progress: (percent: string, done: string, total: string) => `${percent} · ${done} of ${total}`,

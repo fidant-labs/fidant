@@ -1,5 +1,6 @@
 // Pieces shared by the pages.
 
+import type { ConnectionPath } from "@sigill/protocol";
 import type { AnchorHTMLAttributes, ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
 import { DropdownMenu } from "radix-ui";
@@ -383,6 +384,21 @@ export function TechDetails({
     <details class="mt-8 text-[0.9rem] [&_code]:text-[0.85rem]">
       <summary class="cursor-pointer text-muted-foreground">{t.common.techDetails}</summary>
       <Facts rows={rows} />
+    </details>
+  );
+}
+
+/** How a connection runs, with a "Why?" that explains it. The summary holds the label too, so it makes sense on its own. */
+export function PathLine({ path }: { path: Exclude<ConnectionPath, "failed"> }) {
+  const { t } = useI18n();
+  const { label, explain } = t.connection[path === "relay" ? "relay" : "direct"];
+  return (
+    <details class="mt-2 text-[0.9rem]">
+      <summary class="cursor-pointer">
+        <span class="font-medium">{label}</span>{" "}
+        <span class="text-muted-foreground underline underline-offset-4">{t.connection.why}</span>
+      </summary>
+      <p class="mt-1 mb-0 text-muted-foreground">{explain}</p>
     </details>
   );
 }

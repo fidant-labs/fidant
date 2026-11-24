@@ -21,6 +21,7 @@
 // | connecting, offered, receiving | dropped        | waiting    | refuse busy, close |
 // | connecting                     | timeout        | waiting    | refuse busy, close |
 // | connecting                     | left           | waiting    | close              |
+// | (its attempt matches)          | path           | (same)     |                    |
 // | (not on the list)              | joined         | -          | refuse unknown     |
 //
 // Rules:
@@ -63,6 +64,9 @@
 //   a join from "waiting".
 // - Events that do not fit the current status (for example a late progress
 //   after a drop) are ignored, as are events for link IDs not on the list.
+// - `path` records how the current attempt's connection runs. It applies only
+//   to the attempt it names, so a path read late for an earlier attempt is
+//   ignored. Anything that resets the recipient clears it; delivery keeps it.
 // - Removing a recipient is always allowed. If it was mid-transfer, the
 //   result includes a close effect.
 //
@@ -71,7 +75,12 @@
 // names never leave this module through an effect, so nothing built from
 // effects can send a name to the network.
 
-import { type IceServer, MAX_LINKS, type RefuseReason } from "@sigill/protocol";
+import {
+  type ConnectionPath,
+  type IceServer,
+  MAX_LINKS,
+  type RefuseReason,
+} from "@sigill/protocol";
 import type { Link } from "./link.ts";
 
 export type RecipientStatus =
@@ -93,6 +102,8 @@ export type Recipient = {
   readonly error?: string;
   /** The attempt ID of the join that started the current connection. */
   readonly attempt?: string;
+  /** How the current attempt's connection runs, once its data channel opened. */
+  readonly path?: Exclude<ConnectionPath, "failed">;
 };
 
 /** Recipients in the order they were added. Link IDs are unique. */
@@ -109,7 +120,8 @@ export type SenderAction =
   | { type: "dropped"; linkId: string }
   | { type: "timeout"; linkId: string }
   | { type: "left"; linkId: string }
-  | { type: "declined"; linkId: string };
+  | { type: "declined"; linkId: string }
+  | { type: "path"; linkId: string; attempt: string; path: Exclude<ConnectionPath, "failed"> };
 
 export type SenderEffect =
   | { type: "start"; linkId: string; attempt: string; iceServers: IceServer[] }
@@ -249,12 +261,17 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
         state: replace(state, reset(current, "declined")),
         effects: [{ type: "close", linkId }],
       };
+    case "path":
+      if (current.attempt !== action.attempt) {
+        return { state, effects: [] };
+      }
+      return { state: replace(state, { ...current, path: action.path }), effects: [] };
   }
 }
 
-/** The recipient with a new status, no progress, no error and no attempt. */
+/** The recipient with a new status, no progress, no error, no attempt and no path. */
 function reset(recipient: Recipient, status: RecipientStatus): Recipient {
-  const { error: _error, attempt: _attempt, ...rest } = recipient;
+  const { error: _error, attempt: _attempt, path: _path, ...rest } = recipient;
   return { ...rest, status, bytesSent: 0 };
 }
 

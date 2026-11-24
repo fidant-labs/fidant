@@ -343,6 +343,82 @@ test("events that do not fit the current status are ignored", () => {
   }
 });
 
+test("path records the current attempt's path through offered, receiving and delivered", () => {
+  const { state: s0, linkId } = withRecipient();
+  const steps: SenderAction[] = [
+    { type: "joined", linkId, attempt: A, iceServers: TURN },
+    { type: "channel-open", linkId },
+    { type: "accepted", linkId },
+    { type: "receipt", linkId, match: true },
+  ];
+  let state = s0;
+  for (const [i, step] of steps.entries()) {
+    state = update(state, step).state;
+    if (i === 0) {
+      continue;
+    }
+    const result = update(state, { type: "path", linkId, attempt: A, path: "relay" });
+    assert.equal(findRecipient(result.state, linkId)?.path, "relay", `after ${step.type}`);
+    assert.equal(statusOf(result.state, linkId), statusOf(state, linkId), `after ${step.type}`);
+    assert.deepEqual(result.effects, []);
+  }
+
+  const delivered = run(
+    s0,
+    ...steps.slice(0, 2),
+    { type: "path", linkId, attempt: A, path: "direct" },
+    ...steps.slice(2),
+  ).state;
+  assert.equal(statusOf(delivered, linkId), "delivered");
+  assert.equal(findRecipient(delivered, linkId)?.path, "direct", "delivery keeps the path");
+});
+
+test("a path for another attempt is ignored", () => {
+  const { state: s0, linkId } = withRecipient();
+  const offered = run(
+    s0,
+    { type: "joined", linkId, attempt: B, iceServers: [] },
+    { type: "channel-open", linkId },
+  ).state;
+  const late = update(offered, { type: "path", linkId, attempt: A, path: "relay" });
+  assert.equal(late.state, offered);
+  assert.deepEqual(late.effects, []);
+
+  for (const state of [s0, update(offered, { type: "declined", linkId }).state]) {
+    const result = update(state, { type: "path", linkId, attempt: B, path: "relay" });
+    assert.equal(result.state, state, "no attempt to match once reset");
+  }
+});
+
+test("a drop, a decline or a failed receipt clears the path, so the next join starts without one", () => {
+  const ends = ["dropped", "declined", "receipt"] as const;
+  for (const end of ends) {
+    const { state: s0, linkId } = withRecipient();
+    const steps: SenderAction[] = [
+      { type: "joined", linkId, attempt: A, iceServers: [] },
+      { type: "channel-open", linkId },
+      { type: "path", linkId, attempt: A, path: "stun" },
+    ];
+    if (end === "receipt") {
+      steps.push({ type: "accepted", linkId });
+    }
+    const withPath = run(s0, ...steps).state;
+    assert.equal(findRecipient(withPath, linkId)?.path, "stun", end);
+    const action: SenderAction =
+      end === "receipt" ? { type: end, linkId, match: false } : { type: end, linkId };
+    const ended = update(withPath, action).state;
+    const recipient = findRecipient(ended, linkId);
+    assert.equal(recipient && "path" in recipient, false, `${end} clears the path`);
+
+    const rejoined = findRecipient(
+      update(ended, { type: "joined", linkId, attempt: B, iceServers: [] }).state,
+      linkId,
+    );
+    assert.equal(rejoined?.status, "connecting", end);
+    assert.equal(rejoined && "path" in rejoined, false, `the join after ${end} has no path`);
+  }
+});
+
 test("remove drops a recipient and closes its connection if active", () => {
   const { state: s0, linkId } = withRecipient();
   const idle = update(s0, { type: "remove", linkId });

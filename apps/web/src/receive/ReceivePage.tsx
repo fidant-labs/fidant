@@ -28,6 +28,7 @@
 // The secret stays in this tab (it is never stripped from the address bar in
 // this demo). The file name and size are shown, never logged or sent anywhere.
 
+import type { ConnectionPath } from "@sigill/protocol";
 import { cn } from "cn";
 import { type ComponentChildren, Fragment, type VNode } from "preact";
 import { useEffect, useMemo, useReducer, useRef, useState } from "preact/hooks";
@@ -44,7 +45,16 @@ import { ReceiveError, receiveFile } from "../lib/receive-file.ts";
 import { addRelay, NO_RELAYS, type Tie } from "../lib/server-facts.ts";
 import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
 import { createSink, isPickerCancel, type Sink } from "../lib/sink.ts";
-import { Direct, FileCard, Icon, Page, Problem, ServerPanel, TechDetails } from "../ui.tsx";
+import {
+  Direct,
+  FileCard,
+  Icon,
+  Page,
+  PathLine,
+  Problem,
+  ServerPanel,
+  TechDetails,
+} from "../ui.tsx";
 
 const caption = "text-[0.9rem] text-muted-foreground";
 
@@ -95,6 +105,7 @@ export function ReceivePage() {
   const [reachedServer, setReachedServer] = useState(false);
   const [tie, setTie] = useState<Tie>("closed");
   const [viaRelay, setViaRelay] = useState(false);
+  const [path, setPath] = useState<Exclude<ConnectionPath, "failed"> | undefined>(undefined);
   const attemptRef = useRef<Attempt | undefined>(undefined);
 
   /** Closes everything an attempt holds. `linger` keeps the peer up for a moment. */
@@ -138,6 +149,7 @@ export function ReceivePage() {
     };
     attemptRef.current = attempt;
     setPicking(false);
+    setPath(undefined);
     setView({ s: "connecting" });
 
     const current = () => attemptRef.current === attempt && !attempt.ended;
@@ -207,9 +219,13 @@ export function ReceivePage() {
               signalKey,
               iceServers: message.iceServers,
               onOpen: (channel, info) => {
-                // A short transfer can end before the path resolves; it still went through the relay.
-                void info.path.then((path) => {
-                  if (path === "relay" && attemptRef.current === attempt) {
+                // A short transfer can end before the path resolves, so this checks the attempt, not current().
+                void info.path.then((resolved) => {
+                  if (attemptRef.current !== attempt) {
+                    return;
+                  }
+                  setPath(resolved);
+                  if (resolved === "relay") {
                     setViaRelay(true);
                   }
                 });
@@ -455,6 +471,7 @@ export function ReceivePage() {
           </div>
           <Direct from={offer.from || t.common.sender} to={t.common.you} state="ready" />
           <p class={caption}>{t.receive.offerCaption(offer.from)}</p>
+          {path && <PathLine path={path} />}
           <OfferDetails offer={offer} />
         </>
       );
@@ -479,6 +496,7 @@ export function ReceivePage() {
           </div>
           <Direct from={t.common.sender} to={t.common.you} state="active" />
           <p class={caption}>{t.receive.receivingCaption}</p>
+          {path && <PathLine path={path} />}
         </>
       );
       break;
@@ -503,6 +521,7 @@ export function ReceivePage() {
           )}
           <Direct from={t.common.sender} to={t.common.you} state="done" />
           <p class={caption}>{t.receive.doneCaption}</p>
+          {path && <PathLine path={path} />}
           <OfferDetails offer={offer} sha256={sha256} />
         </>
       );

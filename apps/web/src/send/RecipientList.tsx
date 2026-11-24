@@ -1,4 +1,4 @@
-// One card per recipient: status, progress, link, copy and remove.
+// One card per recipient: status, connection path, progress, link, copy and remove.
 //
 // Only the status sentence sits in the polite live region, so screen readers
 // hear "Sending through Anna's link", "Delivered through Anna's link" and so on,
@@ -12,7 +12,7 @@ import type { Messages } from "../i18n/en.ts";
 import { useI18n } from "../i18n/I18n.tsx";
 import { formatProgress } from "../lib/format.ts";
 import type { Recipient, RecipientStatus } from "../lib/sender-state.ts";
-import { Direct, Icon } from "../ui.tsx";
+import { Direct, Icon, PathLine } from "../ui.tsx";
 
 const STATUS_COLOR: Partial<Record<RecipientStatus, string>> = {
   failed: "text-destructive",
@@ -48,7 +48,7 @@ type CopyNote = keyof Messages["send"]["copyNote"];
 type RowProps = { recipient: Recipient; fileSize: number; onRemove(linkId: string): void };
 
 function RecipientRow({ recipient, fileSize, onRemove }: RowProps) {
-  const { name, url, status, bytesSent, linkId } = recipient;
+  const { name, url, status, bytesSent, linkId, path } = recipient;
   const { t, lang } = useI18n();
   const [copyNote, setCopyNote] = useState<CopyNote | "">("");
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -87,6 +87,7 @@ function RecipientRow({ recipient, fileSize, onRemove }: RowProps) {
             {status === "failed" && <Icon name="alert" />}
             <span>{t.send.status[status](name)}</span>
           </p>
+          {path && <PathLine path={path} />}
           {status === "receiving" && (
             <>
               <Direct from={t.common.you} to={name} state="active" class="mt-3" />

@@ -89,6 +89,19 @@ export const sv: Messages = {
     you: "Du",
     sender: "Avsändare",
   },
+  connection: {
+    why: "Varför?",
+    direct: {
+      label: "Direkt anslutning",
+      explain:
+        "Filen går direkt mellan de två enheterna. Båda sidor kan se den andras internetadress, precis som i ett videosamtal.",
+    },
+    relay: {
+      label: "Via vårt relä",
+      explain:
+        "De två nätverken kunde inte ansluta direkt till varandra, vilket är vanligt på mobildata och kontors-wifi. Därför går filen via vårt relä i Stockholm. Den är låst hela vägen, och reläet kan varken öppna den eller spara den. Reläet ser båda enheternas internetadresser och ungefär hur stor filen är.",
+    },
+  },
   format: {
     bytes: (n: number) => `${n.toLocaleString("sv")} byte`,
     progress: (percent: string, done: string, total: string) => `${percent} · ${done} av ${total}`,
