@@ -12,6 +12,7 @@ import {
   type SenderAction,
   type SenderEffect,
   type SenderState,
+  TOO_SMALL_FOR_TEXT,
   update,
 } from "./sender-state.ts";
 
@@ -327,6 +328,34 @@ test("a mismatching receipt fails the transfer and the next join retries", () =>
   assert.deepEqual(retry.effects, [{ type: "start", linkId, attempt: A, iceServers: [] }]);
 });
 
+test("unsendable fails a connecting recipient, frees the link and the next join retries", () => {
+  const { state: s0, linkId } = withRecipient();
+  const original = findRecipient(s0, linkId);
+  const connecting = update(s0, joined(linkId, A, false)).state;
+  const failed = update(connecting, { type: "unsendable", linkId });
+  assert.deepEqual(findRecipient(failed.state, linkId), {
+    ...original,
+    status: "failed",
+    bytesSent: 0,
+    error: TOO_SMALL_FOR_TEXT,
+  });
+  assert.deepEqual(failed.effects, [
+    { type: "refuse", linkId, attempt: A, reason: "drop" },
+    { type: "close", linkId },
+  ]);
+
+  const offered = update(connecting, { type: "channel-open", linkId }).state;
+  const late = update(offered, { type: "unsendable", linkId });
+  assert.equal(late.state, offered);
+  assert.deepEqual(late.effects, []);
+
+  const retry = update(failed.state, joined(linkId, B));
+  const retried = findRecipient(retry.state, linkId);
+  assert.equal(retried?.status, "connecting");
+  assert.equal(retried?.error, undefined);
+  assert.deepEqual(retry.effects, [{ type: "start", linkId, attempt: B, iceServers: [] }]);
+});
+
 test("events that do not fit the current status are ignored", () => {
   const { state: waiting, linkId } = withRecipient();
   const outOfPlace: Exclude<SenderAction, { type: "add" | "server-lost" }>[] = [
@@ -338,6 +367,7 @@ test("events that do not fit the current status are ignored", () => {
     { type: "left", linkId },
     { type: "timeout", linkId },
     { type: "declined", linkId },
+    { type: "unsendable", linkId },
   ];
   for (const action of outOfPlace) {
     const result = update(waiting, action);
@@ -635,6 +665,8 @@ test("effects never contain a recipient name or secret", () => {
     { type: "channel-open", linkId },
     { type: "accepted", linkId },
     { type: "dropped", linkId },
+    joined(linkId, A),
+    { type: "unsendable", linkId },
     joined(linkId, A),
     { type: "channel-open", linkId },
     { type: "accepted", linkId },

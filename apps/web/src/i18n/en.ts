@@ -379,6 +379,8 @@ export const en = {
       failed: (name: string) =>
         `The text didn't arrive intact through ${name}'s link. The link can be opened again to retry.`,
     },
+    unsendable: (name: string) =>
+      `The text wasn't sent through ${name}'s link, because its length would have shown on this connection. The link still works.`,
     offerTitle: (from: string) => (from ? `${from} sent you a text` : "You've been sent a text"),
     show: "Show",
     receivingTitle: "Opening the text…",

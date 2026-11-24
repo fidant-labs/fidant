@@ -378,6 +378,8 @@ export const sv: Messages = {
       failed: (name: string) =>
         `Texten kom inte fram oskadd via länken till ${name}. Länken kan öppnas igen för att försöka på nytt.`,
     },
+    unsendable: (name: string) =>
+      `Texten skickades inte via länken till ${name}, eftersom dess längd skulle ha synts på den här förbindelsen. Länken fungerar fortfarande.`,
     offerTitle: (from: string) =>
       from ? `${from} har skickat en text till dig` : "Du har fått en text",
     show: "Visa",
