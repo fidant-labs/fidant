@@ -1,8 +1,9 @@
 // Signaling messages exchanged over the /signal WebSocket.
 //
-// The server only ever sees link IDs and opaque base64url blobs. SDP and ICE
-// candidates are encrypted in the browser before they are relayed, and keys
-// never appear in these messages.
+// The server only ever sees link IDs and opaque base64url blobs, except in
+// `email`, which carries a link the server emails for the sender, key included
+// (decision 0008). SDP and ICE candidates are encrypted in the browser before
+// they are relayed, and no other message carries a key.
 
 /** A link ID: 16 random bytes as base64url, without padding. */
 export const LINK_ID_PATTERN = /^[A-Za-z0-9_-]{22}$/;
@@ -18,7 +19,23 @@ export const MAX_ICE_SERVERS = 4;
 export const MAX_ICE_URLS = 4;
 export const MAX_ICE_STRING = 256;
 
+/** The longest email address SMTP allows. */
+export const MAX_ADDRESS = 254;
+/** The longest link an `email` message may carry. */
+export const MAX_EMAIL_URL = 512;
+/** Longest sender name META and `email` accept, in UTF-16 code units like `maxLength`. */
+export const MAX_FROM_LENGTH = 100;
+
 const ICE_URL_PATTERN = /^(turn|turns|stun):/;
+
+// The HTML spec's valid email address, so it matches what <input type="email"> accepts.
+const ADDRESS_PATTERN =
+  /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+
+const EMAIL_URL_PATTERN =
+  /^https:\/\/[A-Za-z0-9.:[\]-]+\/r\/([A-Za-z0-9_-]{22})#[A-Za-z0-9_-]{43}$/;
+
+const CODE_PATTERN = /^[0-9]{6}$/;
 
 const BASE64URL_PATTERN = /^[A-Za-z0-9_-]+$/;
 
@@ -32,6 +49,25 @@ export type RefuseReason = (typeof REFUSE_REASONS)[number];
  */
 export const CONNECTION_PATHS = ["direct", "stun", "relay", "failed"] as const;
 export type ConnectionPath = (typeof CONNECTION_PATHS)[number];
+
+/** The languages an emailed notice or code can be written in. */
+export const LANGS = ["sv", "en"] as const;
+
+/** What the server tells a sender about a link it emails. */
+export const EMAIL_STATUSES = ["sent", "failed", "limit", "verifying", "verified"] as const;
+export type EmailStatus = (typeof EMAIL_STATUSES)[number];
+
+/** What the server answers a recipient that asks for or enters an emailed code. */
+export const CODE_RESULTS = [
+  "sent",
+  "wait",
+  "limit",
+  "failed",
+  "wrong",
+  "expired",
+  "tries",
+] as const;
+export type CodeResult = (typeof CODE_RESULTS)[number];
 
 /** Protocol errors the server reports in an `error` message. */
 export const ERROR_CODES = [
@@ -48,7 +84,7 @@ export const UPGRADE_REJECT_REASONS = ["path", "origin", "full", "address"] as c
 export type UpgradeRejectReason = (typeof UPGRADE_REJECT_REASONS)[number];
 
 /** Every value the server may write in a log line's `reason` field. */
-export type LogReason = RefuseReason | UpgradeRejectReason;
+export type LogReason = RefuseReason | UpgradeRejectReason | CodeResult | "unverified";
 
 /** The only events a log line may name. */
 export type LogEvent =
@@ -65,7 +101,10 @@ export type LogEvent =
   | "relay"
   | "path"
   | "host-closed"
-  | "left";
+  | "left"
+  | "email"
+  | "code"
+  | "verified";
 
 /** The only fields a log line may carry, besides `event`. `link` is cut to its first 6 characters. */
 export type LogFields = {
@@ -83,9 +122,9 @@ export type HostMessage = { t: "host"; links: string[] };
 /**
  * A recipient asks to be connected to the sender hosting a link. `attempt` is a fresh random ID
  * (same shape as a link ID) for this join, so a refusal can name the attempt it refuses. It is
- * not secret, but the server never logs it.
+ * not secret, but the server never logs it. `token`, the answer to a right code, is never logged.
  */
-export type JoinMessage = { t: "join"; link: string; attempt: string };
+export type JoinMessage = { t: "join"; link: string; attempt: string; token?: string };
 /** An encrypted payload for the other end of a link. */
 export type RelayMessage = { t: "relay"; link: string; data: string };
 /** The sender turns away the recipient on a link, if it is still the one from `attempt`. */
@@ -94,7 +133,32 @@ export type RefuseMessage = { t: "refuse"; link: string; attempt: string; reason
 /** The sender reports how its connection on a link ended up. */
 export type PathMessage = { t: "path"; link: string; path: ConnectionPath };
 
-export type ClientMessage = HostMessage | JoinMessage | RelayMessage | RefuseMessage | PathMessage;
+/** The sender asks the server to email one of its links. Once per link, never folded into `host`. */
+export type EmailMessage = {
+  t: "email";
+  link: string;
+  to: string;
+  url: string;
+  from: string;
+  lang: (typeof LANGS)[number];
+};
+/** A recipient asks whether a link needs an emailed code. */
+export type GateMessage = { t: "gate"; link: string };
+/** A recipient asks for a code by email. */
+export type SendCodeMessage = { t: "send-code"; link: string };
+/** A recipient enters the code it got by email. */
+export type CodeMessage = { t: "code"; link: string; code: string };
+
+export type ClientMessage =
+  | HostMessage
+  | JoinMessage
+  | RelayMessage
+  | RefuseMessage
+  | PathMessage
+  | EmailMessage
+  | GateMessage
+  | SendCodeMessage
+  | CodeMessage;
 
 /**
  * A STUN or TURN server for RTCPeerConnection. For TURN, `username` and `credential` are
@@ -116,13 +180,29 @@ export type HostGoneMessage = { t: "host-gone" };
 /** Reports a protocol error. */
 export type ErrorMessage = { t: "error"; code: ErrorCode };
 
+/** The first message on every socket: whether this server can email links. */
+export type HelloMessage = { t: "hello"; mail: boolean };
+/** Tells the sender what became of a link it asked the server to email. */
+export type EmailStatusMessage = { t: "email"; link: string; status: EmailStatus };
+/** Tells a recipient where a link's code goes: a masked address, or "" if it needs no code. */
+export type GateAnswerMessage = { t: "gate"; link: string; to: string };
+/** Answers a recipient's `send-code` or `code`. */
+export type CodeResultMessage = { t: "code"; link: string; result: CodeResult };
+/** Gives a recipient that entered the right code its token for `join`. */
+export type TokenMessage = { t: "token"; link: string; token: string };
+
 export type ServerMessage =
   | JoinedMessage
   | LeftMessage
   | RelayMessage
   | RefusedMessage
   | HostGoneMessage
-  | ErrorMessage;
+  | ErrorMessage
+  | HelloMessage
+  | EmailStatusMessage
+  | GateAnswerMessage
+  | CodeResultMessage
+  | TokenMessage;
 
 type Fields = Record<string, unknown>;
 
@@ -149,6 +229,54 @@ export function isLinkId(value: unknown): value is string {
   return typeof value === "string" && LINK_ID_PATTERN.test(value);
 }
 
+/** Whether `value` is a valid email address by the HTML spec, at most MAX_ADDRESS long. */
+export function isAddress(value: unknown): value is string {
+  return typeof value === "string" && value.length <= MAX_ADDRESS && ADDRESS_PATTERN.test(value);
+}
+
+/** `a***@example.se`: always three stars after the first character, so the length stays hidden. */
+export function maskAddress(address: string): string {
+  return `${address.slice(0, 1)}***${address.slice(address.indexOf("@"))}`;
+}
+
+function isMaskedAddress(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.slice(1, 5) === "***@" &&
+    isAddress(value.slice(0, 1) + value.slice(4))
+  );
+}
+
+/**
+ * C0 and C1 control characters (U+0000–001F, U+007F–009F) and the Unicode
+ * direction controls (U+200E, U+200F, U+202A–202E, U+2066–2069).
+ */
+const FORBIDDEN_CHARACTERS = /[\p{Cc}\u200E\u200F\u202A-\u202E\u2066-\u2069]/u;
+
+/**
+ * Whether a file name, type or sender name contains characters META refuses: control
+ * characters, which could break how the name is shown or saved, and direction
+ * controls, which can make a name ending in ".exe" display as if it ended in
+ * ".pdf". The sender checks it when a file is chosen; decodeMeta and `email` reject such names.
+ */
+export function hasForbiddenCharacters(text: string): boolean {
+  return FORBIDDEN_CHARACTERS.test(text);
+}
+
+function isFrom(value: unknown): value is string {
+  return (
+    typeof value === "string" && value.length <= MAX_FROM_LENGTH && !hasForbiddenCharacters(value)
+  );
+}
+
+function isEmailUrl(value: unknown, link: string): value is string {
+  return (
+    typeof value === "string" &&
+    value.length <= MAX_EMAIL_URL &&
+    EMAIL_URL_PATTERN.exec(value)?.[1] === link
+  );
+}
+
 function isRelayData(value: unknown): value is string {
   return (
     typeof value === "string" && value.length <= MAX_RELAY_DATA && BASE64URL_PATTERN.test(value)
@@ -165,6 +293,18 @@ function isConnectionPath(value: unknown): value is ConnectionPath {
 
 function isErrorCode(value: unknown): value is ErrorCode {
   return (ERROR_CODES as readonly unknown[]).includes(value);
+}
+
+function isLang(value: unknown): value is (typeof LANGS)[number] {
+  return (LANGS as readonly unknown[]).includes(value);
+}
+
+function isEmailStatus(value: unknown): value is EmailStatus {
+  return (EMAIL_STATUSES as readonly unknown[]).includes(value);
+}
+
+function isCodeResult(value: unknown): value is CodeResult {
+  return (CODE_RESULTS as readonly unknown[]).includes(value);
 }
 
 function isIceString(value: unknown): value is string {
@@ -234,14 +374,18 @@ export function parseClientMessage(raw: string): ClientMessage | undefined {
       }
       return { t: "host", links: [...links] };
     }
-    case "join":
-      if (!hasKeys(value, ["t", "link", "attempt"])) {
+    case "join": {
+      const { link, attempt, token } = value;
+      const keys =
+        token === undefined ? ["t", "link", "attempt"] : ["t", "link", "attempt", "token"];
+      if (!hasKeys(value, keys) || !isLinkId(link) || !isLinkId(attempt)) {
         return undefined;
       }
-      if (!isLinkId(value.link) || !isLinkId(value.attempt)) {
-        return undefined;
+      if (token === undefined) {
+        return { t: "join", link, attempt };
       }
-      return { t: "join", link: value.link, attempt: value.attempt };
+      return isLinkId(token) ? { t: "join", link, attempt, token } : undefined;
+    }
     case "relay":
       return parseRelay(value);
     case "refuse":
@@ -260,6 +404,40 @@ export function parseClientMessage(raw: string): ClientMessage | undefined {
         return undefined;
       }
       return { t: "path", link: value.link, path: value.path };
+    case "email": {
+      if (!hasKeys(value, ["t", "link", "to", "url", "from", "lang"])) {
+        return undefined;
+      }
+      const { link, to, url, from, lang } = value;
+      if (
+        !isLinkId(link) ||
+        !isAddress(to) ||
+        !isEmailUrl(url, link) ||
+        !isFrom(from) ||
+        !isLang(lang)
+      ) {
+        return undefined;
+      }
+      return { t: "email", link, to, url, from, lang };
+    }
+    case "gate":
+      if (!hasKeys(value, ["t", "link"]) || !isLinkId(value.link)) {
+        return undefined;
+      }
+      return { t: "gate", link: value.link };
+    case "send-code":
+      if (!hasKeys(value, ["t", "link"]) || !isLinkId(value.link)) {
+        return undefined;
+      }
+      return { t: "send-code", link: value.link };
+    case "code":
+      if (!hasKeys(value, ["t", "link", "code"]) || !isLinkId(value.link)) {
+        return undefined;
+      }
+      if (typeof value.code !== "string" || !CODE_PATTERN.test(value.code)) {
+        return undefined;
+      }
+      return { t: "code", link: value.link, code: value.code };
     default:
       return undefined;
   }
@@ -304,6 +482,43 @@ export function parseServerMessage(raw: string): ServerMessage | undefined {
         return undefined;
       }
       return { t: "error", code: value.code };
+    case "hello":
+      if (!hasKeys(value, ["t", "mail"]) || typeof value.mail !== "boolean") {
+        return undefined;
+      }
+      return { t: "hello", mail: value.mail };
+    case "email":
+      if (!hasKeys(value, ["t", "link", "status"])) {
+        return undefined;
+      }
+      if (!isLinkId(value.link) || !isEmailStatus(value.status)) {
+        return undefined;
+      }
+      return { t: "email", link: value.link, status: value.status };
+    case "gate":
+      if (!hasKeys(value, ["t", "link", "to"]) || !isLinkId(value.link)) {
+        return undefined;
+      }
+      if (value.to !== "" && !isMaskedAddress(value.to)) {
+        return undefined;
+      }
+      return { t: "gate", link: value.link, to: value.to };
+    case "code":
+      if (!hasKeys(value, ["t", "link", "result"])) {
+        return undefined;
+      }
+      if (!isLinkId(value.link) || !isCodeResult(value.result)) {
+        return undefined;
+      }
+      return { t: "code", link: value.link, result: value.result };
+    case "token":
+      if (!hasKeys(value, ["t", "link", "token"])) {
+        return undefined;
+      }
+      if (!isLinkId(value.link) || !isLinkId(value.token)) {
+        return undefined;
+      }
+      return { t: "token", link: value.link, token: value.token };
     default:
       return undefined;
   }

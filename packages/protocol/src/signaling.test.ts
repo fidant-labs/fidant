@@ -1,12 +1,19 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  CODE_RESULTS,
+  EMAIL_STATUSES,
+  isAddress,
   isLinkId,
+  MAX_ADDRESS,
+  MAX_EMAIL_URL,
+  MAX_FROM_LENGTH,
   MAX_ICE_SERVERS,
   MAX_ICE_STRING,
   MAX_ICE_URLS,
   MAX_LINKS,
   MAX_RELAY_DATA,
+  maskAddress,
   parseClientMessage,
   parseIceServers,
   parseServerMessage,
@@ -15,6 +22,12 @@ import {
 const link = "AAAAAAAAAAAAAAAAAAAAAA";
 const other = "abcdefghijklmnopqrstu-";
 const attempt = "ZZZZZZZZZZZZZZZZZZZZZZ";
+const token = "TTTTTTTTTTTTTTTTTTTTTT";
+const host = "fidant.se";
+const secret = "A".repeat(43);
+const url = `https://${host}/r/${link}#${secret}`;
+const to = "anna@example.se";
+const email = { t: "email", link, to, url, from: "Anna", lang: "sv" };
 const turn = {
   urls: ["turn:127.0.0.1:3478?transport=udp", "turns:relay.example:5349", "stun:127.0.0.1:3478"],
   username: "1700000000",
@@ -23,6 +36,18 @@ const turn = {
 
 function linkIds(count: number): string[] {
   return Array.from({ length: count }, (_, i) => i.toString(36).padStart(22, "_"));
+}
+
+function urlOfLength(length: number): string {
+  return `https://${"h".repeat(length - url.length + host.length)}/r/${link}#${secret}`;
+}
+
+function client(message: object) {
+  return parseClientMessage(JSON.stringify(message));
+}
+
+function server(message: object) {
+  return parseServerMessage(JSON.stringify(message));
 }
 
 test("parses valid client messages", () => {
@@ -205,6 +230,11 @@ test("rejects extra fields", () => {
     { t: "relay", link, data: "x", ...extra },
     { t: "refuse", link, attempt, reason: "used", ...extra },
     { t: "path", link, path: "relay", ...extra },
+    { t: "join", link, attempt, token, ...extra },
+    { ...email, ...extra },
+    { t: "gate", link, ...extra },
+    { t: "send-code", link, ...extra },
+    { t: "code", link, code: "123456", ...extra },
   ];
   for (const message of client) {
     assert.equal(parseClientMessage(JSON.stringify(message)), undefined, message.t);
@@ -216,6 +246,11 @@ test("rejects extra fields", () => {
     { t: "refused", reason: "busy", ...extra },
     { t: "host-gone", ...extra },
     { t: "error", code: "bad-message", ...extra },
+    { t: "hello", mail: true, ...extra },
+    { t: "email", link, status: "sent", ...extra },
+    { t: "gate", link, to: "", ...extra },
+    { t: "code", link, result: "sent", ...extra },
+    { t: "token", link, token, ...extra },
   ];
   for (const message of server) {
     assert.equal(parseServerMessage(JSON.stringify(message)), undefined, message.t);
@@ -236,6 +271,13 @@ test("rejects missing fields", () => {
     { t: "refuse", attempt, reason: "used" },
     { t: "path", link },
     { t: "path", path: "relay" },
+    { t: "join", link, token },
+    { t: "join", attempt, token },
+    ...["link", "to", "url", "from", "lang"].map((key) => ({ ...email, [key]: undefined })),
+    { t: "gate" },
+    { t: "send-code" },
+    { t: "code", link },
+    { t: "code", code: "123456" },
   ];
   for (const message of client) {
     assert.equal(parseClientMessage(JSON.stringify(message)), undefined, JSON.stringify(message));
@@ -247,6 +289,15 @@ test("rejects missing fields", () => {
     { t: "left" },
     { t: "relay", link },
     { t: "refused" },
+    { t: "hello" },
+    { t: "email", link },
+    { t: "email", status: "sent" },
+    { t: "gate", link },
+    { t: "gate", to: "" },
+    { t: "code", link },
+    { t: "code", result: "sent" },
+    { t: "token", link },
+    { t: "token", token },
   ];
   for (const message of server) {
     assert.equal(parseServerMessage(JSON.stringify(message)), undefined, JSON.stringify(message));
@@ -296,4 +347,214 @@ test("rejects malformed or oversized ICE servers", () => {
       undefined,
     );
   }
+});
+
+test("parses valid emailed-link client messages", () => {
+  assert.deepEqual(client(email), email);
+  for (const lang of ["sv", "en"]) {
+    const message = { ...email, from: "", lang };
+    assert.deepEqual(client(message), message);
+  }
+  for (const origin of ["192.168.1.5:8443", "localhost:8443", "[::1]:8443"]) {
+    const message = { ...email, url: `https://${origin}/r/${link}#${secret}` };
+    assert.deepEqual(client(message), message);
+  }
+  assert.deepEqual(client({ t: "gate", link }), { t: "gate", link });
+  assert.deepEqual(client({ t: "send-code", link }), { t: "send-code", link });
+  assert.deepEqual(client({ t: "code", link, code: "012345" }), {
+    t: "code",
+    link,
+    code: "012345",
+  });
+  assert.deepEqual(client({ t: "join", link, attempt, token }), {
+    t: "join",
+    link,
+    attempt,
+    token,
+  });
+});
+
+test("parses valid emailed-link server messages", () => {
+  for (const mail of [true, false]) {
+    assert.deepEqual(server({ t: "hello", mail }), { t: "hello", mail });
+  }
+  for (const status of EMAIL_STATUSES) {
+    assert.deepEqual(server({ t: "email", link, status }), { t: "email", link, status });
+  }
+  for (const masked of ["", "a***@example.se"]) {
+    assert.deepEqual(server({ t: "gate", link, to: masked }), { t: "gate", link, to: masked });
+  }
+  for (const result of CODE_RESULTS) {
+    assert.deepEqual(server({ t: "code", link, result }), { t: "code", link, result });
+  }
+  assert.deepEqual(server({ t: "token", link, token }), { t: "token", link, token });
+});
+
+test("accepts addresses the HTML spec accepts, up to MAX_ADDRESS characters", () => {
+  const longest = `${"a".repeat(MAX_ADDRESS - "@example.se".length)}@example.se`;
+  const good = ["anna@example.se", "a@b", "first.last+tag@sub.example.co.uk", "o'neil@example.se"];
+  for (const address of [...good, longest]) {
+    assert.equal(isAddress(address), true, address);
+    assert.deepEqual(client({ ...email, to: address }), { ...email, to: address });
+  }
+  const bad: unknown[] = [
+    `a${longest}`,
+    "",
+    "anna",
+    "anna@",
+    "@example.se",
+    "anna@@example.se",
+    "anna@example.se,bob@example.se",
+    "<anna@example.se>",
+    '"anna"@example.se',
+    "anna @example.se",
+    "anna@example.se\n",
+    "anna@example.se\r\nBcc: bob@example.se",
+    "anna@-example.se",
+    "anna@example-.se",
+    "anna@example..se",
+    "anna@example.se.",
+    `anna@${"a".repeat(64)}.se`,
+    "åsa@example.se",
+    "anna@exämple.se",
+    42,
+    null,
+  ];
+  for (const address of bad) {
+    assert.equal(isAddress(address), false, String(address));
+    assert.equal(client({ ...email, to: address }), undefined, String(address));
+  }
+});
+
+test("masks an address to its first character, three stars and the domain", () => {
+  assert.equal(maskAddress("anna@example.se"), "a***@example.se");
+  assert.equal(maskAddress("first.last+tag@sub.example.se"), "f***@sub.example.se");
+});
+
+test("masks a one-character local part with the same three stars, hiding its length", () => {
+  assert.equal(maskAddress("a@example.se"), "a***@example.se");
+  assert.equal(maskAddress("a@example.se"), maskAddress("anna@example.se"));
+});
+
+test("accepts the mask of the longest address and rejects anything unmasked", () => {
+  const domain = [63, 63, 63, 60].map((n) => "b".repeat(n)).join(".");
+  const longest = `a@${domain}`;
+  assert.equal(longest.length, MAX_ADDRESS);
+  assert.equal(isAddress(longest), true);
+  const masked = maskAddress(longest);
+  assert.deepEqual(server({ t: "gate", link, to: masked }), { t: "gate", link, to: masked });
+  const bad: unknown[] = [
+    "anna@example.se",
+    "***@example.se",
+    "a**@example.se",
+    "a****@example.se",
+    "a***b@example.se",
+    "a***@",
+    "a***",
+    "a***@example.se\n",
+    `a***@b${domain}`,
+    " ",
+    42,
+    null,
+  ];
+  for (const value of bad) {
+    assert.equal(server({ t: "gate", link, to: value }), undefined, String(value));
+  }
+});
+
+test("accepts a link URL up to MAX_EMAIL_URL characters", () => {
+  const longest = urlOfLength(MAX_EMAIL_URL);
+  assert.equal(longest.length, MAX_EMAIL_URL);
+  assert.deepEqual(client({ ...email, url: longest }), { ...email, url: longest });
+  assert.equal(client({ ...email, url: urlOfLength(MAX_EMAIL_URL + 1) }), undefined);
+});
+
+test("rejects a link URL that is not https://<host>/r/<the same link>#<secret>", () => {
+  const bad: unknown[] = [
+    `http://${host}/r/${link}#${secret}`,
+    `https://${host}/r/${other}#${secret}`,
+    `https://${host}/r/${link}#${secret.slice(1)}`,
+    `https://${host}/r/${link}#${secret}A`,
+    `https://${host}/r/${link}#${secret.slice(1)}+`,
+    `https://${host}/r/${link}`,
+    `https://${host}/r/${link}/#${secret}`,
+    `https://${host}/r/${link}?x=1#${secret}`,
+    `https://anna@${host}/r/${link}#${secret}`,
+    `https://${host}/x/r/${link}#${secret}`,
+    `https://fid\nant.se/r/${link}#${secret}`,
+    `https://fid ant.se/r/${link}#${secret}`,
+    `https:///r/${link}#${secret}`,
+    ` ${url}`,
+    `${url}\n`,
+    42,
+    null,
+  ];
+  for (const value of bad) {
+    assert.equal(client({ ...email, url: value }), undefined, String(value));
+  }
+});
+
+test("rejects bad sender names and languages in an email message", () => {
+  const longest = "x".repeat(MAX_FROM_LENGTH);
+  assert.deepEqual(client({ ...email, from: longest }), { ...email, from: longest });
+  for (const from of [`${longest}x`, "An\nna", "An\u202Ena", "\u0000", 42, null]) {
+    assert.equal(client({ ...email, from }), undefined, String(from));
+  }
+  for (const lang of ["de", "SV", "", null, ["sv"]]) {
+    assert.equal(client({ ...email, lang }), undefined, String(lang));
+  }
+});
+
+test("rejects codes that are not exactly six ASCII digits", () => {
+  const bad = [
+    "12345",
+    "1234567",
+    "12345a",
+    " 123456",
+    "123456 ",
+    "١٢٣٤٥٦",
+    "１２３４５６",
+    "",
+    123456,
+  ];
+  for (const code of [...bad, null]) {
+    assert.equal(client({ t: "code", link, code }), undefined, String(code));
+  }
+});
+
+test("treats a present but invalid join token as invalid, not as absent", () => {
+  for (const value of [
+    "",
+    "short",
+    `${token}T`,
+    token.slice(1),
+    "TTTTTTTTTTTTTTTTTTTTT=",
+    42,
+    null,
+  ]) {
+    assert.equal(client({ t: "join", link, attempt, token: value }), undefined, String(value));
+    assert.equal(server({ t: "token", link, token: value }), undefined, String(value));
+  }
+});
+
+test("rejects bad hello flags, email statuses and code results", () => {
+  for (const mail of ["true", 1, null]) {
+    assert.equal(server({ t: "hello", mail }), undefined, String(mail));
+  }
+  for (const value of ["pending", "", "SENT", null]) {
+    assert.equal(server({ t: "email", link, status: value }), undefined, String(value));
+    assert.equal(server({ t: "code", link, result: value }), undefined, String(value));
+  }
+});
+
+test("rejects each emailed-link message in the wrong direction", () => {
+  assert.equal(server(email), undefined);
+  assert.equal(server({ t: "gate", link }), undefined);
+  assert.equal(server({ t: "send-code", link }), undefined);
+  assert.equal(server({ t: "code", link, code: "123456" }), undefined);
+  assert.equal(client({ t: "hello", mail: true }), undefined);
+  assert.equal(client({ t: "email", link, status: "sent" }), undefined);
+  assert.equal(client({ t: "gate", link, to: "" }), undefined);
+  assert.equal(client({ t: "code", link, result: "sent" }), undefined);
+  assert.equal(client({ t: "token", link, token }), undefined);
 });
