@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readdirSync, readFileSync } from "node:fs";
 import { isIP } from "node:net";
 import { test } from "node:test";
 import { App, Stack } from "aws-cdk-lib";
@@ -372,4 +373,41 @@ test("only fidant.se gets the relay name, pointing at the box over IPv4", () => 
     relay.map(({ Properties: p }) => [p.HostedZoneId, p.Name, p.Type, p.ResourceRecords]),
     [[zoneRef("fidant.se"), "turn.fidant.se.", "A", ["192.0.2.10"]]],
   );
+});
+
+test("the journal is the only place the box's services keep log lines", () => {
+  const stack = stacksFor(pocAccount).find((child) => child.stackName === "FidantApp");
+  const [instance] = Object.values(
+    Template.fromStack(stack as Stack).findResources("AWS::Lightsail::Instance"),
+  );
+  const userData = String(instance?.Properties.UserData);
+  const heredoc = (path: string): string[] => {
+    const start = userData.indexOf(`\ncat >${path} <<'EOF'\n`);
+    assert.ok(start > 0, path);
+    const body = userData.slice(userData.indexOf("\n", start + 1) + 1);
+    return body.slice(0, body.indexOf("\nEOF\n")).split("\n");
+  };
+
+  const caddyfile = heredoc("/etc/caddy/Caddyfile");
+  assert.deepEqual(
+    caddyfile.filter((line) => /^\s*log\b/.test(line)),
+    ["\tlog default {"],
+  );
+  assert.ok(!caddyfile.some((line) => /^\s*output\b/.test(line)));
+
+  const turnserver = heredoc(">/etc/turnserver.conf");
+  for (const line of ["log-file=/dev/null", "no-stdout-log"]) {
+    assert.ok(turnserver.includes(line), line);
+  }
+  assert.ok(!turnserver.some((line) => /^\s*(syslog|verbose)\b/i.test(line)));
+
+  assert.doesNotMatch(userData, /^\s*Standard(Output|Error)=/m);
+
+  const serverSrc = new URL("../../server/src/", import.meta.url);
+  for (const file of readdirSync(serverSrc).filter(
+    (name) => name.endsWith(".ts") && !name.endsWith(".test.ts"),
+  )) {
+    const source = readFileSync(new URL(file, serverSrc), "utf8");
+    assert.doesNotMatch(source, /\b(writeFile|appendFile|createWriteStream|open)\w*\s*\(/, file);
+  }
 });
