@@ -23,19 +23,18 @@ async function expectNoOverflow(page: Page) {
   await page.setViewportSize({ width: 360, height: 800 });
   await page.goto("/how");
   await expect(page.locator("main h1")).toBeVisible();
+  await expect(page.locator("header nav").getByRole("link")).toHaveCount(3);
   const width = await page.evaluate(async () => {
     await document.fonts.ready;
-    const menu = [...document.querySelectorAll("header nav li")];
+    const items = [...document.querySelectorAll("header nav li")];
     return {
       scroll: document.documentElement.scrollWidth,
-      items: menu.length,
-      menu: Math.max(...menu.map((item) => item.getBoundingClientRect().right)),
+      right: Math.max(...items.map((item) => item.getBoundingClientRect().right)),
       inner: innerWidth,
     };
   });
   expect(width.scroll).toBeLessThanOrEqual(width.inner);
-  expect(width.items).toBeGreaterThan(0);
-  expect(width.menu).toBeLessThanOrEqual(width.inner);
+  expect(width.right).toBeLessThanOrEqual(width.inner);
 }
 
 async function expectFinalFrames(page: Page) {
