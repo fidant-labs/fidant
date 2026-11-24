@@ -12,6 +12,8 @@ export const serverStdoutLog = join(runDir, "server.stdout.log");
 export const serverStderrLog = join(runDir, "server.stderr.log");
 /** coturn's own verbose log, for the whole run. */
 export const coturnLog = join(runDir, "coturn.log");
+/** Every packet to and from coturn, in the network scenarios only (networks/compose.yaml). */
+export const coturnPcap = join(runDir, "coturn.pcap");
 
 /** Empties observations/ so a run only holds its own files. */
 export async function resetObservations(): Promise<void> {

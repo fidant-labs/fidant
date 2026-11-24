@@ -44,6 +44,7 @@ import { LINK_ID_BYTES, parseRecipientLocation } from "../lib/link.ts";
 import { createRecipientPeer, type Peer } from "../lib/peer.ts";
 import type { FileOffer } from "../lib/receive-file.ts";
 import { ReceiveError, receiveFile } from "../lib/receive-file.ts";
+import { peerLostProblem } from "../lib/receive-problem.ts";
 import { addRelay, NO_RELAYS, type Tie } from "../lib/server-facts.ts";
 import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
 import { createSink, isPickerCancel, type Sink } from "../lib/sink.ts";
@@ -144,7 +145,7 @@ export function ReceivePage() {
     setView({ s: "connecting" });
 
     const current = () => attemptRef.current === attempt && !attempt.ended;
-    const lostMessage = () => (attempt.receiving ? "lostReceiving" : "lost");
+    const lostMessage = () => peerLostProblem(attempt);
     const offlineMessage = () => (attempt.receiving ? "offlineReceiving" : "offline");
     const finish = (next: View, linger = false) => {
       if (!current()) {
@@ -153,8 +154,9 @@ export function ReceivePage() {
       release(attempt, linger);
       setView(next);
     };
-    // The peer dropped. If the sender's tab closed, `host-gone` arrives within
-    // moments of the drop, before or after it; wait for it so the message says why.
+    // The peer dropped, or never connected (ICE failed). If the sender's tab
+    // closed, `host-gone` arrives within moments of the drop, before or after
+    // it; wait for it so the message says why.
     const lost = () => {
       if (!current()) {
         return;
@@ -233,7 +235,7 @@ export function ReceivePage() {
           // on this attempt (its peer failed or never connected), not that the
           // link is in use or used: the sender only signals a join it took.
           if (attempt.heardSender) {
-            finish({ s: "failed", problem: attempt.channelOpen ? lostMessage() : "connect" });
+            finish({ s: "failed", problem: lostMessage() });
           } else {
             finish({ s: "refused", problem: message.reason });
           }
