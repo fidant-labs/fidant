@@ -156,6 +156,20 @@ export function isActive(recipient: Recipient): boolean {
   return ACTIVE.has(recipient.status);
 }
 
+/** True for a relay path on the recipient's active `attempt` whose `joined` refused the relay. */
+export function refusesRelay(
+  recipient: Recipient | undefined,
+  attempt: string,
+  path: OpenPath,
+): boolean {
+  return (
+    path === "relay" &&
+    recipient?.attempt === attempt &&
+    recipient.turn === false &&
+    isActive(recipient)
+  );
+}
+
 /** Finds a recipient by link ID. */
 export function findRecipient(state: SenderState, linkId: string): Recipient | undefined {
   return state.recipients.find((r) => r.linkId === linkId);
@@ -268,7 +282,7 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
       if (current.attempt !== action.attempt) {
         return { state, effects: [] };
       }
-      if (action.path === "relay" && current.turn === false && isActive(current)) {
+      if (refusesRelay(current, action.attempt, action.path)) {
         return end(state, current, true);
       }
       return { state: replace(state, { ...current, path: action.path }), effects: [] };

@@ -7,6 +7,7 @@ import {
   findRecipient,
   hostedLinks,
   initialSenderState,
+  refusesRelay,
   SETUP_TIMEOUT_MS,
   type SenderAction,
   type SenderEffect,
@@ -606,11 +607,45 @@ test("a relay path only records the path when the relay was allowed or the file 
   ).state;
   const late = update(delivered, { type: "path", linkId, attempt: A, path: "relay" });
   assert.equal(statusOf(late.state, linkId), "delivered");
+  assert.equal(findRecipient(late.state, linkId)?.path, "relay");
   assert.deepEqual(late.effects, []);
 
   const stale = update(offered(false), { type: "path", linkId, attempt: B, path: "relay" });
   assert.equal(statusOf(stale.state, linkId), "offered");
   assert.deepEqual(stale.effects, []);
+});
+
+test("refusesRelay is true only for a relay path on the active attempt that refused it", () => {
+  const { state: s0, linkId } = withRecipient();
+  const offered = (turn: boolean) =>
+    findRecipient(
+      run(
+        s0,
+        { type: "joined", linkId, attempt: A, iceServers: [], turn },
+        { type: "channel-open", linkId },
+      ).state,
+      linkId,
+    );
+  const refused = offered(false);
+  assert.equal(refusesRelay(refused, A, "relay"), true);
+  assert.equal(refusesRelay(refused, A, "direct"), false);
+  assert.equal(refusesRelay(refused, A, "stun"), false);
+  assert.equal(refusesRelay(offered(true), A, "relay"), false, "relay allowed");
+  assert.equal(refusesRelay(refused, B, "relay"), false, "stale attempt");
+
+  const delivered = findRecipient(
+    run(
+      s0,
+      { type: "joined", linkId, attempt: A, iceServers: [], turn: false },
+      { type: "channel-open", linkId },
+      { type: "accepted", linkId },
+      { type: "receipt", linkId, match: true },
+    ).state,
+    linkId,
+  );
+  assert.equal(delivered?.turn, false);
+  assert.equal(refusesRelay(delivered, A, "relay"), false, "delivered");
+  assert.equal(refusesRelay(undefined, A, "relay"), false, "no recipient");
 });
 
 test("remove drops a recipient and closes its connection if active", () => {
