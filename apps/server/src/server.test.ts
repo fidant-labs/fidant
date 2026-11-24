@@ -16,6 +16,7 @@ const root = join(dir, "dist");
 mkdirSync(join(root, "assets"), { recursive: true });
 writeFileSync(join(root, "index.html"), "<!doctype html><title>Sigill</title>");
 writeFileSync(join(root, "assets", "app.js"), "console.log(1)");
+writeFileSync(join(root, "robots.txt"), "User-agent: *");
 writeFileSync(join(dir, "secret.txt"), "outside the web root");
 
 const plain = createServer(serveStatic(root));
@@ -50,6 +51,12 @@ test("serves assets with their content type", async () => {
   const res = await fetch(`${base}/assets/app.js`);
   assert.equal(res.status, 200);
   assert.equal(res.headers.get("content-type"), "text/javascript; charset=utf-8");
+});
+
+test("serves .txt files as plain text", async () => {
+  const res = await fetch(`${base}/robots.txt`);
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get("content-type"), "text/plain; charset=utf-8");
 });
 
 test("falls back to index.html for app routes", async () => {
