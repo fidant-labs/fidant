@@ -115,7 +115,12 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
   const signal = anySignal([options.signal, abort.signal]);
   const onClose = () => abort.abort(new Error("data channel closed"));
   channel.addEventListener("close", onClose);
-  const inbox = createInbox(channel, signal);
+  // A sender that keeps to its credit has at most CREDIT_WINDOW_CHUNKS
+  // CHUNKs held: it sends no more than `granted` (at most written + window),
+  // and every written CHUNK has been handed out. END is the one frame on top.
+  // INIT and META can be held together before takeRaw(), but no CHUNK comes
+  // until ACCEPT, and by then both have been handed out.
+  const inbox = createInbox(channel, signal, CREDIT_WINDOW_CHUNKS + 1);
   let sink: Sink | undefined;
 
   try {
@@ -187,7 +192,9 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
       if (frame.kind === SenderKind.CHUNK) {
         const data = verifier.chunk(frame.body);
         if (data.length > 0) {
-          await abortable(saving(sink.write(data)), signal);
+          // A sender that overruns its credit fails the inbox while the sink
+          // may be stuck, so stop waiting for the write then.
+          await Promise.race([abortable(saving(sink.write(data)), signal), inbox.failed]);
         }
         written++;
         if (written + CREDIT_WINDOW_CHUNKS - granted >= CREDIT_WINDOW_CHUNKS / 2) {

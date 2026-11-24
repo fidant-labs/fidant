@@ -432,6 +432,51 @@ for (const early of ["CHUNK", "END"] as const) {
   });
 }
 
+test("aborts when the sender ignores the credit window", async () => {
+  const { secret } = createLink("https://localhost");
+  const pair = channelPair();
+  let accepted: (() => void) | undefined;
+  const acceptance = new Promise<void>((resolve) => {
+    accepted = resolve;
+  });
+  pair.sender.addEventListener("message", (event) => {
+    if (new Uint8Array((event as MessageEvent).data)[1] === RecipientKind.ACCEPT) {
+      accepted?.();
+    }
+  });
+  const sink = new RecordingSink();
+  sink.write = () => new Promise(() => {});
+  const receiving = receiveFile({
+    channel: pair.recipient,
+    maxMessageSize: 65536,
+    secret,
+    signal: new AbortController().signal,
+    onOffer: async () => sink,
+    onProgress: () => {},
+  });
+  receiving.catch(() => {});
+
+  // A sender that sends far more CHUNKs than it was granted.
+  const transferId = createTransferId();
+  const writer = new FrameWriter(await deriveFileKey(secret, transferId), "s");
+  const count = CREDIT_WINDOW_CHUNKS * 4;
+  const meta = { name: "a.bin", size: count * 16, type: "", chunkSize: 16, from: "" };
+  pair.sender.send(encodeInit(transferId));
+  pair.sender.send(await writer.encrypt(SenderKind.META, encodeMeta(meta)));
+  await acceptance;
+  for (let i = 0; i < count; i++) {
+    pair.sender.send(await writer.encrypt(SenderKind.CHUNK, new Uint8Array(16)));
+  }
+
+  await assert.rejects(
+    receiving,
+    (error: unknown) =>
+      failedWith("invalid")(error) && /exceeded the frame window/.test(String(error)),
+  );
+  assert.equal(sink.aborted, true);
+  pair.close();
+});
+
 /**
  * Counts CHUNK frames the sender has put on the channel against chunks the
  * sink has finished writing; `peak` is the most that were ever in between.

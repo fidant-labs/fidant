@@ -98,7 +98,12 @@ export async function sendFile(options: SendFileOptions): Promise<SendResult> {
   const signal = anySignal([options.signal, abort.signal]);
   const onClose = () => abort.abort(new Error("data channel closed"));
   channel.addEventListener("close", onClose);
-  const inbox = createInbox(channel, signal);
+  // The recipient sends ACCEPT or DECLINE, CREDITs and a RECEIPT, and the
+  // receipt loop below reads them as they come. A correct recipient grants at
+  // most window chunks past what we were last told, in steps of at least half
+  // a window, so at most two CREDITs wait at a time; with ACCEPT and RECEIPT,
+  // 8 leaves room and stops a recipient that floods us with frames.
+  const inbox = createInbox(channel, signal, 8);
   let progressTimer: ReturnType<typeof setInterval> | undefined;
 
   try {
