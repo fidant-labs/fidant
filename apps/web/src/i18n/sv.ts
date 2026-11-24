@@ -328,6 +328,21 @@ export const sv: Messages = {
       },
     },
   },
+  secret: {
+    lede: "Klistra in ett lösenord, en API-nyckel eller annan kort text. Den går från den här webbläsaren till dem du väljer, krypterad hela vägen, och laddas aldrig upp eller sparas.",
+    label: "Din text",
+    hint: (max: number) => `Högst ${max.toLocaleString("sv")} tecken.`,
+    back: "Tillbaka till texten",
+    first: "Skriv eller klistra in texten först.",
+    locked: "Ta bort alla mottagare för att ändra ditt namn eller din text.",
+    keepOpen: "Ha fliken öppen tills alla har fått texten. Den skickas härifrån.",
+    status: {
+      declined: (name: string) =>
+        `Länken till ${name} öppnades och texten avböjdes. Länken fungerar fortfarande.`,
+      failed: (name: string) =>
+        `Texten kom inte fram oskadd via länken till ${name}. Länken kan öppnas igen för att försöka på nytt.`,
+    },
+  },
   server: {
     heading: "Vad vår server har just nu",
     seesLabel: "Ser",

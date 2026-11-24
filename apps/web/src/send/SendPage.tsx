@@ -1,5 +1,6 @@
-// The sender page: choose a file, add named recipients, share each one's link,
-// and send the file to every recipient who opens their link.
+// The sender page: choose a file (or, on /secret, paste a text that goes as
+// one), add named recipients, share each one's link, and send it to every
+// recipient who opens their link.
 //
 // Wiring (see lib/peer.ts and lib/sender-state.ts):
 // - On mount, connect to the signaling server and host every link ID on the
@@ -23,7 +24,7 @@
 // - Effects run outside render: `close` tears the peer down, `refuse` tells
 //   the server to refuse the joiner.
 //
-// Names, the file and link secrets stay in this tab. The server only ever
+// Names, the file or text and link secrets stay in this tab. The server only ever
 // gets link IDs, attempt IDs, opaque sealed signals, refusal reasons,
 // connection paths and the relay choice.
 
@@ -55,6 +56,7 @@ import {
 } from "../lib/sender-state.ts";
 import { addRelay, NO_RELAYS } from "../lib/server-facts.ts";
 import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
+import { MAX_TEXT_LENGTH, textFile } from "../lib/text-secret.ts";
 import { FileCard, Icon, lede, Page, ServerPanel, TechDetails } from "../ui.tsx";
 import { RecipientList } from "./RecipientList.tsx";
 
@@ -84,8 +86,9 @@ const hint = "text-[0.9rem] text-muted-foreground";
 
 export function SendPage({ kind }: { kind: "file" | "text" }) {
   const { t, lang } = useI18n();
+  const text = kind === "text";
   // Both kinds can be mounted at once, so the text page prefixes its element IDs.
-  const id = (name: string) => (kind === "text" ? `secret-${name}` : name);
+  const id = (name: string) => (text ? `secret-${name}` : name);
   const [file, setFile] = useState<File | undefined>(undefined);
   const [hash, setHash] = useState<Hash>({ status: "none" });
   const [sender, setSender] = useState<SenderState>(initialSenderState);
@@ -334,21 +337,11 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
     };
   }, []);
 
-  const onFileChange = (event: Event) => {
-    const input = event.currentTarget as HTMLInputElement;
-    const chosen = input.files?.[0];
+  const prepare = (chosen: File | undefined) => {
     hashAbortRef.current?.abort(new Error("a different file was chosen"));
     hashAbortRef.current = undefined;
-    const unsafe =
-      !!chosen && (hasForbiddenCharacters(chosen.name) || hasForbiddenCharacters(chosen.type));
-    const fits = !chosen || (!unsafe && metaFits(chosen));
-    setFileError(fits ? "" : unsafe ? "unsafe" : "tooLong");
-    setFile(fits ? chosen : undefined);
-    // Clear the input so it does not show a file that will not be sent.
-    if (!fits) {
-      input.value = "";
-    }
-    if (!chosen || !fits) {
+    setFile(chosen);
+    if (!chosen) {
       fileRef.current = undefined;
       setHash({ status: "none" });
       return;
@@ -371,6 +364,20 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
         }
       },
     );
+  };
+
+  const onFileChange = (event: Event) => {
+    const input = event.currentTarget as HTMLInputElement;
+    const chosen = input.files?.[0];
+    const unsafe =
+      !!chosen && (hasForbiddenCharacters(chosen.name) || hasForbiddenCharacters(chosen.type));
+    const fits = !chosen || (!unsafe && metaFits(chosen));
+    setFileError(fits ? "" : unsafe ? "unsafe" : "tooLong");
+    // Clear the input so it does not show a file that will not be sent.
+    if (!fits) {
+      input.value = "";
+    }
+    prepare(fits ? chosen : undefined);
   };
 
   const onAdd = (event: Event) => {
@@ -429,7 +436,7 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
   const connected = sender.recipients.filter(isActive).length;
   const unfinished = sender.recipients.some((r) => r.status !== "delivered");
 
-  // Phones show one panel at a time: the file first, then recipients after "Continue".
+  // Phones show one panel at a time: the file or text first, then recipients after "Continue".
   const showRecipients = () => {
     setStep("recipients");
     requestAnimationFrame(() => document.getElementById(id("recipients-heading"))?.focus());
@@ -446,8 +453,8 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
           class={step === "recipients" ? "max-lg:hidden" : ""}
           aria-labelledby={id("send-title")}
         >
-          <h1 id={id("send-title")}>{t.send.title}</h1>
-          <p class={lede}>{t.send.lede}</p>
+          <h1 id={id("send-title")}>{text ? t.menu.secret : t.send.title}</h1>
+          <p class={lede}>{text ? t.secret.lede : t.send.lede}</p>
 
           {isLocalhost && (
             <Alert role="note" className="my-4">
@@ -460,7 +467,30 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
             </Alert>
           )}
 
-          {!hasRecipients && (
+          {text && (
+            <div class={`my-4 ${field}`}>
+              <Label htmlFor={id("text")}>{t.secret.label}</Label>
+              <textarea
+                id={id("text")}
+                class="w-full min-w-0 resize-y rounded-lg border border-input bg-transparent px-2.5 py-2 font-mono text-base transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 md:text-sm dark:bg-input/30 dark:disabled:bg-input/80"
+                rows={6}
+                maxLength={MAX_TEXT_LENGTH}
+                spellcheck={false}
+                translate={false}
+                autocomplete="off"
+                // camelCase so Preact sets the attribute; the autocorrect property is a boolean in WebKit and Firefox.
+                autoCorrect="off"
+                autocapitalize="off"
+                disabled={hasRecipients}
+                onInput={(event) => prepare(textFile(event.currentTarget.value))}
+                aria-describedby={id("text-hint")}
+              />
+              <p id={id("text-hint")} class={`m-0 ${hint}`}>
+                {t.secret.hint(MAX_TEXT_LENGTH)}
+              </p>
+            </div>
+          )}
+          {!text && !hasRecipients && (
             <div class="group relative my-4 rounded-2xl border-2 border-dashed border-border bg-card transition-colors focus-within:outline-3 focus-within:outline-offset-2 focus-within:outline-primary hover:border-foreground/40 hover:bg-muted/40">
               <input
                 id={id("file")}
@@ -491,7 +521,7 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
               {t.send.fileError[fileError]}
             </p>
           )}
-          {file && (
+          {file && !text && (
             <>
               <h2 class="mt-6 mb-0 text-[1rem] font-bold">{t.send.fileHeading}</h2>
               <FileCard name={file.name} size={formatBytes(file.size, lang)} />
@@ -517,7 +547,7 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
               />
             </>
           )}
-          {hasRecipients && <p class={hint}>{t.send.locked}</p>}
+          {hasRecipients && <p class={hint}>{text ? t.secret.locked : t.send.locked}</p>}
         </section>
 
         <aside
@@ -525,7 +555,7 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
           aria-labelledby={id("recipients-heading")}
         >
           <Button type="button" variant="ghost" className="mb-4 -ml-3 lg:hidden" onClick={showFile}>
-            ← {t.send.back}
+            ← {text ? t.secret.back : t.send.back}
           </Button>
           <h2 id={id("recipients-heading")} tabIndex={-1} class="m-0 mb-4 text-[1.25rem] font-bold">
             {t.send.recipientsHeading}
@@ -614,14 +644,21 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
             </p>
           )}
           <p id={id("recipient-hint")} class={hint}>
-            {!file ? t.send.fileFirst : full ? t.send.full(MAX_LINKS) : t.send.oneLinkEach}
+            {!file
+              ? text
+                ? t.secret.first
+                : t.send.fileFirst
+              : full
+                ? t.send.full(MAX_LINKS)
+                : t.send.oneLinkEach}
           </p>
           <RecipientList
             recipients={sender.recipients}
             fileSize={file?.size ?? 0}
+            statusText={text ? { ...t.send.status, ...t.secret.status } : t.send.status}
             onRemove={onRemove}
           />
-          {unfinished && <p class={hint}>{t.send.keepOpen}</p>}
+          {unfinished && <p class={hint}>{text ? t.secret.keepOpen : t.send.keepOpen}</p>}
         </aside>
       </div>
 

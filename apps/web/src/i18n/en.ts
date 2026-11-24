@@ -328,6 +328,22 @@ export const en = {
       },
     },
   },
+  secret: {
+    lede: "Paste a password, an API key or any short text. It goes from this browser to the people you choose, encrypted the whole way, and is never uploaded or stored.",
+    label: "Your text",
+    hint: (max: number) => `Up to ${max.toLocaleString("en-US")} characters.`,
+    back: "Back to the text",
+    first: "Write or paste the text first.",
+    locked: "Remove everyone to change your name or text.",
+    keepOpen: "Keep this tab open until everyone has the text. It's sent from here.",
+    // Only the statuses whose file wording would be wrong; the rest come from send.status.
+    status: {
+      declined: (name: string) =>
+        `${name}'s link was opened and the text was declined. The link still works.`,
+      failed: (name: string) =>
+        `The text didn't arrive intact through ${name}'s link. The link can be opened again to retry.`,
+    },
+  },
   server: {
     heading: "What our server has right now",
     seesLabel: "Sees",

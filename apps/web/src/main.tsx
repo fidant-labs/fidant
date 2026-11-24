@@ -131,14 +131,15 @@ function App() {
   );
 }
 
-/** The browser handles a drag only when an enabled input takes that kind (files into the file input, text into the others); anything else is cancelled so it cannot open the file and lose the page. */
+/** The browser handles a drag only when an enabled field takes that kind (files into the file input, text into the other inputs and an editable textarea); anything else is cancelled so it cannot open the file and lose the page. */
 function ignoreStrayDrop(event: DragEvent) {
   const target = event.target;
   const files = event.dataTransfer?.types.includes("Files") ?? false;
   if (
-    target instanceof HTMLInputElement &&
-    !target.disabled &&
-    (target.type === "file") === files
+    (target instanceof HTMLInputElement &&
+      !target.disabled &&
+      (target.type === "file") === files) ||
+    (target instanceof HTMLTextAreaElement && !target.disabled && !target.readOnly && !files)
   ) {
     return;
   }
