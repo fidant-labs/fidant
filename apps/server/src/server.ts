@@ -17,6 +17,7 @@ const contentTypes: Record<string, string> = {
   ".png": "image/png",
   ".ico": "image/x-icon",
   ".woff2": "font/woff2",
+  ".txt": "text/plain; charset=utf-8",
 };
 
 const securityHeaders = {
