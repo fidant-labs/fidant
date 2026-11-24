@@ -298,6 +298,7 @@ export const en = {
     whatHappened: "What happened",
     encryptionLabel: "Encryption",
     encryption: "AES-256-GCM, end to end. The key is in your link and never leaves this browser.",
+    encryptionEmailed: "AES-256-GCM. Fidant emailed this link, so our server had its key once.",
     sha256Checked: "SHA-256, checked",
     // Keyed by what went wrong; the page stores the key, so a language switch re-renders it.
     problems: {

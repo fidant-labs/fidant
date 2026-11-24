@@ -296,6 +296,8 @@ export const sv: Messages = {
     encryptionLabel: "Kryptering",
     encryption:
       "AES-256-GCM, hela vägen från avsändaren till dig. Nyckeln finns i din länk och lämnar aldrig den här webbläsaren.",
+    encryptionEmailed:
+      "AES-256-GCM. Fidant mejlade den här länken, så vår server hade nyckeln en gång.",
     sha256Checked: "SHA-256, kontrollerad",
     problems: {
       badLink: {

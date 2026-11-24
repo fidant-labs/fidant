@@ -31,6 +31,10 @@
 //   unknown` after a drop or failed connect waits retryDelay and tries again,
 //   up to MAX_REJOINS times. Once the channel is open the transfer no longer
 //   needs the server, so a drop then only closes the signaling client.
+//   Reaching the code step resets the rejoin count (a token holder's rejoins
+//   do not), and the code field survives a rejoin. A `failed` or `expired`
+//   code result asks the gate again, so a binding that is gone ends as "no
+//   longer works".
 // - If the data channel hasn't opened CONNECT_TIMEOUT_MS (30 s) after the
 //   attempt starts, the attempt fails with "connect" (a peer exists) or
 //   "server" (no `joined` yet), so "Connecting…" never stays up for good.
@@ -134,6 +138,7 @@ export function ReceivePage() {
   const [viaRelay, setViaRelay] = useState(false);
   const [path, setPath] = useState<OpenPath | undefined>(undefined);
   const attemptRef = useRef<Attempt | undefined>(undefined);
+  const codeAsked = useRef<string | undefined>(undefined);
 
   /** Closes everything an attempt holds. `linger` keeps the peer up for a moment. */
   const release = (attempt: Attempt, linger = false) => {
@@ -311,15 +316,32 @@ export function ReceivePage() {
             join(token);
             break;
           }
+          // Time on the code step must not use up the attempts a dropped connection gets.
+          rejoins = 0;
           // The code step has no deadline; `join` arms it again.
           clearTimeout(connectTimer);
-          setView({ s: "verify", to: message.to, asked: false, sending: false, result: undefined });
+          const to = message.to;
+          setView((v) =>
+            v.s === "verify"
+              ? v
+              : {
+                  s: "verify",
+                  to,
+                  asked: codeAsked.current === linkId,
+                  sending: false,
+                  result: undefined,
+                },
+          );
           break;
         }
         case "code":
           if (current() && message.link === linkId) {
             const { result } = message;
             setView((v) => (v.s === "verify" ? { ...v, sending: false, result } : v));
+            // The binding may be gone: the gate answers with no address if so.
+            if (!joinSent && (result === "failed" || result === "expired")) {
+              ask();
+            }
           }
           break;
         case "token":
@@ -327,6 +349,7 @@ export function ReceivePage() {
             break;
           }
           storeToken(linkId, message.token);
+          codeAsked.current = undefined;
           setView({ s: "connecting" });
           join(message.token);
           break;
@@ -567,6 +590,7 @@ export function ReceivePage() {
     if (view.s !== "verify" || view.sending || !attempt || !link?.mark) {
       return;
     }
+    codeAsked.current = link.linkId;
     setView({ ...view, asked: true, sending: true, result: undefined });
     attempt.signaling.send({ t: "send-code", link: link.linkId, mark: link.mark });
   };
@@ -678,7 +702,7 @@ export function ReceivePage() {
           <Direct from={offer.from || t.common.sender} to={t.common.you} state="ready" />
           <p class={caption}>{t.receive.offerCaption(offer.from)}</p>
           {path && <PathLine path={path} />}
-          <OfferDetails offer={offer} />
+          <OfferDetails offer={offer} emailed={emailed} />
         </>
       );
       break;
@@ -728,7 +752,7 @@ export function ReceivePage() {
           <Direct from={t.common.sender} to={t.common.you} state="done" />
           <p class={caption}>{t.receive.doneCaption}</p>
           {path && <PathLine path={path} />}
-          <OfferDetails offer={offer} sha256={sha256} />
+          <OfferDetails offer={offer} sha256={sha256} emailed={emailed} />
         </>
       );
       break;
@@ -790,12 +814,20 @@ function storeToken(linkId: string, token: string | undefined): void {
   }
 }
 
-function OfferDetails({ offer, sha256 }: { offer: FileOffer; sha256?: string }) {
+function OfferDetails({
+  offer,
+  sha256,
+  emailed,
+}: {
+  offer: FileOffer;
+  sha256?: string;
+  emailed: boolean;
+}) {
   const { t } = useI18n();
   const rows: Array<readonly [string, ComponentChildren]> = [
     [t.common.size, t.format.bytes(offer.size)],
     [t.common.type, offer.type || t.common.typeMissing],
-    [t.receive.encryptionLabel, t.receive.encryption],
+    [t.receive.encryptionLabel, emailed ? t.receive.encryptionEmailed : t.receive.encryption],
   ];
   if (sha256) {
     rows.push([t.receive.sha256Checked, <code key="sha256">{sha256}</code>]);

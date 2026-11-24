@@ -957,6 +957,54 @@ test.describe("emailed links", () => {
     expect(kept).toBeNull();
   });
 
+  test("the code step survives a dropped connection and ends when the link stops working", async ({
+    demo,
+    observed,
+    leaks,
+    canary,
+  }) => {
+    const sender = await openSender(demo, makeFile(leaks, canary, 10));
+    const name = makeName(leaks, canary, "Anna");
+    const to = addressFor(canary, "Anna");
+    const emailed = await addEmailed(leaks, sender, name, to);
+    const recipient = await demo.open("recipient");
+    await recipient.addInitScript(() => {
+      const sockets: WebSocket[] = [];
+      const Native = window.WebSocket;
+      window.WebSocket = class extends Native {
+        constructor(...args: ConstructorParameters<typeof Native>) {
+          super(...args);
+          sockets.push(this);
+        }
+      };
+      (window as unknown as { dropSockets: () => void }).dropSockets = () => {
+        for (const socket of sockets) {
+          socket.close();
+        }
+      };
+    });
+    await recipient.goto(emailed.link);
+    const code = await requestCode(recipient, to);
+
+    const gates = async () => (await messages(observed, "recipient", "gate")).length;
+    const gatesBefore = await gates();
+    await recipient.evaluate(() =>
+      (window as unknown as { dropSockets: () => void }).dropSockets(),
+    );
+    await expect.poll(gates).toBeGreaterThan(gatesBefore);
+    await expect(recipient.getByLabel("Code from the email")).toBeVisible();
+    await enterCode(recipient, code);
+    await expect(recipient.getByRole("button", { name: "Download" })).toBeVisible();
+
+    const late = await demo.open("late");
+    await late.goto(emailed.link);
+    await expect(late.getByRole("button", { name: "Send me a code" })).toBeVisible();
+    await sender.close();
+    await expect(recipient.getByText("The sender's page is closed")).toBeVisible();
+    await late.getByRole("button", { name: "Send me a code" }).click();
+    await expect(late.getByText("This link no longer works")).toBeVisible();
+  });
+
   test("a reconnect stops an emailed link and hosts only the plain ones again", async ({
     demo,
     observed,
