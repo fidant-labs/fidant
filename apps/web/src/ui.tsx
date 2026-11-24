@@ -76,7 +76,7 @@ export function Icon({ name, class: cls }: { name: IconName; class?: string }) {
 
 export const lede = "mt-2 mb-6 text-[1.05rem] text-muted-foreground";
 
-export type Route = "landing" | "send" | "privacy" | "receive";
+export type Route = "landing" | "send" | "privacy" | "receive" | "about" | "terms" | "security";
 
 /** Changes the page without reloading it, so a transfer held in memory survives. */
 export function navigate(href: string) {
@@ -204,9 +204,20 @@ export function Header({ current }: { current: Route }) {
           aria-current={current === "landing" ? "page" : undefined}
           class="flex items-center gap-2 rounded-md text-[1.05rem] font-bold tracking-tight no-underline"
         >
-          <span class="inline-flex size-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-emerald-400 text-white shadow-sm">
-            <Icon name="lock" class="size-4" />
-          </span>
+          {/* The mark: a shepherd's crook, upright and bent over what it looks after. Same drawing as public/favicon.svg. */}
+          <svg
+            class="size-8 flex-none rounded-md bg-foreground text-background"
+            viewBox="0 0 32 32"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="3"
+            stroke-linecap="round"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <path d="M11.25 24.25V12.75a5 5 0 0 1 10 0v.5" />
+            <circle cx="21.25" cy="19.75" r="2.5" fill="currentColor" stroke="none" />
+          </svg>
           <span class="max-sm:sr-only">{t.product}</span>
         </Link>
         <nav aria-label={t.menu.label}>
@@ -238,6 +249,48 @@ export function Header({ current }: { current: Route }) {
         </nav>
       </div>
     </header>
+  );
+}
+
+const FOOTER_LINKS: ReadonlyArray<readonly ["privacy" | "about" | "terms" | "security", string]> = [
+  ["about", "/about"],
+  ["privacy", "/privacy"],
+  ["terms", "/terms"],
+  ["security", "/security"],
+];
+
+export function Footer() {
+  const { t } = useI18n();
+  const link =
+    "rounded-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline";
+  return (
+    <footer class="border-t border-border text-[0.9rem]">
+      <div class="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-10 sm:flex-row sm:justify-between">
+        <div class="max-w-xs">
+          <p class="m-0 font-bold">{t.product}</p>
+          <p class="mb-0 text-muted-foreground">{t.footer.tagline}</p>
+        </div>
+        <nav aria-label={t.footer.label}>
+          <ul class="m-0 grid list-none grid-cols-2 gap-x-10 gap-y-2 p-0">
+            {FOOTER_LINKS.map(([page, href]) => (
+              <li key={page}>
+                <Link href={href} class={link}>
+                  {page === "privacy" ? t.menu.privacy : t.footer[page]}
+                </Link>
+              </li>
+            ))}
+            <li>
+              <a href="https://github.com/sigill-labs/sigill" class={link}>
+                {t.footer.source}
+              </a>
+            </li>
+          </ul>
+        </nav>
+      </div>
+      <p class="mx-auto mt-0 mb-0 max-w-6xl px-4 pb-8 text-[0.85rem] text-muted-foreground">
+        {t.footer.license}
+      </p>
+    </footer>
   );
 }
 

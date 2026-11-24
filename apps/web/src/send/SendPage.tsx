@@ -429,7 +429,7 @@ export function SendPage() {
           )}
 
           {!hasRecipients && (
-            <div class="group relative my-4 rounded-2xl border-2 border-dashed border-border bg-card transition-colors focus-within:outline-3 focus-within:outline-offset-2 focus-within:outline-primary hover:border-indigo-400 hover:bg-indigo-500/5">
+            <div class="group relative my-4 rounded-2xl border-2 border-dashed border-border bg-card transition-colors focus-within:outline-3 focus-within:outline-offset-2 focus-within:outline-primary hover:border-foreground/40 hover:bg-muted/40">
               <input
                 id="file"
                 type="file"
@@ -442,7 +442,7 @@ export function SendPage() {
                 for="file"
                 class="flex flex-col items-center gap-3 px-4 py-14 text-center text-muted-foreground lg:py-20"
               >
-                <span class="inline-flex size-14 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-emerald-400 text-white shadow-lg shadow-indigo-500/20 transition-transform group-hover:-translate-y-1">
+                <span class="inline-flex size-14 items-center justify-center rounded-xl bg-muted text-foreground">
                   <Icon name="file" class="size-7" />
                 </span>
                 <span>
@@ -489,7 +489,7 @@ export function SendPage() {
         </section>
 
         <aside
-          class={`${step === "file" ? "max-lg:hidden" : "max-lg:animate-in max-lg:slide-in-from-right-8 max-lg:fade-in"} lg:sticky lg:top-24 lg:rounded-2xl lg:border lg:border-border lg:bg-card/70 lg:p-6 lg:shadow-xl lg:shadow-indigo-500/5 lg:backdrop-blur`}
+          class={`${step === "file" ? "max-lg:hidden" : "max-lg:animate-in max-lg:slide-in-from-right-8 max-lg:fade-in"} lg:sticky lg:top-24 lg:rounded-2xl lg:border lg:border-border lg:bg-card lg:p-6`}
           aria-labelledby="recipients-heading"
         >
           <Button type="button" variant="ghost" className="mb-4 -ml-3 lg:hidden" onClick={showFile}>

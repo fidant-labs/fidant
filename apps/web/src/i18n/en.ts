@@ -41,6 +41,9 @@ export const en = {
     send: "Send a file – Fidant",
     receive: "Receive a file – Fidant",
     privacy: "Privacy – Fidant",
+    about: "About – Fidant",
+    terms: "Terms of use – Fidant",
+    security: "Security – Fidant",
   },
   menu: {
     language: "Language",
@@ -51,42 +54,28 @@ export const en = {
     privacy: "Privacy",
   },
   landing: {
-    eyebrow: "Private file transfer",
-    title: ["Send files only ", "they", " can open"],
-    lede: "Fidant encrypts your file in your browser and sends it straight to the person you choose. No uploads, no accounts, and nothing stored on a server.",
+    title: "Send a file only the recipient can open.",
+    lede: "Fidant encrypts the file in your browser before it goes to the person you choose. It is never stored, and nobody in between, us included, can read it.",
     cta: "Send a file",
-    how: "How it works",
-    noAccount: "No account needed",
-    featuresHeading: "Why Fidant",
-    features: [
-      [
-        "Encrypted before it leaves",
-        "Your file is locked in your own browser. The key travels in the link you share, never through our servers.",
-      ],
-      [
-        "Straight to the recipient",
-        "The file goes directly from your computer to theirs. It is never uploaded or kept in the cloud.",
-      ],
-      [
-        "Nothing left behind",
-        "Nothing is stored on a server. When the transfer is done, the only copies are yours and theirs.",
-      ],
-    ],
-    stepsHeading: "Three steps",
+    how: "Read how it works",
+    noAccount: "No account. Nothing stored.",
+    linkHeading: "The whole trick is in the link",
+    linkId: "Link ID. Our server sees this, only to connect the two browsers.",
+    linkKey: "Key. Browsers never send what comes after # to any server.",
+    stepsHeading: "What happens",
     steps: [
-      ["Choose a file", "Drop it on the page. It stays on your computer."],
-      ["Add who it's for", "Each person gets their own link that works once."],
-      ["Share the link", "When they open it, the file arrives encrypted, straight from you."],
-    ],
-    closingTitle: "Ready to send something private?",
-    closingBody: "Keep the tab open until it has arrived.",
-    art: {
-      you: "You",
-      them: "Anna",
-      file: "contract.pdf",
-      encrypted: "Encrypted",
-      received: "Received",
-    },
+      ["Choose a file", "It stays on your computer. Nothing is uploaded."],
+      ["Add who it's for", "Each person gets their own link, which works once."],
+      [
+        "Share the link",
+        "When they open it, the file goes from your browser to theirs, encrypted the whole way.",
+      ],
+    ] as ReadonlyArray<readonly [string, string]>,
+    neverHeading: "Our server never gets",
+    seesHeading: "Our server only sees",
+    relayNote:
+      "If the two browsers can't connect directly, the file passes through our relay instead, still encrypted. The relay then sees both IP addresses and roughly how big the file is, and can't unlock it.",
+    caveat: "The catch: since nothing is stored, keep your tab open until the file has arrived.",
   },
   insecure: {
     title: "This page needs a secure connection",
@@ -335,6 +324,106 @@ export const en = {
         .map(([, [what]]) => what),
     )}. Never names, keys, file data or IP addresses.`,
   },
+  footer: {
+    label: "Site",
+    tagline: "Files encrypted in your browser, readable only by the recipient.",
+    about: "About",
+    terms: "Terms",
+    security: "Security",
+    source: "Source code",
+    license: "Open source, MIT license",
+  },
+  about: {
+    title: "About Fidant",
+    lede: "Fidant is a way to send a file to someone without trusting anyone in between, including us.",
+    sections: [
+      {
+        heading: "Who runs it",
+        body: [
+          "Fidant is an open-source project with no company behind it yet. It is a proof of concept, not a commercial service.",
+          "There are no ads, no accounts and no tracking.",
+        ],
+      },
+      {
+        heading: "Check it yourself",
+        body: [
+          "All the code that runs this site is public under the MIT license. Every claim on the privacy and security pages can be checked against it, and you can run your own copy.",
+        ],
+        link: ["The code on GitHub", "https://github.com/sigill-labs/sigill"],
+      },
+      {
+        heading: "Contact",
+        body: [
+          "Questions, bugs and ideas go in the project's issue tracker. Issues are public, so never post files, links or personal details there. To report a security problem, follow the security page instead.",
+        ],
+        link: ["Open an issue", "https://github.com/sigill-labs/sigill/issues"],
+      },
+    ] as Sections,
+  },
+  terms: {
+    title: "Terms of use",
+    lede: "Short version: Fidant is free, comes as is, and you are responsible for what you send.",
+    sections: [
+      {
+        heading: "As is",
+        body: [
+          "Fidant is a proof of concept offered free of charge, without any warranty. It can be unavailable, change or stop at any time. Don't rely on it as the only way to get an important file somewhere.",
+        ],
+      },
+      {
+        heading: "Your files are yours",
+        body: [
+          "Files go between browsers, encrypted the whole way, and we never have the key, so we can't read, recover, delete or check them for you. Only send files you have the right to share, and only to people you mean to share them with.",
+          "Don't use Fidant for anything illegal.",
+        ],
+      },
+      {
+        heading: "Links",
+        body: [
+          "Anyone who has a link can open the file it points to. Each link works once, and only while the sender's page is open.",
+        ],
+      },
+      {
+        heading: "Changes",
+        body: ["These terms can change. Every change is visible in the project's public history."],
+        link: ["History of this text", "https://github.com/sigill-labs/sigill/commits/main"],
+      },
+    ] as Sections,
+  },
+  security: {
+    title: "Security",
+    lede: "How your file is protected, what Fidant doesn't protect against, and how to tell us about a problem.",
+    sections: [
+      {
+        heading: "How the file is protected",
+        body: [
+          "Your browser encrypts the file with AES-256-GCM before it leaves your computer. The key is in the part of the link after #, which browsers never send to a server.",
+          "The file goes directly between the two browsers. If a network blocks that, it passes through our relay instead, still encrypted. Our server only passes on a few small setup messages, which are encrypted so it can't read them.",
+          "The recipient's browser checks the file's SHA-256 checksum, so a file that was changed or damaged on the way is not saved.",
+        ],
+      },
+      {
+        heading: "What it doesn't protect against",
+        body: [
+          "Anyone who gets hold of a link can open the file. Send each link only to the person it is for, over a channel you trust.",
+          "The sender's name is typed by the sender and not verified.",
+          "The two browsers see each other's IP address, the same as on a video call. When the file goes through our relay, the relay sees both IP addresses and roughly how big the file is.",
+          "A computer that is already compromised can read the file before it is encrypted or after it is unlocked.",
+          "Fidant has not been independently audited yet.",
+        ],
+      },
+      {
+        heading: "Report a vulnerability",
+        body: [
+          "Please report security problems privately through GitHub, not in a public issue. We'll reply there.",
+        ],
+        link: [
+          "Report privately on GitHub",
+          "https://github.com/sigill-labs/sigill/security/advisories/new",
+        ],
+      },
+    ] as Sections,
+  },
   privacy: {
     title: "Privacy",
     lede: "Your file goes straight from your browser to the browser of the person you send it to. It's locked before it leaves your computer, and only the person with the link can unlock it. We never get the file, its name or the key.",
@@ -402,3 +491,9 @@ export const en = {
 };
 
 export type Messages = typeof en;
+/** A text page: each section a heading, paragraphs and an optional [text, href] link. */
+export type Sections = ReadonlyArray<{
+  heading: string;
+  body: readonly string[];
+  link?: readonly [string, string];
+}>;
