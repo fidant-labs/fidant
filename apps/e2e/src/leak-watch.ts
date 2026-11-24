@@ -1,5 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
+import { setTimeout } from "node:timers/promises";
 import type { CanaryFile, CanaryKey } from "./leaks/canary.ts";
 import {
   bodyLimits,
@@ -20,7 +21,14 @@ import {
 import { exemptTest, registerSecrets } from "./leaks/registry.ts";
 import { formatLeakReport, logViolations } from "./leaks/report.ts";
 import { type Capture, type Finding, scan } from "./leaks/scan.ts";
-import { coturnLog, e2eDir, observationsDir, serverStderrLog, serverStdoutLog } from "./paths.ts";
+import {
+  coturnLog,
+  coturnPcap,
+  e2eDir,
+  observationsDir,
+  serverStderrLog,
+  serverStdoutLog,
+} from "./paths.ts";
 import type { Recorder } from "./recorder.ts";
 
 /** What a test uses to register its secrets and check for leaks. */
@@ -65,15 +73,22 @@ export class LeakWatch implements Leaks {
   readonly #test: string;
   readonly #registry: string | undefined;
   readonly #logStarts: number[];
+  readonly #pcapStart: number;
   readonly #secrets: Secret[] = [];
   #files = 0;
   #expectLeaks = false;
   #needles: { count: number; needles: Needles } | undefined;
 
-  private constructor(test: string, registry: string | undefined, logStarts: number[]) {
+  private constructor(
+    test: string,
+    registry: string | undefined,
+    logStarts: number[],
+    pcapStart: number,
+  ) {
     this.#test = test;
     this.#registry = registry;
     this.#logStarts = logStarts;
+    this.#pcapStart = pcapStart;
   }
 
   /**
@@ -82,7 +97,7 @@ export class LeakWatch implements Leaks {
    */
   static async start(test: string, registry: string | undefined): Promise<LeakWatch> {
     const sizes = await Promise.all(logs.map(sizeOf));
-    return new LeakWatch(test, registry, sizes);
+    return new LeakWatch(test, registry, sizes, await sizeOf(coturnPcap));
   }
 
   watch(file: CanaryFile, label = `file#${++this.#files}`): CanaryFile {
@@ -163,8 +178,39 @@ export class LeakWatch implements Leaks {
     logs.forEach((path, index) => {
       captures.push(...logCaptures(point(path), slices[index] as LogSlice));
     });
+    const pcap = await settledPcap();
+    if (pcap) {
+      // Binary packets, not lines: one capture of what tcpdump wrote since the test began.
+      captures.push({ point: point(coturnPcap), bytes: pcap.subarray(this.#pcapStart) });
+    }
     return { captures, limits, stdout: slices[0] as LogSlice };
   }
+}
+
+/**
+ * The coturn packet capture once its size has stopped changing, or undefined when there is none
+ * (`pnpm e2e` runs no capture). tcpdump writes each packet as it arrives, but packets still on
+ * their way through the routers, and the bind mount on Docker Desktop, can lag a little.
+ * ponytail: waits for 250 ms without growth, at most 2 s; a relay still busy after that is cut,
+ * and the run-level sweep scans the rest.
+ */
+async function settledPcap(): Promise<Buffer | undefined> {
+  let last = -1;
+  for (let waited = 0; waited < 2_000; waited += 250) {
+    const size = await stat(coturnPcap).then(
+      (stats) => stats.size,
+      () => undefined,
+    );
+    if (size === undefined) {
+      return undefined;
+    }
+    if (size === last) {
+      break;
+    }
+    last = size;
+    await setTimeout(250);
+  }
+  return readFile(coturnPcap);
 }
 
 async function sizeOf(path: string): Promise<number> {

@@ -13,11 +13,22 @@ pnpm e2e                                                    # from the repositor
 
 coturn is the TURN relay (`brew install coturn` on macOS, the `coturn` package on Linux). It listens on 127.0.0.1 only, with a secret made for the run, and the server gets `TURN_URLS` and `TURN_SECRET_FILE` so the `joined` signaling message hands each paired browser credentials for it. Without `turnserver` on PATH the stack starts without it and `joined` carries no ICE servers; with `CI` set, that fails the run instead. Global setup sets `SIGILL_E2E_TURN_URLS` only when coturn runs, so a spec that needs the relay can skip on it.
 
+## Network scenarios
+
+```sh
+pnpm e2e:networks  # from the repository root; needs Docker with Compose v2
+```
+
+`pnpm e2e:networks` runs only `tests/networks.spec.ts`. Global setup starts `networks/compose.yaml`: two sites behind NAT routers (`networks/router.sh`), a browser container per site address running `playwright run-server` (a1 and a2 at site A, b1 at site B, published on 127.0.0.1:39011, 39012 and 39021), and coturn at 198.51.100.20 on the public network, which has no way out. The server runs in its own container at 198.51.100.10 on that network, so the browsers reach it through their routers. The host never connects to it: it reads the port from the server's output, and the browsers get `https://198.51.100.10:<port>` as their base URL. On Docker Desktop the host cannot reach 198.51.100.x at all, and does not need to.
+
+Each row of the spec's table names the sender's and recipient's site, the mode of router-b (`routerMode()` in `src/stack/networks.ts`) and the candidate pair ICE must select. Teardown removes every container and network, also after a failed run; a run that was killed is cleaned up by the next one. The first run pulls the images, so it needs the internet once.
+
 ## Writing a test
 
 Import `test` and `expect` from `src/fixtures.ts`, not from `@playwright/test`.
 
 - The default `page` and `context` are recorded as the actor `default`. For more browsers, call `actor("sender")`, `actor("recipient")` and so on. Each gets its own context and page and its own observations file. Do not call `browser.newContext()`: an unrecorded context fails the test.
+- `test.use({ remoteBrowsers: { sender: "ws://127.0.0.1:39011/" } })` opens that actor in a browser served by `playwright run-server` at the endpoint, with the project's launch options and the same recording. Start the server with `--unsafe`, or it drops the launch `args`. Downloads from a remote browser have no local `path()`; use `saveAs()` or `createReadStream()`.
 - `canary` gives random bytes from the run seed and the test's title. Fork it per canary: `canaryFile(canary.fork("file"))`, `canaryKey(canary.fork("key"))`.
 - `leaks.watch(file, label?)` registers a canary file and returns it: its bytes and their SHA-256, the tokens in its name and type, the SHA-256 of its name, and its size. `leaks.watchKey(label, key)` registers a key, as bytes or as text such as a fragment secret. `leaks.watchText(label, text)` registers other text that must not appear whole, such as a recipient name.
 - After the test, the detector scans what the test observed for every secret it registered and fails the test on any finding. `leaks.scan()` returns the findings so far without failing, and `leaks.check()` returns the report the teardown would throw (undefined when clean). A test that leaks on purpose calls `leaks.expectLeaks()`. `tests/leaks.spec.ts` shows each kind of leak the detector catches.
@@ -33,6 +44,7 @@ Today:
 - WebSocket frames, sent and received, including `/signal`.
 - Server stdout and stderr. Stdout must also pass a strict allowlist: one JSON object per line, with known keys and values only (`src/leaks/server-log.ts`).
 - coturn's verbose log, `observations/run/coturn.log`.
+- In the network scenarios only, every packet to and from coturn, `observations/run/coturn.pcap`. The `pcap` service of `networks/compose.yaml` runs tcpdump in coturn's network namespace with `NET_RAW`, so no sudo is needed (decision 0001 expected sudo on CI). The file is scanned as raw bytes, one capture per test from where it stood when the test began. It holds STUN and TURN headers and DTLS ciphertext only, so it is safe as a CI artifact. `pnpm e2e` has no packet capture.
 
 Every capture is decoded into views (percent, JSON escapes, base64, hex, gzip and others, nested) before matching, so encoded leaks are caught too.
 
@@ -44,7 +56,6 @@ Not wired yet. Each arrives with the first issue that needs the service:
 | BankID simulator and TSA, through the proxy  | SIG-42         |
 | File-name carriers (`src/leaks/carriers.ts`) | SIG-42, SIG-43 |
 | Object storage and mail (Mailpit)            | SIG-43         |
-| coturn packet capture                        | SIG-44         |
 
 ## Adding an observation point
 
