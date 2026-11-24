@@ -252,7 +252,7 @@ test("a connection too small to carry a text in one chunk fails the card and sen
   const { page } = await openRecipient(actor, link);
   await expect(
     recipientRow(sender, name).getByText(
-      `The text wasn't sent through ${name}'s link, because its length would have shown on this connection. The link still works.`,
+      `The secret wasn't sent through ${name}'s link, because its length would have shown on this connection. The link still works.`,
     ),
   ).toBeVisible();
   expect(await sender.evaluate(() => (globalThis as { sent?: number }).sent)).toBe(0);
