@@ -625,7 +625,7 @@ export const en = {
           "The text box tells the browser to turn off spell checking, autocorrect, automatic capitals, autocomplete and translation for it.",
           "The recipient's browser treats an offer as a text only if it has exactly that type and is at most 32 KiB. Anything else is offered as a file. For a text, the recipient sees the sender's typed name but not the size, and chooses Show or Decline. After Decline the link still works.",
           "Show keeps the text in the browser's memory, never in a save dialog or a download. Only once the checks against END pass is the text decoded and shown: as plain text in a read-only box with spell checking and translation off, never as part of the page's HTML. The Copy text button puts it on the clipboard.",
-          "Our server and relay handle a text like any file. Our server can see that someone opened the Share a secret page only if they load it straight from the address bar, and not whether or what they share. Page visits aren't logged.",
+          "Our server and relay handle a text like any file. When the Share a secret page is loaded from our server, by typing its address, reloading or following a link, our server can see that someone opened it, but not whether or what they share. Page visits aren't logged.",
         ],
       },
       {

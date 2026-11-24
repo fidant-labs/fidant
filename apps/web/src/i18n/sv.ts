@@ -615,7 +615,7 @@ export const sv: Messages = {
           "Textrutan säger åt webbläsaren att stänga av stavningskontroll, autokorrigering, automatisk stor bokstav, autofyll och översättning för den.",
           "Mottagarens webbläsare behandlar ett erbjudande som en text bara om det har exakt den typen och är högst 32 KiB. Allt annat erbjuds som en fil. För en text ser mottagaren namnet som avsändaren skrev men inte storleken, och väljer Visa eller Tacka nej. Efter Tacka nej fungerar länken fortfarande.",
           "Visa håller texten i webbläsarens minne, aldrig i en sparadialog eller en nedladdning. Först när kontrollerna mot END stämmer avkodas texten och visas: som ren text i en skrivskyddad ruta med stavningskontroll och översättning avstängda, aldrig som en del av sidans HTML. Knappen Kopiera text lägger den i urklippet.",
-          "Vår server och vårt relä hanterar en text som vilken fil som helst. Vår server kan se att någon har öppnat sidan Dela en hemlighet bara om sidan laddas direkt från adressfältet, men varken om något delas eller vad som delas. Sidvisningar loggas inte.",
+          "Vår server och vårt relä hanterar en text som vilken fil som helst. När sidan Dela en hemlighet laddas från vår server, genom att någon skriver adressen, laddar om sidan eller följer en länk, kan vår server se att någon har öppnat den, men varken om något delas eller vad som delas. Sidvisningar loggas inte.",
         ],
       },
       {

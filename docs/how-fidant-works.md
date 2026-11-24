@@ -128,7 +128,7 @@ Anyone who sees the encrypted traffic (the networks, our relay) sees frame sizes
 - A text is at most 32 KiB. Whenever `chunkSize` is at least 32 KiB (a maximum message size of at least 32,832 bytes), every text pads to exactly one CHUNK, so all texts on a connection have the same frame sizes. When the maximum message size is at least 49,216 bytes, `chunkSize` is 48 KiB, and a text then has the same frame sizes as any file of up to 48 KiB.
 - Measured on 2026-11-24 with Playwright's browser builds: Chromium 159 and WebKit 27.2 report a maximum message size of 262,144 bytes, Firefox 159 reports 1,073,741,823, and pairs of different browsers settle at 262,144. When a browser reports none, the app uses 65,536 (`DEFAULT_MAX_MESSAGE_SIZE` in `peer.ts`). So today every text crosses the network as one 48 KiB CHUNK.
 
-An observer learns a file's size only roughly, plus the chunk size, which follows from the connection's maximum message size. A text's length doesn't show at all.
+An observer learns a file's size only roughly, plus the chunk size, which follows from the connection's maximum message size. A text's length doesn't show at all while the maximum message size is at least 32,832 bytes, as it is in every browser measured above.
 
 ## Sharing a text
 
@@ -143,7 +143,7 @@ An observer learns a file's size only roughly, plus the chunk size, which follow
 - A text offer shows "<sender's name> sent you a text" with Show and Decline, and no name, size or type. Show always collects the text in memory (`BlobSink`): never a save dialog, never a download.
 - Only after the checks in "Checking on the recipient's side" pass does the page decode the text, as UTF-8 (invalid bytes become U+FFFD). It shows the text only as the value of a read-only text field, never as HTML, with spell checking and translation off. Copy calls `navigator.clipboard.writeText`.
 - As for a file: nothing is stored, so the sender's page must stay open; each recipient's link works once; after Decline the link still works.
-- Loading `/secret` straight from the address bar is an HTTP request for that path, so the server can see that someone opened the page, though not whether or what they share. Neither the server nor Caddy logs page requests.
+- Loading `/secret` from the server (typing its address, a reload, a bookmark or a link from elsewhere) is an HTTP request for that path, so the server can see that someone opened the page, though not whether or what they share. Moving to it inside the app sends no request. Neither the server nor Caddy logs page requests.
 
 ## How the file travels
 
