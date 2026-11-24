@@ -201,6 +201,10 @@ export const sv: Messages = {
       missing: "Skriv ett namn.",
       taken: "Det namnet finns redan på listan.",
     },
+    emailLabel: "Mottagarens e-postadress",
+    emailError: "Skriv en giltig e-postadress, till exempel namn@example.se.",
+    emailNotice:
+      "Fidant mejlar länken åt dig, så vår server ser länkens nyckel en gång. Nyckeln sparas inte och loggas inte.",
     fileFirst: "Välj en fil först.",
     full: (max: number) => `Du kan skicka till högst ${max} personer åt gången.`,
     oneLinkEach: "Varje person får en egen länk, som fungerar en gång.",
@@ -219,6 +223,16 @@ export const sv: Messages = {
     },
     noRelay: (name: string) =>
       `Länken till ${name} öppnades men kunde inte ansluta direkt. Om du tillåter vårt relä kan den kanske ansluta när de försöker igen.`,
+    mail: {
+      sending: (to: string) => `Skickar mejl till ${to}…`,
+      sent: (to: string) => `Mejl skickat till ${to}`,
+      failed: (to: string) =>
+        `Mejlet till ${to} skickades inte. Ta bort mottagaren och lägg till den igen för att försöka på nytt, eller lägg till den utan e-postadress och dela länken själv.`,
+      limit: (to: string) =>
+        `Mejlet till ${to} skickades inte: för många mejl just nu. Kopiera länken och dela den själv.`,
+      verifying: (to: string) => `Kod skickad till ${to}`,
+      verified: (to: string) => `Verifierad med koden som skickades till ${to}`,
+    },
     progressFor: (name: string) => `Förlopp för ${name}`,
     copy: "Kopiera länk",
     copyFor: (name: string) => `Kopiera länken till ${name}`,

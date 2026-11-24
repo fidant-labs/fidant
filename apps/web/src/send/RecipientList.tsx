@@ -1,10 +1,12 @@
-// One card per recipient: status, connection path, progress, link, copy and remove.
+// One card per recipient: status, email, connection path, progress, link, copy and remove.
 //
-// Only the status sentence sits in the polite live region, so screen readers
-// hear "Sending through Anna's link", "Delivered through Anna's link" and so on,
-// not every progress tick. Each status names the link, not the person, because
-// whoever opens a link may not be the person it was made for.
+// Only the status sentence and the email line sit in polite live regions, so
+// screen readers hear "Sending through Anna's link", "Email sent to a***@example.se"
+// and so on, not every progress tick. Each status names the link or the masked
+// address, not the person, because whoever opens a link may not be the person
+// it was made for.
 
+import { maskAddress } from "@sigill/protocol";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { Button } from "#components/ui/button";
 import { Card, CardContent } from "#components/ui/card";
@@ -48,7 +50,7 @@ type CopyNote = keyof Messages["send"]["copyNote"];
 type RowProps = { recipient: Recipient; fileSize: number; onRemove(linkId: string): void };
 
 function RecipientRow({ recipient, fileSize, onRemove }: RowProps) {
-  const { name, url, status, bytesSent, linkId, path, noRelay } = recipient;
+  const { name, url, status, bytesSent, linkId, path, noRelay, email, mail } = recipient;
   const { t, lang } = useI18n();
   const [copyNote, setCopyNote] = useState<CopyNote | "">("");
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -87,6 +89,14 @@ function RecipientRow({ recipient, fileSize, onRemove }: RowProps) {
             {(status === "failed" || noRelay) && <Icon name="alert" />}
             <span>{noRelay ? t.send.noRelay(name) : t.send.status[status](name)}</span>
           </p>
+          {email && mail && (
+            <p
+              class={`mt-1 mb-0 text-[0.9rem] wrap-anywhere ${mail === "failed" || mail === "limit" ? "text-destructive" : "text-muted-foreground"}`}
+              aria-live="polite"
+            >
+              {t.send.mail[mail](maskAddress(email))}
+            </p>
+          )}
           {path && <PathLine path={path} />}
           {status === "receiving" && (
             <>

@@ -201,6 +201,10 @@ export const en = {
       missing: "Enter a name.",
       taken: "That name is already on the list.",
     },
+    emailLabel: "Their email address",
+    emailError: "Enter a valid email address, like name@example.com.",
+    emailNotice:
+      "Fidant emails this link for you, so our server sees its key once. The key isn't stored or logged.",
     fileFirst: "Choose a file first.",
     full: (max: number) => `You can send to up to ${max} people at a time.`,
     oneLinkEach: "Each person gets their own link, which works once.",
@@ -219,6 +223,17 @@ export const en = {
     },
     noRelay: (name: string) =>
       `${name}'s link was opened but couldn't connect directly. Allowing our relay may let it connect when they try again.`,
+    /** `to` is the masked address, like a***@example.se. */
+    mail: {
+      sending: (to: string) => `Sending email to ${to}…`,
+      sent: (to: string) => `Email sent to ${to}`,
+      failed: (to: string) =>
+        `Email not sent to ${to}. To try again, remove this recipient and add them again, or add them without an email address and share the link yourself.`,
+      limit: (to: string) =>
+        `Email not sent to ${to}: too many emails right now. Copy the link and share it yourself.`,
+      verifying: (to: string) => `Code sent to ${to}`,
+      verified: (to: string) => `Verified with the code sent to ${to}`,
+    },
     progressFor: (name: string) => `Progress for ${name}`,
     copy: "Copy link",
     copyFor: (name: string) => `Copy link for ${name}`,

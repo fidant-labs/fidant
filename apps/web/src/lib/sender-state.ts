@@ -81,6 +81,11 @@
 //   real enforcement.
 // - Removing a recipient is always allowed. If it was mid-transfer, the
 //   result includes a close effect.
+// - A recipient added with an email address starts at mail "sending"; `email`
+//   then records what the server said. The latest status wins, because a
+//   timed-out notice may still arrive and every new code says "verifying",
+//   except that "verified" stays once reached. Recipients without an address
+//   ignore it.
 //
 // Effects carry only link IDs, attempt IDs, refusal reasons and the ICE servers from the
 // server's `joined`. Recipient
@@ -89,6 +94,7 @@
 
 import {
   type ConnectionPath,
+  type EmailStatus,
   type IceServer,
   MAX_LINKS,
   type RefuseReason,
@@ -120,13 +126,17 @@ export type Recipient = {
   readonly turn?: boolean;
   /** The last attempt couldn't connect directly while the sender refused our relay. */
   readonly noRelay?: true;
+  /** The address the server emails this link to, if the sender gave one. */
+  readonly email?: string;
+  /** Where that email stands: "sending" until the server answers. */
+  readonly mail?: "sending" | EmailStatus;
 };
 
 /** Recipients in the order they were added. Link IDs are unique. */
 export type SenderState = { readonly recipients: readonly Recipient[] };
 
 export type SenderAction =
-  | { type: "add"; link: Link; name: string }
+  | { type: "add"; link: Link; name: string; email?: string }
   | { type: "remove"; linkId: string }
   | { type: "joined"; linkId: string; attempt: string; iceServers: IceServer[]; turn: boolean }
   | { type: "channel-open"; linkId: string }
@@ -137,7 +147,8 @@ export type SenderAction =
   | { type: "timeout"; linkId: string }
   | { type: "left"; linkId: string }
   | { type: "declined"; linkId: string }
-  | { type: "path"; linkId: string; attempt: string; path: Exclude<ConnectionPath, "failed"> };
+  | { type: "path"; linkId: string; attempt: string; path: Exclude<ConnectionPath, "failed"> }
+  | { type: "email"; linkId: string; status: EmailStatus };
 
 export type SenderEffect =
   | { type: "start"; linkId: string; attempt: string; iceServers: IceServer[] }
@@ -179,6 +190,7 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
       return { state, effects: [] };
     }
     const { linkId, secret, url } = action.link;
+    const { email } = action;
     const recipient: Recipient = {
       name: action.name,
       linkId,
@@ -186,6 +198,7 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
       url,
       status: "waiting",
       bytesSent: 0,
+      ...(email === undefined ? {} : { email, mail: "sending" as const }),
     };
     return { state: { recipients: [...state.recipients, recipient] }, effects: [] };
   }
@@ -276,6 +289,15 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
         return end(state, current, true);
       }
       return { state: replace(state, { ...current, path: action.path }), effects: [] };
+    case "email":
+      if (
+        current.mail === undefined ||
+        current.mail === "verified" ||
+        current.mail === action.status
+      ) {
+        return { state, effects: [] };
+      }
+      return { state: replace(state, { ...current, mail: action.status }), effects: [] };
   }
 }
 

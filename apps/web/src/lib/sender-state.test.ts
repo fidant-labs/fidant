@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { MAX_LINKS } from "@sigill/protocol";
+import { type EmailStatus, MAX_LINKS } from "@sigill/protocol";
 import { createLink } from "./link.ts";
 import {
   CHECKSUM_MISMATCH,
@@ -700,4 +700,72 @@ test("effects never contain a recipient name or secret", () => {
       }[effect.type as string] ?? ["linkId", "type"],
     );
   }
+});
+
+test("add with an email starts its mail at sending and keeps both through attempts", () => {
+  const link = createLink(ORIGIN);
+  const { linkId } = link;
+  const email = "anna@example.se";
+  const added = run(initialSenderState, { type: "add", link, name: "Anna", email });
+  assert.deepEqual(added.effects, []);
+  assert.deepEqual(added.state.recipients, [
+    { name: "Anna", ...link, status: "waiting", bytesSent: 0, email, mail: "sending" },
+  ]);
+
+  const { state, effects } = run(
+    added.state,
+    { type: "email", linkId, status: "sent" },
+    { type: "joined", linkId, attempt: A, iceServers: [], turn: true },
+    { type: "dropped", linkId },
+  );
+  assert.ok(effects.every((effect) => !JSON.stringify(effect).includes(email)));
+  assert.equal(statusOf(state, linkId), "waiting");
+  assert.equal(findRecipient(state, linkId)?.email, email);
+  assert.equal(findRecipient(state, linkId)?.mail, "sent");
+});
+
+test("email keeps the latest status, except that verified stays", () => {
+  const link = createLink(ORIGIN);
+  const { linkId } = link;
+  const added = run(initialSenderState, {
+    type: "add",
+    link,
+    name: "Anna",
+    email: "anna@example.se",
+  }).state;
+  const mailAfter = (...statuses: EmailStatus[]) =>
+    findRecipient(
+      run(added, ...statuses.map((status): SenderAction => ({ type: "email", linkId, status })))
+        .state,
+      linkId,
+    )?.mail;
+
+  assert.equal(mailAfter("sent", "verifying", "verified"), "verified");
+  assert.equal(mailAfter("limit"), "limit");
+  assert.equal(
+    mailAfter("sent", "verifying", "verified", "verifying"),
+    "verified",
+    "another browser asking for a code does not hide that someone verified",
+  );
+  assert.equal(mailAfter("failed", "verifying"), "verifying", "a timed-out notice arrived");
+  assert.equal(mailAfter("failed", "verifying", "verified"), "verified");
+  assert.equal(mailAfter("verifying", "sent"), "sent");
+
+  const verified = run(added, { type: "email", linkId, status: "verified" }).state;
+  const late = update(verified, { type: "email", linkId, status: "verifying" });
+  assert.equal(late.state, verified);
+  assert.deepEqual(late.effects, []);
+});
+
+test("email is ignored for an unknown link and for a recipient without an address", () => {
+  const { state, linkId } = withRecipient();
+  const plain = update(state, { type: "email", linkId, status: "sent" });
+  assert.equal(plain.state, state);
+  assert.deepEqual(plain.effects, []);
+  assert.equal(findRecipient(state, linkId)?.mail, undefined);
+
+  const stranger = createLink(ORIGIN).linkId;
+  const unknown = update(state, { type: "email", linkId: stranger, status: "verified" });
+  assert.equal(unknown.state, state);
+  assert.deepEqual(unknown.effects, []);
 });
