@@ -80,7 +80,7 @@ export const sv: Messages = {
   },
   how: {
     title: "Så fungerar det",
-    lede: "Vad som händer med din fil, steg för steg. Kort sagt: den låses på din dator. Bara den du skickar till kan låsa upp den.",
+    lede: "Vad som händer med din fil, steg för steg. Kort sagt: den låses på din dator. Bara den som har länken kan låsa upp den.",
     sections: {
       stays: {
         heading: "Din fil stannar på din dator",
@@ -92,7 +92,7 @@ export const sv: Messages = {
       link: {
         heading: "Du får en länk med nyckeln i",
         body: [
-          "Du får en länk per person. Du skickar den själv, till exempel via mejl eller chatt.",
+          "Du får en länk per person. Varje länk fungerar en gång. Du skickar den själv, till exempel via mejl eller chatt.",
           "Nyckeln som låser upp filen är delen efter tecknet #. Webbläsare skickar aldrig den delen till oss. Därför ser vi aldrig nyckeln.",
           "Alla som har länken kan öppna filen. Skicka varje länk bara till den som den är avsedd för.",
         ],
@@ -101,7 +101,7 @@ export const sv: Messages = {
         heading: "De öppnar länken medan din sida är öppen",
         body: [
           "Inget sparas, så din sida måste vara öppen tills de har fått filen.",
-          "Vår server hjälper de två webbläsarna att hitta varandra, som en telefonist som kopplar ett samtal. Den skickar vidare några små, låsta meddelanden som den inte kan läsa.",
+          "Vår server hjälper de två webbläsarna att hitta varandra. Den är som en telefonist som kopplar ett samtal. Den skickar vidare några små, låsta meddelanden som den inte kan läsa.",
           "De ser filens namn och storlek och väljer om de vill ladda ner den.",
         ],
       },
@@ -116,7 +116,7 @@ export const sv: Messages = {
       relay: {
         heading: "Ibland går den via vårt relä",
         body: [
-          "Ibland kan två nätverk inte ansluta direkt till varandra. Det är vanligt på mobildata och på kontorsnätverk.",
+          "Vissa nätverk kan inte ansluta direkt till varandra. Det är vanligt på mobildata och på kontorsnätverk.",
           "Då går filen via vårt relä i Stockholm i stället, fortfarande låst.",
           "Reläet kan inte öppna filen och sparar den inte.",
           "Det ser varje enhets internetadress och ungefär hur stor filen är.",

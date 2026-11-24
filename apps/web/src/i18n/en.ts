@@ -80,7 +80,7 @@ export const en = {
   },
   how: {
     title: "How it works",
-    lede: "What happens to your file, step by step. In short: it is locked on your computer, and only the person you send it to can unlock it.",
+    lede: "What happens to your file, step by step. In short: it is locked on your computer, and only someone with the link can unlock it.",
     sections: {
       stays: {
         heading: "Your file stays on your computer",
@@ -92,7 +92,7 @@ export const en = {
       link: {
         heading: "You get a link with the key inside",
         body: [
-          "You get one link for each person. You send it yourself, for example by email or chat.",
+          "You get one link for each person. Each link works once. You send it yourself, for example by email or chat.",
           "The key that unlocks the file is the part after the # sign. Browsers never send that part to us, so we never see the key.",
           "Anyone with the link can open the file. Send each link only to the person it is for.",
         ],
