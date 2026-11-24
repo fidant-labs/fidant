@@ -148,8 +148,9 @@ export function Link({
   );
 }
 
-const MENU: ReadonlyArray<readonly ["send" | "privacy", string]> = [
+const MENU: ReadonlyArray<readonly ["send" | "how" | "privacy", string]> = [
   ["send", "/send"],
+  ["how", "/how"],
   ["privacy", "/privacy"],
 ];
 
@@ -264,13 +265,13 @@ export function Header({ current }: { current: Route }) {
                 <Link
                   href={href}
                   aria-current={section === current ? "page" : undefined}
-                  class={`${buttonVariants({ variant: section === current ? "secondary" : "ghost" })} max-sm:px-2`}
+                  class={`${buttonVariants({ variant: section === current ? "secondary" : "ghost" })} max-sm:px-1 max-sm:text-[0.8125rem]`}
                 >
                   {t.menu[section]}
                 </Link>
               </li>
             ))}
-            <li>
+            <li class="max-sm:hidden">
               <ThemeMenu />
             </li>
             <li>
@@ -315,7 +316,7 @@ export function Footer() {
             {FOOTER_LINKS.map(([page, href]) => (
               <li key={page}>
                 <Link href={href} class={link}>
-                  {page === "privacy" ? t.menu.privacy : t.footer[page]}
+                  {page === "how" || page === "privacy" ? t.menu[page] : t.footer[page]}
                 </Link>
               </li>
             ))}

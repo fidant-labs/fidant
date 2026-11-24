@@ -52,6 +52,7 @@ export const en = {
     themes: { system: "System", light: "Light", dark: "Dark" },
     label: "Main",
     send: "Send a file",
+    how: "How it works",
     privacy: "Privacy",
   },
   landing: {
@@ -410,7 +411,6 @@ export const en = {
   footer: {
     label: "Site",
     tagline: "Files encrypted in your browser, readable only by the recipient.",
-    how: "How it works",
     about: "About",
     terms: "Terms",
     security: "Security",
