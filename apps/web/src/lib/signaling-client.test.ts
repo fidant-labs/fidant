@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
-import { connectSignaling } from "./signaling-client.ts";
+import { connectSignaling, RETRY_MAX_MS, retryDelay } from "./signaling-client.ts";
 
 const LINK = "AAAAAAAAAAAAAAAAAAAAAA";
 
@@ -14,6 +14,7 @@ class FakeWebSocket extends EventTarget {
   constructor(_url: string) {
     super();
     fake = this;
+    created++;
   }
   send(text: string) {
     this.sent.push(text);
@@ -22,14 +23,26 @@ class FakeWebSocket extends EventTarget {
 }
 
 let fake: FakeWebSocket;
+let created = 0;
 const original = globalThis.WebSocket;
 
 beforeEach(() => {
+  created = 0;
   globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
 });
 afterEach(() => {
   globalThis.WebSocket = original;
 });
+
+function open() {
+  fake.readyState = 1;
+  fake.dispatchEvent(new Event("open"));
+}
+
+function drop(code = 1006) {
+  fake.readyState = 3;
+  fake.dispatchEvent(Object.assign(new Event("close"), { code }));
+}
 
 function receive(message: unknown) {
   fake.dispatchEvent(Object.assign(new Event("message"), { data: JSON.stringify(message) }));
@@ -58,4 +71,92 @@ test("does not count other messages, invalid frames or sends on a closed socket"
   assert.deepEqual(seen, []);
   assert.equal(fake.sent.length, 2);
   assert.equal(warn.mock.callCount(), 1);
+});
+
+test("retryDelay waits a random time up to 1 s × 2^failures, capped at 30 s", () => {
+  assert.equal(
+    retryDelay(0, () => 0),
+    0,
+  );
+  assert.equal(
+    retryDelay(0, () => 1),
+    1000,
+  );
+  assert.equal(
+    retryDelay(3, () => 0.5),
+    4000,
+  );
+  assert.equal(
+    retryDelay(5, () => 1),
+    RETRY_MAX_MS,
+  );
+  assert.equal(
+    retryDelay(50, () => 1),
+    RETRY_MAX_MS,
+  );
+});
+
+test("reconnects after a drop and keeps its listeners", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  t.mock.method(Math, "random", () => 1);
+  const client = connectSignaling({ url: "wss://x/signal" });
+  const events: string[] = [];
+  client.onOpen(() => events.push("open"));
+  client.onClose(({ code, byClient }) => events.push(`close ${code} ${byClient}`));
+  client.subscribe((message) => events.push(message.t));
+  open();
+  drop();
+  t.mock.timers.tick(999);
+  assert.equal(created, 1);
+  t.mock.timers.tick(1);
+  assert.equal(created, 2);
+  open();
+  receive({ t: "error", code: "already-hosted" });
+  assert.deepEqual(events, ["open", "close 1006 false", "open", "error"]);
+});
+
+test("a failed connect doubles the next wait, and an open resets it", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  t.mock.method(Math, "random", () => 1);
+  connectSignaling({ url: "wss://x/signal" });
+  drop();
+  t.mock.timers.tick(1999);
+  assert.equal(created, 1);
+  t.mock.timers.tick(1);
+  assert.equal(created, 2);
+  drop();
+  t.mock.timers.tick(3999);
+  assert.equal(created, 2);
+  t.mock.timers.tick(1);
+  assert.equal(created, 3);
+  open();
+  drop();
+  t.mock.timers.tick(1000);
+  assert.equal(created, 4);
+});
+
+test("close() during the wait stops reconnecting", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const client = connectSignaling({ url: "wss://x/signal" });
+  const closes: boolean[] = [];
+  client.onClose(({ byClient }) => closes.push(byClient));
+  open();
+  drop();
+  client.close();
+  t.mock.timers.tick(RETRY_MAX_MS);
+  assert.equal(created, 1);
+  assert.deepEqual(closes, [false]);
+});
+
+test("close() on an open socket reports byClient and does not reconnect", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const client = connectSignaling({ url: "wss://x/signal" });
+  const closes: boolean[] = [];
+  client.onClose(({ byClient }) => closes.push(byClient));
+  open();
+  client.close();
+  drop(1000);
+  t.mock.timers.tick(RETRY_MAX_MS);
+  assert.equal(created, 1);
+  assert.deepEqual(closes, [true]);
 });
