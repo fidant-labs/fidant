@@ -220,3 +220,34 @@ test("a recipient sees the text wording when the sender closes the page during t
   await expect(page.getByText("The text comes straight from their browser")).toBeVisible();
   await expect(page.getByText("The file comes straight from their browser")).toHaveCount(0);
 });
+
+test("a connection too small to carry a text in one chunk fails the card and sends nothing", async ({
+  actor,
+  leaks,
+  canary,
+}) => {
+  const text = makeText(leaks, canary);
+  const name = makeName(leaks, canary, "Hugo");
+  const { page: sender } = await actor("sender");
+  await sender.addInitScript(() => {
+    const g = globalThis as { sent?: number };
+    g.sent = 0;
+    Object.defineProperty(RTCSctpTransport.prototype, "maxMessageSize", { get: () => 32_831 });
+    const send = RTCDataChannel.prototype.send;
+    RTCDataChannel.prototype.send = function (this: RTCDataChannel, ...args: unknown[]) {
+      g.sent = (g.sent ?? 0) + 1;
+      Reflect.apply(send, this, args);
+    } as RTCDataChannel["send"];
+  });
+  await sender.goto("/secret");
+  const link = await share(leaks, sender, text, "", name);
+
+  const { page } = await openRecipient(actor, link);
+  await expect(
+    recipientRow(sender, name).getByText(
+      `The text wasn't sent through ${name}'s link, because its length would have shown on this connection. The link still works.`,
+    ),
+  ).toBeVisible();
+  expect(await sender.evaluate(() => (globalThis as { sent?: number }).sent)).toBe(0);
+  await expect(page.getByRole("button", { name: "Show", exact: true })).toHaveCount(0);
+});
