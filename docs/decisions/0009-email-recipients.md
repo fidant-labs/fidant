@@ -35,6 +35,7 @@
 - 0001 puts "recipient labels the sender types in P2P mode" in class M: "Labels must never appear in `host` or `join` frames." No class covers an email address.
 - The site copy:
   - landing lede: "nobody in between, us included, can read it";
+  - footer tagline: "Files encrypted in your browser, readable only by the recipient.";
   - /terms: "we never have the key";
   - /privacy, under "Never": "The part of the link that unlocks the file never reaches us.", and for names, "Neither the name you type for yourself nor the names of the people you send to.";
   - /security: "The key is in the part of the link after #, which browsers never send to a server.";
@@ -85,8 +86,8 @@ Fidant emails the full link, key included, for now (option 3). A one-time code t
 - The recipient page shows the masked address, for example `a***@example.se`, and asks the recipient to request a code. It shows no sender name before the code is entered.
 - The server emails a one-time code to the same address. A correct code gives a token for that tab, and the server tells the sender the link is verified.
 - Only then does the recipient page send `join`, carrying the token. The server refuses a `join` on an email-bound link without a valid token. From there the transfer runs as today.
-- The token is bound to that link and that tab. It survives a reload or a rejoin of the same link in the same tab, and it is refused on any other link and in any other tab or browser. A link can be joined again after a decline or a dropped connection, and a forwarded copy must not inherit an earlier verification.
-- Codes and outgoing mail are rate-limited. Wrong guesses per code are capped, and a code expires. SIG-105 holds the limits.
+- The token is bound to that link and that tab's sessionStorage. It survives a reload or a rejoin of the same link in the same tab, and it is refused on any other link and in any other tab or browser that has no copy of it. A browser copies sessionStorage into a duplicated tab and into a window the page opens, so those share the token; that stays within the same browser and person. A link can be joined again after a decline or a dropped connection, and a forwarded copy must not inherit an earlier verification.
+- Notices are limited per sender socket, per client IP address and per destination email address. Codes are limited per link and per destination email address. Wrong guesses per code are capped, and a code expires. SIG-105 holds the numbers.
 - The check lives inside signaling, in server memory next to the link. There are no HTTP routes and no database.
 
 ### The mail service
@@ -147,9 +148,9 @@ No class in 0001 covers an email address. It is new personal data on the server.
 - the mail service's bounce and complaint handling, which stores nothing;
 - the mail service's suppression lists, as /privacy states.
 
-The one-time code and the token are secrets too, and neither is ever logged. The token is at least 16 random bytes from a CSPRNG. The code appears only in the mail service's send request for the code email, the code email, the recipient's message that submits it, server memory and a bounce or complaint about the code email that quotes it, received only by the mail service's bounce and complaint handling. The token appears only in the server's reply to that browser, that tab's sessionStorage and its `join`, and server memory.
+The one-time code and the token are secrets too, and neither is ever logged. The token is at least 16 random bytes from a CSPRNG. The code appears only in the mail service's send request for the code email, the code email, the recipient's message that submits it, server memory and a bounce or complaint about the code email that quotes it, received only by the mail service's bounce and complaint handling. The token appears only in the server's reply to that tab, that tab's sessionStorage and the sessionStorage of a tab or window the browser copies it into, the `join` from any of them, and server memory.
 
-Rate-limit counters per address hold only an HMAC of the normalized address under a random key per process. They stay in memory for at most an hour. Our server never logs the address and never writes it to a database or disk. /privacy and the live server panel list the address and the counters.
+Rate-limit counters per email address hold only an HMAC of the normalized address under a random key per process. They stay in memory for at most an hour. Notice counters per client IP address likewise hold only an HMAC of the IP address under the same per-process key, in memory for at most an hour. /privacy lists them too. Our server never logs the email address and never writes it to a database or disk. /privacy and the live server panel list the address and the counters.
 
 Nothing outside these lists is allowed.
 
@@ -169,7 +170,8 @@ For an emailed link the server held the key once. So ciphertext under that key, 
 ## Consequences
 
 - **Fidant can act as the recipient of an emailed link**, and so can anyone who can read both the notice and the code mail. Once the sender stops hosting the link (tab closed, socket closed or recipient removed), anyone who holds the key can host it again as a new link and register it again, as with any link today. The list under option 3 says who can read the key. Senders who do not want this leave the email field empty and pass the link on themselves, as today. This is accepted, link scanners included: they can read the key but cannot join without the code.
-- **Site copy.** The landing lede ("nobody in between, us included, can read it") stays. Where the sender enters an email, the send page says that Fidant emails this link, so our server sees its key once and does not store or log it. Every claim that the key or the typed name never reaches us, or that our server cannot read the setup messages, every claim about how long anything is kept (the address counters last an hour), and every claim that anyone with the link can open the file (an emailed link also needs the code) gets the exception or a correction. That covers /terms, /privacy (including its how-sending-works steps and the lists the landing page shows), /security, /about, /how and the live server panel.
+- **A typed name can still hold a URL or other text someone wants to put in front of a stranger.** The not-verified marker, the name's length cap and the notice limits bound that; SIG-107 may restrict the name further.
+- **Site copy.** Every claim that nobody in between, us included, can read the file (the landing lede, the /about lede and the footer tagline) gets a short qualifier for emailed links, for example "unless you ask us to email the link", in English and Swedish, because our server sees an emailed link's key and could sit in the middle until check words exist. Where the sender enters an email, the send page says that Fidant emails this link, so our server sees its key once and does not store or log it. Every claim that the key or the typed name never reaches us, or that our server cannot read the setup messages, every claim about how long anything is kept (the email-address and IP-address counters last an hour), and every claim that anyone with the link can open the file (an emailed link also needs the code) gets the exception or a correction. That covers /terms, /privacy (including its how-sending-works steps and the lists the landing page shows), /security, /how and the live server panel.
 - **0001 and 0002** stand, read with the replacements above. 0001 is not superseded.
 - **AGENTS.md** names this exception in its opening line and its invariants.
 - **SIG-109** adds check words.
