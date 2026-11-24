@@ -9,9 +9,11 @@ pnpm --filter @sigill/e2e exec playwright install chromium  # once per machine
 pnpm e2e                                                    # from the repository root
 ```
 
-`pnpm e2e` builds the web client, starts coturn and the server on free ports, runs the specs in `tests/` and stops both. `pnpm check` does not run it.
+`pnpm e2e` builds the web client, starts coturn, Mailpit and the server on free ports, runs the specs in `tests/` and stops them. `pnpm check` does not run it.
 
 coturn is the TURN relay (`brew install coturn` on macOS, the `coturn` package on Linux). It listens on 127.0.0.1 only, with a secret made for the run, and the server gets `TURN_URLS` and `TURN_SECRET_FILE` so the `joined` signaling message hands each paired browser credentials for it. Without `turnserver` on PATH the stack starts without it and `joined` carries no ICE servers; with `CI` set, that fails the run instead. Global setup sets `SIGILL_E2E_TURN_URLS` only when coturn runs, so a spec that needs the relay can skip on it.
+
+Mailpit catches the server's mail (`brew install mailpit` on macOS, the release binary on Linux). Its SMTP and HTTP API listen on 127.0.0.1 only, on two free ports, and it never sends mail on. The server gets `MAIL_SMTP_URL`, `MAIL_FROM` and `PUBLIC_ORIGIN` (its own `https://localhost:<port>`), so `hello` says mail is on and emailed links point at the stack. Without `mailpit` on PATH the stack starts without mail; with `CI` set, that fails the run instead. Global setup sets `SIGILL_E2E_MAILPIT` to the API's URL only when Mailpit runs, so an email spec can skip on it. Its output (errors only) goes to `observations/run/mailpit.log`. `pnpm e2e:networks` runs no Mailpit.
 
 ## Network scenarios
 

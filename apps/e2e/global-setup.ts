@@ -44,6 +44,10 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   if (stack.env.TURN_URLS) {
     process.env.SIGILL_E2E_TURN_URLS = stack.env.TURN_URLS;
   }
+  // Mailpit's API, set only when it runs, so an email spec can skip without it.
+  if (stack.env.MAILPIT_API) {
+    process.env.SIGILL_E2E_MAILPIT = stack.env.MAILPIT_API;
+  }
 
   return async () => {
     try {

@@ -1,6 +1,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { appendFileSync, createWriteStream, rmSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -32,9 +33,14 @@ export async function startServer(
   const stdoutLog = createWriteStream(serverStdoutLog);
   const stderrLog = createWriteStream(serverStderrLog);
   const [command, ...args] = [...(wrapper?.command(certDir) ?? [process.execPath]), serverMain];
+  // Emailed links name the server's origin, which it needs at start, so with mail it gets a port.
+  const requested = stackEnv.MAIL_SMTP_URL ? await freePort() : 0;
+  const origin = requested
+    ? { PUBLIC_ORIGIN: `https://${wrapper?.host ?? "localhost"}:${requested}` }
+    : {};
   const child = spawn(command as string, args, {
     cwd: repoRoot,
-    env: { ...process.env, ...stackEnv, PORT: "0", CERT_DIR: certDir },
+    env: { ...process.env, ...stackEnv, ...origin, PORT: String(requested), CERT_DIR: certDir },
     stdio: ["ignore", "pipe", "pipe"],
   });
   // pipe() ends each log once the child's stream ends, so waiting for `close` drains them.
@@ -142,4 +148,16 @@ export async function terminate(child: ChildProcess, closed: Promise<void>): Pro
   }
   await closed;
   clearTimeout(timer);
+}
+
+/** A loopback port that was free a moment ago. ponytail: racy, but nothing else picks ports here. */
+export function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const probe = createServer();
+    probe.once("error", reject);
+    probe.listen(0, "127.0.0.1", () => {
+      const { port } = probe.address() as { port: number };
+      probe.close(() => resolve(port));
+    });
+  });
 }

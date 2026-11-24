@@ -2,12 +2,12 @@ import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { connect, createServer } from "node:net";
+import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { coturnLog, repoRoot } from "../paths.ts";
-import { terminate } from "./server.ts";
+import { freePort, terminate } from "./server.ts";
 import type { RunningService, Service } from "./service.ts";
 
 const host = "127.0.0.1";
@@ -22,10 +22,7 @@ const missing = "coturn not found; brew install coturn (macOS) or apt-get instal
 export const coturn: Service = { name: "coturn", start: startCoturn };
 
 async function startCoturn(): Promise<RunningService> {
-  const onPath = (process.env.PATH ?? "")
-    .split(delimiter)
-    .some((dir) => dir !== "" && existsSync(join(dir, "turnserver")));
-  if (!onPath) {
+  if (!onPath("turnserver")) {
     if (process.env.CI) {
       throw new Error(missing);
     }
@@ -71,6 +68,7 @@ async function startCoturn(): Promise<RunningService> {
     await waitForListening(
       port,
       () => failed || child.exitCode !== null || child.signalCode !== null,
+      "coturn",
     );
   } catch (error) {
     await stop();
@@ -139,24 +137,23 @@ export function coturnConfig(options: {
   return `${lines.join("\n")}\n`;
 }
 
-/** A port that was free a moment ago. ponytail: racy, but nothing else picks ports here. */
-function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const probe = createServer();
-    probe.once("error", reject);
-    probe.listen(0, host, () => {
-      const { port } = probe.address() as { port: number };
-      probe.close(() => resolve(port));
-    });
-  });
+/** Whether `command` is a file in one of the PATH directories. */
+export function onPath(command: string): boolean {
+  return (process.env.PATH ?? "")
+    .split(delimiter)
+    .some((dir) => dir !== "" && existsSync(join(dir, command)));
 }
 
-/** Polls until the TCP port accepts a connection. */
-async function waitForListening(port: number, exited: () => boolean): Promise<void> {
+/** Polls until the TCP port accepts a connection. `name` names the service in errors. */
+export async function waitForListening(
+  port: number,
+  exited: () => boolean,
+  name: string,
+): Promise<void> {
   const deadline = Date.now() + startTimeoutMs;
   while (Date.now() < deadline) {
     if (exited()) {
-      throw new Error("coturn exited before listening.");
+      throw new Error(`${name} exited before listening.`);
     }
     const open = await new Promise<boolean>((resolve) => {
       const socket = connect(port, host);
@@ -171,5 +168,5 @@ async function waitForListening(port: number, exited: () => boolean): Promise<vo
     }
     await sleep(100);
   }
-  throw new Error(`coturn did not listen on port ${port} within ${startTimeoutMs} ms.`);
+  throw new Error(`${name} did not listen on port ${port} within ${startTimeoutMs} ms.`);
 }
