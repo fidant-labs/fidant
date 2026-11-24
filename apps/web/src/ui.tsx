@@ -1,6 +1,5 @@
 // Pieces shared by the pages.
 
-import type { ConnectionPath } from "@sigill/protocol";
 import type { AnchorHTMLAttributes, ComponentChildren } from "preact";
 import { DropdownMenu } from "radix-ui";
 import { Alert, AlertDescription, AlertTitle } from "#components/ui/alert";
@@ -9,6 +8,7 @@ import { Card, CardContent } from "#components/ui/card";
 import { useI18n } from "./i18n/I18n.tsx";
 import { LANGUAGE_NAMES, type Lang } from "./i18n/language.ts";
 import { formatBytes } from "./lib/format.ts";
+import type { OpenPath } from "./lib/peer.ts";
 import type { Relayed } from "./lib/server-facts.ts";
 import type { Theme } from "./theme.ts";
 
@@ -435,16 +435,22 @@ export function TechDetails({
 }
 
 /** How a connection runs, with a "Why?" that explains it. The summary holds the label too, so it makes sense on its own. */
-export function PathLine({ path }: { path: Exclude<ConnectionPath, "failed"> }) {
+export function PathLine({ path }: { path: OpenPath }) {
   const { t } = useI18n();
-  const { label, explain } = t.connection[path === "relay" ? "relay" : "direct"];
+  const kind = path === "relay" ? "relay" : "direct";
+  const { label, explain } = t.connection[kind];
   return (
     <details class="mt-2 text-[0.9rem]">
       <summary class="cursor-pointer">
         <span class="font-medium">{label}</span>{" "}
         <span class="text-muted-foreground underline underline-offset-4">{t.connection.why}</span>
       </summary>
-      <p class="mt-1 mb-0 text-muted-foreground">{explain}</p>
+      <p class="mt-1 mb-0 text-muted-foreground">
+        {explain}{" "}
+        <Link href={`/how#${kind}`} class="rounded-sm font-medium underline underline-offset-4">
+          {t.connection.more}
+        </Link>
+      </p>
     </details>
   );
 }
