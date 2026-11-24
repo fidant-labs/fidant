@@ -1,4 +1,6 @@
 export const primaryDomain = "fidant.se";
+export const mailDomain = `notify.${primaryDomain}`;
+export const mailFrom = `noreply@${mailDomain}`;
 export const zoneNames = ["fidant.se", "fidant.eu", "fidant.org"];
 export const siteNames = zoneNames.flatMap((zone) => [zone, `www.${zone}`]);
 

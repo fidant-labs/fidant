@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   copyFileSync,
   mkdirSync,
@@ -7,6 +7,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { isIP } from "node:net";
@@ -16,7 +17,7 @@ import { test } from "node:test";
 import { App, Stack } from "aws-cdk-lib";
 import { Match, Template } from "aws-cdk-lib/assertions";
 import { addStacks } from "./app.ts";
-import { boxAddress, hostedZoneIds, siteNames, zoneNames } from "./config.ts";
+import { boxAddress, hostedZoneIds, mailFrom, siteNames, zoneNames } from "./config.ts";
 import { DnsStack } from "./dns.ts";
 import { renderUserData } from "./user-data.ts";
 
@@ -417,6 +418,145 @@ test("the journal is the only place the box's services keep log lines", () => {
   assert.doesNotMatch(userData, /^\s*Standard(Output|Error)=/m);
 });
 
+test("neither the app server nor Caddy, which terminates TLS, has its memory swapped", () => {
+  const userData = renderUserData();
+  for (const [path, section] of [
+    ["sigill.service", "\n[Service]\n"],
+    ["caddy.service.d/no-swap.conf", "[Service]\n"],
+  ] as const) {
+    const start = userData.indexOf(`\ncat >/etc/systemd/system/${path} <<'EOF'\n`);
+    assert.ok(start > 0, path);
+    const unit = userData.slice(start, userData.indexOf("\nEOF\n", start));
+    const service = unit.slice(unit.indexOf(section));
+    assert.ok(service.split("\n").includes("MemorySwapMax=0"), path);
+  }
+  assert.ok(
+    userData.indexOf("caddy.service.d/no-swap.conf") <
+      userData.indexOf("\nsystemctl restart caddy\n"),
+  );
+});
+
+function credentialHelper(): { helper: string; rest: string } {
+  const userData = renderUserData();
+  const start = userData.indexOf("\ncat >/usr/local/bin/sigill-credential <<'EOF'\n");
+  const end = userData.indexOf("\nEOF\n", start);
+  assert.ok(start > 0 && end > start);
+  return {
+    helper: userData.slice(userData.indexOf("\n", start + 1) + 1, end + 1),
+    rest: userData.slice(0, start) + userData.slice(end + "\nEOF".length),
+  };
+}
+
+test("the box's user data leaves mail off and installs only the helper that turns it on", () => {
+  const { helper, rest } = credentialHelper();
+  assert.doesNotMatch(rest, /mail|PUBLIC_ORIGIN/i);
+  assert.deepEqual(rest.match(/.*sigill-credential.*/g), [
+    "chmod 700 /usr/local/bin/sigill-credential",
+  ]);
+  assert.doesNotMatch(renderUserData(), /AKIA[A-Z0-9]{16}/);
+  assert.equal(mailFrom, "noreply@notify.fidant.se");
+  assert.ok(helper.includes(`'Environment="MAIL_FROM=Fidant <${mailFrom}>"'`));
+  assert.ok(helper.includes("'Environment=PUBLIC_ORIGIN=https://fidant.se'"));
+});
+
+test("sigill-credential writes the mail drop-in only with its password file, and removes it first", () => {
+  const dir = mkdtempSync(join(tmpdir(), "sigill-credential-"));
+  try {
+    const dropin = `${dir}/etc/systemd/system/sigill.service.d/mail.conf`;
+    const secret = `${dir}/etc/sigill/mail-password`;
+    const script = join(dir, "sigill-credential");
+    writeFileSync(script, credentialHelper().helper.replaceAll("/etc/", `${dir}/etc/`));
+    const log = join(dir, "log");
+    mkdirSync(join(dir, "bin"));
+    writeFileSync(join(dir, "bin", "stty"), `#!/bin/sh\necho "$*" >>'${dir}/stty-log'\n`, {
+      mode: 0o755,
+    });
+    writeFileSync(
+      join(dir, "bin", "systemctl"),
+      `#!/bin/sh\necho "$*:$([ -e '${dropin}' ] && echo D)$([ -e '${secret}' ] && echo S)" >>'${log}'\n`,
+      { mode: 0o755 },
+    );
+    const run = (action: string, input = "") => {
+      writeFileSync(log, "");
+      const { status } = spawnSync("/bin/sh", [script, "mail", action], {
+        input,
+        env: { ...process.env, PATH: `${dir}/bin:${process.env.PATH}` },
+      });
+      return { status, calls: readFileSync(log, "utf8").split("\n").filter(Boolean) };
+    };
+    const exists = (path: string) => statSync(path, { throwIfNoEntry: false }) !== undefined;
+    const password = `${"A".repeat(43)}+`;
+
+    assert.deepEqual(run("on", `AKIAIOSFODNN7EXAMPLE\n${password}\n`), {
+      status: 0,
+      calls: ["daemon-reload:DS", "try-restart sigill:DS"],
+    });
+    assert.equal(
+      readFileSync(dropin, "utf8"),
+      [
+        "[Service]",
+        "Environment=MAIL_SMTP_URL=smtps://AKIAIOSFODNN7EXAMPLE@email-smtp.eu-north-1.amazonaws.com:465",
+        `Environment="MAIL_FROM=Fidant <${mailFrom}>"`,
+        "Environment=PUBLIC_ORIGIN=https://fidant.se",
+        `LoadCredential=mail-password:${secret}`,
+        "Environment=MAIL_PASSWORD_FILE=%d/mail-password",
+        "",
+      ].join("\n"),
+    );
+    assert.equal(readFileSync(secret, "utf8"), `${password}\n`);
+    assert.equal(statSync(secret).mode & 0o777, 0o600);
+
+    assert.deepEqual(run("off"), {
+      status: 0,
+      calls: ["daemon-reload:S", "try-restart sigill:"],
+    });
+    assert.ok(!exists(dropin) && !exists(secret));
+
+    for (const input of ["someone\n", `AKIAIOSFODNN7EXAMPLE\n${"A".repeat(43)}=\n`]) {
+      assert.deepEqual(run("on", input), { status: 1, calls: [] });
+      assert.ok(!exists(dropin) && !exists(secret));
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("sigill-credential restores terminal echo when a signal ends it at the password prompt", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "sigill-credential-"));
+  try {
+    const script = join(dir, "sigill-credential");
+    writeFileSync(script, credentialHelper().helper.replaceAll("/etc/", `${dir}/etc/`));
+    const sttyLog = join(dir, "stty-log");
+    mkdirSync(join(dir, "bin"));
+    writeFileSync(join(dir, "bin", "stty"), `#!/bin/sh\necho "$*" >>'${sttyLog}'\n`, {
+      mode: 0o755,
+    });
+    const shell = statSync("/bin/dash", { throwIfNoEntry: false }) ? "/bin/dash" : "/bin/sh";
+    const child = spawn(shell, [script, "mail", "on"], {
+      env: { ...process.env, PATH: `${dir}/bin:${process.env.PATH}` },
+      stdio: ["pipe", "ignore", "ignore"],
+    });
+    const closed = new Promise((resolve) => child.on("close", resolve));
+    child.stdin.write("AKIAIOSFODNN7EXAMPLE\n");
+    for (let i = 0; i < 100 && !readIfAny(sttyLog).includes("-echo"); i++) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    child.kill("SIGINT");
+    await closed;
+    assert.deepEqual(readIfAny(sttyLog).split("\n").filter(Boolean), ["-echo", "echo"]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+function readIfAny(path: string): string {
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return "";
+  }
+}
+
 const camelPorts = [
   { protocol: "tcp", fromPort: 80, toPort: 80, cidrs: ["0.0.0.0/0"], ipv6Cidrs: ["::/0"] },
   { protocol: "tcp", fromPort: 443, toPort: 443, cidrs: ["0.0.0.0/0"], ipv6Cidrs: ["::/0"] },
@@ -429,6 +569,24 @@ const camelPorts = [
 function appBox(): Template {
   const stack = stacksFor(pocAccount).find((child) => child.stackName === "FidantApp");
   return Template.fromStack(stack as Stack);
+}
+
+function alarmsNamed(box: Template, prefix: string) {
+  return Object.values(box.findResources("AWS::CloudWatch::Alarm"))
+    .map((alarm) => alarm.Properties)
+    .filter((alarm) => String(alarm.AlarmName).startsWith(prefix));
+}
+
+function alertTopic(box: Template): { Ref: string } {
+  const subscriptions = Object.values(box.findResources("AWS::SNS::Subscription"));
+  assert.equal(subscriptions.length, 1);
+  return subscriptions[0]?.Properties.TopicArn;
+}
+
+function onlyId(box: Template, type: string): string {
+  const ids = Object.keys(box.findResources(type));
+  assert.equal(ids.length, 1, type);
+  return ids[0] ?? "";
 }
 
 test("the relay cap checks the box's traffic every 5 minutes", () => {
@@ -452,7 +610,9 @@ test("the relay cap checks the box's traffic every 5 minutes", () => {
 test("the relay cap may only read instance metrics, set the box's ports, and keep its state", () => {
   const box = appBox();
   const [instanceId] = Object.keys(box.findResources("AWS::Lightsail::Instance"));
-  const policies = Object.values(box.findResources("AWS::IAM::Policy"));
+  const policies = Object.values(box.findResources("AWS::IAM::Policy")).filter(
+    (policy) => policy.Properties.Roles,
+  );
   assert.equal(policies.length, 1);
   const statements = policies[0]?.Properties.PolicyDocument.Statement;
   assert.equal(statements.length, 3);
@@ -474,17 +634,14 @@ test("the relay cap may only read instance metrics, set the box's ports, and kee
 
 test("relay traffic past 80 %, the cap, and a failing cap email the alert address", () => {
   const box = appBox();
-  const [topicId] = Object.keys(box.findResources("AWS::SNS::Topic"));
   box.hasResourceProperties("AWS::SNS::Subscription", {
     Protocol: "email",
     Endpoint: "budget-alert@fidant.se",
   });
-  const alarms = Object.values(box.findResources("AWS::CloudWatch::Alarm")).map(
-    (alarm) => alarm.Properties,
-  );
+  const alarms = alarmsNamed(box, "Fidant relay ");
   assert.equal(alarms.length, 3);
   const byName = (name: string) => alarms.find((alarm) => alarm.AlarmName === name);
-  const notify = [{ Ref: topicId }];
+  const notify = [alertTopic(box)];
   for (const [name, threshold] of [
     ["Fidant relay traffic past 80 % of the monthly cap", 1_440_000_000_000],
     ["Fidant relay stopped: monthly traffic cap reached", 1_800_000_000_000],
@@ -521,6 +678,143 @@ test("the cap's Lambda code imports nothing outside its folder", () => {
       }
     }
   }
+});
+
+test("the app sends mail as notify.fidant.se, with TLS required, no tracking and no suppression list", () => {
+  const box = appBox();
+  const configSet = onlyId(box, "AWS::SES::ConfigurationSet");
+  assert.deepEqual(box.findResources("AWS::SES::ConfigurationSet")[configSet]?.Properties, {
+    Name: "fidant-mail",
+    DeliveryOptions: { MaxDeliverySeconds: 900, TlsPolicy: "REQUIRE" },
+    SuppressionOptions: { SuppressedReasons: [] },
+  });
+  const identity = onlyId(box, "AWS::SES::EmailIdentity");
+  assert.deepEqual(box.findResources("AWS::SES::EmailIdentity")[identity]?.Properties, {
+    EmailIdentity: "notify.fidant.se",
+    ConfigurationSetAttributes: { ConfigurationSetName: { Ref: configSet } },
+    MailFromAttributes: { MailFromDomain: "bounce.notify.fidant.se" },
+  });
+});
+
+test("bounces and complaints go only to a topic nobody subscribes to", () => {
+  const box = appBox();
+  const alerts = alertTopic(box);
+  const feedback = Object.keys(box.findResources("AWS::SNS::Topic")).filter(
+    (id) => id !== alerts.Ref,
+  );
+  assert.equal(feedback.length, 1);
+  const destinations = Object.values(
+    box.findResources("AWS::SES::ConfigurationSetEventDestination"),
+  ).map((destination) => destination.Properties);
+  assert.deepEqual(destinations, [
+    {
+      ConfigurationSetName: { Ref: onlyId(box, "AWS::SES::ConfigurationSet") },
+      EventDestination: {
+        Enabled: true,
+        MatchingEventTypes: ["bounce", "complaint"],
+        SnsDestination: { TopicARN: { Ref: feedback[0] } },
+      },
+    },
+  ]);
+});
+
+test("the mail user may only send through the identity, and CDK gives it no key or password", () => {
+  const box = appBox();
+  const user = onlyId(box, "AWS::IAM::User");
+  assert.deepEqual(box.findResources("AWS::IAM::User")[user]?.Properties, {
+    UserName: "fidant-mail",
+  });
+  box.resourceCountIs("AWS::IAM::AccessKey", 0);
+  const arn = (resource: string, id: string) => ({
+    "Fn::Join": [
+      "",
+      [
+        "arn:",
+        { Ref: "AWS::Partition" },
+        `:ses:eu-north-1:${pocAccount}:${resource}/`,
+        { Ref: id },
+      ],
+    ],
+  });
+  const policies = Object.values(box.findResources("AWS::IAM::Policy"))
+    .filter((policy) => policy.Properties.Users)
+    .map((policy) => [policy.Properties.Users, policy.Properties.PolicyDocument.Statement]);
+  assert.deepEqual(policies, [
+    [
+      [{ Ref: user }],
+      [
+        {
+          Action: "ses:SendRawEmail",
+          Effect: "Allow",
+          Resource: [
+            arn("identity", onlyId(box, "AWS::SES::EmailIdentity")),
+            arn("configuration-set", onlyId(box, "AWS::SES::ConfigurationSet")),
+          ],
+        },
+      ],
+    ],
+  ]);
+});
+
+test("the app box outputs only its address and the three DKIM records", () => {
+  const box = appBox();
+  const identity = onlyId(box, "AWS::SES::EmailIdentity");
+  const outputs = box.toJSON().Outputs;
+  assert.deepEqual(Object.keys(outputs).sort(), ["Dkim1", "Dkim2", "Dkim3", "PublicIp"]);
+  for (const n of [1, 2, 3]) {
+    assert.deepEqual(outputs[`Dkim${n}`].Value, {
+      "Fn::Join": [
+        "",
+        [
+          { "Fn::GetAtt": [identity, `DkimDNSTokenName${n}`] },
+          " CNAME ",
+          { "Fn::GetAtt": [identity, `DkimDNSTokenValue${n}`] },
+        ],
+      ],
+    });
+  }
+});
+
+test("SES bounce and complaint rates at AWS's review thresholds email the alert address", () => {
+  const box = appBox();
+  const notify = [alertTopic(box)];
+  assert.deepEqual(
+    alarmsNamed(box, "Fidant SES reputation").map((alarm) => [
+      alarm.AlarmName,
+      alarm.Namespace,
+      alarm.MetricName,
+      alarm.Dimensions,
+      alarm.ComparisonOperator,
+      alarm.Threshold,
+      alarm.TreatMissingData,
+      alarm.AlarmActions,
+      alarm.OKActions,
+    ]),
+    [
+      [
+        "Fidant SES reputation: bounce rate 5 % or more",
+        "AWS/SES",
+        "Reputation.BounceRate",
+        undefined,
+        "GreaterThanOrEqualToThreshold",
+        0.05,
+        "ignore",
+        notify,
+        notify,
+      ],
+      [
+        "Fidant SES reputation: complaint rate 0.1 % or more",
+        "AWS/SES",
+        "Reputation.ComplaintRate",
+        undefined,
+        "GreaterThanOrEqualToThreshold",
+        0.001,
+        "ignore",
+        notify,
+        notify,
+      ],
+    ],
+  );
 });
 
 test("the cap's Lambda code loads the way Lambda loads it: no package.json, no syntax detection", () => {

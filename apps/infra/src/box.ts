@@ -9,10 +9,11 @@ import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as lightsail from "aws-cdk-lib/aws-lightsail";
 import * as logs from "aws-cdk-lib/aws-logs";
+import * as ses from "aws-cdk-lib/aws-ses";
 import * as sns from "aws-cdk-lib/aws-sns";
 import { EmailSubscription } from "aws-cdk-lib/aws-sns-subscriptions";
 import type { Construct } from "constructs";
-import { relayCapBytes, relayWarnBytes } from "./config.ts";
+import { mailDomain, relayCapBytes, relayWarnBytes } from "./config.ts";
 import { renderUserData } from "./user-data.ts";
 
 const anywhere = { cidrs: ["0.0.0.0/0"], ipv6Cidrs: ["::/0"] };
@@ -105,6 +106,38 @@ export class BoxStack extends Stack {
       targets: [new targets.LambdaFunction(fn, { retryAttempts: 0 })],
     });
 
+    const configurationSet = new ses.ConfigurationSet(this, "MailConfig", {
+      configurationSetName: "fidant-mail",
+      tlsPolicy: ses.ConfigurationSetTlsPolicy.REQUIRE,
+      disableSuppressionList: true,
+      maxDeliveryDuration: Duration.minutes(15),
+    });
+    configurationSet.addEventDestination("Feedback", {
+      destination: ses.EventDestination.snsTopic(new sns.Topic(this, "MailFeedback")),
+      events: [ses.EmailSendingEvent.BOUNCE, ses.EmailSendingEvent.COMPLAINT],
+    });
+    const identity = new ses.EmailIdentity(this, "MailIdentity", {
+      identity: ses.Identity.domain(mailDomain),
+      configurationSet,
+      mailFromDomain: `bounce.${mailDomain}`,
+    });
+    new iam.User(this, "MailUser", { userName: "fidant-mail" }).addToPolicy(
+      new iam.PolicyStatement({
+        actions: ["ses:SendRawEmail"],
+        resources: [
+          identity.emailIdentityArn,
+          this.formatArn({
+            service: "ses",
+            resource: "configuration-set",
+            resourceName: configurationSet.configurationSetName,
+          }),
+        ],
+      }),
+    );
+    for (const [index, record] of identity.dkimRecords.entries()) {
+      new CfnOutput(this, `Dkim${index + 1}`, { value: `${record.name} CNAME ${record.value}` });
+    }
+
     const topic = new sns.Topic(this, "Alerts", { displayName: "Fidant relay" });
     topic.addSubscription(new EmailSubscription(props.alertEmail));
     const notify = new SnsAction(topic);
@@ -141,6 +174,27 @@ export class BoxStack extends Stack {
         datapointsToAlarm: 3,
         treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
       }),
+      ...(
+        [
+          ["BounceRate", "bounce rate 5 % or more", 0.05],
+          ["ComplaintRate", "complaint rate 0.1 % or more", 0.001],
+        ] as const
+      ).map(
+        ([name, label, threshold]) =>
+          new cloudwatch.Alarm(this, `Mail${name}`, {
+            alarmName: `Fidant SES reputation: ${label}`,
+            metric: new cloudwatch.Metric({
+              namespace: "AWS/SES",
+              metricName: `Reputation.${name}`,
+              statistic: cloudwatch.Stats.MAXIMUM,
+              period: Duration.hours(1),
+            }),
+            threshold,
+            comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+            evaluationPeriods: 1,
+            treatMissingData: cloudwatch.TreatMissingData.IGNORE,
+          }),
+      ),
     ];
     for (const alarm of alarms) {
       alarm.addAlarmAction(notify);
