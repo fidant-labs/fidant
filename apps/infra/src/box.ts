@@ -12,6 +12,7 @@ import * as logs from "aws-cdk-lib/aws-logs";
 import * as ses from "aws-cdk-lib/aws-ses";
 import * as sns from "aws-cdk-lib/aws-sns";
 import { EmailSubscription } from "aws-cdk-lib/aws-sns-subscriptions";
+import * as cr from "aws-cdk-lib/custom-resources";
 import type { Construct } from "constructs";
 import { mailDomain, relayCapBytes, relayWarnBytes } from "./config.ts";
 import { renderUserData } from "./user-data.ts";
@@ -30,7 +31,7 @@ const relayPorts: lightsail.CfnInstance.PortProperty[] = [
   { protocol: "udp", fromPort: 49152, toPort: 65535, ...anywhere },
 ];
 
-export type BoxStackProps = StackProps & { alertEmail: string };
+export type BoxStackProps = StackProps & { alertEmail: string; newMailIdentity: boolean };
 
 export class BoxStack extends Stack {
   constructor(scope: Construct, id: string, props: BoxStackProps) {
@@ -112,8 +113,9 @@ export class BoxStack extends Stack {
       disableSuppressionList: true,
       maxDeliveryDuration: Duration.minutes(15),
     });
+    const feedback = new sns.Topic(this, "MailFeedback");
     configurationSet.addEventDestination("Feedback", {
-      destination: ses.EventDestination.snsTopic(new sns.Topic(this, "MailFeedback")),
+      destination: ses.EventDestination.snsTopic(feedback),
       events: [ses.EmailSendingEvent.BOUNCE, ses.EmailSendingEvent.COMPLAINT],
     });
     const identity = new ses.EmailIdentity(this, "MailIdentity", {
@@ -121,6 +123,62 @@ export class BoxStack extends Stack {
       configurationSet,
       mailFromDomain: `bounce.${mailDomain}`,
     });
+    const { policyDependable } = feedback.addToResourcePolicy(
+      new iam.PolicyStatement({
+        actions: ["sns:Publish"],
+        resources: [feedback.topicArn],
+        principals: [new iam.ServicePrincipal("ses.amazonaws.com")],
+        conditions: {
+          StringEquals: {
+            "AWS:SourceAccount": this.account,
+            "AWS:SourceArn": identity.emailIdentityArn,
+          },
+        },
+      }),
+    );
+    if (!props.newMailIdentity) {
+      const settingsLogs = new logs.LogGroup(this, "MailSettingsLogs", {
+        retention: logs.RetentionDays.ONE_MONTH,
+        removalPolicy: RemovalPolicy.DESTROY,
+      });
+      let previous: Construct = identity;
+      for (const [id, action, parameters] of [
+        [
+          "MailBounceTopic",
+          "SetIdentityNotificationTopic",
+          { Identity: mailDomain, NotificationType: "Bounce", SnsTopic: feedback.topicArn },
+        ],
+        [
+          "MailComplaintTopic",
+          "SetIdentityNotificationTopic",
+          { Identity: mailDomain, NotificationType: "Complaint", SnsTopic: feedback.topicArn },
+        ],
+        [
+          "MailForwardingOff",
+          "SetIdentityFeedbackForwardingEnabled",
+          { Identity: mailDomain, ForwardingEnabled: false },
+        ],
+      ] as const) {
+        const call = {
+          service: "SES",
+          action,
+          parameters,
+          physicalResourceId: cr.PhysicalResourceId.of(id),
+        };
+        const setting = new cr.AwsCustomResource(this, id, {
+          onCreate: call,
+          onUpdate: call,
+          // These SES actions take no resource ARN in IAM, so only "*" matches them.
+          policy: cr.AwsCustomResourcePolicy.fromStatements([
+            new iam.PolicyStatement({ actions: [`ses:${action}`], resources: ["*"] }),
+          ]),
+          installLatestAwsSdk: false,
+          logGroup: settingsLogs,
+        });
+        setting.node.addDependency(previous, ...(policyDependable ? [policyDependable] : []));
+        previous = setting;
+      }
+    }
     new iam.User(this, "MailUser", { userName: "fidant-mail" }).addToPolicy(
       new iam.PolicyStatement({
         actions: ["ses:SendRawEmail"],

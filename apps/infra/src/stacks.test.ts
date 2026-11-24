@@ -45,8 +45,8 @@ function zoneRef(zoneName: string): { Ref: string } {
   return { Ref: id };
 }
 
-function stacksFor(currentAccount: string | undefined): Stack[] {
-  const app = new App();
+function stacksFor(currentAccount: string | undefined, context?: Record<string, string>): Stack[] {
+  const app = new App({ context });
   addStacks(app, {
     CDK_DEFAULT_ACCOUNT: currentAccount,
     FIDANT_DNS_ACCOUNT: dnsAccount,
@@ -619,8 +619,8 @@ const camelPorts = [
   { protocol: "udp", fromPort: 49152, toPort: 65535, cidrs: ["0.0.0.0/0"], ipv6Cidrs: ["::/0"] },
 ];
 
-function appBox(): Template {
-  const stack = stacksFor(pocAccount).find((child) => child.stackName === "FidantApp");
+function appBox(context?: Record<string, string>): Template {
+  const stack = stacksFor(pocAccount, context).find((child) => child.stackName === "FidantApp");
   return Template.fromStack(stack as Stack);
 }
 
@@ -645,7 +645,9 @@ function onlyId(box: Template, type: string): string {
 test("the relay cap checks the box's traffic every 5 minutes", () => {
   const box = appBox();
   const [instanceId] = Object.keys(box.findResources("AWS::Lightsail::Instance"));
-  const functions = Object.values(box.findResources("AWS::Lambda::Function"));
+  const functions = Object.entries(box.findResources("AWS::Lambda::Function"))
+    .filter(([id]) => id.startsWith("RelayCap"))
+    .map(([, fn]) => fn);
   assert.equal(functions.length, 1);
   const properties = functions[0]?.Properties;
   assert.equal(properties.Runtime, "nodejs24.x");
@@ -663,8 +665,8 @@ test("the relay cap checks the box's traffic every 5 minutes", () => {
 test("the relay cap may only read instance metrics, set the box's ports, and keep its state", () => {
   const box = appBox();
   const [instanceId] = Object.keys(box.findResources("AWS::Lightsail::Instance"));
-  const policies = Object.values(box.findResources("AWS::IAM::Policy")).filter(
-    (policy) => policy.Properties.Roles,
+  const policies = Object.values(box.findResources("AWS::IAM::Policy")).filter((policy) =>
+    policy.Properties.Roles?.[0].Ref.startsWith("RelayCap"),
   );
   assert.equal(policies.length, 1);
   const statements = policies[0]?.Properties.PolicyDocument.Statement;
@@ -749,13 +751,18 @@ test("the app sends mail as notify.fidant.se, with TLS required, no tracking and
   });
 });
 
-test("bounces and complaints go only to a topic nobody subscribes to", () => {
-  const box = appBox();
+function feedbackTopic(box: Template): string {
   const alerts = alertTopic(box);
   const feedback = Object.keys(box.findResources("AWS::SNS::Topic")).filter(
     (id) => id !== alerts.Ref,
   );
   assert.equal(feedback.length, 1);
+  return feedback[0] ?? "";
+}
+
+test("bounces and complaints go only to a topic nobody subscribes to", () => {
+  const box = appBox();
+  const feedback = feedbackTopic(box);
   const destinations = Object.values(
     box.findResources("AWS::SES::ConfigurationSetEventDestination"),
   ).map((destination) => destination.Properties);
@@ -765,10 +772,152 @@ test("bounces and complaints go only to a topic nobody subscribes to", () => {
       EventDestination: {
         Enabled: true,
         MatchingEventTypes: ["bounce", "complaint"],
-        SnsDestination: { TopicARN: { Ref: feedback[0] } },
+        SnsDestination: { TopicARN: { Ref: feedback } },
       },
     },
   ]);
+});
+
+test("SES may publish to the feedback topic only for the configuration set and the identity", () => {
+  const box = appBox();
+  const feedback = feedbackTopic(box);
+  const source = (resource: string, type: string) => ({
+    "Fn::Join": [
+      "",
+      [
+        "arn:",
+        { Ref: "AWS::Partition" },
+        `:ses:eu-north-1:${pocAccount}:${resource}/`,
+        { Ref: onlyId(box, type) },
+      ],
+    ],
+  });
+  const policy = box.findResources("AWS::SNS::TopicPolicy")[onlyId(box, "AWS::SNS::TopicPolicy")];
+  assert.deepEqual(policy?.Properties.Topics, [{ Ref: feedback }]);
+  assert.deepEqual(
+    policy?.Properties.PolicyDocument.Statement,
+    [
+      source("configuration-set", "AWS::SES::ConfigurationSet"),
+      source("identity", "AWS::SES::EmailIdentity"),
+    ].map((sourceArn, sid) => ({
+      Sid: String(sid),
+      Action: "sns:Publish",
+      Effect: "Allow",
+      Principal: { Service: "ses.amazonaws.com" },
+      Resource: { Ref: feedback },
+      Condition: { StringEquals: { "AWS:SourceAccount": pocAccount, "AWS:SourceArn": sourceArn } },
+    })),
+  );
+});
+
+function sdkCall(value: string | { "Fn::Join": [string, (string | { Ref: string })[]] }) {
+  const text =
+    typeof value === "string"
+      ? value
+      : value["Fn::Join"][1]
+          .map((part) => (typeof part === "string" ? part : `{Ref:${part.Ref}}`))
+          .join("");
+  return JSON.parse(text);
+}
+
+test("the identity sends bounces and complaints to the feedback topic, then stops forwarding them by email", () => {
+  const box = appBox();
+  const feedback = feedbackTopic(box);
+  const identity = onlyId(box, "AWS::SES::EmailIdentity");
+  const topicPolicy = onlyId(box, "AWS::SNS::TopicPolicy");
+  const settings = Object.entries(box.findResources("Custom::AWS"));
+  assert.deepEqual(
+    settings.map(([, setting]) => {
+      assert.deepEqual(setting.Properties.Update, setting.Properties.Create);
+      assert.equal(setting.Properties.Delete, undefined);
+      assert.equal(setting.Properties.InstallLatestAwsSdk, false);
+      return sdkCall(setting.Properties.Create);
+    }),
+    [
+      ...["Bounce", "Complaint"].map((type) => ({
+        service: "SES",
+        action: "SetIdentityNotificationTopic",
+        parameters: {
+          Identity: "notify.fidant.se",
+          NotificationType: type,
+          SnsTopic: `{Ref:${feedback}}`,
+        },
+        physicalResourceId: { id: `Mail${type}Topic` },
+      })),
+      {
+        service: "SES",
+        action: "SetIdentityFeedbackForwardingEnabled",
+        parameters: { Identity: "notify.fidant.se", ForwardingEnabled: false },
+        physicalResourceId: { id: "MailForwardingOff" },
+      },
+    ],
+  );
+  const ids = settings.map(([id]) => id);
+  for (const [index, [, setting]] of settings.entries()) {
+    for (const before of [index === 0 ? identity : ids[index - 1], topicPolicy]) {
+      assert.ok(setting.DependsOn.includes(before), `${ids[index]} after ${before}`);
+    }
+  }
+});
+
+test("the function behind those settings may only set notification topics and forwarding", () => {
+  const box = appBox();
+  const functions = Object.entries(box.findResources("AWS::Lambda::Function")).filter(
+    ([id]) => !id.startsWith("RelayCap"),
+  );
+  assert.equal(functions.length, 1);
+  const [functionId, fn] = functions[0] ?? [];
+  for (const [, setting] of Object.entries(box.findResources("Custom::AWS"))) {
+    assert.deepEqual(setting.Properties.ServiceToken, { "Fn::GetAtt": [functionId, "Arn"] });
+  }
+  const role = fn?.Properties.Role["Fn::GetAtt"][0];
+  assert.deepEqual(box.findResources("AWS::IAM::Role")[role]?.Properties.ManagedPolicyArns, [
+    {
+      "Fn::Join": [
+        "",
+        [
+          "arn:",
+          { Ref: "AWS::Partition" },
+          ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+        ],
+      ],
+    },
+  ]);
+  assert.deepEqual(
+    Object.values(box.findResources("AWS::IAM::Policy"))
+      .filter((policy) => policy.Properties.Roles?.[0].Ref === role)
+      .flatMap((policy) => policy.Properties.PolicyDocument.Statement),
+    [
+      "ses:SetIdentityNotificationTopic",
+      "ses:SetIdentityNotificationTopic",
+      "ses:SetIdentityFeedbackForwardingEnabled",
+    ].map((action) => ({ Action: action, Effect: "Allow", Resource: "*" })),
+  );
+  const logGroup = fn?.Properties.LoggingConfig.LogGroup.Ref;
+  assert.equal(box.findResources("AWS::Logs::LogGroup")[logGroup]?.Properties.RetentionInDays, 30);
+});
+
+test("a first deploy with newMailIdentity leaves out the settings an unverified identity refuses", () => {
+  const full = appBox();
+  const first = appBox({ newMailIdentity: "true" });
+  first.resourceCountIs("Custom::AWS", 0);
+  assert.deepEqual(
+    Object.keys(first.findResources("AWS::Lambda::Function")).filter(
+      (id) => !id.startsWith("RelayCap"),
+    ),
+    [],
+  );
+  for (const type of [
+    "AWS::Lightsail::Instance",
+    "AWS::SNS::TopicPolicy",
+    "AWS::SES::EmailIdentity",
+    "AWS::SES::ConfigurationSet",
+    "AWS::SES::ConfigurationSetEventDestination",
+  ]) {
+    assert.deepEqual(first.findResources(type), full.findResources(type), type);
+  }
+  assert.deepEqual(first.toJSON().Outputs, full.toJSON().Outputs);
+  appBox({ newMailIdentity: "false" }).resourceCountIs("Custom::AWS", 3);
 });
 
 test("the mail user may only send through the identity, and CDK gives it no key or password", () => {
