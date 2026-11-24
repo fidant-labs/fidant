@@ -118,10 +118,43 @@
 
 @theme {
   --animate-flow: flow 0.6s linear infinite;
+  --animate-art-arrive: art-arrive 0.7s ease-out both paused;
+  --animate-art-draw: art-draw 0.6s ease-out 0.5s both paused;
+  --animate-art-travel: art-travel 1.4s ease-in-out both paused;
+  --animate-art-relay: art-relay 2s ease-in-out both paused;
 
   @keyframes flow {
     to {
       background-position: 12px 0;
+    }
+  }
+
+  /* The /how drawings: paused until HowPage marks a drawing data-seen; the resting style is the last frame. */
+  @keyframes art-arrive {
+    from {
+      translate: var(--art-from);
+      opacity: 0;
+    }
+  }
+
+  @keyframes art-draw {
+    from {
+      stroke-dashoffset: 1;
+    }
+  }
+
+  @keyframes art-travel {
+    from {
+      translate: var(--art-from);
+    }
+  }
+
+  @keyframes art-relay {
+    from {
+      translate: var(--art-from);
+    }
+    50% {
+      translate: var(--art-via);
     }
   }
 }

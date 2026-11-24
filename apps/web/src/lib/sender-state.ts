@@ -21,7 +21,11 @@
 // | connecting, offered, receiving | dropped        | waiting    | refuse busy, close |
 // | connecting                     | timeout        | waiting    | refuse busy, close |
 // | connecting                     | left           | waiting    | close              |
+// | connecting, offered, receiving | path relay (1) | waiting    | refuse busy, close |
+// | (its attempt matches)          | path           | (same)     |                    |
 // | (not on the list)              | joined         | -          | refuse unknown     |
+//
+// (1) For the current attempt, when its `joined` said the sender refused the relay.
 //
 // Rules:
 // - A link is used only once the recipient's RECEIPT matches (delivered).
@@ -63,6 +67,18 @@
 //   a join from "waiting".
 // - Events that do not fit the current status (for example a late progress
 //   after a drop) are ignored, as are events for link IDs not on the list.
+// - `path` records how the current attempt's connection runs. It applies only
+//   to the attempt it names, so a path read late for an earlier attempt is
+//   ignored. Anything that resets the recipient clears it; delivery keeps it.
+// - Each attempt keeps the `turn` its `joined` carried: whether the sender
+//   allowed our relay when the server paired it. An attempt that ends while
+//   still connecting (dropped, timeout, left) under `turn` false returns to
+//   "waiting" with `noRelay`, because a refused relay is the likely reason it
+//   never connected. The next join clears it.
+// - A `relay` path for an active attempt under `turn` false ends that attempt
+//   like a timeout and sets `noRelay`. This is a best-effort backstop: an
+//   honest recipient gets no relay for such a send, and the server is the
+//   real enforcement.
 // - Removing a recipient is always allowed. If it was mid-transfer, the
 //   result includes a close effect.
 //
@@ -71,7 +87,12 @@
 // names never leave this module through an effect, so nothing built from
 // effects can send a name to the network.
 
-import { type IceServer, MAX_LINKS, type RefuseReason } from "@sigill/protocol";
+import {
+  type ConnectionPath,
+  type IceServer,
+  MAX_LINKS,
+  type RefuseReason,
+} from "@sigill/protocol";
 import type { Link } from "./link.ts";
 
 export type RecipientStatus =
@@ -93,6 +114,12 @@ export type Recipient = {
   readonly error?: string;
   /** The attempt ID of the join that started the current connection. */
   readonly attempt?: string;
+  /** How the current attempt's connection runs, once its data channel opened. */
+  readonly path?: Exclude<ConnectionPath, "failed">;
+  /** Whether the server's `joined` for the current attempt allowed our relay. */
+  readonly turn?: boolean;
+  /** The last attempt couldn't connect directly while the sender refused our relay. */
+  readonly noRelay?: true;
 };
 
 /** Recipients in the order they were added. Link IDs are unique. */
@@ -101,7 +128,7 @@ export type SenderState = { readonly recipients: readonly Recipient[] };
 export type SenderAction =
   | { type: "add"; link: Link; name: string }
   | { type: "remove"; linkId: string }
-  | { type: "joined"; linkId: string; attempt: string; iceServers: IceServer[] }
+  | { type: "joined"; linkId: string; attempt: string; iceServers: IceServer[]; turn: boolean }
   | { type: "channel-open"; linkId: string }
   | { type: "accepted"; linkId: string }
   | { type: "progress"; linkId: string; bytesSent: number }
@@ -109,7 +136,8 @@ export type SenderAction =
   | { type: "dropped"; linkId: string }
   | { type: "timeout"; linkId: string }
   | { type: "left"; linkId: string }
-  | { type: "declined"; linkId: string };
+  | { type: "declined"; linkId: string }
+  | { type: "path"; linkId: string; attempt: string; path: Exclude<ConnectionPath, "failed"> };
 
 export type SenderEffect =
   | { type: "start"; linkId: string; attempt: string; iceServers: IceServer[] }
@@ -179,7 +207,7 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
       return { state: { recipients }, effects };
     }
     case "joined": {
-      const { attempt, iceServers } = action;
+      const { attempt, iceServers, turn } = action;
       if (current.status === "delivered") {
         return { state, effects: [{ type: "refuse", linkId, attempt, reason: "used" }] };
       }
@@ -187,7 +215,7 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
         return { state, effects: [{ type: "refuse", linkId, attempt, reason: "busy" }] };
       }
       return {
-        state: replace(state, { ...reset(current, "connecting"), attempt }),
+        state: replace(state, { ...reset(current, "connecting"), attempt, turn }),
         effects: [{ type: "start", linkId, attempt, iceServers }],
       };
     }
@@ -223,22 +251,13 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
       if (action.type === "dropped" ? !isActive(current) : current.status !== "connecting") {
         return { state, effects: [] };
       }
-      return {
-        state: replace(state, reset(current, "waiting")),
-        effects: [
-          // An active recipient always has the attempt its join stored.
-          ...(current.attempt === undefined
-            ? []
-            : [{ type: "refuse", linkId, attempt: current.attempt, reason: "busy" } as const]),
-          { type: "close", linkId },
-        ],
-      };
+      return end(state, current, current.status === "connecting");
     case "left":
       if (current.status !== "connecting") {
         return { state, effects: [] };
       }
       return {
-        state: replace(state, reset(current, "waiting")),
+        state: replace(state, waiting(current, true)),
         effects: [{ type: "close", linkId }],
       };
     case "declined":
@@ -249,12 +268,48 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
         state: replace(state, reset(current, "declined")),
         effects: [{ type: "close", linkId }],
       };
+    case "path":
+      if (current.attempt !== action.attempt) {
+        return { state, effects: [] };
+      }
+      if (action.path === "relay" && current.turn === false && isActive(current)) {
+        return end(state, current, true);
+      }
+      return { state: replace(state, { ...current, path: action.path }), effects: [] };
   }
 }
 
-/** The recipient with a new status, no progress, no error and no attempt. */
+/** Ends the current attempt: back to waiting, its joiner refused and its connection closed. */
+function end(state: SenderState, current: Recipient, blocked: boolean): SenderUpdate {
+  const { linkId, attempt } = current;
+  return {
+    state: replace(state, waiting(current, blocked)),
+    effects: [
+      // An active recipient always has the attempt its join stored.
+      ...(attempt === undefined
+        ? []
+        : [{ type: "refuse", linkId, attempt, reason: "busy" } as const]),
+      { type: "close", linkId },
+    ],
+  };
+}
+
+/** Back to waiting, with `noRelay` if the attempt was `blocked` while the sender refused our relay. */
+function waiting(recipient: Recipient, blocked: boolean): Recipient {
+  const next = reset(recipient, "waiting");
+  return blocked && recipient.turn === false ? { ...next, noRelay: true } : next;
+}
+
+/** The recipient with a new status, no progress, error, attempt, path, relay choice or noRelay. */
 function reset(recipient: Recipient, status: RecipientStatus): Recipient {
-  const { error: _error, attempt: _attempt, ...rest } = recipient;
+  const {
+    error: _error,
+    attempt: _attempt,
+    path: _path,
+    turn: _turn,
+    noRelay: _noRelay,
+    ...rest
+  } = recipient;
   return { ...rest, status, bytesSent: 0 };
 }
 

@@ -129,6 +129,7 @@ cat >/etc/caddy/Caddyfile <<'EOF'
 
 @DOMAIN@ {
 	import hsts
+	encode zstd gzip
 	reverse_proxy https://127.0.0.1:8443 {
 		transport http {
 			tls_insecure_skip_verify

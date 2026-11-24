@@ -3,13 +3,11 @@
 
 import { buttonVariants } from "#components/ui/button";
 import { useI18n } from "../i18n/I18n.tsx";
-import { Icon, Link } from "../ui.tsx";
+import { display, Icon, Link } from "../ui.tsx";
 
 // Made-up, but the real shape: a 16-byte link ID and a 32-byte secret, both base64url (lib/link.ts).
 const EXAMPLE_ID = "q7Hc2mXa9pLr0VbN3tYw8g";
 const EXAMPLE_KEY = "Zt4kP0x9QmR2sV7bN1cL8hJ5wE3yA6uD0fG4iK2oT9c"; // gitleaks:allow (made up, see above)
-
-const display = "font-display font-normal tracking-tight";
 
 /** A real-shaped recipient link, split into what the server sees and what it never gets. */
 function LinkAnatomy() {
@@ -70,7 +68,7 @@ export function LandingPage() {
         <Link href="/send" class={`${buttonVariants({ size: "lg" })} h-12 gap-2 px-6 text-base`}>
           {l.cta} <Icon name="arrow" class="size-4" />
         </Link>
-        <Link href="/privacy" class="rounded-sm font-medium underline underline-offset-4">
+        <Link href="/how" class="rounded-sm font-medium underline underline-offset-4">
           {l.how}
         </Link>
       </div>
