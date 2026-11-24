@@ -78,7 +78,9 @@ export async function startServer(
   try {
     const port = await waitForPort(child, stderrTail);
     child.once("exit", onUnexpectedExit);
-    return { name: "server", url: `https://${wrapper?.host ?? "localhost"}:${port}`, port, stop };
+    // The origin, so port 443 drops out of the URL as it does in the browser's.
+    const url = new URL(`https://${wrapper?.host ?? "localhost"}:${port}`).origin;
+    return { name: "server", url, port, stop };
   } catch (error) {
     await stop();
     const tail = stderrTail.length > 0 ? stderrTail.join("\n") : "(no stderr output)";

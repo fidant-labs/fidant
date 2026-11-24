@@ -187,6 +187,10 @@ export const dockerServer: Service = {
           serverIp,
           "--user",
           user,
+          // On 443, the one port the tcp-443 router mode lets out. Namespaced, so the server can
+          // bind it without root.
+          "--sysctl",
+          "net.ipv4.ip_unprivileged_port_start=0",
           "-v",
           `${repo}:${repo}:ro`,
           "-v",
@@ -196,7 +200,7 @@ export const dockerServer: Service = {
           "-w",
           repo,
           "-e",
-          "PORT",
+          "PORT=443",
           "-e",
           "CERT_DIR",
           "-e",
