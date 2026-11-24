@@ -7,9 +7,19 @@
 // never reuses a (file key, nonce) pair.
 //
 // Sealed signal = base64url(iv(12 random) || AES-GCM ciphertext with 16-byte tag)
-// over the UTF-8 JSON payload, AAD "sigill/v1/signal|<linkId>|<dir>". The
-// direction in the AAD stops the server from reflecting a message back to the
-// side that sent it.
+// over the UTF-8 JSON payload, AAD "sigill/v1/signal|<linkId>|<attempt>|<dir>".
+// The direction in the AAD stops the server from reflecting a message back to
+// the side that sent it. The attempt is the recipient's random ID for one join
+// (fresh per page load and per "Try again"), so the server cannot replay
+// signals recorded in one attempt into another: an old offer sealed for an
+// earlier attempt does not open in the recipient's current one.
+//
+// Accepted residue: the sender learns the attempt from the server's `joined`,
+// so a server that lies about it can tell the sender an old attempt ID and
+// replay that attempt's recorded recipient signals. That breaks only this one
+// attempt. It can do no more, because the replayed answer carries the DTLS
+// fingerprint of a connection that is already closed, so no data channel opens,
+// and simply dropping messages has the same effect.
 
 import { isLinkId, MAX_RELAY_DATA } from "@sigill/protocol";
 import { decodeBase64url, encodeBase64url } from "./base64url.ts";
@@ -64,14 +74,15 @@ export function createTransferId(): Uint8Array<ArrayBuffer> {
   return crypto.getRandomValues(new Uint8Array(TRANSFER_ID_BYTES));
 }
 
-function signalAad(linkId: string, dir: Direction): Uint8Array<ArrayBuffer> {
-  return encoder.encode(`sigill/v1/signal|${linkId}|${dir}`);
+function signalAad(linkId: string, attempt: string, dir: Direction): Uint8Array<ArrayBuffer> {
+  return encoder.encode(`sigill/v1/signal|${linkId}|${attempt}|${dir}`);
 }
 
 /** Encrypts a JSON-serialisable payload into a relay `data` string. */
 export async function sealSignal(
   key: CryptoKey,
   linkId: string,
+  attempt: string,
   dir: Direction,
   payload: unknown,
 ): Promise<string> {
@@ -87,7 +98,12 @@ export async function sealSignal(
   }
   const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
   const ciphertext = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv, additionalData: signalAad(linkId, dir), tagLength: TAG_BYTES * 8 },
+    {
+      name: "AES-GCM",
+      iv,
+      additionalData: signalAad(linkId, attempt, dir),
+      tagLength: TAG_BYTES * 8,
+    },
     key,
     plaintext,
   );
@@ -100,11 +116,12 @@ export async function sealSignal(
 /**
  * Decrypts a relay `data` string sealed by the other side. `dir` is the side
  * that sealed it. Throws if the data is malformed, tampered with, sealed for
- * another link or direction, or sealed with another key.
+ * another link, attempt or direction, or sealed with another key.
  */
 export async function openSignal(
   key: CryptoKey,
   linkId: string,
+  attempt: string,
   dir: Direction,
   data: string,
 ): Promise<unknown> {
@@ -116,7 +133,7 @@ export async function openSignal(
     {
       name: "AES-GCM",
       iv: sealed.subarray(0, IV_BYTES),
-      additionalData: signalAad(linkId, dir),
+      additionalData: signalAad(linkId, attempt, dir),
       tagLength: TAG_BYTES * 8,
     },
     key,

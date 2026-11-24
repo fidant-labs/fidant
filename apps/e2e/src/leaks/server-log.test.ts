@@ -27,6 +27,7 @@ test("passes the lines the server writes", () => {
   const lines = [
     line({ event: "listening", port: 8443 }),
     line({ event: "upgrade-rejected", reason: "origin" }),
+    line({ event: "rate-limited" }),
     line({ event: "host", links: 3 }),
     line({ event: "joined", link: "aZ09_-" }),
     line({ event: "refused", link: "abcdef", reason: "busy" }),
@@ -97,7 +98,7 @@ test("fails counts that are not non-negative integers", () => {
 });
 
 test("fails an unknown reason or code", () => {
-  assert.deepEqual(rules(line({ event: "refused", reason: "full" })), ["reason"]);
+  assert.deepEqual(rules(line({ event: "refused", reason: "gone" })), ["reason"]);
   assert.deepEqual(rules(line({ event: "error", code: "oops" })), ["code"]);
   assert.deepEqual(rules(line({ event: "error", code: null })), ["code"]);
 });

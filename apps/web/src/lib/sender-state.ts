@@ -48,6 +48,11 @@
 //   failed attempt, not as "in use" (see ReceivePage). If the joiner already
 //   left, the server ignores the refusal. `left` needs no refusal: the joiner
 //   is gone.
+// - Every join carries the recipient's attempt ID, and every refusal names the
+//   attempt it refuses. A join is refused with its own attempt; `dropped` and
+//   `timeout` refuse the attempt stored when the recipient started
+//   connecting. The server ignores a refusal whose attempt is not the bound
+//   joiner's, so a late drop of one attempt cannot turn away the next joiner.
 // - A drop before delivery returns the recipient to "waiting" with bytesSent
 //   0. There is no resume: the next join starts over.
 // - A decline marks the recipient "declined", so the sender sees the link was
@@ -61,11 +66,12 @@
 // - Removing a recipient is always allowed. If it was mid-transfer, the
 //   result includes a close effect.
 //
-// Effects carry only link IDs and refusal reasons. Recipient names never
-// leave this module through an effect, so nothing built from effects can
-// send a name to the network.
+// Effects carry only link IDs, attempt IDs, refusal reasons and the ICE servers from the
+// server's `joined`. Recipient
+// names never leave this module through an effect, so nothing built from
+// effects can send a name to the network.
 
-import { MAX_LINKS, type RefuseReason } from "@sigill/protocol";
+import { type IceServer, MAX_LINKS, type RefuseReason } from "@sigill/protocol";
 import type { Link } from "./link.ts";
 
 export type RecipientStatus =
@@ -85,6 +91,8 @@ export type Recipient = {
   readonly status: RecipientStatus;
   readonly bytesSent: number;
   readonly error?: string;
+  /** The attempt ID of the join that started the current connection. */
+  readonly attempt?: string;
 };
 
 /** Recipients in the order they were added. Link IDs are unique. */
@@ -93,7 +101,7 @@ export type SenderState = { readonly recipients: readonly Recipient[] };
 export type SenderAction =
   | { type: "add"; link: Link; name: string }
   | { type: "remove"; linkId: string }
-  | { type: "joined"; linkId: string }
+  | { type: "joined"; linkId: string; attempt: string; iceServers: IceServer[] }
   | { type: "channel-open"; linkId: string }
   | { type: "accepted"; linkId: string }
   | { type: "progress"; linkId: string; bytesSent: number }
@@ -104,8 +112,8 @@ export type SenderAction =
   | { type: "declined"; linkId: string };
 
 export type SenderEffect =
-  | { type: "start"; linkId: string }
-  | { type: "refuse"; linkId: string; reason: RefuseReason }
+  | { type: "start"; linkId: string; attempt: string; iceServers: IceServer[] }
+  | { type: "refuse"; linkId: string; attempt: string; reason: RefuseReason }
   | { type: "close"; linkId: string };
 
 export type SenderUpdate = { state: SenderState; effects: SenderEffect[] };
@@ -158,7 +166,9 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
   const current = findRecipient(state, linkId);
   if (!current) {
     const effects: SenderEffect[] =
-      action.type === "joined" ? [{ type: "refuse", linkId, reason: "unknown" }] : [];
+      action.type === "joined"
+        ? [{ type: "refuse", linkId, attempt: action.attempt, reason: "unknown" }]
+        : [];
     return { state, effects };
   }
 
@@ -168,17 +178,19 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
       const effects: SenderEffect[] = isActive(current) ? [{ type: "close", linkId }] : [];
       return { state: { recipients }, effects };
     }
-    case "joined":
+    case "joined": {
+      const { attempt, iceServers } = action;
       if (current.status === "delivered") {
-        return { state, effects: [{ type: "refuse", linkId, reason: "used" }] };
+        return { state, effects: [{ type: "refuse", linkId, attempt, reason: "used" }] };
       }
       if (isActive(current)) {
-        return { state, effects: [{ type: "refuse", linkId, reason: "busy" }] };
+        return { state, effects: [{ type: "refuse", linkId, attempt, reason: "busy" }] };
       }
       return {
-        state: replace(state, reset(current, "connecting")),
-        effects: [{ type: "start", linkId }],
+        state: replace(state, { ...reset(current, "connecting"), attempt }),
+        effects: [{ type: "start", linkId, attempt, iceServers }],
       };
+    }
     case "channel-open":
       if (current.status !== "connecting") {
         return { state, effects: [] };
@@ -214,7 +226,10 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
       return {
         state: replace(state, reset(current, "waiting")),
         effects: [
-          { type: "refuse", linkId, reason: "busy" },
+          // An active recipient always has the attempt its join stored.
+          ...(current.attempt === undefined
+            ? []
+            : [{ type: "refuse", linkId, attempt: current.attempt, reason: "busy" } as const]),
           { type: "close", linkId },
         ],
       };
@@ -237,9 +252,9 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
   }
 }
 
-/** The recipient with a new status, no progress and no error. */
+/** The recipient with a new status, no progress, no error and no attempt. */
 function reset(recipient: Recipient, status: RecipientStatus): Recipient {
-  const { error: _error, ...rest } = recipient;
+  const { error: _error, attempt: _attempt, ...rest } = recipient;
   return { ...rest, status, bytesSent: 0 };
 }
 

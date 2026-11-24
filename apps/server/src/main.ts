@@ -3,6 +3,7 @@ import type { AddressInfo } from "node:net";
 import { networkInterfaces } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseIceServers } from "@sigill/protocol";
 import { startServer } from "./server.ts";
 import type { Logger } from "./signaling.ts";
 import type { IceConfig } from "./turn.ts";
@@ -37,6 +38,11 @@ if (turnUrls || turnSecretFile) {
     .filter(Boolean);
   if (!secret || urls.length === 0) {
     console.error("TURN_URLS and the file named by TURN_SECRET_FILE must not be empty.");
+    process.exit(1);
+  }
+  // The same check browsers apply to `joined`, so a bad URL fails here, not in every pairing.
+  if (!parseIceServers([{ urls, username: "", credential: "" }])) {
+    console.error("TURN_URLS must be 1 to 4 turn:, turns: or stun: URLs.");
     process.exit(1);
   }
   ice = { urls, secret };

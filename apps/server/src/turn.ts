@@ -1,9 +1,14 @@
 import { createHmac } from "node:crypto";
-import type { IncomingMessage, ServerResponse } from "node:http";
+import type { IceServer } from "@sigill/protocol";
 
 export type IceConfig = { urls: string[]; secret: string };
 
-const ttlSeconds = 12 * 60 * 60;
+// Credentials go only to paired sockets, minted per pairing. The expiry only
+// limits starting a relay: coturn 4.19 kept a relayed connection alive, and
+// accepted its refreshes, 11 minutes after the username had expired (tested
+// with a 20 s credential). So a few minutes to allocate is enough, and a
+// leaked credential is useless soon after.
+const ttlSeconds = 5 * 60;
 
 // The TURN REST API scheme that coturn checks with --use-auth-secret: the
 // username is the expiry time, the credential is HMAC-SHA1 of it under the
@@ -17,18 +22,7 @@ export function turnCredentials(
   return { username, credential };
 }
 
-export function serveIceServers(ice: IceConfig | undefined, headers: Record<string, string>) {
-  return (req: IncomingMessage, res: ServerResponse): void => {
-    if (req.method !== "GET") {
-      res.writeHead(405, { allow: "GET", ...headers }).end();
-      return;
-    }
-    const iceServers = ice ? [{ urls: ice.urls, ...turnCredentials(ice.secret, Date.now()) }] : [];
-    res.writeHead(200, {
-      "content-type": "application/json",
-      "cache-control": "no-store",
-      ...headers,
-    });
-    res.end(JSON.stringify({ iceServers }));
-  };
+/** The ICE servers for one pairing: none without TURN, else TURN with fresh credentials. */
+export function iceServersFor(ice: IceConfig | undefined, nowMs: number): IceServer[] {
+  return ice ? [{ urls: ice.urls, ...turnCredentials(ice.secret, nowMs) }] : [];
 }

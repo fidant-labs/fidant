@@ -53,6 +53,7 @@ export const serverLogAllowlist: LogAllowlist = {
     "listening",
     "upgrade-rejected",
     "bad-message",
+    "rate-limited",
     "error",
     "host",
     "host-gone",

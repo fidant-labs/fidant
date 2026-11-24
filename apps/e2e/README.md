@@ -11,7 +11,7 @@ pnpm e2e                                                    # from the repositor
 
 `pnpm e2e` builds the web client, starts coturn and the server on free ports, runs the specs in `tests/` and stops both. `pnpm check` does not run it.
 
-coturn is the TURN relay (`brew install coturn` on macOS, the `coturn` package on Linux). It listens on 127.0.0.1 only, with a secret made for the run, and the server gets `TURN_URLS` and `TURN_SECRET_FILE` so `/ice-servers` hands out credentials for it. Without `turnserver` on PATH the stack starts without it and `/ice-servers` returns no servers; with `CI` set, that fails the run instead. Global setup sets `SIGILL_E2E_TURN_URLS` only when coturn runs, so a spec that needs the relay can skip on it.
+coturn is the TURN relay (`brew install coturn` on macOS, the `coturn` package on Linux). It listens on 127.0.0.1 only, with a secret made for the run, and the server gets `TURN_URLS` and `TURN_SECRET_FILE` so the `joined` signaling message hands each paired browser credentials for it. Without `turnserver` on PATH the stack starts without it and `joined` carries no ICE servers; with `CI` set, that fails the run instead. Global setup sets `SIGILL_E2E_TURN_URLS` only when coturn runs, so a spec that needs the relay can skip on it.
 
 ## Writing a test
 

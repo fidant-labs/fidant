@@ -3,16 +3,18 @@
 //
 // Message flow for one link:
 //
-//   recipient → server   join {link}
-//   server → sender      joined {link}            (sender: createSenderPeer)
+//   recipient → server   join {link, attempt}
+//   server → recipient   joined {link, attempt, iceServers}   (recipient: createRecipientPeer)
+//   server → sender      joined {link, attempt, iceServers}   (sender: createSenderPeer)
 //   sender → recipient   relay seal_s({kind:"offer", sdp})
 //   recipient → sender   relay seal_r({kind:"answer", sdp})
 //   both directions      relay seal({kind:"ice", candidate})   (trickle; null = end)
 //   sender ⇄ recipient   data channel "sigill" opens → onOpen(channel, info)
 //
 // seal_s/seal_r are sealSignal with direction "s"/"r"; the receiving side opens
-// with the other side's direction, so the server cannot reflect a message back
-// or swap one link's signals into another. The server only sees link IDs and
+// with the other side's direction, so the server cannot reflect a message back,
+// swap one link's signals into another, or replay one attempt's signals into
+// another (the attempt ID is in the AAD too; see keys.ts). The server only sees link IDs and
 // opaque blobs: no SDP, no candidates, no DTLS fingerprints.
 //
 // Outgoing signals are sealed and sent in order through one queue; incoming
@@ -36,9 +38,6 @@ export const DEFAULT_MAX_MESSAGE_SIZE = 65536;
 
 /** How long to wait before reading a "stun" path again (see readPath). */
 const PATH_RECHECK_MS = 1000;
-
-/** How long to wait for /ice-servers before going on without a relay. */
-const ICE_FETCH_TIMEOUT_MS = 5000;
 
 export type PeerCloseReason =
   /** The data channel closed (the other side went away or closed it). */
@@ -68,9 +67,11 @@ export type PeerOptions = {
   /** Only `send` is used, so a fake works in place of a SignalingClient. */
   signaling: { send(message: ClientMessage): boolean };
   linkId: string;
+  /** The recipient's attempt ID from its join; bound into every sealed signal. */
+  attempt: string;
   /** From deriveSignalKey(secret, linkId). */
   signalKey: CryptoKey;
-  /** From fetchIceServers(), fresh for each peer: TURN credentials expire. */
+  /** From this pairing's `joined`, fresh for each peer: TURN credentials expire. */
   iceServers: RTCIceServer[];
   /** The channel is open, ordered, reliable, binaryType "arraybuffer". */
   onOpen(channel: RTCDataChannel, info: PeerOpenInfo): void;
@@ -225,59 +226,6 @@ export function connectionPath(
   return "direct";
 }
 
-/** The `iceServers` of a /ice-servers response, or undefined if it has the wrong shape. */
-export function parseIceServers(value: unknown): RTCIceServer[] | undefined {
-  if (typeof value !== "object" || value === null) {
-    return undefined;
-  }
-  const list = (value as { iceServers?: unknown }).iceServers;
-  if (!Array.isArray(list)) {
-    return undefined;
-  }
-  const servers: RTCIceServer[] = [];
-  for (const entry of list) {
-    if (typeof entry !== "object" || entry === null) {
-      return undefined;
-    }
-    const { urls, username, credential } = entry as Record<string, unknown>;
-    const validUrls =
-      typeof urls === "string" ||
-      (Array.isArray(urls) && urls.length > 0 && urls.every((u) => typeof u === "string"));
-    if (
-      !validUrls ||
-      (username !== undefined && typeof username !== "string") ||
-      (credential !== undefined && typeof credential !== "string")
-    ) {
-      return undefined;
-    }
-    const server: RTCIceServer = { urls: urls as string | string[] };
-    if (username !== undefined) {
-      server.username = username as string;
-    }
-    if (credential !== undefined) {
-      server.credential = credential as string;
-    }
-    servers.push(server);
-  }
-  return servers;
-}
-
-/**
- * Fetches ICE servers from the app server. Never rejects: on any error or bad
- * response it returns [], and browsers on one network still connect directly.
- */
-export async function fetchIceServers(): Promise<RTCIceServer[]> {
-  try {
-    const response = await fetch("/ice-servers", {
-      cache: "no-store",
-      signal: AbortSignal.timeout(ICE_FETCH_TIMEOUT_MS),
-    });
-    return (response.ok && parseIceServers(await response.json())) || [];
-  } catch {
-    return [];
-  }
-}
-
 class PeerError extends Error {
   readonly reason: PeerCloseReason;
   constructor(reason: PeerCloseReason, message: string) {
@@ -296,7 +244,7 @@ function toCandidate(candidate: RTCIceCandidate): SignalCandidate {
 }
 
 function startPeer(options: PeerOptions, side: Direction): Peer {
-  const { signaling, linkId, signalKey } = options;
+  const { signaling, linkId, attempt, signalKey } = options;
   const other: Direction = side === "s" ? "r" : "s";
 
   // Host candidates are enough on one network. The app server may add a TURN
@@ -352,7 +300,7 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
         return;
       }
       try {
-        const data = await sealSignal(signalKey, linkId, side, payload);
+        const data = await sealSignal(signalKey, linkId, attempt, side, payload);
         if (closed) {
           return;
         }
@@ -488,7 +436,7 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
         }
         let payload: SignalPayload | undefined;
         try {
-          payload = parseSignalPayload(await openSignal(signalKey, linkId, other, data));
+          payload = parseSignalPayload(await openSignal(signalKey, linkId, attempt, other, data));
         } catch {
           payload = undefined;
         }
