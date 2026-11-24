@@ -184,7 +184,7 @@ test("no server panel string names a file for a secret", () => {
   const sender = { online: true, links: 2, connected: 1, relay: true, kind: "secret" } as const;
   const strings = [
     [/\bfiles?\b/i, en.server],
-    [/\bfil(en|er|erna)?\b/i, sv.server],
+    [/fil/i, sv.server],
   ] as const;
   for (const [pattern, s] of strings) {
     for (const text of [
@@ -206,5 +206,25 @@ test("no server panel string names a file for a secret", () => {
     ]) {
       assert.doesNotMatch(text, pattern);
     }
+  }
+});
+
+test("Swedish relay wording agrees with the kind", () => {
+  const relayed = {
+    file: "Inget. Webbläsarna kunde inte ansluta direkt, så filen går krypterad via vårt relä i stället.",
+    secret:
+      "Inget. Webbläsarna kunde inte ansluta direkt, så hemligheten går krypterad via vårt relä i stället.",
+    unknown:
+      "Inget. Webbläsarna kunde inte ansluta direkt, så det som delas går krypterat via vårt relä i stället.",
+  } as const;
+  const keeps = {
+    file: "Ingenting av filen när den har passerat.",
+    secret: "Ingenting av hemligheten när den har passerat.",
+    unknown: "Ingenting av det som delas när det har passerat.",
+  } as const;
+  const tail = " Loggrader som sparas när vi felsöker eller stoppar missbruk raderas inom 7 dagar.";
+  for (const kind of ["file", "secret", "unknown"] as const) {
+    assert.equal(sv.server.fileDataRelayed(kind), relayed[kind]);
+    assert.equal(sv.server.relayKeeps(kind), keeps[kind] + tail);
   }
 });
