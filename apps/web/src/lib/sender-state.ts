@@ -21,6 +21,7 @@
 // | connecting, offered, receiving | dropped        | waiting    | refuse drop, close |
 // | connecting                     | timeout        | waiting    | refuse drop, close |
 // | connecting                     | left           | waiting    | close              |
+// | connecting                     | server-lost    | waiting    | close              |
 // | connecting, offered, receiving | path relay (1) | waiting    | refuse drop, close |
 // | (its attempt matches)          | path           | (same)     |                    |
 // | (not on the list)              | joined         | -          | refuse unknown     |
@@ -52,6 +53,9 @@
 //   transfer is in progress; the server also sends it for a second joiner.
 //   If the joiner already left, the server ignores the refusal. `left` needs
 //   no refusal: the joiner is gone.
+// - `server-lost` (our own signaling socket dropped) does the same for every
+//   connecting recipient, since the server forgot their joins with the socket.
+//   Unlike `left` it never sets `noRelay`: the server dropped, not the relay.
 // - Every join carries the recipient's attempt ID, and every refusal names the
 //   attempt it refuses. A join is refused with its own attempt; `dropped` and
 //   `timeout` refuse the attempt stored when the recipient started
@@ -132,6 +136,7 @@ export type SenderAction =
   | { type: "dropped"; linkId: string }
   | { type: "timeout"; linkId: string }
   | { type: "left"; linkId: string }
+  | { type: "server-lost" }
   | { type: "declined"; linkId: string }
   | { type: "path"; linkId: string; attempt: string; path: OpenPath };
 
@@ -194,6 +199,17 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
       bytesSent: 0,
     };
     return { state: { recipients: [...state.recipients, recipient] }, effects: [] };
+  }
+  if (action.type === "server-lost") {
+    const effects: SenderEffect[] = [];
+    const recipients = state.recipients.map((r) => {
+      if (r.status !== "connecting") {
+        return r;
+      }
+      effects.push({ type: "close", linkId: r.linkId });
+      return waiting(r, false);
+    });
+    return { state: effects.length ? { recipients } : state, effects };
   }
 
   const { linkId } = action;

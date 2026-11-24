@@ -7,7 +7,8 @@
 //   list after every add or remove, every change of the relay checkbox and
 //   every reconnect, and again REHOST_AFTER_MS after `already-hosted` while
 //   the server still holds the old socket. When the socket drops, recipients
-//   still connecting go back to waiting; the page says the server is gone
+//   still connecting go back to waiting (reducer `server-lost`, which never
+//   blames the relay); the page says the server is gone
 //   only after LOST_AFTER_MS without it.
 // - Server `joined` → reducer `joined`, whose `start` effect derives the
 //   link's signal key and creates a sender peer with the ICE servers from
@@ -291,11 +292,7 @@ export function SendPage() {
         return;
       }
       // The server forgot these joins with the socket; the recipients will join again.
-      for (const recipient of senderRef.current.recipients) {
-        if (recipient.status === "connecting") {
-          dispatch({ type: "left", linkId: recipient.linkId });
-        }
-      }
+      dispatch({ type: "server-lost" });
       // Short drops (a server restart) reconnect quietly.
       lost ??= setTimeout(() => setLostServer(true), LOST_AFTER_MS);
     });

@@ -7,9 +7,11 @@
 //
 // When the socket closes, or a connection attempt fails, onClose listeners
 // learn why and the client opens a new socket after retryDelay, until close()
-// is called. Listeners stay registered across reconnects. onOpen fires on
-// every open: the page re-sends host/join there, since it knows them and this
-// wrapper does not.
+// is called. The wait grows with each socket that failed or closed within
+// STABLE_MS of opening, and resets after one that stayed open longer.
+// Listeners stay registered across reconnects. onOpen fires on every open:
+// the page re-sends host/join there, since it knows them and this wrapper
+// does not.
 
 import { type ClientMessage, parseServerMessage, type ServerMessage } from "@sigill/protocol";
 
@@ -38,8 +40,10 @@ export function defaultSignalingUrl(): string {
   return `wss://${location.host}/signal`;
 }
 
-export const RETRY_BASE_MS = 1000;
+const RETRY_BASE_MS = 1000;
 export const RETRY_MAX_MS = 30_000;
+// A socket that stayed open this long was healthy; a faster close counts as a failure.
+const STABLE_MS = 10_000;
 
 /** A random wait up to min(30 s, 1 s × 2^failures), so clients don't reconnect in step. */
 export function retryDelay(failures: number, random = Math.random): number {
@@ -71,11 +75,10 @@ export function connectSignaling({
 
   const open = (): WebSocket => {
     const next = new WebSocket(url);
-    let opened = false;
+    let openedAt: number | undefined;
 
     next.addEventListener("open", () => {
-      opened = true;
-      failures = 0;
+      openedAt = Date.now();
       for (const listener of [...openListeners]) {
         listener();
       }
@@ -104,12 +107,14 @@ export function connectSignaling({
         clearListeners();
         return;
       }
-      retry = setTimeout(
-        () => {
-          socket = open();
-        },
-        retryDelay(opened ? 0 : ++failures),
-      );
+      if (openedAt !== undefined && Date.now() - openedAt >= STABLE_MS) {
+        failures = 0;
+      } else {
+        failures++;
+      }
+      retry = setTimeout(() => {
+        socket = open();
+      }, retryDelay(failures));
     });
 
     return next;
