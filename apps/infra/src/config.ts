@@ -39,6 +39,19 @@ export const mail: Mail = {
       value:
         "protonmail3.domainkey.dhkoy2kpqzgitcjo5lp2rla56inbsysez2ptt23kic7qovs46e27q.domains.proton.ch.",
     },
+    // Copied by hand from the Dkim outputs of FidantApp.
+    {
+      name: "34qpeb7n2xavgzsxnenyhgkjd5kt75c5._domainkey.notify",
+      value: "34qpeb7n2xavgzsxnenyhgkjd5kt75c5.dkim.amazonses.com.",
+    },
+    {
+      name: "efohmshcde4wtw42tjq3dvuvknf2cozj._domainkey.notify",
+      value: "efohmshcde4wtw42tjq3dvuvknf2cozj.dkim.amazonses.com.",
+    },
+    {
+      name: "em3mbshffy5n5xqfhm4q2hgtdlfzd5ia._domainkey.notify",
+      value: "em3mbshffy5n5xqfhm4q2hgtdlfzd5ia.dkim.amazonses.com.",
+    },
   ],
   dmarc: "v=DMARC1; p=reject",
 };

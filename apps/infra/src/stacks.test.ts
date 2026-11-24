@@ -276,6 +276,19 @@ test("the app box runs coturn after the site is up, with a secret that stays on 
   ]);
 });
 
+test("the committed config signs notify.fidant.se's SES mail with three DKIM keys", () => {
+  const dkim = Object.values(committed.findResources(recordSet)).filter((r) =>
+    String(r.Properties.Name).endsWith("._domainkey.notify.fidant.se."),
+  );
+  assert.equal(dkim.length, 3);
+  for (const record of dkim) {
+    assert.equal(record.Properties.Type, "CNAME");
+    const [token] = String(record.Properties.Name).split(".");
+    assert.match(token ?? "", /^[a-z0-9]{32}$/);
+    assert.deepEqual(record.Properties.ResourceRecords, [`${token}.dkim.amazonses.com.`]);
+  }
+});
+
 test("the committed config keeps fidant.se's Proton mail records", () => {
   for (const value of [
     '^"protonmail-verification=[0-9a-f]{40}"$',
