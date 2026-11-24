@@ -158,9 +158,6 @@ export function ReceivePage() {
     const current = () => attemptRef.current === attempt && !attempt.ended;
     const lostMessage = () => peerLostProblem(attempt);
     const offlineMessage = () => (attempt.receiving ? "offlineReceiving" : "offline");
-    // Before the channel opens, a refused relay is the likely reason the browsers never connected.
-    const unopened = (problem: ProblemKey): ProblemKey =>
-      attempt.relayRefused && !attempt.channelOpen ? "noRelay" : problem;
     const finish = (next: View, linger = false) => {
       if (!current()) {
         return;
@@ -181,17 +178,14 @@ export function ReceivePage() {
       }
       attempt.abort.abort(new Error("connection lost"));
       attempt.timers.push(
-        setTimeout(
-          () => finish({ s: "failed", problem: unopened(lostMessage()) }),
-          HOST_GONE_GRACE_MS,
-        ),
+        setTimeout(() => finish({ s: "failed", problem: lostMessage() }), HOST_GONE_GRACE_MS),
       );
     };
     // Without it, a sender whose signals never arrive leaves "Connecting…" up for good.
     attempt.timers.push(
       setTimeout(() => {
         if (!attempt.channelOpen) {
-          finish({ s: "failed", problem: attempt.peer ? unopened("connect") : "server" });
+          finish({ s: "failed", problem: attempt.peer ? lostMessage() : "server" });
         }
       }, CONNECT_TIMEOUT_MS),
     );
@@ -257,7 +251,7 @@ export function ReceivePage() {
           // on this attempt (its peer failed or never connected), not that the
           // link is in use or used: the sender only signals a join it took.
           if (attempt.heardSender) {
-            finish({ s: "failed", problem: unopened(lostMessage()) });
+            finish({ s: "failed", problem: lostMessage() });
           } else {
             finish({ s: "refused", problem: message.reason });
           }
