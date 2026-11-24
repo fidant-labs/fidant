@@ -340,17 +340,39 @@ test("the app box routes 443 by SNI to Caddy and to coturn's TLS, and copies Cad
   const syncStart = userData.indexOf("\ncat >/usr/local/sbin/sigill-turn-cert <<'EOF'\n");
   const sync = userData.slice(syncStart, userData.indexOf("\nEOF\n", syncStart));
   assert.match(sync, /^set -eu$/m);
-  assert.match(
-    sync,
-    /^install -o turnserver -g turnserver -m 600 "\$\{crt%\.crt\}\.key" \/etc\/coturn\/turn\.key\.new$/m,
-  );
-  for (const line of [
+  assert.doesNotMatch(sync, /set -[a-z]*x/);
+  const syncLines = sync.split("\n");
+  const at = (line: string): number => {
+    const index = syncLines.indexOf(line);
+    assert.ok(index > 0, line);
+    return index;
+  };
+  // Both new files are in place before either replaces the old pair, and they are read with the
+  // caddy user's rights, never through a link.
+  const steps = [
     "crt=$(ls -t /var/lib/caddy/.local/share/caddy/certificates/*/$name/$name.crt 2>/dev/null | head -n 1)",
-    "  systemctl kill -s USR2 coturn",
-    "  systemctl try-restart coturn",
-  ]) {
-    assert.ok(sync.split("\n").includes(line), line);
-  }
+    'if [ -n "$crt" ] && ! cmp -s "$crt" /etc/coturn/turn.crt; then',
+    '  if [ -L "$crt" ] || [ -L "$key" ]; then',
+    "  install -o turnserver -g turnserver -m 600 /dev/null /etc/coturn/turn.key.new",
+    '  runuser -u caddy -- cat "$key" >/etc/coturn/turn.key.new',
+    "  install -m 644 /dev/null /etc/coturn/turn.crt.new",
+    '  runuser -u caddy -- cat "$crt" >/etc/coturn/turn.crt.new',
+    "  mv /etc/coturn/turn.key.new /etc/coturn/turn.key",
+    "  mv /etc/coturn/turn.crt.new /etc/coturn/turn.crt",
+    "  if systemctl is-active --quiet coturn; then",
+    "      systemctl kill -s USR2 coturn",
+    "      systemctl restart coturn",
+    "if [ -e /etc/coturn/turn.crt ] && ! openssl x509 -checkend 1209600 -noout -in /etc/coturn/turn.crt >/dev/null; then",
+  ].map(at);
+  assert.deepEqual(
+    steps,
+    steps.toSorted((a, b) => a - b),
+  );
+  assert.equal(
+    at("  mv /etc/coturn/turn.crt.new /etc/coturn/turn.crt") -
+      at("  mv /etc/coturn/turn.key.new /etc/coturn/turn.key"),
+    1,
+  );
 
   assert.match(
     userData,

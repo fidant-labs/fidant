@@ -229,30 +229,44 @@ EOF
 systemctl unmask coturn
 systemctl enable --now coturn
 
-# Copies Caddy's certificate for turn.@DOMAIN@ to coturn when it changes. No set -x: it handles a key.
+# Copies Caddy's certificate for turn.@DOMAIN@ to coturn when it changes, and fails while the copy
+# expires within 14 days, so it shows in systemctl --failed. No set -x: it handles a key.
 cat >/usr/local/sbin/sigill-turn-cert <<'EOF'
 #!/bin/sh
 set -eu
 name=turn.@DOMAIN@
 crt=$(ls -t /var/lib/caddy/.local/share/caddy/certificates/*/$name/$name.crt 2>/dev/null | head -n 1)
-if [ -z "$crt" ] || cmp -s "$crt" /etc/coturn/turn.crt; then
-  exit 0
+key=${crt%.crt}.key
+if [ -n "$crt" ] && ! cmp -s "$crt" /etc/coturn/turn.crt; then
+  # The caddy user owns these files: refuse links, and read them with its rights only.
+  if [ -L "$crt" ] || [ -L "$key" ]; then
+    echo "refused: a symbolic link in Caddy's certificate directory" >&2
+    exit 1
+  fi
+  had_cert=no
+  if [ -e /etc/coturn/turn.crt ]; then
+    had_cert=yes
+  fi
+  install -d /etc/coturn
+  install -o turnserver -g turnserver -m 600 /dev/null /etc/coturn/turn.key.new
+  runuser -u caddy -- cat "$key" >/etc/coturn/turn.key.new
+  install -m 644 /dev/null /etc/coturn/turn.crt.new
+  runuser -u caddy -- cat "$crt" >/etc/coturn/turn.crt.new
+  mv /etc/coturn/turn.key.new /etc/coturn/turn.key
+  mv /etc/coturn/turn.crt.new /etc/coturn/turn.crt
+  # USR2 reloads the pair and keeps relayed transfers. A coturn that started without one opens its
+  # TLS listener only on restart. A stopped coturn reads the pair when it starts.
+  if systemctl is-active --quiet coturn; then
+    if [ "$had_cert" = yes ]; then
+      systemctl kill -s USR2 coturn
+    else
+      systemctl restart coturn
+    fi
+  fi
 fi
-had_cert=no
-if [ -e /etc/coturn/turn.crt ]; then
-  had_cert=yes
-fi
-install -d /etc/coturn
-install -o turnserver -g turnserver -m 600 "${crt%.crt}.key" /etc/coturn/turn.key.new
-mv /etc/coturn/turn.key.new /etc/coturn/turn.key
-install -m 644 "$crt" /etc/coturn/turn.crt.new
-mv /etc/coturn/turn.crt.new /etc/coturn/turn.crt
-# USR2 reloads the pair and keeps relayed transfers. A coturn that started without one only
-# opens its TLS listener on restart.
-if [ "$had_cert" = yes ]; then
-  systemctl kill -s USR2 coturn
-else
-  systemctl try-restart coturn
+if [ -e /etc/coturn/turn.crt ] && ! openssl x509 -checkend 1209600 -noout -in /etc/coturn/turn.crt >/dev/null; then
+  echo "/etc/coturn/turn.crt expires within 14 days" >&2
+  exit 1
 fi
 EOF
 chmod 755 /usr/local/sbin/sigill-turn-cert
