@@ -1,8 +1,49 @@
 // Swedish text. Same keys as en.ts.
 
 import type { LogFields } from "@sigill/protocol";
-import type { Tie } from "../lib/server-facts.ts";
+import type { Kind, Tie } from "../lib/server-facts.ts";
 import type { Messages, Sections } from "./en.ts";
+
+const items: Record<
+  Kind,
+  {
+    label: string;
+    The: string;
+    the: string;
+    data: string;
+    key: string;
+    unlocks: string;
+    seen: string;
+  }
+> = {
+  file: {
+    label: "Filinnehåll",
+    The: "Filen",
+    the: "filen",
+    data: "filinnehåll",
+    key: "den del av länken som låser upp filen",
+    unlocks: "den del som låser upp filen",
+    seen: "den krypterade filen som passerar, med storleken avrundad uppåt så att den exakta storleken inte syns",
+  },
+  secret: {
+    label: "Hemlighet",
+    The: "Hemligheten",
+    the: "hemligheten",
+    data: "hemligheter",
+    key: "hemligheten i den länken",
+    unlocks: "länkens hemlighet",
+    seen: "den krypterade hemligheten som passerar, vilket inte visar något om dess längd",
+  },
+  unknown: {
+    label: "Innehåll",
+    The: "Det",
+    the: "det",
+    data: "det som delas",
+    key: "den del av länken som låser upp det",
+    unlocks: "den del som låser upp det",
+    seen: "de krypterade uppgifterna som passerar, med storleken avrundad uppåt så att den exakta storleken inte syns",
+  },
+};
 
 // Samma fält som logFields i en.ts, inklusive `event`.
 const logFields: Record<"event" | keyof LogFields, readonly [string, string]> = {
@@ -441,14 +482,14 @@ export const sv: Messages = {
     seesLabel: "Ser",
     holdsLabel: "Har",
     passedOnLabel: "Har skickat vidare",
-    fileDataLabel: "Filinnehåll",
+    fileDataLabel: (kind: Kind) => items[kind].label,
     logsLabel: "Loggar",
     afterwardsLabel: "Efteråt",
     seesSender:
       "Din IP-adress och de vanliga uppgifterna om webbläsaren som alla webbplatser får, och samma sak för varje mottagare när de öppnar sin länk.",
     seesRecipient:
       "Din IP-adress och de vanliga uppgifterna om webbläsaren som alla webbplatser får.",
-    senderHolds: ({ online, links, connected, relay, emailed, sending, mailed }) => {
+    senderHolds: ({ online, links, connected, relay, emailed, sending, mailed, kind = "file" }) => {
       if (!online) {
         return mailed
           ? "Bara antalet mejl den skickade åt dig, i förvrängd form och i upp till en timme, när den har märkt att anslutningen har stängts. Det tar upp till en minut om nätverket bröts."
@@ -472,8 +513,8 @@ export const sv: Messages = {
             : ` För de ${emailed} länkar den mejlar: mottagarnas e-postadresser och koderna som skickas dit.`;
       const key =
         sending === 0
-          ? `${ids}, aldrig den del som låser upp filen.${email}`
-          : `${ids}.${email} Medan den skickar ett mejl också den del av länken som låser upp filen, och ditt namn.`;
+          ? `${ids}, aldrig ${items[kind].unlocks}.${email}`
+          : `${ids}.${email} Medan den skickar ett mejl också ${items[kind].key}, och ditt namn.`;
       const held = `${key} ${choice}${counts}`;
       if (connected === 0) {
         return held;
@@ -482,19 +523,17 @@ export const sv: Messages = {
         connected === 1 ? "1 mottagare är ansluten" : `${connected} mottagare är anslutna`;
       return `${held} ${who} just nu.`;
     },
-    recipientHolds: (tie: Tie, emailed: boolean) =>
+    recipientHolds: (tie: Tie, emailed: boolean, kind: Kind = "file") =>
       (emailed
         ? {
-            paired:
-              "ID:t för din länk, din e-postadress, att den här fliken har angett rätt kod och att den här sidan är ansluten till avsändaren. Servern hade den del som låser upp filen bara medan den mejlade länken till dig.",
+            paired: `ID:t för din länk, din e-postadress, att den här fliken har angett rätt kod och att den här sidan är ansluten till avsändaren. Servern hade ${items[kind].unlocks} bara medan den mejlade länken till dig.`,
             unpaired:
               "Din e-postadress, som avsändaren angav för den här länken, den senaste koden den mejlade dig och om den här fliken har angett den. Bara avsändarens sida kan hålla kvar dem där.",
             closed:
               "Ingenting om den här sidan, när den har märkt att anslutningen har stängts, utom om den här fliken har angett rätt kod. Det tar upp till en minut om nätverket bröts. Bara avsändarens sida kan hålla kvar det, din länks ID och din e-postadress där.",
           }
         : {
-            paired:
-              "ID:t för din länk, aldrig den del som låser upp filen, och att den här sidan är ansluten till avsändaren.",
+            paired: `ID:t för din länk, aldrig ${items[kind].unlocks}, och att den här sidan är ansluten till avsändaren.`,
             unpaired:
               "Ingenting som knyter den här sidan till din länk. Bara avsändarens sida kan hålla kvar din länks ID där.",
             closed:
@@ -504,18 +543,18 @@ export const sv: Messages = {
       messages === 0
         ? "Inget ännu."
         : `${messages} ${messages === 1 ? "uppkopplingsmeddelande" : "uppkopplingsmeddelanden"} (${size}), alla krypterade så att servern inte kan läsa dem${emailed ? ", utom för en länk som den har mejlat och därför haft nyckeln till" : ""}.`,
-    fileData: "Inget. Filen går direkt mellan webbläsarna.",
-    fileDataRelayed:
-      "Inget. Webbläsarna kunde inte ansluta direkt, så filen går krypterad via vårt relä i stället.",
+    fileData: (kind: Kind) => `Inget. ${items[kind].The} går direkt mellan webbläsarna.`,
+    fileDataRelayed: (kind: Kind) =>
+      `Inget. Webbläsarna kunde inte ansluta direkt, så ${items[kind].the} skickas krypterat via vårt relä i stället.`,
     relaySeesLabel: "Vårt relä ser",
-    relaySees:
-      "Båda webbläsarnas IP-adresser och den krypterade filen som passerar, med storleken avrundad uppåt så att den exakta storleken inte syns. Reläet kan inte låsa upp filen.",
+    relaySees: (kind: Kind) =>
+      `Båda webbläsarnas IP-adresser och ${items[kind].seen}. Reläet kan inte låsa upp ${items[kind].the}.`,
     relayLogsLabel: "Vårt relä loggar",
-    relayLogs:
-      "Inget i vanliga fall. Bara när vi felsöker eller stoppar missbruk: anslutningstider, IP-adresser och hur mycket data som passerade, i högst 7 dagar. Aldrig namn, nycklar eller filinnehåll.",
+    relayLogs: (kind: Kind) =>
+      `Inget i vanliga fall. Bara när vi felsöker eller stoppar missbruk: anslutningstider, IP-adresser och hur mycket data som passerade, i högst 7 dagar. Aldrig namn, nycklar eller ${items[kind].data}.`,
     relayKeepsLabel: "Vårt relä sparar",
-    relayKeeps:
-      "Ingenting av filen när den har passerat. Loggrader som sparas när vi felsöker eller stoppar missbruk raderas inom 7 dagar.",
+    relayKeeps: (kind: Kind) =>
+      `Ingenting av ${items[kind].the} efter passagen. Loggrader som sparas när vi felsöker eller stoppar missbruk raderas inom 7 dagar.`,
     senderAfterwards: (online: boolean, mailed: boolean) =>
       `${
         online
@@ -526,13 +565,14 @@ export const sv: Messages = {
       emailed
         ? "När den här sidan kopplas från släpper servern det den har om sidan, inom högst en minut, utom det som kodkontrollen behöver: din e-postadress och om den här fliken har angett rätt kod finns kvar tills avsändarens sida stängs, och antalet koder som skickats till din adress, i förvrängd form, i upp till en timme. Loggraderna finns kvar."
         : "När den här sidan kopplas från släpper servern det den har om sidan, inom högst en minut. Loggraderna finns kvar.",
-    logs: `Vad som hände, till exempel att en länk öppnades, med ${new Intl.ListFormat("sv", {
-      type: "conjunction",
-    }).format(
-      Object.entries(logFields)
-        .filter(([field]) => field !== "event")
-        .map(([, [what]]) => what),
-    )}. Aldrig namn, e-postadresser, mejlade koder, nycklar, filinnehåll eller IP-adresser.`,
+    logs: (kind: Kind) =>
+      `Vad som hände, till exempel att en länk öppnades, med ${new Intl.ListFormat("sv", {
+        type: "conjunction",
+      }).format(
+        Object.entries(logFields)
+          .filter(([field]) => field !== "event")
+          .map(([, [what]]) => what),
+      )}. Aldrig namn, e-postadresser, mejlade koder, nycklar, ${items[kind].data} eller IP-adresser.`,
   },
   footer: {
     label: "Webbplats",

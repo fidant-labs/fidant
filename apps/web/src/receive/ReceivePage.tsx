@@ -70,7 +70,7 @@ import { createRecipientPeer, type OpenPath, type Peer } from "../lib/peer.ts";
 import type { FileOffer } from "../lib/receive-file.ts";
 import { ReceiveError, receiveFile } from "../lib/receive-file.ts";
 import { peerLostProblem } from "../lib/receive-problem.ts";
-import { addRelay, NO_RELAYS, type Tie } from "../lib/server-facts.ts";
+import { addRelay, type Kind, NO_RELAYS, type Tie } from "../lib/server-facts.ts";
 import { connectSignaling, retryDelay, type SignalingClient } from "../lib/signaling-client.ts";
 import { BlobSink, createSink, isPickerCancel, type Sink } from "../lib/sink.ts";
 import { isTextOffer } from "../lib/text-secret.ts";
@@ -659,14 +659,17 @@ export function ReceivePage() {
   }
 
   const emailed = link?.mark !== undefined;
+  const isText = "offer" in view ? view.offer.text : "text" in view ? view.text : undefined;
+  const kind: Kind = isText === undefined ? "unknown" : isText ? "secret" : "file";
   const panel = reachedServer ? (
     <ServerPanel
       sees={t.server.seesRecipient}
-      holds={t.server.recipientHolds(tie, emailed)}
+      holds={t.server.recipientHolds(tie, emailed, kind)}
       relayed={relayed}
       afterwards={t.server.afterwardsRecipient(emailed)}
       viaRelay={viaRelay}
       emailed={emailed}
+      kind={kind}
     />
   ) : null;
 

@@ -154,3 +154,26 @@ test("the Swedish text for an emailed link", () => {
   assert.ok(sv.server.recipientHolds("paired", true).includes("din e-postadress"));
   assert.ok(sv.server.senderAfterwards(false, true).endsWith("i upp till en timme."));
 });
+
+test("the server panel text names a secret, not a file, for a secret", () => {
+  assert.equal(
+    recipientHolds("paired", false, "secret"),
+    "The ID of your link, never the link's secret, and that this page is connected to the sender.",
+  );
+  assert.equal(
+    recipientHolds("paired", false, "unknown"),
+    "The ID of your link, never the part that unlocks it, and that this page is connected to the sender.",
+  );
+  assert.equal(en.server.fileData("secret"), "None. The secret goes directly between browsers.");
+  assert.equal(sv.server.fileData("secret"), "Inget. Hemligheten går direkt mellan webbläsarna.");
+  const sender = {
+    online: true,
+    links: 1,
+    connected: 0,
+    relay: true,
+    ...PLAIN,
+    kind: "secret",
+  } as const;
+  assert.ok(!/file/i.test(senderHolds(sender)));
+  assert.ok(!/fil/i.test(sv.server.senderHolds(sender)));
+});

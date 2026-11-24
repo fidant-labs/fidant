@@ -2,7 +2,7 @@
 // Plain strings, or functions for text with numbers or names in it.
 
 import type { LogFields } from "@sigill/protocol";
-import type { Tie } from "../lib/server-facts.ts";
+import type { Kind, Tie } from "../lib/server-facts.ts";
 
 // Every field a server log line can carry (plus `event`, which names the log line), with what it is
 // and why we keep it. Keyed by LogFields, so a new field fails the typecheck until it is described
@@ -31,6 +31,47 @@ const logFields: Record<"event" | keyof LogFields, readonly [string, string]> = 
     "To know how often connections need our relay, which tells us how big it must be.",
   ],
   port: ["the port the server listens on", "To confirm the server started where it should."],
+};
+
+const items: Record<
+  Kind,
+  {
+    label: string;
+    The: string;
+    the: string;
+    data: string;
+    key: string;
+    unlocks: string;
+    seen: string;
+  }
+> = {
+  file: {
+    label: "File data",
+    The: "The file",
+    the: "the file",
+    data: "file data",
+    key: "the part of that link that unlocks the file",
+    unlocks: "the part that unlocks the file",
+    seen: "the encrypted file passing through, with its size rounded up so the exact size stays hidden",
+  },
+  secret: {
+    label: "Secret",
+    The: "The secret",
+    the: "the secret",
+    data: "secrets",
+    key: "that link's secret",
+    unlocks: "the link's secret",
+    seen: "the encrypted secret passing through, which shows nothing of its length",
+  },
+  unknown: {
+    label: "Data",
+    The: "It",
+    the: "it",
+    data: "what is shared",
+    key: "the part of that link that unlocks it",
+    unlocks: "the part that unlocks it",
+    seen: "the encrypted data passing through, with its size rounded up so the exact size stays hidden",
+  },
 };
 
 export const en = {
@@ -443,7 +484,7 @@ export const en = {
     seesLabel: "Sees",
     holdsLabel: "Holds",
     passedOnLabel: "Passed on",
-    fileDataLabel: "File data",
+    fileDataLabel: (kind: Kind) => items[kind].label,
     logsLabel: "Logs",
     afterwardsLabel: "Afterwards",
     seesSender:
@@ -457,7 +498,9 @@ export const en = {
       emailed,
       sending,
       mailed,
+      kind = "file",
     }: {
+      kind?: Kind;
       online: boolean;
       links: number;
       connected: number;
@@ -493,8 +536,8 @@ export const en = {
             : ` For the ${emailed} links it emails: the recipients' email addresses and the codes sent there.`;
       const key =
         sending === 0
-          ? `${ids}, never the part that unlocks the file.${email}`
-          : `${ids}.${email} While it sends an email, also the part of that link that unlocks the file, and your name.`;
+          ? `${ids}, never ${items[kind].unlocks}.${email}`
+          : `${ids}.${email} While it sends an email, also ${items[kind].key}, and your name.`;
       const held = `${key} ${choice}${counts}`;
       if (connected === 0) {
         return held;
@@ -503,19 +546,17 @@ export const en = {
       return `${held} ${who} connected right now.`;
     },
     /** `emailed`: the link is one the server emailed. */
-    recipientHolds: (tie: Tie, emailed: boolean) =>
+    recipientHolds: (tie: Tie, emailed: boolean, kind: Kind = "file") =>
       (emailed
         ? {
-            paired:
-              "The ID of your link, your email address, that this tab entered the right code, and that this page is connected to the sender. It had the part that unlocks the file only while it emailed you the link.",
+            paired: `The ID of your link, your email address, that this tab entered the right code, and that this page is connected to the sender. It had ${items[kind].unlocks} only while it emailed you the link.`,
             unpaired:
               "Your email address, which the sender gave for this link, the latest code it emailed you and whether this tab entered it. Only the sender's page can keep them there.",
             closed:
               "Nothing about this page once it notices the connection has closed, which takes up to a minute if the network dropped, apart from whether this tab entered the right code. Only the sender's page can keep that, your link's ID and your email address there.",
           }
         : {
-            paired:
-              "The ID of your link, never the part that unlocks the file, and that this page is connected to the sender.",
+            paired: `The ID of your link, never ${items[kind].unlocks}, and that this page is connected to the sender.`,
             unpaired:
               "Nothing that ties this page to your link. Only the sender's page can keep your link's ID there.",
             closed:
@@ -526,18 +567,18 @@ export const en = {
       messages === 0
         ? "Nothing yet."
         : `${messages} ${messages === 1 ? "setup message" : "setup messages"} (${size}), all encrypted so the server can't read them${emailed ? ", except for a link it emailed, whose key it had" : ""}.`,
-    fileData: "None. The file goes directly between browsers.",
-    fileDataRelayed:
-      "None. The browsers couldn't connect directly, so the file passes encrypted through our relay instead.",
+    fileData: (kind: Kind) => `None. ${items[kind].The} goes directly between browsers.`,
+    fileDataRelayed: (kind: Kind) =>
+      `None. The browsers couldn't connect directly, so ${items[kind].the} passes encrypted through our relay instead.`,
     relaySeesLabel: "Our relay sees",
-    relaySees:
-      "Both browsers' IP addresses and the encrypted file passing through, with its size rounded up so the exact size stays hidden. It can't unlock the file.",
+    relaySees: (kind: Kind) =>
+      `Both browsers' IP addresses and ${items[kind].seen}. It can't unlock ${items[kind].the}.`,
     relayLogsLabel: "Our relay logs",
-    relayLogs:
-      "Nothing by default. Only while we fix a fault or stop abuse: connection times, IP addresses and how much data passed through, for at most 7 days. Never names, keys or file data.",
+    relayLogs: (kind: Kind) =>
+      `Nothing by default. Only while we fix a fault or stop abuse: connection times, IP addresses and how much data passed through, for at most 7 days. Never names, keys or ${items[kind].data}.`,
     relayKeepsLabel: "Our relay keeps",
-    relayKeeps:
-      "Nothing of the file once it has passed through. Log lines from fixing a fault or stopping abuse are deleted within 7 days.",
+    relayKeeps: (kind: Kind) =>
+      `Nothing of ${items[kind].the} once it has passed through. Log lines from fixing a fault or stopping abuse are deleted within 7 days.`,
     /** `mailed`: this page asked the server to email a link. */
     senderAfterwards: (online: boolean, mailed: boolean): string =>
       `${
@@ -550,13 +591,14 @@ export const en = {
       emailed
         ? "When this page disconnects, the server drops what it has about this page, within a minute at most, apart from what the code check needs: your email address and whether this tab entered the right code stay until the sender's page closes, and a scrambled count of the codes sent to your address for up to an hour. Its log lines stay."
         : "When this page disconnects, the server drops what it has about this page, within a minute at most. Its log lines stay.",
-    logs: `What happened, like a link being opened, with ${new Intl.ListFormat("en", {
-      type: "conjunction",
-    }).format(
-      Object.entries(logFields)
-        .filter(([field]) => field !== "event")
-        .map(([, [what]]) => what),
-    )}. Never names, email addresses, emailed codes, keys, file data or IP addresses.`,
+    logs: (kind: Kind) =>
+      `What happened, like a link being opened, with ${new Intl.ListFormat("en", {
+        type: "conjunction",
+      }).format(
+        Object.entries(logFields)
+          .filter(([field]) => field !== "event")
+          .map(([, [what]]) => what),
+      )}. Never names, email addresses, emailed codes, keys, ${items[kind].data} or IP addresses.`,
   },
   footer: {
     label: "Site",

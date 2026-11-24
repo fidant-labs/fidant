@@ -93,9 +93,16 @@ test("a text goes from /secret to the recipient, who shows and copies it", async
     await expect(field).toHaveAttribute(attribute, value);
   }
   const link = await share(leaks, sender, text, from, name);
+  const senderPanel = sender.getByRole("region", { name: "What our server has right now" });
+  await expect(senderPanel).toContainText("None. The secret goes directly between browsers.");
+  await expect(senderPanel).toContainText("never the link's secret");
+  await expect(senderPanel).not.toContainText(/\bfiles?\b/i);
 
   const { page, downloads } = await openRecipient(actor, link);
   await expect(page.getByRole("heading", { name: `${from} sent you a secret` })).toBeFocused();
+  const recipientPanel = page.getByRole("region", { name: "What our server has right now" });
+  await expect(recipientPanel).toContainText("None. The secret goes directly between browsers.");
+  await expect(recipientPanel).not.toContainText(/\bfiles?\b/i);
   await expect(page.getByText("Name typed by the sender, not verified.")).toBeVisible();
   const show = page.getByRole("button", { name: "Show", exact: true });
   await expect(show).toBeVisible();

@@ -802,11 +802,13 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
             emailed: emailed.length,
             sending: emailed.filter((r) => r.mail === "sending").length,
             mailed,
+            kind: text ? "secret" : "file",
           })}
           relayed={relayed}
           afterwards={t.server.senderAfterwards(!lostServer, mailed)}
           viaRelay={viaRelay}
           emailed={mailed}
+          kind={text ? "secret" : "file"}
         />
       </div>
 
