@@ -1,11 +1,22 @@
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { isIP } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import { App, Stack } from "aws-cdk-lib";
 import { Match, Template } from "aws-cdk-lib/assertions";
 import { addStacks } from "./app.ts";
-import { boxAddress, hostedZoneIds, siteNames, zoneNames } from "./config.ts";
+import { boxAddress, hostedZoneIds, mailFrom, siteNames, zoneNames } from "./config.ts";
 import { DnsStack } from "./dns.ts";
 import { renderUserData } from "./user-data.ts";
 
@@ -404,6 +415,89 @@ test("the journal is the only place the box's services keep log lines", () => {
   assert.ok(!turnserver.some((line) => /^\s*(syslog|verbose)\b/i.test(line)));
 
   assert.doesNotMatch(userData, /^\s*Standard(Output|Error)=/m);
+});
+
+function credentialHelper(): { helper: string; rest: string } {
+  const userData = renderUserData();
+  const start = userData.indexOf("\ncat >/usr/local/bin/sigill-credential <<'EOF'\n");
+  const end = userData.indexOf("\nEOF\n", start);
+  assert.ok(start > 0 && end > start);
+  return {
+    helper: userData.slice(userData.indexOf("\n", start + 1) + 1, end + 1),
+    rest: userData.slice(0, start) + userData.slice(end + "\nEOF".length),
+  };
+}
+
+test("the box's user data leaves mail off and installs only the helper that turns it on", () => {
+  const { helper, rest } = credentialHelper();
+  assert.doesNotMatch(rest, /mail|PUBLIC_ORIGIN/i);
+  assert.deepEqual(rest.match(/.*sigill-credential.*/g), [
+    "chmod 700 /usr/local/bin/sigill-credential",
+  ]);
+  assert.doesNotMatch(renderUserData(), /AKIA[A-Z0-9]{16}/);
+  assert.equal(mailFrom, "noreply@notify.fidant.se");
+  assert.ok(helper.includes(`'Environment="MAIL_FROM=Fidant <${mailFrom}>"'`));
+  assert.ok(helper.includes("'Environment=PUBLIC_ORIGIN=https://fidant.se'"));
+});
+
+test("sigill-credential writes the mail drop-in only with its password file, and removes it first", () => {
+  const dir = mkdtempSync(join(tmpdir(), "sigill-credential-"));
+  try {
+    const dropin = `${dir}/etc/systemd/system/sigill.service.d/mail.conf`;
+    const secret = `${dir}/etc/sigill/mail-password`;
+    const script = join(dir, "sigill-credential");
+    writeFileSync(script, credentialHelper().helper.replaceAll("/etc/", `${dir}/etc/`));
+    const log = join(dir, "log");
+    mkdirSync(join(dir, "bin"));
+    writeFileSync(join(dir, "bin", "stty"), "#!/bin/sh\n", { mode: 0o755 });
+    writeFileSync(
+      join(dir, "bin", "systemctl"),
+      `#!/bin/sh\necho "$*:$([ -e '${dropin}' ] && echo D)$([ -e '${secret}' ] && echo S)" >>'${log}'\n`,
+      { mode: 0o755 },
+    );
+    const run = (action: string, input = "") => {
+      writeFileSync(log, "");
+      const { status } = spawnSync("/bin/sh", [script, "mail", action], {
+        input,
+        env: { ...process.env, PATH: `${dir}/bin:${process.env.PATH}` },
+      });
+      return { status, calls: readFileSync(log, "utf8").split("\n").filter(Boolean) };
+    };
+    const exists = (path: string) => statSync(path, { throwIfNoEntry: false }) !== undefined;
+    const password = `${"A".repeat(43)}+`;
+
+    assert.deepEqual(run("on", `AKIAIOSFODNN7EXAMPLE\n${password}\n`), {
+      status: 0,
+      calls: ["daemon-reload:DS", "try-restart sigill:DS"],
+    });
+    assert.equal(
+      readFileSync(dropin, "utf8"),
+      [
+        "[Service]",
+        "Environment=MAIL_SMTP_URL=smtps://AKIAIOSFODNN7EXAMPLE@email-smtp.eu-north-1.amazonaws.com:465",
+        `Environment="MAIL_FROM=Fidant <${mailFrom}>"`,
+        "Environment=PUBLIC_ORIGIN=https://fidant.se",
+        `LoadCredential=mail-password:${secret}`,
+        "Environment=MAIL_PASSWORD_FILE=%d/mail-password",
+        "",
+      ].join("\n"),
+    );
+    assert.equal(readFileSync(secret, "utf8"), `${password}\n`);
+    assert.equal(statSync(secret).mode & 0o777, 0o600);
+
+    assert.deepEqual(run("off"), {
+      status: 0,
+      calls: ["daemon-reload:S", "try-restart sigill:"],
+    });
+    assert.ok(!exists(dropin) && !exists(secret));
+
+    for (const input of ["someone\n", `AKIAIOSFODNN7EXAMPLE\n${"A".repeat(43)}=\n`]) {
+      assert.deepEqual(run("on", input), { status: 1, calls: [] });
+      assert.ok(!exists(dropin) && !exists(secret));
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 const camelPorts = [
