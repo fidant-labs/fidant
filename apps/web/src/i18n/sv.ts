@@ -369,7 +369,7 @@ export const sv: Messages = {
       },
       save: {
         title: "Texten kunde inte visas",
-        body: "Webbläsaren kunde inte läsa texten den tog emot. Be avsändaren om en ny länk.",
+        body: "Webbläsaren kunde inte läsa texten den tog emot. Be avsändaren att skicka den igen.",
       },
     },
     back: "Tillbaka till texten",

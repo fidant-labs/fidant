@@ -369,7 +369,7 @@ export const en = {
       },
       save: {
         title: "The text couldn't be shown",
-        body: "This browser couldn't read the text it received. Ask the sender for a new link.",
+        body: "This browser couldn't read the text it received. Ask the sender to send it again.",
       },
     },
     back: "Back to the text",
