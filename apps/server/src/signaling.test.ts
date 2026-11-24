@@ -258,6 +258,24 @@ test("echoes the host's relay choice at each join and keeps the guest bound when
   assert.deepEqual(await host.next(), { t: "relay", link: bound, data: "Ym91bmQ" });
 });
 
+test("logs host only when the link list changes, so a relay toggle leaves no log line", async () => {
+  const link = linkId();
+  const before = logLines.length;
+  const host = await hostFor(link);
+  host.send({ t: "host", links: [link], turn: false });
+  host.send({ t: "host", links: [link], turn: true });
+  host.send({ t: "host", links: [link, linkId()], turn: true });
+  host.send({ t: "relay", link: linkId(), data: "sync" });
+  assert.deepEqual(await host.next(), { t: "error", code: "not-on-link" });
+  assert.deepEqual(
+    logLines
+      .slice(before)
+      .filter((line) => line.event === "host")
+      .map((line) => line.fields),
+    [{ links: 1 }, { links: 2 }],
+  );
+});
+
 test("leaves TURN out of joined when the host refuses it", async () => {
   const link = linkId();
   const host = await connect();

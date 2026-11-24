@@ -1,18 +1,20 @@
 import { type ChildProcess, spawn } from "node:child_process";
-import { appendFileSync, createWriteStream, rmSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
+import { appendFileSync, createWriteStream, rmSync, writeFileSync } from "node:fs";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { finished } from "node:stream/promises";
-import { repoRoot, runDir, serverStderrLog, serverStdoutLog } from "../paths.ts";
+import { setTimeout as sleep } from "node:timers/promises";
+import { repoRoot, runDir, serverPidFile, serverStderrLog, serverStdoutLog } from "../paths.ts";
 import { parsePort } from "./port.ts";
 import type { RunningService, Service } from "./service.ts";
 
 const serverMain = join(repoRoot, "apps", "server", "src", "main.ts");
 const startTimeoutMs = 15_000;
 const stopTimeoutMs = 5_000;
+const restartTimeoutMs = 20_000;
 const tailLines = 20;
 
 /** The Sigill server on a free port with a throwaway certificate. */
@@ -38,15 +40,25 @@ export async function startServer(
   const origin = requested
     ? { PUBLIC_ORIGIN: `https://${wrapper?.host ?? "localhost"}:${requested}` }
     : {};
-  const child = spawn(command as string, args, {
-    cwd: repoRoot,
-    env: { ...process.env, ...stackEnv, ...origin, PORT: String(requested), CERT_DIR: certDir },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  // pipe() ends each log once the child's stream ends, so waiting for `close` drains them.
-  child.stdout.pipe(stdoutLog);
-  child.stderr.pipe(stderrLog);
-  const closed = new Promise<void>((resolve) => child.once("close", () => resolve()));
+  // Settles once every server run so far has closed, so no output can arrive after stop().
+  let closed = Promise.resolve();
+  const spawnChild = (port: number): ChildProcess => {
+    const child = spawn(command as string, args, {
+      cwd: repoRoot,
+      env: { ...process.env, ...stackEnv, ...origin, PORT: String(port), CERT_DIR: certDir },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    // A restarted server appends to the same logs, so the leak checks cover both runs. stop()
+    // ends them; waiting for `close` first means every chunk has been written to them.
+    child.stdout?.pipe(stdoutLog, { end: false });
+    child.stderr?.pipe(stderrLog, { end: false });
+    const previous = closed;
+    closed = new Promise<void>((resolve) => child.once("close", () => resolve())).then(
+      () => previous,
+    );
+    return child;
+  };
+  let child = spawnChild(requested);
 
   // Backstop: if the runner exits without calling stop(), do not leave the server or its
   // certificate behind. Only synchronous work runs inside an exit handler.
@@ -56,23 +68,46 @@ export async function startServer(
   };
   process.once("exit", cleanUpOnExit);
 
-  const onUnexpectedExit = (code: number | null, signal: string | null) => {
-    const line = `server exited unexpectedly (code ${code}, signal ${signal})`;
+  const event = (line: string) => {
     appendFileSync(join(runDir, "stack-events.log"), `${new Date().toISOString()} ${line}\n`);
     console.error(`[e2e stack] ${line}`);
+  };
+
+  /**
+   * Once the server listens: on the local stack, publish its PID for restartServer() and, like
+   * systemd's Restart=always, start it again on the same port when something SIGTERMs it.
+   */
+  const watch = (port: number) => {
+    if (!wrapper && child.pid !== undefined) {
+      writeFileSync(serverPidFile, String(child.pid));
+    }
+    child.once("exit", (code, signal) => {
+      if (stopped) {
+        return;
+      }
+      if (wrapper || signal !== "SIGTERM") {
+        event(`server exited unexpectedly (code ${code}, signal ${signal})`);
+        return;
+      }
+      child = spawnChild(port);
+      waitForPort(child, []).then(
+        () => {
+          event("server restarted");
+          watch(port);
+        },
+        (error: Error) => stopped || event(`server did not restart: ${error.message}`),
+      );
+    });
   };
 
   let stopped: Promise<void> | undefined;
   const stop = () => {
     stopped ??= (async () => {
-      child.off("exit", onUnexpectedExit);
-      if (child.pid === undefined) {
-        // The spawn itself failed: there is no process to wait for, and pipe() never ends the logs.
-        stdoutLog.end();
-        stderrLog.end();
-      } else {
+      if (child.pid !== undefined) {
         await terminate(child, closed);
       }
+      stdoutLog.end();
+      stderrLog.end();
       await Promise.all([finished(stdoutLog), finished(stderrLog)]);
       process.off("exit", cleanUpOnExit);
       await rm(certDir, { recursive: true, force: true });
@@ -83,12 +118,32 @@ export async function startServer(
   const stderrTail: string[] = [];
   try {
     const port = await waitForPort(child, stderrTail);
-    child.once("exit", onUnexpectedExit);
+    watch(port);
     return { name: "server", url: `https://${wrapper?.host ?? "localhost"}:${port}`, port, stop };
   } catch (error) {
     await stop();
     const tail = stderrTail.length > 0 ? stderrTail.join("\n") : "(no stderr output)";
     throw new Error(`${(error as Error).message}\nServer stderr (last lines):\n${tail}`);
+  }
+}
+
+/**
+ * For specs: SIGTERMs the local stack's server and resolves once its replacement listens on the
+ * same port. Browsers see their signaling sockets drop and the server forget every link.
+ */
+export async function restartServer(): Promise<void> {
+  const before = await readFile(serverPidFile, "utf8");
+  process.kill(Number(before), "SIGTERM");
+  const deadline = Date.now() + restartTimeoutMs;
+  for (;;) {
+    const pid = await readFile(serverPidFile, "utf8");
+    if (pid !== before && /^\d+$/.test(pid)) {
+      return;
+    }
+    if (Date.now() > deadline) {
+      throw new Error(`The server did not restart within ${restartTimeoutMs} ms.`);
+    }
+    await sleep(100);
   }
 }
 

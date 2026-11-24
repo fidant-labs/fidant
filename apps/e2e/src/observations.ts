@@ -31,6 +31,7 @@ export type ObservationRecord =
       base64?: true;
     }
   | { type: "websocket-close"; time: string; url: string }
+  | { type: "console"; time: string; url: string; text: string }
   | BlockedRecord;
 
 export interface BlockedRecord {

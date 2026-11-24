@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import type { Page } from "@playwright/test";
 import { canaryFile, canaryKey, expect, test as harness, type Leaks } from "../src/fixtures.ts";
 import { base32Token, type CanaryFile, type SeededRandom } from "../src/leaks/canary.ts";
+import { restartServer } from "../src/stack/server.ts";
 
 // The first demo end to end: a sender page sends one file to named recipients, each recipient on
 // their own link and in their own browser context. The harness's leak check runs after every test
@@ -152,14 +153,7 @@ async function receive(
       sender.getByRole("region", { name: "What our server has right now" }),
     ).toContainText(/[1-9] recipients? connected right now/);
   }
-  const downloading = page.waitForEvent("download", { timeout: 60_000 });
-  await page.getByRole("button", { name: "Download" }).click();
-  await expect(page.getByText("this is exactly the file that was sent")).toBeVisible({
-    timeout: 60_000,
-  });
-  const download = await downloading;
-  expect(download.suggestedFilename()).toBe(file.name);
-  await expect(page.getByRole("heading", { name: "Download complete" })).toBeFocused();
+  const bytes = await download(page, file);
   // The typed name is unverified, so it stays on the offer screen only.
   if (from) {
     await expect(page.getByText(from)).toHaveCount(0);
@@ -167,7 +161,20 @@ async function receive(
   const again = page.waitForEvent("download");
   await page.getByRole("link", { name: "Save file" }).click();
   expect((await again).suggestedFilename()).toBe(file.name);
-  return { page, bytes: await readFile(await download.path()) };
+  return { page, bytes };
+}
+
+/** Clicks Download on the offer screen, waits for the verified file and returns its bytes. */
+async function download(page: Page, file: CanaryFile): Promise<Buffer> {
+  const downloading = page.waitForEvent("download", { timeout: 60_000 });
+  await page.getByRole("button", { name: "Download" }).click();
+  await expect(page.getByText("this is exactly the file that was sent")).toBeVisible({
+    timeout: 60_000,
+  });
+  const saved = await downloading;
+  expect(saved.suggestedFilename()).toBe(file.name);
+  await expect(page.getByRole("heading", { name: "Download complete" })).toBeFocused();
+  return readFile(await saved.path());
 }
 
 test("delivers a file to two recipients with a verified checksum", async ({
@@ -200,6 +207,10 @@ test("delivers a file to two recipients with a verified checksum", async ({
     await expect(scope.getByText("Direct connection", { exact: true })).toBeVisible();
     await scope.getByText("Why?", { exact: true }).click();
     await expect(scope.getByText("The file goes straight between the two devices.")).toBeVisible();
+    await expect(scope.getByRole("link", { name: /More about how it works/ })).toHaveAttribute(
+      "href",
+      "/how#direct",
+    );
   }
 
   const panel = sender.getByRole("region", { name: "What our server has right now" });
@@ -249,6 +260,43 @@ test("refuses used, unknown and malformed links", async ({ demo, leaks, canary, 
   ).toHaveCount(0);
 });
 
+test("a sender whose connection setup fails logs why and lets the recipient try again", async ({
+  demo,
+  observed,
+  leaks,
+  canary,
+}) => {
+  const sender = await openSender(demo, makeFile(leaks, canary, 10), "", () => {
+    RTCPeerConnection.prototype.setLocalDescription = () =>
+      Promise.reject(new DOMException("injected", "OperationError"));
+  });
+  const link = await addRecipient(leaks, sender, makeName(leaks, canary, "Anna"));
+  const recipient = await demo.open("recipient");
+  await recipient.goto(link);
+
+  const logged = async () =>
+    (await observed("sender").records()).flatMap((r) => (r.type === "console" ? [r.text] : []));
+  await expect
+    .poll(logged)
+    .toContain("sigill: sender dropped a connection: setup-failed (OperationError)");
+  expect((await logged()).filter((text) => text.includes("injected"))).toEqual([]);
+
+  const refusals = async () =>
+    (await observed("recipient").records()).flatMap((r) => {
+      if (r.type !== "frame-received" || r.base64) {
+        return [];
+      }
+      const message = JSON.parse(r.payload) as { t: string; reason?: string };
+      return message.t === "refused" ? [message.reason] : [];
+    });
+  await expect.poll(refusals).toEqual(["drop"]);
+  await expect(
+    recipient.getByRole("heading", { name: "Couldn't connect to the sender's computer" }),
+  ).toBeVisible();
+  await expect(recipient.getByRole("button", { name: "Try again" })).toBeVisible();
+  await expect(recipient.getByText("This link is open somewhere else")).toHaveCount(0);
+});
+
 test("a declined offer shows as declined, and the link can be reopened", async ({
   demo,
   leaks,
@@ -277,7 +325,7 @@ test("a declined offer shows as declined, and the link can be reopened", async (
   expect(await offerHeading.evaluate((h) => h.isConnected)).toBe(false);
   await expect(
     recipientRow(sender, name).getByText(
-      `${name}'s link was opened and the file declined. The link still works.`,
+      `${name}'s link was opened and the file was declined. The link still works.`,
     ),
   ).toBeVisible();
   await expect(sender.getByRole("button", { name: `Copy link for ${name}` })).toBeVisible();
@@ -304,9 +352,38 @@ harness("a held Enter on Remove removes only one recipient", async ({ actor, lea
   await expect(recipientRow(sender, anna)).toHaveCount(0);
   await expect(sender.getByRole("button", { name: `Copy link for ${erik}` })).toBeVisible();
 
-  await sender.keyboard.press("Enter");
+  await sender.keyboard.down("Enter");
   await expect(recipientRow(sender, erik)).toHaveCount(0);
   await expect(sender.getByLabel("Who is it for?")).toBeFocused();
+  await sender.keyboard.down("Enter"); // the repeat lands on the empty name field
+  await sender.keyboard.up("Enter");
+  await expect(sender.getByText("Enter a name.")).toHaveCount(0);
+});
+
+harness("a recipient gives up connecting after 30 seconds", async ({ actor, leaks, canary }) => {
+  const demo: Demo = { open: async (name) => (await actor(name)).page };
+  const sender = await openSender(demo, makeFile(leaks, canary, 10));
+  const anna = makeName(leaks, canary, "Anna");
+  const link = await addRecipient(leaks, sender, anna);
+
+  const recipient = await demo.open("recipient");
+  // The sender's offer never lands, so the data channel never opens.
+  await recipient.addInitScript(() => {
+    RTCPeerConnection.prototype.setRemoteDescription = () => new Promise(() => {});
+  });
+  await recipient.clock.install();
+  await recipient.goto(link);
+  await expect(recipient.getByRole("heading", { name: "Connecting to the sender…" })).toBeVisible();
+  // The server tells the sender only after it sent `joined`, so the recipient's peer exists by now.
+  await expect(
+    recipientRow(sender, anna).getByText(`Connecting through ${anna}'s link…`),
+  ).toBeVisible();
+
+  await recipient.clock.fastForward(29_000);
+  await expect(recipient.getByRole("heading", { name: "Connecting to the sender…" })).toBeVisible();
+  await recipient.clock.fastForward(1_000);
+  await expect(recipient.getByText("Couldn't connect to the sender's computer")).toBeVisible();
+  await expect(recipient.getByRole("button", { name: "Try again" })).toBeVisible();
 });
 
 test("the sender's name must fit with the file name, and stray drops are ignored", async ({
@@ -387,6 +464,55 @@ test("a waiting recipient sees when the sender goes offline", async ({ demo, lea
   ).toContainText("Nothing about this page once it notices the connection has closed");
 });
 
+test("the Why? link to /how keeps a transfer alive on both pages", async ({
+  demo,
+  leaks,
+  canary,
+}) => {
+  const file = makeFile(leaks, canary, 100_001);
+  const sender = await openSender(demo, file);
+  const name = makeName(leaks, canary, "Anna");
+  const link = await addRecipient(leaks, sender, name);
+
+  const recipient = await demo.open("recipient");
+  await recipient.goto(link);
+  const download = recipient.getByRole("button", { name: "Download" });
+  await expect(download).toBeVisible();
+  const card = recipientRow(sender, name);
+  const opened = card.getByText(`${name}'s link has been opened`);
+  await expect(opened).toBeVisible();
+
+  // A remounted receive page would rejoin from the same URL, so only node identity tells it apart.
+  const kept = [await card.elementHandle(), await recipient.locator("#receive h1").elementHandle()];
+  for (const [page, scope] of [
+    [sender, card],
+    [recipient, recipient],
+  ] as const) {
+    await expect(scope.getByText("Direct connection", { exact: true })).toBeVisible();
+    const back = page.url();
+    await scope.getByText("Why?", { exact: true }).click();
+    await scope.getByRole("link", { name: "More about how it works" }).click();
+    await expect(page).toHaveURL(/\/how#direct$/);
+    await expect(page.locator("#direct h2")).toBeVisible();
+    await page.goBack();
+    await expect(page).toHaveURL(back);
+  }
+  for (const node of kept) {
+    expect(await node.evaluate((n) => n.isConnected)).toBe(true);
+  }
+  await expect(download).toBeVisible();
+  await expect(opened).toBeVisible();
+
+  const downloading = recipient.waitForEvent("download", { timeout: 60_000 });
+  await download.click();
+  await expect(recipient.getByText("this is exactly the file that was sent")).toBeVisible({
+    timeout: 60_000,
+  });
+  const bytes = await readFile(await (await downloading).path());
+  expect(sha256Hex(bytes)).toBe(sha256Hex(file.bytes));
+  await expect(delivered(sender, name)).toBeVisible();
+});
+
 /** Lets a test cut the sender's peer connections (`cut()`) and stop its data channels sending (`stalled`). */
 function breakableSender() {
   const g = globalThis as { cut?: () => void; stalled?: boolean };
@@ -447,10 +573,111 @@ test("a lost sender says whether the file may have been saved", async ({ demo, l
   await expect(erik.getByText("The connection to the sender was lost")).toBeVisible();
   await expect(erik.getByText("The file may not have been saved.")).toBeVisible();
 
-  // Mid-download, the sender's page closes. The server says so at once, but the page waits for
-  // the peer connection to drop, which Chromium notices only when ICE consent expires (about 15 s).
+  // Mid-download, the sender's page closes. Its pagehide closes the peers, so the drop arrives
+  // at once instead of when ICE consent expires (about 15 s).
   const bo = await join("Bo", true);
   await sender.close();
-  await expect(bo.getByText("The sender's page is closed")).toBeVisible({ timeout: 30_000 });
+  await expect(bo.getByText("The sender's page is closed")).toBeVisible({ timeout: 3_000 });
   await expect(bo.getByText("The file may not have been saved.")).toBeVisible();
+});
+
+test.describe("through a server restart", () => {
+  // The client's reconnect backoff and the recipient's rejoins add to the transfer time.
+  test.describe.configure({ timeout: 120_000 });
+
+  const lost = (sender: Page) => sender.getByText("Lost the connection to the server");
+
+  test("a waiting sender re-hosts its links without reloading", async ({
+    demo,
+    observed,
+    leaks,
+    canary,
+  }) => {
+    const file = makeFile(leaks, canary, 100_001);
+    const sender = await openSender(demo, file);
+    const name = makeName(leaks, canary, "Anna");
+    const link = await addRecipient(leaks, sender, name);
+    let navigations = 0;
+    sender.on("framenavigated", (frame) => {
+      if (frame === sender.mainFrame()) {
+        navigations++;
+      }
+    });
+    const hosts = async () =>
+      (await observed("sender").records()).filter(
+        (r) => r.type === "frame-sent" && !r.base64 && JSON.parse(r.payload).t === "host",
+      ).length;
+    await expect.poll(hosts).toBeGreaterThan(0);
+    const before = await hosts();
+
+    await restartServer();
+    await expect.poll(hosts, { timeout: 30_000 }).toBeGreaterThan(before);
+
+    const { bytes } = await receive(demo, "recipient", link, file, "100 KB", "", sender);
+    expect(sha256Hex(bytes)).toBe(sha256Hex(file.bytes));
+    await expect(delivered(sender, name)).toBeVisible();
+    expect(navigations).toBe(0);
+    await expect(lost(sender)).toHaveCount(0);
+  });
+
+  test("a recipient with an open channel downloads after the restart", async ({
+    demo,
+    leaks,
+    canary,
+  }) => {
+    const file = makeFile(leaks, canary, 100_001);
+    const sender = await openSender(demo, file);
+    const name = makeName(leaks, canary, "Anna");
+    const link = await addRecipient(leaks, sender, name);
+    const recipient = await demo.open("recipient");
+    await recipient.goto(link);
+    await expect(recipient.getByRole("button", { name: "Download" })).toBeVisible();
+
+    await restartServer();
+    const bytes = await download(recipient, file);
+    expect(sha256Hex(bytes)).toBe(sha256Hex(file.bytes));
+    await expect(delivered(sender, name)).toBeVisible();
+  });
+
+  test("a recipient still connecting gets the file after the restart", async ({
+    demo,
+    leaks,
+    canary,
+  }) => {
+    const file = makeFile(leaks, canary, 100_001);
+    const sender = await openSender(demo, file);
+    const name = makeName(leaks, canary, "Anna");
+    const link = await addRecipient(leaks, sender, name);
+    const recipient = await demo.open("recipient");
+    // The sender's first offer never lands, so the first attempt stays connecting.
+    await recipient.addInitScript(() => {
+      const native = RTCPeerConnection.prototype.setRemoteDescription;
+      let stalled = false;
+      RTCPeerConnection.prototype.setRemoteDescription = function (
+        this: RTCPeerConnection,
+        ...args: unknown[]
+      ) {
+        if (!stalled) {
+          stalled = true;
+          return new Promise(() => {});
+        }
+        return Reflect.apply(native, this, args);
+      } as RTCPeerConnection["setRemoteDescription"];
+    });
+    await recipient.goto(link);
+    await expect(
+      recipient.getByRole("heading", { name: "Connecting to the sender…" }),
+    ).toBeVisible();
+    await expect(
+      recipientRow(sender, name).getByText(`Connecting through ${name}'s link…`),
+    ).toBeVisible();
+
+    await restartServer();
+    await expect(recipient.getByRole("button", { name: "Download" })).toBeVisible({
+      timeout: 60_000,
+    });
+    const bytes = await download(recipient, file);
+    expect(sha256Hex(bytes)).toBe(sha256Hex(file.bytes));
+    await expect(delivered(sender, name)).toBeVisible();
+  });
 });

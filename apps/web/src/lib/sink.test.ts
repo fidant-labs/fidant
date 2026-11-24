@@ -79,6 +79,27 @@ test("FileSystemSink writes through and aborts only while open", async () => {
   assert.deepEqual(failed.log, ["write 3", "abort"]);
 });
 
+test("FileSystemSink removes the picked file on abort, not after close", async () => {
+  const handleFor = (f: ReturnType<typeof fakeWritable>) => ({
+    createWritable: async () => f.writable,
+    async remove() {
+      f.log.push("remove");
+    },
+  });
+  const failed = fakeWritable();
+  const sink = new FileSystemSink(failed.writable, handleFor(failed));
+  await sink.write(new Uint8Array(3));
+  await sink.abort();
+  await sink.abort();
+  assert.deepEqual(failed.log, ["write 3", "abort", "remove"]);
+
+  const done = fakeWritable();
+  const kept = new FileSystemSink(done.writable, handleFor(done));
+  await kept.close();
+  await kept.abort();
+  assert.deepEqual(done.log, ["close"]);
+});
+
 test("createSink falls back to a BlobSink without showSaveFilePicker", async () => {
   assert.equal(canPickSaveFile(), false);
   assert.ok((await createSink("a.bin")) instanceof BlobSink);

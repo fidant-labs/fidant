@@ -52,6 +52,7 @@ export const en = {
     themes: { system: "System", light: "Light", dark: "Dark" },
     label: "Main",
     send: "Send a file",
+    how: "How it works",
     privacy: "Privacy",
   },
   landing: {
@@ -147,6 +148,7 @@ export const en = {
   },
   connection: {
     why: "Why?",
+    more: "More about how it works",
     direct: {
       label: "Direct connection",
       explain:
@@ -155,7 +157,7 @@ export const en = {
     relay: {
       label: "Through our relay",
       explain:
-        "The two networks couldn't connect directly, which is common on mobile data and office Wi-Fi. So the file goes through our relay in Stockholm. It stays locked the whole way, and the relay can't open it or keep it. The relay sees both devices' internet addresses and roughly how big the file is.",
+        "The two networks couldn't connect directly, which is common on mobile data and office Wi-Fi. So the file goes through our relay in Stockholm. It stays locked the whole way: the relay can't open it and doesn't keep it. The relay sees both devices' internet addresses and roughly how big the file is.",
     },
   },
   format: {
@@ -172,7 +174,7 @@ export const en = {
     localhost:
       "This page is open on localhost, so the links won't work on other computers. Open the network address the server printed instead.",
     lostServer:
-      "Lost the connection to the server. Files already on their way can finish, but nobody new can connect. Reload the page to start again.",
+      "Lost the connection to the server. Trying to reconnect… Files already on their way can finish. Nobody new can connect until it's back, so keep this page open.",
     fromLabel: "Your name",
     optional: "(optional)",
     fromHint: "Shown to the people you send to.",
@@ -215,7 +217,7 @@ export const en = {
       connecting: (name: string) => `Connecting through ${name}'s link…`,
       offered: (name: string) => `${name}'s link has been opened`,
       declined: (name: string) =>
-        `${name}'s link was opened and the file declined. The link still works.`,
+        `${name}'s link was opened and the file was declined. The link still works.`,
       receiving: (name: string) => `Sending through ${name}'s link`,
       delivered: (name: string) => `Delivered through ${name}'s link`,
       failed: (name: string) =>
@@ -353,7 +355,7 @@ export const en = {
       },
       noRelay: {
         title: "Couldn't connect directly to the sender",
-        body: "The sender doesn't allow our relay, and your networks couldn't connect directly. Another network may work, for example your phone's mobile data.",
+        body: "The sender doesn't allow our relay, and your networks probably couldn't connect directly. Ask the sender to allow the relay, or try another network, for example your phone's mobile data.",
       },
       server: {
         title: "Couldn't reach the server",
@@ -447,7 +449,6 @@ export const en = {
   footer: {
     label: "Site",
     tagline: "Files encrypted in your browser, readable only by the recipient.",
-    how: "How it works",
     about: "About",
     terms: "Terms",
     security: "Security",

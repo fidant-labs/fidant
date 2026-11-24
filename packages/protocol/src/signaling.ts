@@ -41,8 +41,8 @@ const CODE_PATTERN = /^[0-9]{6}$/;
 
 const BASE64URL_PATTERN = /^[A-Za-z0-9_-]+$/;
 
-/** Why a sender turns a recipient away. */
-export const REFUSE_REASONS = ["used", "busy", "unknown"] as const;
+/** Why a sender turns a recipient away. `drop`: it gave up on the attempt; the link still works. */
+export const REFUSE_REASONS = ["used", "busy", "unknown", "drop"] as const;
 export type RefuseReason = (typeof REFUSE_REASONS)[number];
 
 /**

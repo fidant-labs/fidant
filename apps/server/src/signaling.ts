@@ -333,9 +333,13 @@ export function attachSignaling(
       error(socket, "already-hosted");
       return;
     }
+    const next = new Set(links);
+    const changed =
+      peer.role !== "host" ||
+      next.size !== peer.hosted.size ||
+      links.some((link) => !peer.hosted.has(link));
     peer.role = "host";
     peer.turn = turn;
-    const next = new Set(links);
     for (const link of peer.hosted) {
       if (!next.has(link)) {
         unhost(link);
@@ -345,7 +349,10 @@ export function attachSignaling(
       hosts.set(link, socket);
     }
     peer.hosted = next;
-    log("host", { links: next.size });
+    // A re-host with the same links only changes `turn`, which must leave no trace in the log.
+    if (changed) {
+      log("host", { links: next.size });
+    }
   }
 
   /** Stops hosting a link, drops its email state and tells its guest, if any, that the host is gone. */

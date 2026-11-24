@@ -53,6 +53,8 @@ export type PeerCloseReason =
   /** Setting up the connection threw (createOffer, setRemoteDescription, ...). */
   | "setup-failed";
 
+export type OpenPath = Exclude<ConnectionPath, "failed">;
+
 export type PeerOpenInfo = {
   /** Largest message the channel accepts, in bytes. Check frames with assertFrameFits. */
   maxMessageSize: number;
@@ -60,7 +62,7 @@ export type PeerOpenInfo = {
    * How the browsers reached each other, from the selected candidate pair.
    * Resolves shortly after the channel opens; never rejects.
    */
-  path: Promise<Exclude<ConnectionPath, "failed">>;
+  path: Promise<OpenPath>;
 };
 
 export type PeerOptions = {
@@ -77,9 +79,10 @@ export type PeerOptions = {
   onOpen(channel: RTCDataChannel, info: PeerOpenInfo): void;
   /**
    * The peer closed on its own. Called at most once, and never after close()
-   * was called by the owner.
+   * was called by the owner. `detail` can quote SDP, so never log it; `name`
+   * is a caught error's name (see errorName), safe to log.
    */
-  onClose(reason: PeerCloseReason, detail?: string): void;
+  onClose(reason: PeerCloseReason, detail?: string, name?: string): void;
 };
 
 export type Peer = {
@@ -202,9 +205,7 @@ type StatsEntry = {
  * "stun" if either is server- or peer-reflexive, else "direct". Reads only
  * candidate types, never addresses or ports.
  */
-export function connectionPath(
-  stats: ReadonlyMap<string, StatsEntry>,
-): Exclude<ConnectionPath, "failed"> {
+export function connectionPath(stats: ReadonlyMap<string, StatsEntry>): OpenPath {
   const entries = [...stats.values()];
   const pairId = entries.find(
     (s) => s.type === "transport" && s.selectedCandidatePairId,
@@ -224,6 +225,11 @@ export function connectionPath(
     return "stun";
   }
   return "direct";
+}
+
+/** A caught error's name, such as "OperationError", if it is a plain identifier. */
+export function errorName(error: unknown): string | undefined {
+  return error instanceof Error && /^[A-Za-z]{1,40}$/.test(error.name) ? error.name : undefined;
 }
 
 class PeerError extends Error {
@@ -273,7 +279,7 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
     pc.close();
   }
 
-  function fail(reason: PeerCloseReason, detail?: string): void {
+  function fail(reason: PeerCloseReason, detail?: string, name?: string): void {
     if (closed) {
       return;
     }
@@ -281,7 +287,7 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
     if (detail === undefined) {
       options.onClose(reason);
     } else {
-      options.onClose(reason, detail);
+      options.onClose(reason, detail, name);
     }
   }
 
@@ -289,7 +295,7 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
     if (error instanceof PeerError) {
       fail(error.reason, error.message);
     } else {
-      fail(fallback, error instanceof Error ? error.message : String(error));
+      fail(fallback, error instanceof Error ? error.message : String(error), errorName(error));
     }
   }
 
@@ -329,7 +335,7 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
     next.onclose = () => fail("channel-closed");
   }
 
-  async function readPath(): Promise<Exclude<ConnectionPath, "failed">> {
+  async function readPath(): Promise<OpenPath> {
     const read = () => pc.getStats().then(connectionPath, () => "direct" as const);
     const first = await read();
     if (first !== "stun" || closed) {

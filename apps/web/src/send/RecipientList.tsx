@@ -18,6 +18,7 @@ import { Direct, Icon, PathLine } from "../ui.tsx";
 
 const STATUS_COLOR: Partial<Record<RecipientStatus, string>> = {
   failed: "text-destructive",
+  declined: "text-muted-foreground",
 };
 
 type Props = {
@@ -82,11 +83,12 @@ function RecipientRow({ recipient, fileSize, onRemove }: RowProps) {
       <Card>
         <CardContent>
           <p
-            class={`m-0 flex items-center gap-[0.4rem] font-semibold wrap-anywhere ${noRelay ? "text-destructive" : (STATUS_COLOR[status] ?? "")}`}
+            class={`m-0 flex items-center gap-1.5 font-semibold wrap-anywhere ${noRelay ? "text-destructive" : (STATUS_COLOR[status] ?? "")}`}
             aria-live="polite"
           >
             {status === "delivered" && <Icon name="check" />}
             {(status === "failed" || noRelay) && <Icon name="alert" />}
+            {status === "declined" && !noRelay && <Icon name="declined" />}
             <span>{noRelay ? t.send.noRelay(name) : t.send.status[status](name)}</span>
           </p>
           {email && mail && (

@@ -23,6 +23,8 @@ pnpm e2e:networks  # from the repository root; needs Docker with Compose v2
 
 `pnpm e2e:networks` runs only `tests/networks.spec.ts`. Global setup starts `networks/compose.yaml`: two sites behind NAT routers (`networks/router.sh`), a browser container per site address running `playwright run-server` (a1 and a2 at site A, b1 at site B, published on 127.0.0.1:39011, 39012 and 39021), and coturn at 198.51.100.20 on the public network, which has no way out. The server runs in its own container at 198.51.100.10 on that network, so the browsers reach it through their routers. The host never connects to it: it reads the port from the server's output, and the browsers get `https://198.51.100.10:<port>` as their base URL. On Docker Desktop the host cannot reach 198.51.100.x at all, and does not need to.
 
+The public network also holds the box at 198.51.100.30 (`networks/box`): Ubuntu 24.04 with systemd, running the app server, Caddy, coturn and rsyslog as on the POC box, configured from the rendered `apps/infra/box/user-data.sh` (`src/stack/box.ts`). The browsers reach it as `https://fidant.se` and `turn.fidant.se` through `--host-resolver-rules`. The `the box` test sends one file through its relay, then reads its journal and `/var/log/syslog`: nothing from the three services may reach syslog, journald's settings must resolve to `ForwardToSyslog=no`, `MaxRetentionSec=29day` and `MaxFileSec=1day`, and the app server's journal lines must pass the stdout allowlist and hold no client address or user agent. The first run builds the box image.
+
 Each row of the spec's table names the sender's and recipient's site, the mode of router-b (`routerMode()` in `src/stack/networks.ts`) and the candidate pair ICE must select. Teardown removes every container and network, also after a failed run; a run that was killed is cleaned up by the next one. The first run pulls the images, so it needs the internet once.
 
 ## Writing a test
@@ -36,6 +38,8 @@ Import `test` and `expect` from `src/fixtures.ts`, not from `@playwright/test`.
 - After the test, the detector scans what the test observed for every secret it registered and fails the test on any finding. `leaks.scan()` returns the findings so far without failing, and `leaks.check()` returns the report the teardown would throw (undefined when clean). A test that leaks on purpose calls `leaks.expectLeaks()`. `tests/leaks.spec.ts` shows each kind of leak the detector catches.
 - Once all tests are done, a run-level sweep scans every observation against every secret of the run, so a leak that shows up in another test's traffic or a later log line still fails the run.
 
+- `restartServer()` from `src/stack/server.ts` restarts the server on the same port and resolves once it listens again, like a deploy or a crash: browsers lose their signaling sockets and the server forgets every link. Global setup's server service does the restart (it starts the server again whenever it exits on SIGTERM), and both runs write to the same logs, so the leak checks cover them. The specs run one at a time (`workers: 1`), so a restart cannot break another test. Local stack only: `pnpm e2e:networks` has no restart.
+
 Requests outside the stack are aborted and fail the test.
 
 ## What is scanned
@@ -44,10 +48,12 @@ Today:
 
 - Browser requests and responses: URL, every header and request bodies.
 - WebSocket frames, sent and received, including `/signal`.
+- Browser console messages: the text and the page URL without its fragment.
 - Server stdout and stderr. Stdout must also pass a strict allowlist: one JSON object per line, with known keys and values only (`src/leaks/server-log.ts`).
 - coturn's verbose log, `observations/run/coturn.log`.
 - Every mail Mailpit caught, as one capture of its raw source, which carries the envelope as Mailpit records it (Return-Path, Received and, for a recipient not in To or Cc, Bcc). Each test's check saves the mail that arrived during the test to `observations/<test>/mail/<ID>.eml`, and its teardown deletes those messages from Mailpit. Global teardown saves what is left to `observations/run/mail/`.
 - In the network scenarios only, every packet to and from coturn, `observations/run/coturn.pcap`. The `pcap` service of `networks/compose.yaml` runs tcpdump in coturn's network namespace with `NET_RAW`, so no sudo is needed (decision 0001 expected sudo on CI). The file is scanned as raw bytes, one capture per test from where it stood when the test began. It holds STUN and TURN headers and DTLS ciphertext only, so it is safe as a CI artifact. `pnpm e2e` has no packet capture.
+- In the network scenarios only, the box's journal for sigill, caddy and coturn (`observations/run/box-journal.jsonl`, the message of each `journalctl -o json --all` entry, one per line, binary ones hex-encoded) and its `/var/log/syslog` (`observations/run/box-syslog.log`), written by the `the box` test after its transfer.
 
 Every capture is decoded into views (percent, JSON escapes, base64, hex, gzip and others, nested) before matching, so encoded leaks are caught too.
 

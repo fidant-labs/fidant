@@ -4,7 +4,12 @@
 // Wiring (see lib/peer.ts and lib/sender-state.ts):
 // - On mount, connect to the signaling server and host every link ID on the
 //   list, with whether recipients may use our TURN relay; re-host the full
-//   list after every add or remove and every change of the relay checkbox.
+//   list after every add or remove, every change of the relay checkbox and
+//   every reconnect, and again REHOST_AFTER_MS after `already-hosted` while
+//   the server still holds the old socket. When the socket drops, recipients
+//   still connecting go back to waiting (reducer `server-lost`, which never
+//   blames the relay); the page says the server is gone
+//   only after LOST_AFTER_MS without it.
 // - Server `joined` → reducer `joined`, whose `start` effect derives the
 //   link's signal key and creates a sender peer with the ICE servers from
 //   `joined`. `relay` goes to that peer.
@@ -16,9 +21,10 @@
 //   refuse the joiner so the server unbinds it (see sender-state.ts).
 // - Each connection reports its path to the server once: direct, stun or
 //   relay when the channel opens, failed on an ICE failure or a timeout. A
-//   relay path under a refused relay counts as failed too, and the reducer
-//   then ends the attempt. An open channel's path also goes to the reducer,
-//   for the recipient's card.
+//   relay path on an active attempt whose relay the sender refused
+//   (refusesRelay) counts as failed too, and the reducer then ends the
+//   attempt. An open channel's path also goes to the reducer, for the
+//   recipient's card.
 // - Effects run outside render: `close` tears the peer down, `refuse` tells
 //   the server to refuse the joiner.
 // - When the server's `hello` says it can send mail, the add form offers an
@@ -57,6 +63,7 @@ import {
   hostedLinks,
   initialSenderState,
   isActive,
+  refusesRelay,
   SETUP_TIMEOUT_MS,
   type SenderAction,
   type SenderEffect,
@@ -87,6 +94,10 @@ type Connection = {
 type ErrorOf<K extends "fromError" | "fileError" | "nameError"> = keyof Messages["send"][K] | "";
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+/** How long the server may stay unreachable before the page says so. */
+const LOST_AFTER_MS = 10_000;
+/** How long to wait before hosting again when the server still holds a link for our old socket. */
+const REHOST_AFTER_MS = 5000;
 
 const field = "flex flex-1 flex-col gap-1";
 const fieldError = "mt-1 mb-0 text-destructive";
@@ -170,6 +181,7 @@ export function SendPage() {
     try {
       signalKey = await deriveSignalKey(recipient.secret, linkId);
     } catch {
+      console.warn("sigill: sender dropped a connection: signal-key");
       dispatch({ type: "dropped", linkId });
       return;
     }
@@ -188,8 +200,9 @@ export function SendPage() {
         // The path may come after a short transfer already closed the
         // connection; send it while the link is still hosted.
         void info.path.then((path) => {
-          if (findRecipient(senderRef.current, linkId)) {
-            const refused = path === "relay" && recipient.turn === false;
+          const latest = findRecipient(senderRef.current, linkId);
+          if (latest) {
+            const refused = refusesRelay(latest, attempt, path);
             sendPath(linkId, connection, refused ? "failed" : path);
             dispatch({ type: "path", linkId, attempt, path });
             // ponytail: sticky for the page, since the relay's log lines stay after the transfer
@@ -229,7 +242,8 @@ export function SendPage() {
           },
         );
       },
-      onClose(reason) {
+      onClose(reason, _detail, name) {
+        console.warn(`sigill: sender dropped a connection: ${reason}${name ? ` (${name})` : ""}`);
         if (reason === "connection-failed") {
           sendPath(linkId, connection, "failed");
         }
@@ -279,18 +293,23 @@ export function SendPage() {
     let disposed = false;
     const dispatch = (action: SenderAction) => dispatchRef.current(action);
 
-    signaling.ready.then(
-      () => host(),
-      () => {
-        if (!disposed) {
-          setLostServer(true);
-        }
-      },
-    );
+    let lost: ReturnType<typeof setTimeout> | undefined;
+    let rehost: ReturnType<typeof setTimeout> | undefined;
+
+    signaling.onOpen(() => {
+      clearTimeout(lost);
+      lost = undefined;
+      setLostServer(false);
+      host();
+    });
     signaling.onClose(({ byClient }) => {
-      if (!byClient && !disposed) {
-        setLostServer(true);
+      if (byClient || disposed) {
+        return;
       }
+      // The server forgot these joins with the socket; the recipients will join again.
+      dispatch({ type: "server-lost" });
+      // Short drops (a server restart) reconnect quietly.
+      lost ??= setTimeout(() => setLostServer(true), LOST_AFTER_MS);
     });
     signaling.subscribe((message) => {
       switch (message.t) {
@@ -315,6 +334,13 @@ export function SendPage() {
         case "relay":
           void connectionsRef.current.get(message.link)?.peer?.handleRelay(message.data);
           break;
+        case "error":
+          // After a reconnect the server may not have noticed the old socket close yet.
+          if (message.code === "already-hosted") {
+            clearTimeout(rehost);
+            rehost = setTimeout(host, REHOST_AFTER_MS);
+          }
+          break;
         default:
           break;
       }
@@ -327,10 +353,21 @@ export function SendPage() {
       }
     };
     window.addEventListener("beforeunload", onBeforeUnload);
+    // Once the page is really going, close the peers so recipients hear it now, not when ICE
+    // consent runs out about 15 s later.
+    const onPageHide = () => {
+      for (const linkId of [...connectionsRef.current.keys()]) {
+        closeConnection(linkId);
+      }
+    };
+    window.addEventListener("pagehide", onPageHide);
 
     return () => {
       disposed = true;
+      clearTimeout(lost);
+      clearTimeout(rehost);
       window.removeEventListener("beforeunload", onBeforeUnload);
+      window.removeEventListener("pagehide", onPageHide);
       hashAbortRef.current?.abort();
       for (const linkId of [...connectionsRef.current.keys()]) {
         closeConnection(linkId);
@@ -599,7 +636,17 @@ export function SendPage() {
             {t.send.allowRelay}
           </Label>
 
-          <form class="mt-6 flex flex-wrap items-end gap-2" onSubmit={onAdd} noValidate>
+          <form
+            class="mt-6 flex flex-wrap items-end gap-2"
+            onSubmit={onAdd}
+            // A held Enter that started on the last Remove button lands here and would submit an empty name.
+            onKeyDown={(event) => {
+              if (event.repeat && event.key === "Enter") {
+                event.preventDefault();
+              }
+            }}
+            noValidate
+          >
             <div class={field}>
               <Label htmlFor="recipient-name">{t.send.recipientLabel}</Label>
               <Input

@@ -52,6 +52,7 @@ export const sv: Messages = {
     themes: { system: "System", light: "Ljust", dark: "Mörkt" },
     label: "Huvudmeny",
     send: "Skicka en fil",
+    how: "Så fungerar det",
     privacy: "Integritet",
   },
   landing: {
@@ -147,6 +148,7 @@ export const sv: Messages = {
   },
   connection: {
     why: "Varför?",
+    more: "Mer om hur det fungerar",
     direct: {
       label: "Direkt anslutning",
       explain:
@@ -155,7 +157,7 @@ export const sv: Messages = {
     relay: {
       label: "Via vårt relä",
       explain:
-        "De två nätverken kunde inte ansluta direkt till varandra, vilket är vanligt på mobildata och kontors-wifi. Därför går filen via vårt relä i Stockholm. Den är låst hela vägen, och reläet kan varken öppna den eller spara den. Reläet ser båda enheternas internetadresser och ungefär hur stor filen är.",
+        "De två nätverken kunde inte ansluta direkt till varandra, vilket är vanligt på mobildata och kontors-wifi. Därför går filen via vårt relä i Stockholm. Den är låst hela vägen: reläet kan inte öppna den och sparar den inte. Reläet ser båda enheternas internetadresser och ungefär hur stor filen är.",
     },
   },
   format: {
@@ -172,7 +174,7 @@ export const sv: Messages = {
     localhost:
       "Sidan är öppnad på localhost, så länkarna fungerar inte på andra datorer. Öppna i stället nätverksadressen som servern skrev ut.",
     lostServer:
-      "Anslutningen till servern bröts. Filer som redan är på väg kan komma fram, men ingen ny kan ansluta. Ladda om sidan för att börja om.",
+      "Anslutningen till servern bröts. Försöker ansluta igen… Filer som redan är på väg kan komma fram. Ingen ny kan ansluta förrän den är tillbaka, så håll sidan öppen.",
     fromLabel: "Ditt namn",
     optional: "(valfritt)",
     fromHint: "Visas för dem du skickar till.",
@@ -351,7 +353,7 @@ export const sv: Messages = {
       },
       noRelay: {
         title: "Det gick inte att ansluta direkt till avsändaren",
-        body: "Avsändaren tillåter inte vårt relä, och era nätverk kunde inte ansluta direkt till varandra. Ett annat nätverk kan fungera, till exempel mobildata i din telefon.",
+        body: "Avsändaren tillåter inte vårt relä, och era nätverk kunde troligen inte ansluta direkt till varandra. Be avsändaren att tillåta reläet, eller prova ett annat nätverk, till exempel mobildata i din telefon.",
       },
       server: {
         title: "Det gick inte att nå servern",
@@ -435,7 +437,6 @@ export const sv: Messages = {
   footer: {
     label: "Webbplats",
     tagline: "Filer krypteras i din webbläsare och kan bara läsas av mottagaren.",
-    how: "Så fungerar det",
     about: "Om Fidant",
     terms: "Villkor",
     security: "Säkerhet",

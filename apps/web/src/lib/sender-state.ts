@@ -18,10 +18,11 @@
 // | receiving                      | progress       | receiving  |                    |
 // | receiving                      | receipt(true)  | delivered  | close              |
 // | receiving                      | receipt(false) | failed     | close              |
-// | connecting, offered, receiving | dropped        | waiting    | refuse busy, close |
-// | connecting                     | timeout        | waiting    | refuse busy, close |
+// | connecting, offered, receiving | dropped        | waiting    | refuse drop, close |
+// | connecting                     | timeout        | waiting    | refuse drop, close |
 // | connecting                     | left           | waiting    | close              |
-// | connecting, offered, receiving | path relay (1) | waiting    | refuse busy, close |
+// | connecting                     | server-lost    | waiting    | close              |
+// | connecting, offered, receiving | path relay (1) | waiting    | refuse drop, close |
 // | (its attempt matches)          | path           | (same)     |                    |
 // | (not on the list)              | joined         | -          | refuse unknown     |
 //
@@ -47,11 +48,14 @@
 //   open, and someone who knows a link ID but not its secret can join and then
 //   stay silent or send garbage). So the sender also refuses the joiner, which
 //   makes the server unbind it and frees the link for the real recipient. The
-//   reason is "busy": the protocol has no better one, and an honest recipient
-//   that already got signals from the sender treats a refusal after them as a
-//   failed attempt, not as "in use" (see ReceivePage). If the joiner already
-//   left, the server ignores the refusal. `left` needs no refusal: the joiner
-//   is gone.
+//   reason is "drop", which tells the recipient the attempt failed and the
+//   link still works (see ReceivePage). "busy" is only for a join while a
+//   transfer is in progress; the server also sends it for a second joiner.
+//   If the joiner already left, the server ignores the refusal. `left` needs
+//   no refusal: the joiner is gone.
+// - `server-lost` (our own signaling socket dropped) does the same for every
+//   connecting recipient, since the server forgot their joins with the socket.
+//   Unlike `left` it never sets `noRelay`: the server dropped, not the relay.
 // - Every join carries the recipient's attempt ID, and every refusal names the
 //   attempt it refuses. A join is refused with its own attempt; `dropped` and
 //   `timeout` refuse the attempt stored when the recipient started
@@ -92,14 +96,9 @@
 // names never leave this module through an effect, so nothing built from
 // effects can send a name to the network.
 
-import {
-  type ConnectionPath,
-  type EmailStatus,
-  type IceServer,
-  MAX_LINKS,
-  type RefuseReason,
-} from "@sigill/protocol";
+import { type EmailStatus, type IceServer, MAX_LINKS, type RefuseReason } from "@sigill/protocol";
 import type { Link } from "./link.ts";
+import type { OpenPath } from "./peer.ts";
 
 export type RecipientStatus =
   | "waiting"
@@ -121,7 +120,7 @@ export type Recipient = {
   /** The attempt ID of the join that started the current connection. */
   readonly attempt?: string;
   /** How the current attempt's connection runs, once its data channel opened. */
-  readonly path?: Exclude<ConnectionPath, "failed">;
+  readonly path?: OpenPath;
   /** Whether the server's `joined` for the current attempt allowed our relay. */
   readonly turn?: boolean;
   /** The last attempt couldn't connect directly while the sender refused our relay. */
@@ -146,8 +145,9 @@ export type SenderAction =
   | { type: "dropped"; linkId: string }
   | { type: "timeout"; linkId: string }
   | { type: "left"; linkId: string }
+  | { type: "server-lost" }
   | { type: "declined"; linkId: string }
-  | { type: "path"; linkId: string; attempt: string; path: Exclude<ConnectionPath, "failed"> }
+  | { type: "path"; linkId: string; attempt: string; path: OpenPath }
   | { type: "email"; linkId: string; status: EmailStatus };
 
 export type SenderEffect =
@@ -169,6 +169,16 @@ const ACTIVE: ReadonlySet<RecipientStatus> = new Set(["connecting", "offered", "
 /** True while a peer connection for the recipient is being set up or used. */
 export function isActive(recipient: Recipient): boolean {
   return ACTIVE.has(recipient.status);
+}
+
+/** True for a relay path on the recipient's active `attempt` whose `joined` refused the relay. */
+export function refusesRelay(recipient: Recipient, attempt: string, path: OpenPath): boolean {
+  return (
+    path === "relay" &&
+    recipient.attempt === attempt &&
+    recipient.turn === false &&
+    isActive(recipient)
+  );
 }
 
 /** Finds a recipient by link ID. */
@@ -201,6 +211,17 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
       ...(email === undefined ? {} : { email, mail: "sending" as const }),
     };
     return { state: { recipients: [...state.recipients, recipient] }, effects: [] };
+  }
+  if (action.type === "server-lost") {
+    const effects: SenderEffect[] = [];
+    const recipients = state.recipients.map((r) => {
+      if (r.status !== "connecting") {
+        return r;
+      }
+      effects.push({ type: "close", linkId: r.linkId });
+      return waiting(r, false);
+    });
+    return { state: effects.length ? { recipients } : state, effects };
   }
 
   const { linkId } = action;
@@ -285,7 +306,7 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
       if (current.attempt !== action.attempt) {
         return { state, effects: [] };
       }
-      if (action.path === "relay" && current.turn === false && isActive(current)) {
+      if (refusesRelay(current, action.attempt, action.path)) {
         return end(state, current, true);
       }
       return { state: replace(state, { ...current, path: action.path }), effects: [] };
@@ -310,7 +331,7 @@ function end(state: SenderState, current: Recipient, blocked: boolean): SenderUp
       // An active recipient always has the attempt its join stored.
       ...(attempt === undefined
         ? []
-        : [{ type: "refuse", linkId, attempt, reason: "busy" } as const]),
+        : [{ type: "refuse", linkId, attempt, reason: "drop" } as const]),
       { type: "close", linkId },
     ],
   };

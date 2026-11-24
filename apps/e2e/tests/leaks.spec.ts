@@ -282,6 +282,22 @@ test.describe("the detector catches", () => {
       view: /^gzip(>base64@\d)?$/,
     });
   });
+
+  test("a key in a console message", async ({ page, leaks, canary }) => {
+    leaks.expectLeaks();
+    const key = canaryKey(canary.fork("key"));
+    leaks.watchKey("fragment secret", key);
+    await open(page);
+    const logged = page.waitForEvent("console", (message) => message.text() === key.text);
+    await page.evaluate((text) => console.log(text), key.text);
+    await logged;
+    expectFinding(await leaks.scan(), {
+      class: "K",
+      label: "fragment secret text",
+      field: "console.text",
+      view: /^raw$/,
+    });
+  });
 });
 
 test.describe("the detector stays quiet on", () => {
@@ -315,6 +331,7 @@ test.describe("the detector stays quiet on", () => {
         await fetch(`/files/${encodeURIComponent(name.normalize("NFD"))}`);
         await fetch(`/?k=${window}`);
         await fetch("/", { headers: { "x-size": String(size) } });
+        console.log(key);
       },
       {
         key: otherKey.text,

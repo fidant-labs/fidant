@@ -1,8 +1,6 @@
 // Pieces shared by the pages.
 
-import type { ConnectionPath } from "@sigill/protocol";
 import type { AnchorHTMLAttributes, ComponentChildren } from "preact";
-import { useState } from "preact/hooks";
 import { DropdownMenu } from "radix-ui";
 import { Alert, AlertDescription, AlertTitle } from "#components/ui/alert";
 import { buttonVariants } from "#components/ui/button";
@@ -10,8 +8,9 @@ import { Card, CardContent } from "#components/ui/card";
 import { useI18n } from "./i18n/I18n.tsx";
 import { LANGUAGE_NAMES, type Lang } from "./i18n/language.ts";
 import { formatBytes } from "./lib/format.ts";
+import type { OpenPath } from "./lib/peer.ts";
 import type { Relayed } from "./lib/server-facts.ts";
-import { applyTheme, initialTheme, type Theme } from "./theme.ts";
+import type { Theme } from "./theme.ts";
 
 export const ICONS = {
   computer: (
@@ -48,6 +47,12 @@ export const ICONS = {
     <>
       <circle cx="12" cy="12" r="9" />
       <path d="M12 7.5V13m0 3.5v.01" />
+    </>
+  ),
+  declined: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M8 12h8" />
     </>
   ),
   server: (
@@ -148,8 +153,9 @@ export function Link({
   );
 }
 
-const MENU: ReadonlyArray<readonly ["send" | "privacy", string]> = [
+const MENU: ReadonlyArray<readonly ["send" | "how" | "privacy", string]> = [
   ["send", "/send"],
+  ["how", "/how"],
   ["privacy", "/privacy"],
 ];
 
@@ -213,25 +219,23 @@ function Choice<T extends string>({
   );
 }
 
-function ThemeMenu() {
+type ThemeProps = { theme: Theme; onTheme(next: Theme): void };
+
+/** The header shows this menu from the sm breakpoint up, the footer below it. */
+function ThemeMenu({ theme, onTheme }: ThemeProps) {
   const { t } = useI18n();
-  const [theme, setTheme] = useState(initialTheme);
-  const choose = (next: Theme) => {
-    applyTheme(next);
-    setTheme(next);
-  };
   return (
     <Choice
       label={t.menu.theme}
       icon={THEME_ICONS[theme]}
       value={theme}
       options={(["system", "light", "dark"] as const).map((v) => [v, t.menu.themes[v]] as const)}
-      onChange={choose}
+      onChange={onTheme}
     />
   );
 }
 
-export function Header({ current }: { current: Route }) {
+export function Header({ current, theme, onTheme }: { current: Route } & ThemeProps) {
   const { lang, t, setLang } = useI18n();
   return (
     <header class="fixed inset-x-0 top-0 z-50 border-b border-border/60 bg-background/70 backdrop-blur-xl backdrop-saturate-150">
@@ -264,14 +268,14 @@ export function Header({ current }: { current: Route }) {
                 <Link
                   href={href}
                   aria-current={section === current ? "page" : undefined}
-                  class={`${buttonVariants({ variant: section === current ? "secondary" : "ghost" })} max-sm:px-2`}
+                  class={`${buttonVariants({ variant: section === current ? "secondary" : "ghost" })} max-sm:px-1 max-sm:text-[0.8125rem]`}
                 >
                   {t.menu[section]}
                 </Link>
               </li>
             ))}
-            <li>
-              <ThemeMenu />
+            <li class="max-sm:hidden">
+              <ThemeMenu theme={theme} onTheme={onTheme} />
             </li>
             <li>
               <Choice
@@ -299,7 +303,7 @@ const FOOTER_LINKS: ReadonlyArray<
   ["security", "/security"],
 ];
 
-export function Footer() {
+export function Footer({ theme, onTheme }: ThemeProps) {
   const { t } = useI18n();
   const link =
     "rounded-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline";
@@ -315,7 +319,7 @@ export function Footer() {
             {FOOTER_LINKS.map(([page, href]) => (
               <li key={page}>
                 <Link href={href} class={link}>
-                  {page === "privacy" ? t.menu.privacy : t.footer[page]}
+                  {page === "how" || page === "privacy" ? t.menu[page] : t.footer[page]}
                 </Link>
               </li>
             ))}
@@ -327,9 +331,12 @@ export function Footer() {
           </ul>
         </nav>
       </div>
-      <p class="mx-auto mt-0 mb-0 max-w-6xl px-4 pb-8 text-[0.85rem] text-muted-foreground">
-        {t.footer.license}
-      </p>
+      <div class="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 pb-8">
+        <p class="m-0 text-[0.85rem] text-muted-foreground">{t.footer.license}</p>
+        <div class="sm:hidden">
+          <ThemeMenu theme={theme} onTheme={onTheme} />
+        </div>
+      </div>
     </footer>
   );
 }
@@ -373,7 +380,7 @@ export function Direct({
       </span>
       <span class={`mb-5 flex h-0.5 flex-1 items-center justify-center ${DIRECT_LINE[state]}`}>
         <span
-          class={`inline-flex rounded-[50%] border bg-background p-[0.35rem] ${done ? "border-primary" : "border-border"} text-primary`}
+          class={`inline-flex rounded-[50%] border bg-background p-1.5 ${done ? "border-primary" : "border-border"} text-primary`}
         >
           <Icon name={done ? "check" : "lock"} />
         </span>
@@ -428,16 +435,22 @@ export function TechDetails({
 }
 
 /** How a connection runs, with a "Why?" that explains it. The summary holds the label too, so it makes sense on its own. */
-export function PathLine({ path }: { path: Exclude<ConnectionPath, "failed"> }) {
+export function PathLine({ path }: { path: OpenPath }) {
   const { t } = useI18n();
-  const { label, explain } = t.connection[path === "relay" ? "relay" : "direct"];
+  const kind = path === "relay" ? "relay" : "direct";
+  const { label, explain } = t.connection[kind];
   return (
     <details class="mt-2 text-[0.9rem]">
       <summary class="cursor-pointer">
         <span class="font-medium">{label}</span>{" "}
         <span class="text-muted-foreground underline underline-offset-4">{t.connection.why}</span>
       </summary>
-      <p class="mt-1 mb-0 text-muted-foreground">{explain}</p>
+      <p class="mt-1 mb-0 text-muted-foreground">
+        {explain}{" "}
+        <Link href={`/how#${kind}`} class="rounded-sm font-medium underline underline-offset-4">
+          {t.connection.more}
+        </Link>
+      </p>
     </details>
   );
 }
