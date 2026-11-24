@@ -95,13 +95,12 @@
 //   without one (`limit`, or `failed` before anything went out) keeps the
 //   plain link.
 // - `server-lost` also unbinds every recipient whose link the server emailed
-//   or may have emailed (a mark, or still "sending"): the server dropped its
-//   binding with the socket, so `hostedLinks` leaves the link out from then
-//   on and nobody can host its ID plain from this page.
-// - `email-refused` (the server answered `not-on-link` or `already-hosted`,
-//   naming no link) fails every recipient still "sending", without a mark:
-//   an `email` for a link the server does not host sends nothing. If the
-//   server did take one, its later reply with a mark replaces "failed".
+//   or may have emailed (a mark, "sending", or "verifying"/"verified" without
+//   a mark, see `unmarked`): the server dropped its binding with the socket,
+//   so `hostedLinks` leaves the link out from then on and nobody can host its
+//   ID plain from this page.
+// - The server answers every `email` it refuses for a link with `failed` and no
+//   mark, so a refusal never needs guessing which card it was for.
 //
 // Effects carry only link IDs, attempt IDs, refusal reasons and the ICE servers from the
 // server's `joined`. Recipient
@@ -168,7 +167,6 @@ export type SenderAction =
   | { type: "timeout"; linkId: string }
   | { type: "left"; linkId: string }
   | { type: "server-lost" }
-  | { type: "email-refused" }
   | { type: "declined"; linkId: string }
   | { type: "path"; linkId: string; attempt: string; path: OpenPath }
   | { type: "email"; linkId: string; status: EmailStatus; mark?: string | undefined };
@@ -209,9 +207,16 @@ export function findRecipient(state: SenderState, linkId: string): Recipient | u
   return state.recipients.find((r) => r.linkId === linkId);
 }
 
+const MAIL_PENDING: ReadonlySet<Recipient["mail"]> = new Set(["sending", "verifying", "verified"]);
+
+/** True while the server may hold an email binding for the link but has not given the marked copy. */
+export function unmarked(recipient: Recipient): boolean {
+  return recipient.mark === undefined && MAIL_PENDING.has(recipient.mail);
+}
+
 /** True while the server holds, or may hold, an email binding for the recipient's link. */
 export function emailBound(recipient: Recipient): boolean {
-  return !recipient.unbound && (recipient.mark !== undefined || recipient.mail === "sending");
+  return !recipient.unbound && (recipient.mark !== undefined || unmarked(recipient));
 }
 
 /**
@@ -257,16 +262,6 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
       return next;
     });
     return { state: changed ? { recipients } : state, effects };
-  }
-
-  if (action.type === "email-refused") {
-    if (!state.recipients.some((r) => r.mail === "sending" && !r.unbound)) {
-      return { state, effects: [] };
-    }
-    const recipients = state.recipients.map((r) =>
-      r.mail === "sending" && !r.unbound ? { ...r, mail: "failed" as const } : r,
-    );
-    return { state: { recipients }, effects: [] };
   }
 
   const { linkId } = action;

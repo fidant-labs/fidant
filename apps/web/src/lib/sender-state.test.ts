@@ -4,14 +4,17 @@ import { type EmailStatus, MAX_LINKS } from "@sigill/protocol";
 import { createLink, type Link } from "./link.ts";
 import {
   CHECKSUM_MISMATCH,
+  emailBound,
   findRecipient,
   hostedLinks,
   initialSenderState,
+  type Recipient,
   refusesRelay,
   SETUP_TIMEOUT_MS,
   type SenderAction,
   type SenderEffect,
   type SenderState,
+  unmarked,
   update,
 } from "./sender-state.ts";
 
@@ -329,7 +332,7 @@ test("a mismatching receipt fails the transfer and the next join retries", () =>
 
 test("events that do not fit the current status are ignored", () => {
   const { state: waiting, linkId } = withRecipient();
-  const outOfPlace: Exclude<SenderAction, { type: "add" | "server-lost" | "email-refused" }>[] = [
+  const outOfPlace: Exclude<SenderAction, { type: "add" | "server-lost" }>[] = [
     { type: "channel-open", linkId },
     { type: "accepted", linkId },
     { type: "progress", linkId, bytesSent: 10 },
@@ -770,39 +773,32 @@ test("a mark makes the recipient's link the one the server emailed; a refusal ke
   assert.equal(recipient?.url, link.url);
 });
 
-test("email-refused fails every link still sending, and a later reply with a mark still wins", () => {
-  const mark = "MMMMMMMMMMMMMMMMMMMMMM";
-  const [plain, sending, sent] = Array.from({ length: 3 }, () => createLink(ORIGIN)) as [
-    Link,
-    Link,
-    Link,
-  ];
-  const email = "anna@example.se";
+test("a verifying or verified reply before the notice reply still counts as bound on server-lost", () => {
+  for (const status of ["verifying", "verified"] as const) {
+    const link = createLink(ORIGIN);
+    const { state } = run(
+      initialSenderState,
+      { type: "add", link, name: "Anna", email: "anna@example.se" },
+      { type: "email", linkId: link.linkId, status },
+    );
+    const recipient = findRecipient(state, link.linkId);
+    assert.equal(recipient?.mark, undefined);
+    assert.ok(emailBound(recipient as Recipient));
+    assert.ok(unmarked(recipient as Recipient));
+    const lost = update(state, { type: "server-lost" }).state;
+    assert.deepEqual(hostedLinks(lost), []);
+  }
+});
+
+test("a failed reply without a mark leaves the plain link hosted", () => {
+  const link = createLink(ORIGIN);
   const { state } = run(
     initialSenderState,
-    { type: "add", link: plain, name: "Plain" },
-    { type: "add", link: sending, name: "Sending", email },
-    { type: "add", link: sent, name: "Sent", email },
-    { type: "email", linkId: sent.linkId, status: "sent", mark },
+    { type: "add", link, name: "Anna", email: "anna@example.se" },
+    { type: "email", linkId: link.linkId, status: "failed" },
   );
-  const refused = update(state, { type: "email-refused" });
-  assert.deepEqual(refused.effects, []);
-  const after = (linkId: string) => findRecipient(refused.state, linkId);
-  assert.equal(after(sending.linkId)?.mail, "failed");
-  assert.equal(after(sending.linkId)?.url, sending.url, "the plain link, which nobody emailed");
-  assert.equal(after(sent.linkId)?.mail, "sent");
-  assert.equal(after(plain.linkId)?.mail, undefined);
-  assert.deepEqual(hostedLinks(refused.state), [plain.linkId, sending.linkId, sent.linkId]);
-  assert.equal(update(refused.state, { type: "email-refused" }).state, refused.state);
-
-  const healed = run(refused.state, {
-    type: "email",
-    linkId: sending.linkId,
-    status: "sent",
-    mark,
-  });
-  assert.equal(findRecipient(healed.state, sending.linkId)?.mail, "sent");
-  assert.equal(findRecipient(healed.state, sending.linkId)?.mark, mark);
+  assert.ok(!emailBound(findRecipient(state, link.linkId) as Recipient));
+  assert.deepEqual(hostedLinks(update(state, { type: "server-lost" }).state), [link.linkId]);
 });
 
 test("server-lost unbinds every link the server emailed or may have emailed, and stops hosting it", () => {

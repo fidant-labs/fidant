@@ -13,7 +13,7 @@ import { Card, CardContent } from "#components/ui/card";
 import type { Messages } from "../i18n/en.ts";
 import { useI18n } from "../i18n/I18n.tsx";
 import { formatProgress } from "../lib/format.ts";
-import type { Recipient, RecipientStatus } from "../lib/sender-state.ts";
+import { type Recipient, type RecipientStatus, unmarked } from "../lib/sender-state.ts";
 import { Direct, Icon, PathLine } from "../ui.tsx";
 
 const STATUS_COLOR: Partial<Record<RecipientStatus, string>> = {
@@ -78,7 +78,7 @@ function RecipientRow({ recipient, fileSize, onRemove }: RowProps) {
 
   const open = status === "waiting" || status === "declined" || status === "failed";
   // A link the server may still email, or whose email binding died, is not to be shared.
-  const shareable = open && mail !== "sending" && !unbound;
+  const shareable = open && !unmarked(recipient) && !unbound;
   const lost = open && unbound;
 
   return (

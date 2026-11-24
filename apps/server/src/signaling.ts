@@ -489,7 +489,7 @@ export function attachSignaling(
       return;
     }
     if (!peer.hosted.has(link)) {
-      error(socket, "not-on-link");
+      send(socket, { t: "email", link, status: "failed" });
       return;
     }
     const reply = (status: "sent" | "failed" | "limit", mark?: string) => {

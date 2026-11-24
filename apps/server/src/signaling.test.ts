@@ -887,7 +887,7 @@ test("refuses an email from a guest or for a link this socket does not host", as
   await mailHost(url, link);
   const stranger = await connect(url, true);
   stranger.send(emailMessage(link));
-  assert.deepEqual(await stranger.next(), { t: "error", code: "not-on-link" });
+  assert.deepEqual(await stranger.next(), { t: "email", link, status: "failed" });
   const guest = await connect(url, true);
   const attempt = linkId();
   guest.send({ t: "join", link, attempt });
