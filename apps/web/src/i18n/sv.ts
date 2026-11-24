@@ -375,6 +375,9 @@ export const sv: Messages = {
     lede: "Klistra in ett lösenord, en API-nyckel eller annan kort text. Den går från den här webbläsaren till dem du väljer, krypterad hela vägen, och laddas aldrig upp eller sparas.",
     label: "Din text",
     hint: (max: number) => `Högst ${max.toLocaleString("sv")} tecken.`,
+    count: (length: number, max: number) =>
+      `${length.toLocaleString("sv")} av ${max.toLocaleString("sv")} tecken.`,
+    tooLong: "Korta texten för att kunna dela den.",
     lostServer:
       "Anslutningen till servern bröts. Försöker ansluta igen… Texter som redan är på väg kan komma fram. Ingen ny kan ansluta förrän den är tillbaka, så håll sidan öppen.",
     problems: {
@@ -540,6 +543,12 @@ export const sv: Messages = {
     security: "Säkerhet",
     source: "Källkod",
     license: "Öppen källkod, MIT-licens",
+  },
+  preview: {
+    title: "Privat filöverföring med Fidant",
+    receiveTitle: "Skickat till dig med Fidant",
+    receiveDescription:
+      "Öppna länken för att ta emot det. Det är krypterat hela vägen, och länken fungerar bara medan avsändarens sida är öppen.",
   },
   about: {
     title: "Om Fidant",

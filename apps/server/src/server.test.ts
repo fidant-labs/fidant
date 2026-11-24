@@ -15,6 +15,9 @@ const dir = mkdtempSync(join(tmpdir(), "sigill-server-"));
 const root = join(dir, "dist");
 mkdirSync(join(root, "assets"), { recursive: true });
 writeFileSync(join(root, "index.html"), "<!doctype html><title>Sigill</title>");
+for (const page of ["home.en", "home.sv", "receive.en", "receive.sv"]) {
+  writeFileSync(join(root, `index.${page}.html`), `<!doctype html><title>${page}</title>`);
+}
 writeFileSync(join(root, "assets", "app.js"), "console.log(1)");
 writeFileSync(join(root, "assets", "x-abc.js"), "console.log(2)");
 writeFileSync(join(root, "favicon.svg"), "<svg></svg>");
@@ -63,10 +66,28 @@ test("serves .txt files as plain text", async () => {
   assert.equal(res.headers.get("content-type"), "text/plain; charset=utf-8");
 });
 
-test("falls back to index.html for app routes", async () => {
-  const res = await fetch(`${base}/r/abc123`);
-  assert.equal(res.status, 200);
-  assert.match(await res.text(), /<title>Sigill<\/title>/);
+test("app routes get the page copy for their link preview and language", async () => {
+  const linkId = "AAAAAAAAAAAAAAAAAAAAAA";
+  for (const [path, language, page] of [
+    ["/", undefined, "home.en"],
+    ["/about", "sv-SE,sv;q=0.9,en;q=0.8", "home.sv"],
+    ["/r/abc123", "sv", "home.sv"],
+    [`/r/${linkId}`, "sv-SE,sv;q=0.9", "receive.sv"],
+    [`/r/${linkId}/`, "en-US,sv;q=0.5", "receive.en"],
+    [`/r/${linkId}`, "svx", "receive.en"],
+    [`/r/${linkId}/more`, undefined, "home.en"],
+  ] as const) {
+    const res = language
+      ? await fetch(`${base}${path}`, { headers: { "accept-language": language } }).then(
+          async (r) => ({ status: r.status, body: await r.text(), vary: r.headers.get("vary") }),
+        )
+      : await rawGet(path).then((r) => ({ status: r.status, body: r.body, vary: r.headers.vary }));
+    assert.equal(res.status, 200, path);
+    assert.equal(res.body, `<!doctype html><title>${page}</title>`, `${path} ${language}`);
+    assert.equal(res.vary, "accept-language", path);
+  }
+  const asset = await fetch(`${base}/assets/app.js`);
+  assert.equal(asset.headers.get("vary"), null);
 });
 
 test("caches hashed assets for a year and revalidates everything else", async () => {

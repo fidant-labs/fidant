@@ -130,6 +130,7 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
   const [fromError, setFromError] = useState<ErrorOf<"fromError">>("");
   const [allowRelay, setAllowRelay] = useState(true);
   const [step, setStep] = useState<"file" | "recipients">("file");
+  const [textLength, setTextLength] = useState(0);
 
   // Mutable state used from network callbacks, outside render.
   const senderRef = useRef<SenderState>(initialSenderState);
@@ -509,6 +510,7 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
   };
 
   const hasRecipients = sender.recipients.length > 0;
+  const tooLong = textLength > MAX_TEXT_LENGTH;
   const full = sender.recipients.length >= MAX_LINKS;
   const isLocalhost = LOCAL_HOSTS.has(location.hostname);
   // ponytail: counts by status, so it over-counts if a recipient's signaling drops mid-transfer; track joined/left if that matters
@@ -552,9 +554,8 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
               <Label htmlFor={id("text")}>{t.secret.label}</Label>
               <textarea
                 id={id("text")}
-                class="w-full min-w-0 resize-y rounded-lg border border-input bg-transparent px-2.5 py-2 font-mono text-base transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 md:text-sm dark:bg-input/30 dark:disabled:bg-input/80"
+                class="w-full min-w-0 resize-y rounded-lg border border-input bg-transparent px-2.5 py-2 font-mono text-base transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30 dark:disabled:bg-input/80 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40"
                 rows={6}
-                maxLength={MAX_TEXT_LENGTH}
                 spellcheck={false}
                 translate={false}
                 autocomplete="off"
@@ -563,11 +564,23 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
                 autoCorrect="off"
                 autocapitalize="off"
                 disabled={hasRecipients}
-                onInput={(event) => prepare(textFile(event.currentTarget.value))}
-                aria-describedby={id("text-hint")}
+                onInput={(event) => {
+                  const value = event.currentTarget.value;
+                  setTextLength(value.length);
+                  prepare(textFile(value));
+                }}
+                aria-invalid={tooLong ? "true" : "false"}
+                aria-describedby={
+                  tooLong ? `${id("text-error")} ${id("text-hint")}` : id("text-hint")
+                }
               />
               <p id={id("text-hint")} class={`m-0 ${hint}`}>
                 {t.secret.hint(MAX_TEXT_LENGTH)}
+              </p>
+              {/* Always rendered so the status is announced; the count stays outside it so each key isn't read out. */}
+              <p id={id("text-error")} class={tooLong ? fieldError : "-mt-1 mb-0"}>
+                {tooLong && `${t.secret.count(textLength, MAX_TEXT_LENGTH)} `}
+                <span role="status">{tooLong && t.secret.tooLong}</span>
               </p>
             </div>
           )}
@@ -760,7 +773,9 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
           <p id={id("recipient-hint")} class={hint}>
             {!file
               ? text
-                ? t.secret.first
+                ? tooLong
+                  ? t.secret.tooLong
+                  : t.secret.first
                 : t.send.fileFirst
               : full
                 ? t.send.full(MAX_LINKS)
