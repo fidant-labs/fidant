@@ -57,7 +57,7 @@
 
 ### Peers
 
-- `denied-peer-ip` blocks private, loopback, link-local, CGNAT and other special-use ranges, IPv4 and IPv6, as listed in `turnserver.conf`. The relay can't be used to reach the box's network or the instance metadata.
+- `denied-peer-ip` blocks private, loopback, link-local, CGNAT and other special-use ranges, IPv4 and IPv6, as listed in `turnserver.conf`. The relay can't be used to reach other machines on the box's network or the instance metadata. For the box itself, see Consequences.
 - The box's own public address is not denied. In a relay-to-relay transfer, each browser's peer is the other's relayed address on the box. coturn 4.6.1 checks the peer address as given, so the private-range denies don't block this, and a deny of the public address would.
 
 ### Logs
@@ -81,7 +81,7 @@
 
 - On the hosted site, browsers on different networks can connect, through a STUN-found address or the relay.
 - Relayed transfers outlive the 5-minute credentials. coturn 4.6.1 checks expiry only on a session's first authenticated request, which matches what 0006 measured.
-- Accepted: relay clients can reach UDP services that listen on the box's private address, or on all addresses. coturn whitelists the private half of `external-ip` (it logs `Whitelisting external-ip private part`), despite the 172.16.0.0/12 deny. `no-tcp-relay` keeps TCP services out.
+- Accepted: relay clients can reach UDP services that listen on the box's private address, or on all addresses. They can also reach the ones on all addresses through the box's own global IPv6 address, over an IPv6 relay, when the box has one: the kernel delivers that locally, past the Lightsail firewall. coturn whitelists the private half of `external-ip` (it logs `Whitelisting external-ip private part`), despite the 172.16.0.0/12 deny. `no-tcp-relay` keeps TCP services out.
 - coturn also listens on 3479 (the RFC 5780 alternate port) and on loopback. The firewall keeps 3479 closed.
 - A few coturn error paths still write plain messages to stderr, which reach the journal (seen: `udp send: Invalid argument`). `journalctl -u coturn` must hold no client IP addresses.
 - If coturn can't read `/etc/turnserver.conf`, it only warns and runs on built-in defaults. Edits must keep the file 0640 root:turnserver.
