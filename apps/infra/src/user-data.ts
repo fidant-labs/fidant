@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { boxAddress, primaryDomain, siteNames } from "./config.ts";
+import { boxAddress, mailFrom, primaryDomain, siteNames } from "./config.ts";
 
 const root = new URL("../../../", import.meta.url);
 
@@ -14,6 +14,7 @@ export function renderUserData(): string {
     .replaceAll("@NODE_MAJOR@", nodeMajor)
     .replaceAll("@PNPM_VERSION@", pnpmVersion)
     .replaceAll("@REDIRECT_NAMES@", siteNames.filter((name) => name !== primaryDomain).join(", "))
+    .replaceAll("@MAIL_FROM@", mailFrom)
     .replaceAll("@DOMAIN@", primaryDomain)
     .replaceAll("@BOX_ADDRESS@", boxAddress);
 }
