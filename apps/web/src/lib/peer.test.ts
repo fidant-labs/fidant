@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { assertFrameFits, connectionPath, parseSignalPayload } from "./peer.ts";
+import { assertFrameFits, connectionPath, errorName, parseSignalPayload } from "./peer.ts";
 
 const candidate = {
   candidate: "candidate:1 1 udp 2122260223 192.168.1.2 54400 typ host",
@@ -104,4 +104,14 @@ test("connectionPath falls back to the nominated succeeded pair", () => {
 
 test("connectionPath says direct when no pair is found", () => {
   assert.equal(connectionPath(new Map()), "direct");
+});
+
+test("errorName keeps only names that are plain identifiers", () => {
+  assert.equal(errorName(new DOMException("a=ice-pwd:x", "OperationError")), "OperationError");
+  assert.equal(errorName(new TypeError("x")), "TypeError");
+  for (const name of ["", "a=ice-pwd:x", "Operation Error", "Error2", "x".repeat(41)]) {
+    assert.equal(errorName(Object.assign(new Error("x"), { name })), undefined, name);
+  }
+  assert.equal(errorName("OperationError"), undefined);
+  assert.equal(errorName({ name: "OperationError" }), undefined);
 });

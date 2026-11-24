@@ -52,6 +52,7 @@ export const en = {
     themes: { system: "System", light: "Light", dark: "Dark" },
     label: "Main",
     send: "Send a file",
+    how: "How it works",
     privacy: "Privacy",
   },
   landing: {
@@ -211,7 +212,7 @@ export const en = {
       connecting: (name: string) => `Connecting through ${name}'s link…`,
       offered: (name: string) => `${name}'s link has been opened`,
       declined: (name: string) =>
-        `${name}'s link was opened and the file declined. The link still works.`,
+        `${name}'s link was opened and the file was declined. The link still works.`,
       receiving: (name: string) => `Sending through ${name}'s link`,
       delivered: (name: string) => `Delivered through ${name}'s link`,
       failed: (name: string) =>
@@ -410,7 +411,6 @@ export const en = {
   footer: {
     label: "Site",
     tagline: "Files encrypted in your browser, readable only by the recipient.",
-    how: "How it works",
     about: "About",
     terms: "Terms",
     security: "Security",

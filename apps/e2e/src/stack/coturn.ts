@@ -90,10 +90,23 @@ async function startCoturn(): Promise<RunningService> {
   };
 }
 
-/** Production's coturn config (apps/infra/box/turnserver.conf), which both e2e stacks start from. */
-const productionConfig = readFileSync(
-  join(repoRoot, "apps", "infra", "box", "turnserver.conf"),
-  "utf8",
+/** The setting lines of a turnserver.conf, trimmed, without blank lines and comments. */
+export const configLines = (text: string) =>
+  text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "" && !line.startsWith("#"));
+
+/** A setting line's key: `realm` for `realm=x`, `realm = x` or `realm x`. */
+export const keyOf = (line: string) => line.split(/[\s=]/, 1)[0] ?? "";
+
+/**
+ * Production's coturn config (apps/infra/box/turnserver.conf), which both e2e stacks start from.
+ * Its `no-dtls` and `no-cli` stay: new coturn has DTLS and the CLI off already and warns about
+ * them, but older packages such as Ubuntu's need them, or the CLI listens on a fixed port.
+ */
+const productionConfig = configLines(
+  readFileSync(join(repoRoot, "apps", "infra", "box", "turnserver.conf"), "utf8"),
 );
 
 /** Production settings the e2e stacks replace, each with the reason. */
@@ -124,25 +137,30 @@ export function coturnConfig(options: {
   const { ip, port, secret, stateDir, tls } = options;
   const loopback = ip === host;
   const kept = productionConfig
-    .split("\n")
-    .filter((line) => line !== "" && !line.startsWith("#"))
-    .filter((line) => !Object.hasOwn(replaced, line.split("=")[0] ?? ""))
+    .filter((line) => !Object.hasOwn(replaced, keyOf(line)))
     .filter((line) => !(loopback && loopbackDenials.includes(line)));
   const lines = [
     ...kept,
+    // Production listens on every address; a test run only on the one the browsers reach.
     `listening-ip=${ip}`,
+    // Relay addresses come from that same address, so the other browser can reach them.
     `relay-ip=${ip}`,
     `listening-port=${port}`,
+    // Production's file has use-auth-secret but no secret: the box appends its own at first boot
+    // (user-data.sh). Without this line every allocation fails authentication.
     `static-auth-secret=${secret}`,
     "realm=sigill.local",
+    // On loopback, every peer of the local stack is on loopback too.
     ...(loopback ? ["allow-loopback-peers"] : []),
     // ponytail: the loopback stack keeps plain TURN over TCP; TLS is covered by the networks suite.
     ...(tls
       ? [`tls-listening-port=${tls.port}`, `cert=${tls.cert}`, `pkey=${tls.pkey}`]
       : ["no-tls"]),
+    // The default pid file and user database are under /var, which a test run may not write.
     `pidfile=${join(stateDir, "turnserver.pid")}`,
     `userdb=${join(stateDir, "turndb")}`,
     `log-file=${coturnLog}`,
+    // The relay tests read "ALLOCATE processed, success" from the log, which only verbose writes.
     "verbose",
   ];
   return `${lines.join("\n")}\n`;
