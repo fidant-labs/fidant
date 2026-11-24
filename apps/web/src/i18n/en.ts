@@ -656,7 +656,7 @@ export const en = {
         body: [
           "Anyone who can see the encrypted traffic, such as the networks on the way or our relay, sees how big the frames are. So the size is rounded up with the Padmé scheme, which adds at most 12 %, and then to whole chunks. Every chunk frame has the same size, and the padding is zeros that the recipient checks.",
           "The exact size travels only inside the encrypted META and END. META always has the same size, so the length of the file name doesn't show either.",
-          "A shared text is at most 32 KiB, and every text is padded to exactly one chunk, as long as the connection allows large enough messages. With every browser we tested in November 2026 (Chromium, Firefox and WebKit), that chunk is 48 KiB. So every text looks the same on the wire, whatever its length, and the same as any file of up to 48 KiB.",
+          "A shared text is at most 32 KiB, and every text is padded to exactly one chunk. The app enforces this: if a connection only allows messages too small for a 32 KiB chunk, nothing is sent over it, and the sender sees that the text wasn't sent. With every browser we tested in November 2026 (Chromium, Firefox and WebKit), the chunk is 48 KiB. So every text looks the same on the wire, whatever its length, and the same as any file of up to 48 KiB.",
         ],
       },
       {
