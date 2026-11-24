@@ -106,8 +106,8 @@
 //   a mark, see `unmarked`): the server dropped its binding with the socket,
 //   so `hostedLinks` leaves the link out from then on and nobody can host its
 //   ID plain from this page.
-// - The server answers every `email` it refuses for a link with `failed` and no
-//   mark, so a refusal never needs guessing which card it was for.
+// - The server answers every `email` it refuses with `failed` or `limit`, naming
+//   the link and with no mark, so a refusal never needs guessing which card it was for.
 //
 // Effects carry only link IDs, attempt IDs, refusal reasons and the ICE servers from the
 // server's `joined`. Recipient

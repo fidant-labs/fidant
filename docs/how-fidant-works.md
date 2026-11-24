@@ -235,7 +235,7 @@ recipient → server     join {link, attempt, token}
 
 ### What the server keeps, and limits
 
-- While the sender's page hosts the link, the server holds in memory the address, the language, the value, the latest code with its expiry and tries, when the link's codes went out, and the tokens.
+- While the sender's page hosts the link, the server holds in memory the address, the language, the value, the latest code with its expiry and tries, when the link's codes went out, the tokens, and whether the link already had its `email` or a guest.
 - Unhosting the link (a `host` without it, which is what removing the recipient sends, or the sender's socket closing) drops all of it, and so does a server restart. The emailed link then connects to nothing, even if someone hosts the same link ID again as a plain link.
 - The limits are `LIMITS` and the code constants in `apps/server/src/signaling.ts`:
 
