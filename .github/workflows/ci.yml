@@ -74,3 +74,28 @@ jobs:
           name: e2e-observations
           path: apps/e2e/observations
           retention-days: 7
+
+  # Browsers, coturn and the server run in Docker (apps/e2e/networks), so nothing is installed on the host.
+  e2e-networks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The lossy row shapes the link with tc netem, which works in the router container only
+      # when the host kernel has the module loaded.
+      - run: sudo modprobe sch_netem
+      - run: pnpm e2e:networks
+      # Same rule as the e2e job: only the observations are uploaded. The coturn capture holds
+      # STUN/TURN headers and DTLS ciphertext, never file content or keys.
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-networks-observations
+          path: apps/e2e/observations
+          retention-days: 7

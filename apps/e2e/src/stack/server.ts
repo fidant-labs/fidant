@@ -15,13 +15,24 @@ const stopTimeoutMs = 5_000;
 const tailLines = 20;
 
 /** The Sigill server on a free port with a throwaway certificate. */
-export const server: Service = { name: "server", start: startServer };
+export const server: Service = { name: "server", start: (env) => startServer(env) };
 
-async function startServer(stackEnv: Readonly<Record<string, string>>): Promise<RunningService> {
+/** Runs the server elsewhere, such as in a container, and names the host it is reached at. */
+export interface ServerWrapper {
+  host: string;
+  /** The command that runs `node` there, given the certificate directory to share with it. */
+  command(certDir: string): string[];
+}
+
+export async function startServer(
+  stackEnv: Readonly<Record<string, string>>,
+  wrapper?: ServerWrapper,
+): Promise<RunningService> {
   const certDir = await mkdtemp(join(tmpdir(), "sigill-e2e-certs-"));
   const stdoutLog = createWriteStream(serverStdoutLog);
   const stderrLog = createWriteStream(serverStderrLog);
-  const child = spawn(process.execPath, [serverMain], {
+  const [command, ...args] = [...(wrapper?.command(certDir) ?? [process.execPath]), serverMain];
+  const child = spawn(command as string, args, {
     cwd: repoRoot,
     env: { ...process.env, ...stackEnv, PORT: "0", CERT_DIR: certDir },
     stdio: ["ignore", "pipe", "pipe"],
@@ -67,7 +78,7 @@ async function startServer(stackEnv: Readonly<Record<string, string>>): Promise<
   try {
     const port = await waitForPort(child, stderrTail);
     child.once("exit", onUnexpectedExit);
-    return { name: "server", url: `https://localhost:${port}`, port, stop };
+    return { name: "server", url: `https://${wrapper?.host ?? "localhost"}:${port}`, port, stop };
   } catch (error) {
     await stop();
     const tail = stderrTail.length > 0 ? stderrTail.join("\n") : "(no stderr output)";
