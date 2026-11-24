@@ -107,6 +107,7 @@ export const en = {
     fromLabel: "Your name",
     optional: "(optional)",
     fromHint: "Shown to the people you send to.",
+    allowRelay: "Allow our relay if a direct connection isn't possible",
     fromError: {
       unsafe: "Your name contains characters that can't be sent. Remove them and try again.",
       tooLong:
@@ -263,26 +264,33 @@ export const en = {
       online,
       links,
       connected,
+      relay,
     }: {
       online: boolean;
       links: number;
       connected: number;
+      /** Whether the sender allows our TURN relay. */
+      relay: boolean;
     }) => {
       if (!online) {
         return "Nothing once it notices the connection has closed. That takes up to a minute if the network dropped.";
       }
+      const choice = relay
+        ? "Your choice to allow our relay."
+        : "Your choice not to allow our relay.";
       if (links === 0) {
-        return "No links yet.";
+        return `No links yet. ${choice}`;
       }
       const ids =
         links === 1
           ? "The ID of your link, never the part that unlocks the file."
           : `The IDs of your ${links} links, never the part that unlocks the file.`;
+      const held = `${ids} ${choice}`;
       if (connected === 0) {
-        return ids;
+        return held;
       }
       const who = connected === 1 ? "1 recipient" : `${connected} recipients`;
-      return `${ids} ${who} connected right now.`;
+      return `${held} ${who} connected right now.`;
     },
     recipientHolds: (tie: Tie) =>
       ({
@@ -482,6 +490,10 @@ export const en = {
       [
         "Setup messages",
         "A few small, locked messages that help the two browsers connect. We pass them on without being able to read them, and don't keep them.",
+      ],
+      [
+        "The sender's relay choice",
+        "Whether the sender allows our relay, so we only let recipients use it when they do. We forget it within a minute after the sender's page closes, and never write it to our logs.",
       ],
     ] as ReadonlyArray<readonly [string, string]>,
     keepHeading: "What we keep",

@@ -107,6 +107,7 @@ export const sv: Messages = {
     fromLabel: "Ditt namn",
     optional: "(valfritt)",
     fromHint: "Visas för dem du skickar till.",
+    allowRelay: "Tillåt vårt relä om en direkt anslutning inte går",
     fromError: {
       unsafe: "Ditt namn innehåller tecken som inte kan skickas. Ta bort dem och försök igen.",
       tooLong:
@@ -260,23 +261,27 @@ export const sv: Messages = {
       "Din IP-adress och de vanliga uppgifterna om webbläsaren som alla webbplatser får, och samma sak för varje mottagare när de öppnar sin länk.",
     seesRecipient:
       "Din IP-adress och de vanliga uppgifterna om webbläsaren som alla webbplatser får.",
-    senderHolds: ({ online, links, connected }) => {
+    senderHolds: ({ online, links, connected, relay }) => {
       if (!online) {
         return "Ingenting, när den har märkt att anslutningen har stängts. Det tar upp till en minut om nätverket bröts.";
       }
+      const choice = relay
+        ? "Ditt val att tillåta vårt relä."
+        : "Ditt val att inte tillåta vårt relä.";
       if (links === 0) {
-        return "Inga länkar ännu.";
+        return `Inga länkar ännu. ${choice}`;
       }
       const ids =
         links === 1
           ? "ID:t för din länk, aldrig den del som låser upp filen."
           : `ID:na för dina ${links} länkar, aldrig den del som låser upp filen.`;
+      const held = `${ids} ${choice}`;
       if (connected === 0) {
-        return ids;
+        return held;
       }
       const who =
         connected === 1 ? "1 mottagare är ansluten" : `${connected} mottagare är anslutna`;
-      return `${ids} ${who} just nu.`;
+      return `${held} ${who} just nu.`;
     },
     recipientHolds: (tie: Tie) =>
       ({
@@ -473,6 +478,10 @@ export const sv: Messages = {
       [
         "Uppkopplingsmeddelanden",
         "Några små, låsta meddelanden som hjälper de två webbläsarna att ansluta. Vi skickar dem vidare utan att kunna läsa dem, och sparar dem inte.",
+      ],
+      [
+        "Avsändarens val om reläet",
+        "Om avsändaren tillåter vårt relä, så att vi bara låter mottagare använda det när avsändaren gör det. Vi glömmer det inom en minut efter att avsändarens sida har stängts, och skriver aldrig in det i våra loggar.",
       ],
     ],
     keepHeading: "Vad vi sparar",
