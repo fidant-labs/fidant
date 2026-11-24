@@ -486,7 +486,7 @@ export const en = {
     title: "Fidant: private file transfer",
     receiveTitle: "Sent to you with Fidant",
     receiveDescription:
-      "Open the link to receive it. It's encrypted the whole way, and the link works only while the sender has Fidant open.",
+      "Open the link to receive it. It's encrypted the whole way, and the link works only while the sender's page is open.",
   },
   about: {
     title: "About Fidant",
