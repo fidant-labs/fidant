@@ -604,6 +604,18 @@ export const sv: Messages = {
         body: [
           "Den som kan se den krypterade trafiken, till exempel nätverken på vägen eller vårt relä, ser hur stora ramarna är. Därför avrundas storleken uppåt med metoden Padmé, som lägger till högst 12 %, och sedan till hela delar. Alla ramar med fildata är lika stora, och utfyllnaden är nollor som mottagaren kontrollerar.",
           "Den exakta storleken finns bara i de krypterade META och END. META är alltid lika stor, så inte heller filnamnets längd syns.",
+          "En delad text är högst 32 KiB, och varje text fylls ut till exakt en del, så länge förbindelsen tillåter tillräckligt stora meddelanden. Med alla webbläsare vi testade i november 2026 (Chromium, Firefox och WebKit) är den delen 48 KiB. Så varje text ser likadan ut på nätet, oavsett längd, och likadan som vilken fil som helst på upp till 48 KiB.",
+        ],
+      },
+      {
+        heading: "Att dela en text",
+        body: [
+          "Sidan Dela en hemlighet skickar en text som du skriver eller klistrar in på samma sätt som en fil: samma nycklar, ramar, kontroller och engångslänkar. Ingenting sparas, så avsändarens sida måste vara öppen tills varje mottagare har fått texten.",
+          "Avsändarens webbläsare gör om texten till en fil som bara finns i minnet, med ett fast namn och en typ som visar att det är en text. Precis som för en fil finns namnet och typen bara i den krypterade META. En text kan ha upp till 10 000 tecken, vilket är högst 30 000 byte.",
+          "Textrutan säger åt webbläsaren att stänga av stavningskontroll, autokorrigering, automatisk stor bokstav, autofyll och översättning för den.",
+          "Mottagarens webbläsare behandlar ett erbjudande som en text bara om det har exakt den typen och är högst 32 KiB. Allt annat erbjuds som en fil. För en text ser mottagaren namnet som avsändaren skrev men inte storleken, och väljer Visa eller Tacka nej. Efter Tacka nej fungerar länken fortfarande.",
+          "Visa håller texten i webbläsarens minne, aldrig i en sparadialog eller en nedladdning. Först när kontrollerna mot END stämmer avkodas texten och visas: som ren text i en skrivskyddad ruta med stavningskontroll och översättning avstängda, aldrig som en del av sidans HTML. Knappen Kopiera text lägger den i urklippet.",
+          "Vår server och vårt relä hanterar en text som vilken fil som helst. Vår server kan se att någon har öppnat sidan Dela en hemlighet bara om sidan laddas direkt från adressfältet, men varken om något delas eller vad som delas. Sidvisningar loggas inte.",
         ],
       },
       {
@@ -634,9 +646,9 @@ export const sv: Messages = {
       {
         heading: "Vad vår server och vårt relä ser och sparar",
         body: [
-          "Vår server ser varje sidas IP-adress och webbläsaruppgifter, länk-ID:na, avsändarens val om reläet, vilken väg avsändaren rapporterar för varje försök (direkt, STUN, relä eller misslyckad), om en länk redan har använts, när varje sida ansluter och kopplar ner samt de krypterade meddelandena för uppkopplingen och deras storlek. Den ser aldrig filen, dess namn, typ eller exakta storlek, hemligheten eller nycklarna, och den kan inte läsa meddelandena. Den har det den vet bara i minnet och glömmer en sida inom en minut efter att den kopplat ner.",
+          "Vår server ser varje sidas IP-adress och webbläsaruppgifter, länk-ID:na, avsändarens val om reläet, vilken väg avsändaren rapporterar för varje försök (direkt, STUN, relä eller misslyckad), om en länk redan har använts, när varje sida ansluter och kopplar ner samt de krypterade meddelandena för uppkopplingen och deras storlek. Den ser aldrig filen, dess namn, typ eller exakta storlek, en delad text eller dess längd, hemligheten eller nycklarna, och den kan inte läsa meddelandena. Den har det den vet bara i minnet och glömmer en sida inom en minut efter att den kopplat ner.",
           "Dess loggrader har en fast lista med fält, till exempel de 6 första tecknen i ett länk-ID och om en förbindelse gick direkt. Aldrig namn, nycklar, filinnehåll eller IP-adresser. De raderas efter 30 dagar.",
-          "Vårt relä ser båda IP-adresserna och den krypterade trafiken, alltså filens storlek bara ungefär. Det för ingen logg. Bara för att rätta ett fel eller stoppa missbruk slår vi på en, med tider för anslutningar, IP-adresser och datamängder, i högst 7 dagar.",
+          "Vårt relä ser båda IP-adresserna och den krypterade trafiken, alltså filens storlek bara ungefär och ingenting av en texts längd. Det för ingen logg. Bara för att rätta ett fel eller stoppa missbruk slår vi på en, med tider för anslutningar, IP-adresser och datamängder, i högst 7 dagar.",
         ],
         link: ["Alla loggfält, på integritetssidan", "/privacy"],
       },
@@ -651,11 +663,12 @@ export const sv: Messages = {
       {
         heading: "Det här skyddar den inte mot",
         body: [
-          "Länken är nyckeln. Den som får tag på en länk kan öppna filen tills länken har använts. Skicka varje länk bara till den den är till, på ett sätt du litar på.",
+          "Länken är nyckeln. Den som får tag på en länk kan öppna filen eller texten tills länken har använts. Skicka varje länk bara till den den är till, på ett sätt du litar på.",
           "Din webbläsare kör den kod vår server skickar. En server som skickade annan kod skulle kunna läsa filer. Koden är offentlig, men webbläsare kan ännu inte kontrollera att det de fick stämmer med den.",
           "Avsändarens namn skrivs av avsändaren och kontrolleras inte.",
           "Den andra webbläsaren ser din IP-adress. Nätverken på vägen, och vårt relä när det används, ser båda IP-adresserna, när överföringen sker och ungefär hur stor filen är. Vår server ser båda IP-adresserna, vilken mottagare som ansluter till vilken avsändare och när, och hur många mottagare en avsändare har. Så den får veta vem som skickar till vem, men inte vad.",
           "Skadlig kod på någon av datorerna kan läsa filen innan den krypteras eller efter att den dekrypterats.",
+          "När mottagaren kopierar en text hamnar den i enhetens urklipp, där urklippshistorik, synkning av urklippet till andra enheter och andra appar kan läsa den. När en text väl har visats kan Fidant inte nå den: den går varken att ta tillbaka eller radera.",
           "Fidant har ännu inte granskats av någon oberoende part.",
         ],
       },

@@ -1,6 +1,6 @@
 # How Fidant works
 
-This is the source of truth for how Fidant moves a file and why no infrastructure can read it. It describes the code on `main` today. Planned work is marked as planned.
+This is the source of truth for how Fidant moves a file or a text and why no infrastructure can read it. It describes the code on `main` today. Planned work is marked as planned.
 
 A change to security or data flow updates this document in the same pull request, and then the web pages that explain it (see "Keeping this true" at the end).
 
@@ -99,8 +99,8 @@ iv     = direction(1: 0 sender, 1 recipient) ‖ 00 00 00 ‖ seq(8)
 
 `apps/web/src/lib/send-file.ts`, `apps/web/src/lib/receive-file.ts`
 
-1. When the file is chosen, the sender's browser computes its SHA-256 (`apps/web/src/lib/sha256.ts`, streamed in 4 MiB slices).
-2. INIT, then META. The recipient sees the name, size, type and the sender's typed name, and chooses.
+1. When the file is chosen, or each time a text changes, the sender's browser computes its SHA-256 (`apps/web/src/lib/sha256.ts`, streamed in 4 MiB slices).
+2. INIT, then META. The recipient sees the name, size, type and the sender's typed name (for a text, only the sender's name), and chooses.
 3. The recipient sends ACCEPT or DECLINE, encrypted. ACCEPT also proves that the recipient holds the key. No file data is sent before it. After DECLINE the link still works.
 4. CHUNK frames, `chunkSize = min(48 KiB, maxMessageSize − 64)`, sent with backpressure on the channel buffer.
 5. END with the checksum and the exact size.
@@ -110,7 +110,7 @@ iv     = direction(1: 0 sender, 1 recipient) ‖ 00 00 00 ‖ seq(8)
 
 `ReceiveVerifier` in `frames.ts` hashes the file bytes as they arrive and checks that every CHUNK is exactly `chunkSize`, the padding is zeros, the chunks add up to the padded length, and END's size and checksum match what arrived. Only then is the file kept. Any other ending (a frame that fails to decrypt, the wrong order, too much data, the channel closing first) aborts the sink, which discards what was written.
 
-`apps/web/src/lib/sink.ts`: where the browser has `showSaveFilePicker` (Chromium), the file streams to a place the recipient chose. Elsewhere it is collected in memory as a Blob and downloaded at the end. The Blob is always `application/octet-stream`, whatever type the sender claims, so a file can't run as a page in Fidant's origin.
+`apps/web/src/lib/sink.ts`: where the browser has `showSaveFilePicker` (Chromium), the file streams to a place the recipient chose. Elsewhere it is collected in memory as a Blob and downloaded at the end. A text is always collected in memory and never downloaded (see "Sharing a text"). The Blob is always `application/octet-stream`, whatever type the sender claims, so a file can't run as a page in Fidant's origin.
 
 ### Names
 
@@ -125,8 +125,25 @@ Anyone who sees the encrypted traffic (the networks, our relay) sees frame sizes
 - The size is rounded up with Padmé (Nikitin et al., 2019), which adds at most 12 %, then up to a whole number of chunks. An empty file is padded like a 1-byte file.
 - Every CHUNK frame has the same length. The exact size travels only inside the encrypted META and END.
 - META is always 1,024 bytes, so the name's length doesn't show.
+- A text is at most 32 KiB. Whenever `chunkSize` is at least 32 KiB (a maximum message size of at least 32,832 bytes), every text pads to exactly one CHUNK, so all texts on a connection have the same frame sizes. When the maximum message size is at least 49,216 bytes, `chunkSize` is 48 KiB, and a text then has the same frame sizes as any file of up to 48 KiB.
+- Measured on 2026-11-24 with Playwright's browser builds: Chromium 159 and WebKit 27.2 report a maximum message size of 262,144 bytes, Firefox 159 reports 1,073,741,823, and pairs of different browsers settle at 262,144. When a browser reports none, the app uses 65,536 (`DEFAULT_MAX_MESSAGE_SIZE` in `peer.ts`). So today every text crosses the network as one 48 KiB CHUNK.
 
-An observer learns the size only roughly, plus the chunk size, which follows from the connection's maximum message size.
+An observer learns a file's size only roughly, plus the chunk size, which follows from the connection's maximum message size. A text's length doesn't show at all.
+
+## Sharing a text
+
+`apps/web/src/lib/text-secret.ts`, `apps/web/src/send/SendPage.tsx`, `apps/web/src/receive/ReceivePage.tsx`
+
+`/secret` sends a typed or pasted text instead of a file, over the transfer above unchanged: the same keys, frames, checks, RECEIPT and one-time links. The server, the relay and the signaling messages are the same as for a file.
+
+- The sender's browser turns the text into an in-memory file named `secret.txt` of type `application/x-fidant-text`. The name and type travel inside the encrypted META, like any file's.
+- A text is at most 10,000 UTF-16 code units (`MAX_TEXT_LENGTH`), so at most 30,000 bytes of UTF-8. The field's `maxlength` stops typing at the limit, and `textFile` refuses a longer text set any other way.
+- The field has `spellcheck=false`, `translate=no`, and `autocomplete`, `autocorrect` and `autocapitalize` set to `off`, which tell the browser to keep its spelling, autocomplete and translation features off the text.
+- The recipient's page treats an offer as a text only when its type is exactly `application/x-fidant-text` and its size is at most 32 KiB (`isTextOffer`, `MAX_TEXT_BYTES`). Anything else is offered as a file.
+- A text offer shows "<sender's name> sent you a text" with Show and Decline, and no name, size or type. Show always collects the text in memory (`BlobSink`): never a save dialog, never a download.
+- Only after the checks in "Checking on the recipient's side" pass does the page decode the text, as UTF-8 (invalid bytes become U+FFFD). It shows the text only as the value of a read-only text field, never as HTML, with spell checking and translation off. Copy calls `navigator.clipboard.writeText`.
+- As for a file: nothing is stored, so the sender's page must stay open; each recipient's link works once; after Decline the link still works.
+- Loading `/secret` straight from the address bar is an HTTP request for that path, so the server can see that someone opened the page, though not whether or what they share. Neither the server nor Caddy logs page requests.
 
 ## How the file travels
 
@@ -168,8 +185,8 @@ The send page has "Allow our relay if a direct connection isn't possible", on by
 
 |            | Server                                                                                                                                                                                                                                                                                                                     | Relay                                                                                                                      |
 | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| Sees       | IP addresses and browser details of each page; link IDs; the sender's relay choice; the connection path the sender reports for each attempt (direct, stun, relay or failed); whether a link was already used (the sender's refuse reasons); when each side connects and disconnects; sealed setup messages and their sizes | Both browsers' IP addresses; encrypted packets, with the file size only roughly                                            |
-| Never sees | the file, its name, type or exact size, the secret, the keys, the content of setup messages                                                                                                                                                                                                                                | the same                                                                                                                   |
+| Sees       | IP addresses and browser details of each page; link IDs; the sender's relay choice; the connection path the sender reports for each attempt (direct, stun, relay or failed); whether a link was already used (the sender's refuse reasons); when each side connects and disconnects; sealed setup messages and their sizes | Both browsers' IP addresses; encrypted packets, with the file size only roughly and a text's length not at all             |
+| Never sees | the file, its name, type or exact size, a shared text or its length, the secret, the keys, the content of setup messages                                                                                                                                                                                                   | the same                                                                                                                   |
 | Keeps      | in memory only, while the pages are connected; forgotten within a minute after a page disconnects                                                                                                                                                                                                                          | nothing of the file once it has passed                                                                                     |
 | Logs       | events with a fixed set of fields (`LogEvent`, `LogFields` in `packages/protocol`): the first 6 characters of a link ID, link counts, message sizes, refuse and error codes, the connection path, the port. Never names, keys, file data or IP addresses. Deleted after 30 days (journald, `MaxRetentionSec=29day`).       | nothing by default. Only to fix a fault or stop abuse: connection times, IP addresses and data volumes, for at most 7 days |
 
@@ -188,11 +205,12 @@ The send page has "Allow our relay if a direct connection isn't possible", on by
 
 ## What Fidant doesn't protect against
 
-- **The link is the key.** Anyone who gets a link can open its file until it is used. Send each link only to its recipient, over a channel you trust.
+- **The link is the key.** Anyone who gets a link can open its file or text until it is used. Send each link only to its recipient, over a channel you trust.
 - **The served code.** The browser runs the code our server sends. A server that sent different code could read files. The code is public, but a browser can't yet check that what it received matches it.
 - **Unverified sender name.** Typed by the sender.
 - **Metadata.** The other browser sees your IP address. The networks and, on the relay path, our relay see both IP addresses, timing and the rough size. Our server sees both IP addresses, which recipient connects to which sender, when, and how many recipients a sender has. So it learns who sends to whom, though not what.
 - **Compromised devices.** Malware on either computer can read the file before encryption or after decryption.
+- **Copied text.** When the recipient copies a text, it goes to the operating system's clipboard, where clipboard history, cloud clipboard sync and other apps can read it. Once a text has been shown, Fidant can't reach it: it can't take it back or clear it from the recipient's screen, memory or clipboard.
 - **No independent audit yet.**
 
 ## Planned: verified transfers
