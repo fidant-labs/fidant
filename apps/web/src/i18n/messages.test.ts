@@ -20,10 +20,8 @@ test("Swedish and English have the same keys", () => {
 });
 
 test("every text problem overrides a file problem", () => {
-  for (const lang of [en, sv]) {
-    for (const key of Object.keys(lang.secret.problems)) {
-      assert.ok(key in lang.receive.problems, key);
-    }
+  for (const key of Object.keys(en.secret.problems)) {
+    assert.ok(key in en.receive.problems, key);
   }
 });
 

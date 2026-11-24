@@ -559,9 +559,9 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
 
           {text && (
             <div class={`my-4 ${field}`}>
-              <Label htmlFor={id("text")}>{t.secret.label}</Label>
+              <Label htmlFor="secret-text">{t.secret.label}</Label>
               <textarea
-                id={id("text")}
+                id="secret-text"
                 class="w-full min-w-0 resize-y rounded-lg border border-input bg-transparent px-2.5 py-2 font-mono text-base transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30 dark:disabled:bg-input/80 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40"
                 rows={6}
                 spellcheck={false}
@@ -579,14 +579,14 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
                 }}
                 aria-invalid={tooLong ? "true" : "false"}
                 aria-describedby={
-                  tooLong ? `${id("text-error")} ${id("text-hint")}` : id("text-hint")
+                  tooLong ? "secret-text-error secret-text-hint" : "secret-text-hint"
                 }
               />
-              <p id={id("text-hint")} class={`m-0 ${hint}`}>
+              <p id="secret-text-hint" class={`m-0 ${hint}`}>
                 {t.secret.hint(MAX_TEXT_LENGTH)}
               </p>
               {/* Always rendered so the status is announced; the count stays outside it so each key isn't read out. */}
-              <p id={id("text-error")} class={tooLong ? fieldError : "-mt-1 mb-0"}>
+              <p id="secret-text-error" class={tooLong ? fieldError : "-mt-1 mb-0"}>
                 {tooLong && `${t.secret.count(textLength, MAX_TEXT_LENGTH)} `}
                 <span role="status">{tooLong && t.secret.tooLong}</span>
               </p>
@@ -595,15 +595,15 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
           {!text && !hasRecipients && (
             <div class="group relative my-4 rounded-2xl border-2 border-dashed border-border bg-card transition-colors focus-within:outline-3 focus-within:outline-offset-2 focus-within:outline-primary hover:border-foreground/40 hover:bg-muted/40">
               <input
-                id={id("file")}
+                id="file"
                 type="file"
                 class="absolute inset-0 size-full cursor-pointer opacity-0"
                 onChange={onFileChange}
                 aria-invalid={fileError ? "true" : "false"}
-                aria-describedby={fileError ? id("file-error") : undefined}
+                aria-describedby={fileError ? "file-error" : undefined}
               />
               <label
-                for={id("file")}
+                for="file"
                 class="flex flex-col items-center gap-3 px-4 py-14 text-center text-muted-foreground lg:py-20"
               >
                 <span class="inline-flex size-14 items-center justify-center rounded-xl bg-muted text-foreground">
@@ -619,7 +619,7 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
             </div>
           )}
           {fileError && (
-            <p id={id("file-error")} class={fieldError}>
+            <p id="file-error" class={fieldError}>
               {t.send.fileError[fileError]}
             </p>
           )}

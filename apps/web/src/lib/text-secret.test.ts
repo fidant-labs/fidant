@@ -4,6 +4,7 @@ import { MAX_CHUNK_BYTES, MAX_FROM_LENGTH, metaFits, paddedLength } from "./fram
 import { DEFAULT_MAX_MESSAGE_SIZE } from "./peer.ts";
 import { FRAME_OVERHEAD_BYTES } from "./send-file.ts";
 import {
+  decodeText,
   isTextOffer,
   MAX_TEXT_BYTES,
   MAX_TEXT_LENGTH,
@@ -21,6 +22,15 @@ test("textFile keeps the text exactly, under a fixed name and type", async () =>
   assert.equal(file.type, TEXT_TYPE);
   assert.equal(file.size, new TextEncoder().encode(text).byteLength);
   assert.equal(await file.text(), text);
+});
+
+test("decodeText keeps a leading byte order mark and marks invalid UTF-8", async () => {
+  const text = "\uFEFFline one\r\n\u{1F600}";
+  const file = textFile(text);
+  assert.ok(file);
+  assert.equal(await decodeText(file), text);
+  const invalid = new Blob([new Uint8Array([0x61, 0xff, 0x62, 0xe2, 0x82])]);
+  assert.equal(await decodeText(invalid), "a\uFFFDb\uFFFD");
 });
 
 test("textFile refuses an empty text and one over the length limit", () => {
