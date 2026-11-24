@@ -271,7 +271,7 @@ test("a declined offer shows as declined, and the link can be reopened", async (
   expect(await offerHeading.evaluate((h) => h.isConnected)).toBe(false);
   await expect(
     recipientRow(sender, name).getByText(
-      `${name}'s link was opened and the file declined. The link still works.`,
+      `${name}'s link was opened and the file was declined. The link still works.`,
     ),
   ).toBeVisible();
   await expect(sender.getByRole("button", { name: `Copy link for ${name}` })).toBeVisible();

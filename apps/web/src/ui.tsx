@@ -49,6 +49,12 @@ const ICONS = {
       <path d="M12 7.5V13m0 3.5v.01" />
     </>
   ),
+  declined: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M8 12h8" />
+    </>
+  ),
 };
 
 type IconName = keyof typeof ICONS;

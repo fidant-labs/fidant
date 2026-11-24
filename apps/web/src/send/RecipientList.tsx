@@ -16,6 +16,7 @@ import { Direct, Icon } from "../ui.tsx";
 
 const STATUS_COLOR: Partial<Record<RecipientStatus, string>> = {
   failed: "text-destructive",
+  declined: "text-muted-foreground",
 };
 
 type Props = {
@@ -85,6 +86,7 @@ function RecipientRow({ recipient, fileSize, onRemove }: RowProps) {
           >
             {status === "delivered" && <Icon name="check" />}
             {status === "failed" && <Icon name="alert" />}
+            {status === "declined" && <Icon name="declined" />}
             <span>{t.send.status[status](name)}</span>
           </p>
           {status === "receiving" && (
