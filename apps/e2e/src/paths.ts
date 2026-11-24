@@ -10,6 +10,8 @@ export const runDir = join(observationsDir, "run");
 /** The server's stdout (strict JSONL) and stderr (free text), for the whole run. */
 export const serverStdoutLog = join(runDir, "server.stdout.log");
 export const serverStderrLog = join(runDir, "server.stderr.log");
+/** The local server's PID, rewritten when it restarts (`restartServer()` in src/stack/server.ts). */
+export const serverPidFile = join(runDir, "server.pid");
 /** coturn's own verbose log, for the whole run. */
 export const coturnLog = join(runDir, "coturn.log");
 /** Every packet to and from coturn, in the network scenarios only (networks/compose.yaml). */

@@ -34,6 +34,8 @@ Import `test` and `expect` from `src/fixtures.ts`, not from `@playwright/test`.
 - After the test, the detector scans what the test observed for every secret it registered and fails the test on any finding. `leaks.scan()` returns the findings so far without failing, and `leaks.check()` returns the report the teardown would throw (undefined when clean). A test that leaks on purpose calls `leaks.expectLeaks()`. `tests/leaks.spec.ts` shows each kind of leak the detector catches.
 - Once all tests are done, a run-level sweep scans every observation against every secret of the run, so a leak that shows up in another test's traffic or a later log line still fails the run.
 
+- `restartServer()` from `src/stack/server.ts` restarts the server on the same port and resolves once it listens again, like a deploy or a crash: browsers lose their signaling sockets and the server forgets every link. Global setup's server service does the restart (it starts the server again whenever it exits on SIGTERM), and both runs write to the same logs, so the leak checks cover them. The specs run one at a time (`workers: 1`), so a restart cannot break another test. Local stack only: `pnpm e2e:networks` has no restart.
+
 Requests outside the stack are aborted and fail the test.
 
 ## What is scanned
