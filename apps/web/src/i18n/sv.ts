@@ -45,6 +45,7 @@ export const sv: Messages = {
     about: "Om Fidant – Fidant",
     terms: "Användarvillkor – Fidant",
     security: "Säkerhet – Fidant",
+    technical: "Teknisk beskrivning – Fidant",
   },
   menu: {
     language: "Språk",
@@ -133,6 +134,7 @@ export const sv: Messages = {
     },
     more: "Vill du veta mer? På integritetssidan står exakt vad vår server ser och vad den loggar.",
     moreLink: "Läs integritetssidan",
+    techLink: "Läs den tekniska beskrivningen",
   },
   insecure: {
     title: "Sidan behöver en säker anslutning",
@@ -476,6 +478,7 @@ export const sv: Messages = {
           "Filen går direkt mellan de två webbläsarna. Om ett nätverk stoppar det går den i stället krypterad via vårt relä. Vår server skickar bara vidare några små meddelanden för att koppla upp, och de är krypterade så att servern inte kan läsa dem.",
           "Mottagarens webbläsare kontrollerar filens SHA-256-kontrollsumma, så en fil som ändrats eller skadats på vägen sparas inte.",
         ],
+        link: ["Den tekniska beskrivningen", "/technical"],
       },
       {
         heading: "Det här skyddar den inte mot",
@@ -495,6 +498,144 @@ export const sv: Messages = {
         link: [
           "Rapportera privat på GitHub",
           "https://github.com/sigill-labs/sigill/security/advisories/new",
+        ],
+      },
+    ] as Sections,
+  },
+  // En läsarversion av docs/how-fidant-works.md, som är källan. Ändra båda tillsammans.
+  technical: {
+    title: "Teknisk beskrivning",
+    lede: "Hur Fidant fungerar på insidan, för dig som vill kontrollera det: nycklarna, krypteringen, hur filen färdas, vad våra servrar ser och vad Fidant inte skyddar mot. Sidan Så fungerar det berättar samma sak utan tekniska termer.",
+    sections: [
+      {
+        heading: "Delarna",
+        body: [
+          "Fidant har tre delar. Webbappen körs i avsändarens och mottagarens webbläsare och sköter all kryptering. Vår server i Stockholm levererar webbappen och skickar vidare meddelanden för att koppla upp de två webbläsarna, över en WebSocket. Vårt relä på samma maskin talar om för webbläsare vilken offentlig adress de har (STUN) och för vidare krypterad trafik när två webbläsare inte når varandra direkt (TURN).",
+          "Det finns inga konton, ingen databas och ingen fillagring. Servern har det den vet bara i minnet.",
+          "Allt är öppen källkod, så varje påstående på den här sidan går att kontrollera mot koden.",
+        ],
+        link: ["Koden på GitHub", "https://github.com/sigill-labs/sigill"],
+      },
+      {
+        heading: "Länken",
+        body: [
+          "För varje mottagare skapar avsändarens webbläsare en länk av formen https://fidant.se/r/<länk-ID>#<hemlighet>. Länk-ID:t är 16 slumpmässiga byte och hemligheten 32 slumpmässiga byte, båda från webbläsarens kryptografiska slumptalsgenerator.",
+          "Länk-ID:t är bara ett namn på länken: vår server använder det för att koppla ihop avsändaren med mottagaren. Hemligheten står i fragmentet, delen efter #, som webbläsare inte skickar till servrar, och webbplatsen säger åt webbläsare att inte heller skicka sidans adress vidare till andra webbplatser. Appen skickar aldrig hemligheten någonstans. Den tar bara fram nycklar ur den.",
+          "Varje mottagare får ett eget länk-ID och en egen hemlighet, så en mottagares länk säger ingenting om någon annans.",
+        ],
+      },
+      {
+        heading: "Nycklar",
+        body: [
+          "Två nycklar tas fram ur hemligheten med HKDF-SHA-256. Båda är AES-256-GCM-nycklar som webbläsaren markerar som icke-exporterbara: sidan kan använda dem men inte läsa ut dem.",
+          "Signalnyckeln krypterar meddelandena för uppkopplingen. Dess salt är länk-ID:t.",
+          "Filnyckeln krypterar allt på förbindelsen mellan webbläsarna. Dess salt är ett slumpmässigt överförings-ID som avsändaren väljer på nytt för varje försök, så en omstartad överföring använder aldrig samma nyckel och nonce två gånger.",
+        ],
+      },
+      {
+        heading: "Så kopplas webbläsarna ihop",
+        body: [
+          "Avsändarens sida öppnar en WebSocket mot vår server och anmäler sina länk-ID:n. När mottagaren öppnar sin länk ansluter deras sida med länk-ID:t och ett slumpmässigt försöks-ID, nytt för varje sidladdning och varje nytt försök. Servern kopplar ihop högst en mottagarsida med en länk åt gången och meddelar båda sidor.",
+          "Sedan sätter webbläsarna upp en WebRTC-förbindelse. Erbjudandet, svaret och nätverkskandidaterna krypteras med signalnyckeln innan de når vår server. Varje meddelande är knutet till sin länk, sitt försök och sin riktning, så servern kan inte läsa eller ändra dem, inte skicka tillbaka ett meddelande till den sida som skickade det, inte flytta det till en annan länk och inte spela upp det igen i ett senare försök.",
+          "Det betyder mer än integritet: meddelandena innehåller fingeravtrycken för WebRTC:s egen DTLS-kryptering. Eftersom servern inte kan ändra dem kan den inte ställa sig mellan de två webbläsarna.",
+        ],
+      },
+      {
+        heading: "Två lager kryptering",
+        body: [
+          "WebRTC krypterar förbindelsen mellan webbläsarna med DTLS. Fidant litar inte bara på det: varje ram på förbindelsen krypteras också med AES-256-GCM under filnyckeln, som bara de två webbläsarna har.",
+          "Varje ram börjar med ett huvud på 10 byte med version, typ och löpnummer. Huvudet autentiseras tillsammans med ramen, och nonce byggs av riktningen och löpnumret, så de två riktningarna delar aldrig nonce. En webbläsare tar bara emot nästa löpnummer, så en ram som tappas, kastas om, upprepas eller ändras stoppar överföringen.",
+        ],
+      },
+      {
+        heading: "Överföringen, ram för ram",
+        body: [
+          "När avsändaren väljer filen räknar webbläsaren ut dess SHA-256-kontrollsumma.",
+          "INIT: avsändaren skickar överförings-ID:t. Det är den enda ramen som inte krypteras. Om den ändras blir filnyckeln en annan, och nästa ram går inte att dekryptera.",
+          "META: filens namn, storlek och typ och det namn avsändaren skrev, krypterat. Mottagaren ser dem och väljer.",
+          "ACCEPT eller DECLINE: mottagarens svar, krypterat. ACCEPT visar också att mottagaren har nyckeln. Inga fildata skickas före det.",
+          "CHUNK: filen i lika stora ramar, högst 48 KiB var.",
+          "END: filens exakta storlek och kontrollsumman som räknades ut när filen valdes.",
+          "RECEIPT: kontrollsumman som mottagaren räknade ut på det som kom fram. Avsändaren räknar filen som levererad först när den stämmer.",
+        ],
+      },
+      {
+        heading: "Kontrollen av filen",
+        body: [
+          "Mottagarens webbläsare räknar kontrollsumman medan filen kommer fram och kontrollerar storleken, antalet delar, utfyllnaden och kontrollsumman mot END. Filen sparas bara om allt stämmer. Varje annat slut, till exempel en ram som inte går att dekryptera eller en förbindelse som stängs för tidigt, kastar det som har skrivits.",
+          "Chrome och Edge kan skriva filen direkt till en plats på disken som mottagaren väljer. Andra webbläsare samlar den i minnet och startar nedladdningen i slutet. Nedladdningen märks alltid som rena binärdata, vilken typ avsändaren än anger, så en fil kan inte köras som en webbsida på Fidants webbplats.",
+          "Namn med styrtecken eller Unicodes riktningstecken nekas, så ett namn som slutar på .exe kan inte se ut att sluta på .pdf.",
+        ],
+      },
+      {
+        heading: "Den exakta storleken döljs",
+        body: [
+          "Den som kan se den krypterade trafiken, till exempel nätverken på vägen eller vårt relä, ser hur stora ramarna är. Därför avrundas storleken uppåt med metoden Padmé, som lägger till högst 12 %, och sedan till hela delar. Alla ramar med fildata är lika stora, och utfyllnaden är nollor som mottagaren kontrollerar.",
+          "Den exakta storleken finns bara i de krypterade META och END. META är alltid lika stor, så inte heller filnamnets längd syns.",
+        ],
+      },
+      {
+        heading: "Så färdas filen",
+        body: [
+          "WebRTC provar de direkta vägarna först: över det lokala nätverket, eller via varje sidas offentliga adress, som webbläsaren får veta från vår STUN-tjänst. Filen går då direkt mellan webbläsarna. Avsändarens sida visar vilken väg varje förbindelse tog.",
+          "Om ingen direkt väg fungerar, vilket är vanligt på mobildata och kontorsnätverk, går trafiken via vårt TURN-relä i Stockholm. Reläet för vidare krypterade paket. Det kan inte dekryptera dem och sparar dem inte.",
+          "För att använda reläet behöver en webbläsare inloggningsuppgifter, som vår server skapar för varje ihopkoppling och bara ger till de två ihopkopplade sidorna. De slutar gälla efter 5 minuter. Reläet för bara vidare UDP, vägrar skicka till privata eller interna nätverksadresser och begränsar hur många förbindelser som går via det samtidigt.",
+          "På alla vägar ser varje webbläsare den andras IP-adress, precis som i ett videosamtal.",
+        ],
+      },
+      {
+        heading: "Att neka reläet",
+        body: [
+          'Avsändaren kan bocka ur "Tillåt vårt relä om en direkt anslutning inte går". Vår server ger då inga inloggningsuppgifter till reläet för den sändningen, bara STUN-adressen, så en omodifierad webbläsare kan inte använda reläet. Som extra skydd avslutar avsändarens webbläsare förbindelsen om den ändå ser att den går via reläet. Fildata skickas först när mottagaren har tackat ja, så i praktiken sker det innan något av den har passerat.',
+          "Gränsen: en modifierad mottagare kan ändå skicka sin del via vårt relä med uppgifter från en annan ihopkoppling, eller via vilket offentligt relä som helst. Den mottagaren har ju nyckeln ändå. Valet avgör vilken infrastruktur som bär den krypterade trafiken, inte vem som kan läsa filen.",
+        ],
+      },
+      {
+        heading: "Flera mottagare och engångslänkar",
+        body: [
+          "En sändning kan gå till upp till 256 personer. Var och en har en egen länk, nyckel, förbindelse och överföring.",
+          "En länk räknas som använd först när mottagarens RECEIPT stämmer. Därefter nekas den. En länk som redan är öppen i en flik nekas i en annan.",
+          "Fram till dess kan länken öppnas igen: efter att mottagaren tackat nej, efter en bruten förbindelse eller efter en misslyckad kontroll. Varje nytt försök har ett nytt överförings-ID och därmed en ny filnyckel.",
+          "Ingenting sparas, så en länk fungerar bara medan avsändarens sida är öppen. När den stängs glömmer vår server dess länkar inom en minut.",
+        ],
+      },
+      {
+        heading: "Vad vår server och vårt relä ser och sparar",
+        body: [
+          "Vår server ser varje sidas IP-adress och webbläsaruppgifter, länk-ID:na, avsändarens val om reläet samt de krypterade meddelandena för uppkopplingen och deras storlek. Den ser aldrig filen, dess namn, typ eller exakta storlek, hemligheten eller nycklarna, och den kan inte läsa meddelandena. Den har det den vet bara i minnet och glömmer en sida inom en minut efter att den kopplat ner.",
+          "Dess loggrader har en fast lista med fält, till exempel de 6 första tecknen i ett länk-ID och om en förbindelse gick direkt. Aldrig namn, nycklar, filinnehåll eller IP-adresser. De raderas efter 30 dagar.",
+          "Vårt relä ser båda IP-adresserna och den krypterade trafiken, alltså filens storlek bara ungefär. Det för ingen logg. Bara för att rätta ett fel eller stoppa missbruk slår vi på en, med tider för anslutningar, IP-adresser och datamängder, i högst 7 dagar.",
+        ],
+        link: ["Alla loggfält, på integritetssidan", "/privacy"],
+      },
+      {
+        heading: "Själva webbplatsen",
+        body: [
+          "Webbplatsen levereras bara över HTTPS, och webbläsare får besked om att aldrig använda vanlig HTTP för den. Att skicka och ta emot går inte utan en säker anslutning.",
+          "En Content Security Policy låter sidorna hämta kod, stilar, typsnitt och anslutningar bara från vår egen webbplats och hindrar andra webbplatser från att visa dem i en ram. Det finns inga kakor, inga skript från tredje part och ingen spårning.",
+          "WebSocketen för uppkopplingen nekar anslutningar som öppnas från andra webbplatser, och gränser skyddar servern mot överbelastning: antal anslutningar totalt och per adress, meddelanden per anslutning, länkar per avsändare och storleken på varje meddelande.",
+        ],
+      },
+      {
+        heading: "Det här skyddar den inte mot",
+        body: [
+          "Länken är nyckeln. Den som får tag på en länk kan öppna filen tills länken har använts. Skicka varje länk bara till den den är till, på ett sätt du litar på.",
+          "Din webbläsare kör den kod vår server skickar. En server som skickade annan kod skulle kunna läsa filer. Koden är offentlig, men webbläsare kan ännu inte kontrollera att det de fick stämmer med den.",
+          "Avsändarens namn skrivs av avsändaren och kontrolleras inte.",
+          "Den andra webbläsaren ser din IP-adress. Nätverken på vägen, och vårt relä när det används, ser båda IP-adresserna, när överföringen sker och ungefär hur stor filen är.",
+          "Skadlig kod på någon av datorerna kan läsa filen innan den krypteras eller efter att den dekrypterats.",
+          "Fidant har ännu inte granskats av någon oberoende part.",
+        ],
+      },
+      {
+        heading: "Planerat: verifierade överföringar",
+        body: [
+          "Inte byggt ännu. Planen: mottagaren skriver under ett kvitto med BankID innan filen går att öppna, och kvittot namnger filen. Filnyckeln delas, och vår server lämnar ut sin halva först när kvittot är underskrivet. Händelser hamnar i en granskningslogg där manipulation syns, förankrad med betrodda tidsstämplar.",
+          "När det finns beskriver den här sidan det.",
+        ],
+        link: [
+          "Designbesluten på GitHub",
+          "https://github.com/sigill-labs/sigill/tree/main/docs/decisions",
         ],
       },
     ] as Sections,
