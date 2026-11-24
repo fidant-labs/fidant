@@ -197,15 +197,38 @@ test("the app box runs coturn after the site is up, with a secret that stays on 
   const mask = userData.indexOf("\nsystemctl mask coturn\n");
   const install = userData.indexOf(" install -y coturn\n");
   const conf = userData.indexOf("\ninstall -m 640 -g turnserver /dev/null /etc/turnserver.conf\n");
+  const template = userData.indexOf("\ncat >>/etc/turnserver.conf <<'EOF'\n");
+  const secret = userData.indexOf("; cat /etc/sigill/turn-secret; } >>/etc/turnserver.conf\n");
   const online = userData.indexOf(
     "\ncat >/etc/systemd/system/coturn.service.d/online.conf <<'EOF'\n[Unit]\nWants=network-online.target\nAfter=network-online.target\nEOF\n",
   );
+  const unmask = userData.indexOf("\nsystemctl unmask coturn\n");
   const enable = userData.indexOf("\nsystemctl enable --now coturn\n");
   const active = userData.indexOf("\nif systemctl is-active --quiet coturn; then\n");
-  const dropIn = userData.indexOf("sigill.service.d");
-  assert.ok(caddy > 0 && caddy < mask && mask < install && install < conf);
-  assert.ok(install < online && online < enable);
-  assert.ok(conf < active && active < dropIn);
+  const dropIn = userData.indexOf("\n  install -d /etc/systemd/system/sigill.service.d\n");
+  const fi = userData.indexOf("\nfi\n", active);
+  const order = [
+    caddy,
+    mask,
+    install,
+    conf,
+    template,
+    secret,
+    online,
+    unmask,
+    enable,
+    active,
+    dropIn,
+    fi,
+  ];
+  assert.ok(
+    order.every((index) => index > 0),
+    order.join(),
+  );
+  assert.deepEqual(
+    order,
+    order.toSorted((a, b) => a - b),
+  );
   assert.doesNotMatch(userData.slice(0, caddy), /coturn|turn-secret/);
 
   assert.deepEqual(userData.match(/static-auth-secret=.*/g), [
