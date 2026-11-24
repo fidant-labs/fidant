@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { buffer } from "node:stream/consumers";
+import { setTimeout as sleep } from "node:timers/promises";
 import type { Page } from "@playwright/test";
 import { canaryFile, canaryKey, expect, type Leaks, type Observed, test } from "../src/fixtures.ts";
 import { readPeerConnections, recordPeerConnections, selectedPair } from "../src/ice.ts";
@@ -35,6 +36,8 @@ interface Scenario {
   path: RegExp | "none";
   /** Set while the row is not implemented yet: why it is skipped. */
   todo?: string;
+  /** Send a larger file and check that both sides report progress honestly along the way. */
+  progress?: true;
 }
 
 const scenarios: Scenario[] = [
@@ -87,7 +90,7 @@ const scenarios: Scenario[] = [
     recipient: "b1",
     routerB: "lossy",
     path: /^srflx\/(srflx|prflx) srflx\/(srflx|prflx)$/,
-    todo: "slow lossy row arrives with the netem router mode",
+    progress: true,
   },
 ];
 
@@ -130,6 +133,50 @@ async function expectSignaling(observed: (name: string) => Observed, baseURL: st
     expect(types.has("frame-sent"), `${name} frame-sent`).toBe(true);
     expect(types.has("frame-received"), `${name} frame-received`).toBe(true);
   }
+}
+
+const verifiedText = "this is exactly the file that was sent";
+
+/**
+ * Samples both pages until the recipient shows the verified text, and checks that progress was
+ * honest: the recipient's bar never went back or past the file, showed at least three values in
+ * between, and the sender said delivered only once the recipient had verified the file.
+ */
+async function expectHonestProgress(sender: Page, recipient: Page, size: number): Promise<void> {
+  const bar = recipient.getByLabel("Download progress", { exact: true });
+  const delivered = sender.getByText("Delivered through Anna's link");
+  const verified = recipient.getByText(verifiedText);
+  const values: number[] = [];
+  const deadline = Date.now() + 60_000;
+  for (;;) {
+    // Sender first: the recipient's verified text never goes away, so a delivered sender
+    // followed by an unverified recipient means the sender was early.
+    const senderDelivered = await delivered.isVisible();
+    const recipientVerified = await verified.isVisible();
+    expect(
+      senderDelivered && !recipientVerified,
+      "sender delivered before recipient verified",
+    ).toBe(false);
+    if (recipientVerified) {
+      break;
+    }
+    const value = (
+      await bar.evaluateAll((els) => els.map((el) => (el as HTMLProgressElement).value))
+    )[0];
+    if (value !== undefined) {
+      expect(value, "progress went back").toBeGreaterThanOrEqual(values.at(-1) ?? 0);
+      expect(value, "progress past the file").toBeLessThanOrEqual(size);
+      values.push(value);
+    }
+    expect(Date.now(), "recipient verified in time").toBeLessThan(deadline);
+    await sleep(150);
+  }
+  const between = new Set(values.filter((v) => v > 0 && v < size));
+  expect(
+    between.size,
+    `distinct values between 0 and size: ${values.join(",")}`,
+  ).toBeGreaterThanOrEqual(3);
+  await expect(delivered).toBeVisible();
 }
 
 const sizeOf = async (file: string) => (await readFile(file).catch(() => Buffer.alloc(0))).length;
@@ -227,7 +274,9 @@ for (const row of scenarios) {
       baseURL,
     }) => {
       await routerMode("router-b", row.routerB);
-      const file = leaks.watch(canaryFile(canary.fork("file"), { size: 300_001 }));
+      // ponytail: 1 MiB, not 3: SCTP over this link moves about 50 KB/s, so 3 MiB took a minute.
+      const size = row.progress ? 1024 * 1024 + 1 : 300_001;
+      const file = leaks.watch(canaryFile(canary.fork("file"), { size }));
 
       const sender = await actor("sender");
       await recordPeerConnections(sender.context);
@@ -248,9 +297,10 @@ for (const row of scenarios) {
       await recipient.page.goto(link);
       const downloading = recipient.page.waitForEvent("download");
       await recipient.page.getByRole("button", { name: "Download" }).click();
-      await expect(recipient.page.getByText("this is exactly the file that was sent")).toBeVisible({
-        timeout: 60_000,
-      });
+      if (row.progress) {
+        await expectHonestProgress(sender.page, recipient.page, size);
+      }
+      await expect(recipient.page.getByText(verifiedText)).toBeVisible({ timeout: 60_000 });
       // path() is not available from a remote browser.
       const download = await downloading;
       expect(sha256Hex(await buffer(await download.createReadStream()))).toBe(

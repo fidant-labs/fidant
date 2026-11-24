@@ -1,6 +1,6 @@
 #!/bin/sh
 # NAT router between a site network (10.89.x.0/24) and the public network (198.51.100.0/24).
-# Usage: router.sh init | cone | symmetric | udp-blocked | tcp-443
+# Usage: router.sh init | cone | symmetric | udp-blocked | tcp-443 | lossy
 set -eu
 
 # Docker does not keep eth0/eth1 in a stable order, so find each side by its subnet.
@@ -61,8 +61,17 @@ case "${1:-}" in
     iptables -t nat -A POSTROUTING -o "$wan" -j MASQUERADE
     iptables -A FORWARD -i "$lan" -o "$wan" -p tcp --dport 443 -j ACCEPT
     ;;
+  lossy)
+    reset
+    # A cone NAT on a slow, lossy, jittery link. netem shapes what leaves an interface, so it
+    # goes on both sides: wan for upload, lan for download.
+    iptables -t nat -A POSTROUTING -o "$wan" -j MASQUERADE
+    iptables -A FORWARD -i "$lan" -o "$wan" -j ACCEPT
+    tc qdisc add dev "$wan" root netem delay 80ms 20ms loss 2% rate 4mbit
+    tc qdisc add dev "$lan" root netem delay 80ms 20ms loss 2% rate 4mbit
+    ;;
   *)
-    echo "usage: router.sh init|cone|symmetric|udp-blocked|tcp-443" >&2
+    echo "usage: router.sh init|cone|symmetric|udp-blocked|tcp-443|lossy" >&2
     exit 2
     ;;
 esac
