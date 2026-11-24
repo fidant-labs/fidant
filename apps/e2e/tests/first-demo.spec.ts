@@ -420,6 +420,54 @@ test("a waiting recipient sees when the sender goes offline", async ({ demo, lea
   ).toContainText("Nothing about this page once it notices the connection has closed");
 });
 
+test("the Why? link to /how keeps a transfer alive on both pages", async ({
+  demo,
+  leaks,
+  canary,
+}) => {
+  const file = makeFile(leaks, canary, 100_001);
+  const sender = await openSender(demo, file);
+  const name = makeName(leaks, canary, "Anna");
+  const link = await addRecipient(leaks, sender, name);
+
+  const recipient = await demo.open("recipient");
+  await recipient.goto(link);
+  const download = recipient.getByRole("button", { name: "Download" });
+  await expect(download).toBeVisible();
+  const card = recipientRow(sender, name);
+  const opened = card.getByText(`${name}'s link has been opened`);
+  await expect(opened).toBeVisible();
+
+  for (const [page, scope, back, kept] of [
+    [sender, card, /\/send$/, card],
+    [recipient, recipient, link, recipient.locator("#receive h1")],
+  ] as const) {
+    await expect(scope.getByText("Direct connection", { exact: true })).toBeVisible();
+    // A remounted page would rejoin from the same URL, so only node identity tells it apart.
+    const node = await kept.elementHandle();
+    await scope.getByText("Why?", { exact: true }).click();
+    await scope.getByRole("link", { name: "More about how it works" }).click();
+    await expect(page).toHaveURL(/\/how#direct$/);
+    await expect(page.locator("#direct h2")).toBeVisible();
+    await page.goBack();
+    await expect(page).toHaveURL(back);
+    expect(await node.evaluate((n) => n.isConnected)).toBe(true);
+  }
+  await expect(download).toBeVisible();
+  await expect(opened).toBeVisible();
+  await expect(card.getByText(`Waiting for ${name}'s link to be opened`)).toHaveCount(0);
+  await expect(sender.getByRole("button", { name: `Copy link for ${name}` })).toHaveCount(0);
+
+  const downloading = recipient.waitForEvent("download", { timeout: 60_000 });
+  await download.click();
+  await expect(recipient.getByText("this is exactly the file that was sent")).toBeVisible({
+    timeout: 60_000,
+  });
+  const bytes = await readFile(await (await downloading).path());
+  expect(sha256Hex(bytes)).toBe(sha256Hex(file.bytes));
+  await expect(delivered(sender, name)).toBeVisible();
+});
+
 /** Lets a test cut the sender's peer connections (`cut()`) and stop its data channels sending (`stalled`). */
 function breakableSender() {
   const g = globalThis as { cut?: () => void; stalled?: boolean };
