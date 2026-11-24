@@ -3,18 +3,25 @@
 //
 // One attempt (see lib/peer.ts and lib/receive-file.ts):
 // - Connect to the signaling server, derive the link's signal key, and send
-//   `join`. The server answers with `joined`, carrying this pairing's ICE
-//   servers, before it tells the sender; the recipient peer is created
-//   synchronously on it, so the sender's offer, which comes later on the same
-//   socket, always finds a peer to answer it. Each attempt joins with a fresh
-//   random attempt ID, so a sender's late refusal of an earlier attempt cannot
-//   end this one.
+//   `join` once both are done. The server answers with `joined`, carrying
+//   this pairing's ICE servers, before it tells the sender; the recipient peer
+//   is created synchronously on it, so the sender's offer, which comes later
+//   on the same socket, always finds a peer to answer it. Each attempt joins
+//   with a fresh random attempt ID, so a sender's late refusal of an earlier
+//   attempt cannot end this one.
 // - `relay` goes to the peer. `refused` ends the attempt with the matching
 //   message, and so does `host-gone` until the file starts arriving. A
 //   transfer under way no longer needs the server (the sender may only have
 //   lost its signaling connection), so then `host-gone` is only remembered: if
 //   the sender's tab really closed, the peer drops too (at the latest when ICE
 //   consent runs out) and the drop is reported as the sender's page closing.
+// - If the signaling socket drops before the data channel opens, a new
+//   attempt starts (new socket, new attempt ID). A socket that never opened is
+//   left to the signaling client's own retries. A server that restarted no
+//   longer knows the sender's link until the sender re-hosts, so `refused:
+//   unknown` after a drop or failed connect waits retryDelay and tries again,
+//   up to MAX_REJOINS times. Once the channel is open the transfer no longer
+//   needs the server, so a drop then only closes the signaling client.
 // - If the data channel hasn't opened CONNECT_TIMEOUT_MS (30 s) after the
 //   attempt starts, the attempt fails with "connect" (a peer exists) or
 //   "server" (no `joined` yet), so "Connecting…" never stays up for good.
@@ -47,7 +54,7 @@ import type { FileOffer } from "../lib/receive-file.ts";
 import { ReceiveError, receiveFile } from "../lib/receive-file.ts";
 import { peerLostProblem } from "../lib/receive-problem.ts";
 import { addRelay, NO_RELAYS, type Tie } from "../lib/server-facts.ts";
-import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
+import { connectSignaling, retryDelay, type SignalingClient } from "../lib/signaling-client.ts";
 import { createSink, isPickerCancel, type Sink } from "../lib/sink.ts";
 import {
   Direct,
@@ -101,6 +108,8 @@ const HOST_GONE_GRACE_MS = 1000;
 const LINGER_MS = 5000;
 /** How long to wait for the data channel before giving up on the sender. */
 const CONNECT_TIMEOUT_MS = 30_000;
+/** How many new attempts follow a dropped socket or an `unknown` refusal before giving up. */
+const MAX_REJOINS = 4;
 
 export function ReceivePage() {
   const { t, lang } = useI18n();
@@ -130,7 +139,7 @@ export function ReceivePage() {
     }
   };
 
-  const start = () => {
+  const start = (rejoins = 0) => {
     if (!link) {
       return;
     }
@@ -200,18 +209,56 @@ export function ReceivePage() {
       }, CONNECT_TIMEOUT_MS),
     );
 
+    // Set before `join` is sent, so it is there when `joined` arrives.
+    let signalKey: CryptoKey | undefined;
+    let opened = false;
+    /** A connection attempt failed, so the server may have restarted and lost the sender's link. */
+    let failedBefore = false;
+    const join = () => {
+      if (opened && signalKey && current()) {
+        signaling.send({ t: "join", link: linkId, attempt: attemptId });
+      }
+    };
+    void deriveSignalKey(secret, linkId).then(
+      (key) => {
+        signalKey = key;
+        join();
+      },
+      () => finish({ s: "failed", problem: "server" }),
+    );
+    signaling.onOpen(() => {
+      setReachedServer(true);
+      if (!current()) {
+        return;
+      }
+      opened = true;
+      setTie("unpaired");
+      join();
+    });
     signaling.onClose(({ byClient }) => {
       if (byClient || !current()) {
         return;
       }
       setTie("closed");
-      if (attempt.channelOpen && !attempt.abort.signal.aborted) {
+      if (!opened) {
+        // The client retries; CONNECT_TIMEOUT_MS bounds the wait.
+        failedBefore = true;
         return;
       }
-      finish({ s: "failed", problem: attempt.channelOpen ? lostMessage() : "server" });
+      if (attempt.channelOpen) {
+        if (attempt.abort.signal.aborted) {
+          finish({ s: "failed", problem: lostMessage() });
+        } else {
+          signaling.close();
+        }
+        return;
+      }
+      if (rejoins < MAX_REJOINS) {
+        start(rejoins + 1);
+      } else {
+        finish({ s: "failed", problem: "server" });
+      }
     });
-    // Set before `join` is sent, so it is there when `joined` arrives.
-    let signalKey: CryptoKey | undefined;
     signaling.subscribe((message) => {
       switch (message.t) {
         case "joined":
@@ -262,6 +309,22 @@ export function ReceivePage() {
           // link is in use or used: the sender only signals a join it took.
           if (attempt.heardSender) {
             finish({ s: "failed", problem: unopened(lostMessage()) });
+          } else if (
+            message.reason === "unknown" &&
+            (rejoins > 0 || failedBefore) &&
+            rejoins < MAX_REJOINS
+          ) {
+            // The server may have restarted before the sender re-hosted.
+            if (current()) {
+              release(attempt);
+              attempt.timers.push(
+                setTimeout(() => {
+                  if (attemptRef.current === attempt) {
+                    start(rejoins + 1);
+                  }
+                }, retryDelay(rejoins)),
+              );
+            }
           } else {
             finish(
               message.reason === "drop"
@@ -353,23 +416,6 @@ export function ReceivePage() {
         },
       );
     };
-
-    void (async () => {
-      try {
-        await signaling.ready;
-        setReachedServer(true);
-        if (current()) {
-          setTie("unpaired");
-        }
-        signalKey = await deriveSignalKey(secret, linkId);
-        if (!current()) {
-          return;
-        }
-        signaling.send({ t: "join", link: linkId, attempt: attemptId });
-      } catch {
-        finish({ s: "failed", problem: "server" });
-      }
-    })();
   };
 
   // Runs once on mount; "Try again" calls start() again.
@@ -551,7 +597,7 @@ export function ReceivePage() {
         <>
           <h1>{t.receive.declinedTitle}</h1>
           <p>{t.receive.declinedBody}</p>
-          <Button type="button" variant="link" onClick={start}>
+          <Button type="button" variant="link" onClick={() => start()}>
             {t.receive.showAgain}
           </Button>
         </>
@@ -563,7 +609,7 @@ export function ReceivePage() {
       body = (
         <>
           <Problem {...problem} />
-          <Button type="button" onClick={start}>
+          <Button type="button" onClick={() => start()}>
             {t.receive.tryAgain}
           </Button>
           {problem.detail && <TechDetails rows={[[t.receive.whatHappened, problem.detail]]} />}

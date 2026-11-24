@@ -21,8 +21,6 @@ export type SignalingClose = {
 };
 
 export type SignalingClient = {
-  /** Resolves when the first socket opens; rejects if that first attempt fails. */
-  readonly ready: Promise<void>;
   /** Sends a message. Returns false (and sends nothing) if the socket is not open. */
   send(message: ClientMessage): boolean;
   /** Calls the listener for every valid server message. Returns an unsubscribe function. */
@@ -64,14 +62,6 @@ export function connectSignaling({
   let closedByClient = false;
   let failures = 0;
   let retry: ReturnType<typeof setTimeout> | undefined;
-  let resolveReady!: () => void;
-  let rejectReady!: (error: Error) => void;
-  const ready = new Promise<void>((resolve, reject) => {
-    resolveReady = resolve;
-    rejectReady = reject;
-  });
-  // Callers that only use onClose should not see an unhandled rejection.
-  ready.catch(() => {});
 
   const clearListeners = () => {
     messageListeners.clear();
@@ -86,7 +76,6 @@ export function connectSignaling({
     next.addEventListener("open", () => {
       opened = true;
       failures = 0;
-      resolveReady();
       for (const listener of [...openListeners]) {
         listener();
       }
@@ -107,9 +96,6 @@ export function connectSignaling({
     });
 
     next.addEventListener("close", (event: CloseEvent) => {
-      if (!opened) {
-        rejectReady(new Error("signaling closed before opening"));
-      }
       const info: SignalingClose = { code: event.code, byClient: closedByClient };
       for (const listener of [...closeListeners]) {
         listener(info);
@@ -132,7 +118,6 @@ export function connectSignaling({
   let socket = open();
 
   return {
-    ready,
     send(message) {
       if (socket.readyState !== WebSocket.OPEN) {
         return false;
