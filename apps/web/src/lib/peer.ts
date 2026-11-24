@@ -53,6 +53,8 @@ export type PeerCloseReason =
   /** Setting up the connection threw (createOffer, setRemoteDescription, ...). */
   | "setup-failed";
 
+export type OpenPath = Exclude<ConnectionPath, "failed">;
+
 export type PeerOpenInfo = {
   /** Largest message the channel accepts, in bytes. Check frames with assertFrameFits. */
   maxMessageSize: number;
@@ -60,7 +62,7 @@ export type PeerOpenInfo = {
    * How the browsers reached each other, from the selected candidate pair.
    * Resolves shortly after the channel opens; never rejects.
    */
-  path: Promise<Exclude<ConnectionPath, "failed">>;
+  path: Promise<OpenPath>;
 };
 
 export type PeerOptions = {
@@ -202,9 +204,7 @@ type StatsEntry = {
  * "stun" if either is server- or peer-reflexive, else "direct". Reads only
  * candidate types, never addresses or ports.
  */
-export function connectionPath(
-  stats: ReadonlyMap<string, StatsEntry>,
-): Exclude<ConnectionPath, "failed"> {
+export function connectionPath(stats: ReadonlyMap<string, StatsEntry>): OpenPath {
   const entries = [...stats.values()];
   const pairId = entries.find(
     (s) => s.type === "transport" && s.selectedCandidatePairId,
@@ -329,7 +329,7 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
     next.onclose = () => fail("channel-closed");
   }
 
-  async function readPath(): Promise<Exclude<ConnectionPath, "failed">> {
+  async function readPath(): Promise<OpenPath> {
     const read = () => pc.getStats().then(connectionPath, () => "direct" as const);
     const first = await read();
     if (first !== "stun" || closed) {

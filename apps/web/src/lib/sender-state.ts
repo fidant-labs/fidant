@@ -87,13 +87,9 @@
 // names never leave this module through an effect, so nothing built from
 // effects can send a name to the network.
 
-import {
-  type ConnectionPath,
-  type IceServer,
-  MAX_LINKS,
-  type RefuseReason,
-} from "@sigill/protocol";
+import { type IceServer, MAX_LINKS, type RefuseReason } from "@sigill/protocol";
 import type { Link } from "./link.ts";
+import type { OpenPath } from "./peer.ts";
 
 export type RecipientStatus =
   | "waiting"
@@ -115,7 +111,7 @@ export type Recipient = {
   /** The attempt ID of the join that started the current connection. */
   readonly attempt?: string;
   /** How the current attempt's connection runs, once its data channel opened. */
-  readonly path?: Exclude<ConnectionPath, "failed">;
+  readonly path?: OpenPath;
   /** Whether the server's `joined` for the current attempt allowed our relay. */
   readonly turn?: boolean;
   /** The last attempt couldn't connect directly while the sender refused our relay. */
@@ -137,7 +133,7 @@ export type SenderAction =
   | { type: "timeout"; linkId: string }
   | { type: "left"; linkId: string }
   | { type: "declined"; linkId: string }
-  | { type: "path"; linkId: string; attempt: string; path: Exclude<ConnectionPath, "failed"> };
+  | { type: "path"; linkId: string; attempt: string; path: OpenPath };
 
 export type SenderEffect =
   | { type: "start"; linkId: string; attempt: string; iceServers: IceServer[] }

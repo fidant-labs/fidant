@@ -28,7 +28,6 @@
 // The secret stays in this tab (it is never stripped from the address bar in
 // this demo). The file name and size are shown, never logged or sent anywhere.
 
-import type { ConnectionPath } from "@sigill/protocol";
 import { cn } from "cn";
 import { type ComponentChildren, Fragment, type VNode } from "preact";
 import { useEffect, useMemo, useReducer, useRef, useState } from "preact/hooks";
@@ -39,7 +38,7 @@ import { encodeBase64url } from "../lib/base64url.ts";
 import { displayName, formatBytes, formatProgress, toHex } from "../lib/format.ts";
 import { deriveSignalKey } from "../lib/keys.ts";
 import { LINK_ID_BYTES, parseRecipientLocation } from "../lib/link.ts";
-import { createRecipientPeer, type Peer } from "../lib/peer.ts";
+import { createRecipientPeer, type OpenPath, type Peer } from "../lib/peer.ts";
 import type { FileOffer } from "../lib/receive-file.ts";
 import { ReceiveError, receiveFile } from "../lib/receive-file.ts";
 import { peerLostProblem } from "../lib/receive-problem.ts";
@@ -108,7 +107,7 @@ export function ReceivePage() {
   const [reachedServer, setReachedServer] = useState(false);
   const [tie, setTie] = useState<Tie>("closed");
   const [viaRelay, setViaRelay] = useState(false);
-  const [path, setPath] = useState<Exclude<ConnectionPath, "failed"> | undefined>(undefined);
+  const [path, setPath] = useState<OpenPath | undefined>(undefined);
   const attemptRef = useRef<Attempt | undefined>(undefined);
 
   /** Closes everything an attempt holds. `linger` keeps the peer up for a moment. */

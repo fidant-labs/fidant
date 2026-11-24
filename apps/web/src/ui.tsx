@@ -1,6 +1,5 @@
 // Pieces shared by the pages.
 
-import type { ConnectionPath } from "@sigill/protocol";
 import type { AnchorHTMLAttributes, ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
 import { DropdownMenu } from "radix-ui";
@@ -10,6 +9,7 @@ import { Card, CardContent } from "#components/ui/card";
 import { useI18n } from "./i18n/I18n.tsx";
 import { LANGUAGE_NAMES, type Lang } from "./i18n/language.ts";
 import { formatBytes } from "./lib/format.ts";
+import type { OpenPath } from "./lib/peer.ts";
 import type { Relayed } from "./lib/server-facts.ts";
 import { applyTheme, initialTheme, type Theme } from "./theme.ts";
 
@@ -389,7 +389,7 @@ export function TechDetails({
 }
 
 /** How a connection runs, with a "Why?" that explains it. The summary holds the label too, so it makes sense on its own. */
-export function PathLine({ path }: { path: Exclude<ConnectionPath, "failed"> }) {
+export function PathLine({ path }: { path: OpenPath }) {
   const { t } = useI18n();
   const { label, explain } = t.connection[path === "relay" ? "relay" : "direct"];
   return (
