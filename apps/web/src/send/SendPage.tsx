@@ -528,7 +528,17 @@ export function SendPage() {
             </p>
           </div>
 
-          <form class="mt-6 flex flex-wrap items-end gap-2" onSubmit={onAdd} noValidate>
+          <form
+            class="mt-6 flex flex-wrap items-end gap-2"
+            onSubmit={onAdd}
+            // A held Enter that started on the last Remove button lands here and would submit an empty name.
+            onKeyDown={(event) => {
+              if (event.repeat && event.key === "Enter") {
+                event.preventDefault();
+              }
+            }}
+            noValidate
+          >
             <div class={field}>
               <Label htmlFor="recipient-name">{t.send.recipientLabel}</Label>
               <Input

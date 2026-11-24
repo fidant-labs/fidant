@@ -298,9 +298,12 @@ harness("a held Enter on Remove removes only one recipient", async ({ actor, lea
   await expect(recipientRow(sender, anna)).toHaveCount(0);
   await expect(sender.getByRole("button", { name: `Copy link for ${erik}` })).toBeVisible();
 
-  await sender.keyboard.press("Enter");
+  await sender.keyboard.down("Enter");
   await expect(recipientRow(sender, erik)).toHaveCount(0);
   await expect(sender.getByLabel("Who is it for?")).toBeFocused();
+  await sender.keyboard.down("Enter"); // the repeat lands on the empty name field
+  await sender.keyboard.up("Enter");
+  await expect(sender.getByText("Enter a name.")).toHaveCount(0);
 });
 
 test("the sender's name must fit with the file name, and stray drops are ignored", async ({
