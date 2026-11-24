@@ -6,7 +6,6 @@ import {
   isAddress,
   isLinkId,
   MAX_ADDRESS,
-  MAX_EMAIL_URL,
   MAX_FROM_LENGTH,
   MAX_ICE_SERVERS,
   MAX_ICE_STRING,
@@ -23,11 +22,9 @@ const link = "AAAAAAAAAAAAAAAAAAAAAA";
 const other = "abcdefghijklmnopqrstu-";
 const attempt = "ZZZZZZZZZZZZZZZZZZZZZZ";
 const token = "TTTTTTTTTTTTTTTTTTTTTT";
-const host = "fidant.se";
 const secret = "A".repeat(43);
-const url = `https://${host}/r/${link}#${secret}`;
 const to = "anna@example.se";
-const email = { t: "email", link, to, url, from: "Anna", lang: "sv" };
+const email = { t: "email", link, to, secret, from: "Anna", lang: "sv" };
 const turn = {
   urls: ["turn:127.0.0.1:3478?transport=udp", "turns:relay.example:5349", "stun:127.0.0.1:3478"],
   username: "1700000000",
@@ -36,10 +33,6 @@ const turn = {
 
 function linkIds(count: number): string[] {
   return Array.from({ length: count }, (_, i) => i.toString(36).padStart(22, "_"));
-}
-
-function urlOfLength(length: number): string {
-  return `https://${"h".repeat(length - url.length + host.length)}/r/${link}#${secret}`;
 }
 
 function client(message: object) {
@@ -273,7 +266,7 @@ test("rejects missing fields", () => {
     { t: "path", path: "relay" },
     { t: "join", link, token },
     { t: "join", attempt, token },
-    ...["link", "to", "url", "from", "lang"].map((key) => ({ ...email, [key]: undefined })),
+    ...["link", "to", "secret", "from", "lang"].map((key) => ({ ...email, [key]: undefined })),
     { t: "gate" },
     { t: "send-code" },
     { t: "code", link },
@@ -355,10 +348,8 @@ test("parses valid emailed-link client messages", () => {
     const message = { ...email, from: "", lang };
     assert.deepEqual(client(message), message);
   }
-  for (const origin of ["192.168.1.5:8443", "localhost:8443", "[::1]:8443"]) {
-    const message = { ...email, url: `https://${origin}/r/${link}#${secret}` };
-    assert.deepEqual(client(message), message);
-  }
+  const mixed = { ...email, secret: "az09_-AZ".repeat(6).slice(0, 43) };
+  assert.deepEqual(client(mixed), mixed);
   assert.deepEqual(client({ t: "gate", link }), { t: "gate", link });
   assert.deepEqual(client({ t: "send-code", link }), { t: "send-code", link });
   assert.deepEqual(client({ t: "code", link, code: "012345" }), {
@@ -462,42 +453,41 @@ test("accepts the mask of the longest address and rejects anything unmasked", ()
   }
 });
 
-test("accepts a link URL up to MAX_EMAIL_URL characters", () => {
-  const longest = urlOfLength(MAX_EMAIL_URL);
-  assert.equal(longest.length, MAX_EMAIL_URL);
-  assert.deepEqual(client({ ...email, url: longest }), { ...email, url: longest });
-  assert.equal(client({ ...email, url: urlOfLength(MAX_EMAIL_URL + 1) }), undefined);
-});
-
-test("rejects a link URL that is not https://<host>/r/<the same link>#<secret>", () => {
+test("rejects a secret that is not 43 base64url characters, and a link URL instead", () => {
   const bad: unknown[] = [
-    `http://${host}/r/${link}#${secret}`,
-    `https://${host}/r/${other}#${secret}`,
-    `https://${host}/r/${link}#${secret.slice(1)}`,
-    `https://${host}/r/${link}#${secret}A`,
-    `https://${host}/r/${link}#${secret.slice(1)}+`,
-    `https://${host}/r/${link}`,
-    `https://${host}/r/${link}/#${secret}`,
-    `https://${host}/r/${link}?x=1#${secret}`,
-    `https://anna@${host}/r/${link}#${secret}`,
-    `https://${host}/x/r/${link}#${secret}`,
-    `https://fid\nant.se/r/${link}#${secret}`,
-    `https://fid ant.se/r/${link}#${secret}`,
-    `https:///r/${link}#${secret}`,
-    ` ${url}`,
-    `${url}\n`,
+    secret.slice(1),
+    `${secret}A`,
+    `${secret.slice(1)}+`,
+    `${secret.slice(1)}/`,
+    `${secret.slice(1)}=`,
+    ` ${secret.slice(1)}`,
+    `${secret.slice(1)}\n`,
+    `https://fidant.se/r/${link}#${secret}`,
+    "",
     42,
     null,
   ];
   for (const value of bad) {
-    assert.equal(client({ ...email, url: value }), undefined, String(value));
+    assert.equal(client({ ...email, secret: value }), undefined, String(value));
   }
+  const url = `https://fidant.se/r/${link}#${secret}`;
+  assert.equal(client({ t: "email", link, to, url, from: "Anna", lang: "sv" }), undefined);
+  assert.equal(client({ ...email, url }), undefined);
 });
 
 test("rejects bad sender names and languages in an email message", () => {
   const longest = "x".repeat(MAX_FROM_LENGTH);
   assert.deepEqual(client({ ...email, from: longest }), { ...email, from: longest });
-  for (const from of [`${longest}x`, "An\nna", "An\u202Ena", "\u0000", 42, null]) {
+  for (const from of [
+    `${longest}x`,
+    "An\nna",
+    "An\u2028na",
+    "An\u2029na",
+    "An\u202Ena",
+    "\u0000",
+    42,
+    null,
+  ]) {
     assert.equal(client({ ...email, from }), undefined, String(from));
   }
   for (const lang of ["de", "SV", "", null, ["sv"]]) {

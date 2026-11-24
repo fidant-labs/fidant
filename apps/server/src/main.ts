@@ -50,13 +50,22 @@ if (turnUrls || turnSecretFile) {
 }
 
 // Mail is optional too, and the SMTP password comes from a file for the same reason.
+// Emailed links point at PUBLIC_ORIGIN, never at whatever Host a request names.
 const mailUrl = process.env.MAIL_SMTP_URL;
 const mailFrom = process.env.MAIL_FROM;
 const mailPasswordFile = process.env.MAIL_PASSWORD_FILE;
-let mail: Mailer | undefined;
-if (mailUrl || mailFrom || mailPasswordFile) {
-  if (!mailUrl || !mailFrom) {
-    console.error("Set both MAIL_SMTP_URL and MAIL_FROM, or none of the MAIL_ variables.");
+const publicOrigin = process.env.PUBLIC_ORIGIN;
+let mail: { send: Mailer; origin: string } | undefined;
+if (mailUrl || mailFrom || mailPasswordFile || publicOrigin) {
+  if (!mailUrl || !mailFrom || !publicOrigin) {
+    console.error(
+      "Set MAIL_SMTP_URL, MAIL_FROM and PUBLIC_ORIGIN together, or none of them and no MAIL_PASSWORD_FILE.",
+    );
+    process.exit(1);
+  }
+  const parsed = URL.parse(publicOrigin);
+  if (parsed?.protocol !== "https:" || parsed.origin !== publicOrigin) {
+    console.error("PUBLIC_ORIGIN must be an https:// origin with no path, like https://fidant.se.");
     process.exit(1);
   }
   let password: string | undefined;
@@ -73,7 +82,7 @@ if (mailUrl || mailFrom || mailPasswordFile) {
     }
   }
   try {
-    mail = smtpMailer({ url: mailUrl, from: mailFrom, password });
+    mail = { send: smtpMailer({ url: mailUrl, from: mailFrom, password }), origin: publicOrigin };
   } catch (error) {
     // smtpMailer's own messages, which echo nothing from the configuration.
     console.error((error as Error).message);

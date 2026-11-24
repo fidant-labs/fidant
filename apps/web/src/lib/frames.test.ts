@@ -457,10 +457,10 @@ test("decodeMeta rejects malformed padding and JSON", () => {
   assert.throws(() => decodeMeta(rawMeta("")));
 });
 
-test("META refuses control and direction characters in the name, type and sender name", () => {
+test("META refuses control, separator and direction characters in the name, type and sender name", () => {
   const forbidden = [
-    0x00, 0x09, 0x0a, 0x1f, 0x7f, 0x80, 0x9f, 0x200e, 0x200f, 0x202a, 0x202d, 0x202e, 0x2066,
-    0x2069,
+    0x00, 0x09, 0x0a, 0x1f, 0x7f, 0x80, 0x9f, 0x2028, 0x2029, 0x200e, 0x200f, 0x202a, 0x202d,
+    0x202e, 0x2066, 0x2069,
   ];
   for (const code of forbidden) {
     const c = String.fromCodePoint(code);

@@ -1,11 +1,12 @@
 // Relays signaling messages between a sender's browser (the host) and its
 // recipients' browsers (guests) over the /signal WebSocket.
 //
-// The server only learns link IDs and opaque base64url blobs. It knows which
-// link IDs are hosted and binds at most one guest to each, but it keeps no
-// record of used links: the sender decides that and refuses with `refuse`.
-// Relay payloads are never inspected or logged.
+// The server only learns link IDs and opaque base64url blobs, except from `email`
+// (decision 0008). It knows which link IDs are hosted and binds at most one guest
+// to each, but it keeps no record of used links: the sender decides that and
+// refuses with `refuse`. Relay payloads are never inspected or logged.
 
+import { createHmac, randomBytes } from "node:crypto";
 import type { Server as HttpServer, IncomingMessage } from "node:http";
 import type { Server as HttpsServer } from "node:https";
 import { isIP } from "node:net";
@@ -13,6 +14,7 @@ import type { Duplex } from "node:stream";
 import {
   type ClientMessage,
   type ConnectionPath,
+  type EmailMessage,
   type ErrorCode,
   type IceServer,
   type LogEvent,
@@ -30,7 +32,7 @@ export const SIGNAL_PATH = "/signal";
 
 export const HEARTBEAT_MS = 30_000;
 
-/** Caps on open sockets, incoming messages and bytes queued to a socket. Tests lower them through the `limits` option. */
+/** Caps on open sockets, incoming messages, bytes queued to a socket and notices emailed. Tests lower them through the `limits` option. */
 const LIMITS = {
   sockets: 1000,
   socketsPerAddress: 32,
@@ -40,7 +42,13 @@ const LIMITS = {
   messagesPerWindow: 1000,
   /** Bytes queued to a socket beyond which relays to it are dropped, because it is not reading. */
   bufferedBytes: 256 * 1024,
+  /** Notices per hour from one socket, from one client address and to one destination address. */
+  noticesPerSocket: 20,
+  noticesPerClient: 50,
+  noticesPerRecipient: 5,
 };
+
+const HOUR_MS = 60 * 60 * 1000;
 
 /** WebSocket close code for a protocol violation. */
 const POLICY_VIOLATION = 1008;
@@ -58,7 +66,16 @@ type Peer = {
   messages: number;
   /** The client address this socket counts against. Never logged. */
   address: string;
+  /** When this socket's notices went out, for the hourly cap. */
+  notices: number[];
 };
+
+/** What the server keeps about an emailed link while it is hosted: never its secret or the sender's name. */
+type Emailed = { to: string; lang: EmailMessage["lang"] };
+
+function recent(times: number[], now: number): number[] {
+  return times.filter((time) => now - time < HOUR_MS);
+}
 
 function short(link: string): string {
   return link.slice(0, 6);
@@ -150,7 +167,8 @@ export function attachSignaling(
     limits?: Partial<typeof LIMITS>;
     /** Minted once per pairing, so TURN credentials are fresh. Never logged. */
     iceServers?: () => IceServer[];
-    mail?: Mailer | undefined;
+    /** Sends notices that link to `${origin}/r/<link>#<secret>`. Without it, no mail goes out. */
+    mail?: { send: Mailer; origin: string } | undefined;
   },
 ): { close(): void } {
   const { log, iceServers = () => [], mail } = options;
@@ -161,6 +179,11 @@ export function attachSignaling(
   const guests = new Map<string, WebSocket>();
   /** Open sockets per client address. */
   const perAddress = new Map<string, number>();
+  const emailed = new Map<string, Emailed>();
+  /** Notice times per HMAC of a destination or client address, so neither address is kept. */
+  const noticeTimes = new Map<string, number[]>();
+  const noticeKey = randomBytes(32);
+  const hmac = (name: string) => createHmac("sha256", noticeKey).update(name).digest("base64url");
 
   function onUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
     let pathname: string;
@@ -203,6 +226,7 @@ export function attachSignaling(
       alive: true,
       messages: 0,
       address,
+      notices: [],
     };
     peers.set(socket, peer);
     perAddress.set(address, (perAddress.get(address) ?? 0) + 1);
@@ -252,6 +276,9 @@ export function attachSignaling(
       case "path":
         reportPath(socket, peer, message.link, message.path);
         return;
+      case "email":
+        void email(socket, peer, message);
+        return;
     }
   }
 
@@ -283,9 +310,10 @@ export function attachSignaling(
     log("host", { links: next.size });
   }
 
-  /** Stops hosting a link and tells its guest, if any, that the host is gone. */
+  /** Stops hosting a link, forgets its email binding and tells its guest, if any, that the host is gone. */
   function unhost(link: string): void {
     hosts.delete(link);
+    emailed.delete(link);
     const guest = guests.get(link);
     if (!guest) {
       return;
@@ -386,6 +414,64 @@ export function attachSignaling(
     log("path", { path });
   }
 
+  /** Emails a hosted link's notice once; bound before the send, unbound if it fails. */
+  async function email(socket: WebSocket, peer: Peer, message: EmailMessage): Promise<void> {
+    const { link, to, secret, from, lang } = message;
+    if (peer.role === "guest") {
+      error(socket, "wrong-role");
+      return;
+    }
+    if (!peer.hosted.has(link)) {
+      error(socket, "not-on-link");
+      return;
+    }
+    const reply = (status: "sent" | "failed" | "limit") => {
+      log(
+        "email",
+        status === "sent" ? { link: short(link) } : { link: short(link), reason: status },
+      );
+      send(socket, { t: "email", link, status });
+    };
+    if (!mail || emailed.has(link)) {
+      reply("failed");
+      return;
+    }
+    const now = Date.now();
+    const toKey = hmac(`to:${to.toLowerCase()}`);
+    const clientKey = hmac(`ip:${peer.address}`);
+    const toTimes = recent(noticeTimes.get(toKey) ?? [], now);
+    const clientTimes = recent(noticeTimes.get(clientKey) ?? [], now);
+    peer.notices = recent(peer.notices, now);
+    if (
+      peer.notices.length >= limits.noticesPerSocket ||
+      clientTimes.length >= limits.noticesPerClient ||
+      toTimes.length >= limits.noticesPerRecipient
+    ) {
+      reply("limit");
+      return;
+    }
+    peer.notices.push(now);
+    noticeTimes.set(toKey, [...toTimes, now]);
+    noticeTimes.set(clientKey, [...clientTimes, now]);
+    const state: Emailed = { to, lang };
+    emailed.set(link, state);
+    let sent = true;
+    try {
+      await mail.send({ to, lang, from, url: `${mail.origin}/r/${link}#${secret}` });
+    } catch {
+      // The error may quote the address, so none of it is kept.
+      sent = false;
+    }
+    // The link was unhosted, and perhaps hosted and emailed again, while the mail was out.
+    if (emailed.get(link) !== state) {
+      return;
+    }
+    if (!sent) {
+      emailed.delete(link);
+    }
+    reply(sent ? "sent" : "failed");
+  }
+
   function disconnect(socket: WebSocket, peer: Peer): void {
     peers.delete(socket);
     const count = (perAddress.get(peer.address) ?? 1) - 1;
@@ -415,6 +501,15 @@ export function attachSignaling(
   }
 
   const heartbeat = setInterval(() => {
+    const now = Date.now();
+    for (const [key, times] of noticeTimes) {
+      const kept = recent(times, now);
+      if (kept.length > 0) {
+        noticeTimes.set(key, kept);
+      } else {
+        noticeTimes.delete(key);
+      }
+    }
     for (const [socket, peer] of peers) {
       peer.messages = 0;
       if (!peer.alive) {

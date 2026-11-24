@@ -101,7 +101,7 @@ export function startServer(options: {
   hosts: string[];
   ice?: IceConfig | undefined;
   log?: Logger;
-  mail?: Mailer | undefined;
+  mail?: { send: Mailer; origin: string } | undefined;
 }): Promise<Server> {
   const server = createServer(
     ensureCert(options.certDir, options.hosts),

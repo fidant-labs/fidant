@@ -4,6 +4,7 @@ import { createServer, request, type Server } from "node:http";
 import { type AddressInfo, connect as tcpConnect } from "node:net";
 import { after, before, test } from "node:test";
 import {
+  CODE_RESULTS,
   CONNECTION_PATHS,
   ERROR_CODES,
   type LogFields,
@@ -14,6 +15,7 @@ import {
   UPGRADE_REJECT_REASONS,
 } from "@sigill/protocol";
 import { WebSocket as WsClient } from "ws";
+import type { Mail, Mailer } from "./mail.ts";
 import { attachSignaling, clientAddress, HEARTBEAT_MS } from "./signaling.ts";
 
 const logLines: { event: string; fields: LogFields | undefined }[] = [];
@@ -123,14 +125,7 @@ async function joinAs(link: string, host: Client): Promise<Client & { attempt: s
 }
 
 test("says hello first with whether the server can email links", async (t) => {
-  const mailing = createServer();
-  const mailingSignaling = attachSignaling(mailing, { log: () => {}, mail: async () => {} });
-  t.after(() => {
-    mailingSignaling.close();
-    mailing.close();
-  });
-  await new Promise<void>((done) => mailing.listen(0, done));
-  await connect(`ws://localhost:${(mailing.address() as AddressInfo).port}/signal`, true);
+  await connect((await mailServer(t)).url, true);
   await connect();
 });
 
@@ -354,7 +349,11 @@ test("logs only allowlisted fields and never relay payloads", async () => {
   await bad.closed;
 
   const allowed = new Set(["link", "links", "bytes", "reason", "code", "port", "path"]);
-  const logReasons: readonly unknown[] = [...REFUSE_REASONS, ...UPGRADE_REJECT_REASONS];
+  const logReasons: readonly unknown[] = [
+    ...REFUSE_REASONS,
+    ...UPGRADE_REJECT_REASONS,
+    ...CODE_RESULTS,
+  ];
   const errorCodes: readonly unknown[] = ERROR_CODES;
   const connectionPaths: readonly unknown[] = CONNECTION_PATHS;
   assert.ok(logLines.some((line) => line.event === "relay"));
@@ -650,5 +649,354 @@ test("closes the server side of a rejected upgrade the client never ends", async
     } finally {
       socket.destroy();
     }
+  }
+});
+
+const ORIGIN = "https://fidant.se";
+const SECRET = randomBytes(32).toString("base64url");
+const HOUR_MS = 60 * 60 * 1000;
+
+/** A signaling server on 127.0.0.1 that records each mail before `send` and keeps its log lines. */
+async function mailServer(
+  t: { after(fn: () => void): void },
+  send: Mailer = async () => {},
+  options: {
+    heartbeatMs?: number;
+    limits?: { noticesPerSocket?: number; noticesPerClient?: number; noticesPerRecipient?: number };
+  } = {},
+) {
+  const mails: Mail[] = [];
+  const lines: string[] = [];
+  const mailing = createServer();
+  const mailingSignaling = attachSignaling(mailing, {
+    log: (event, fields) => lines.push(JSON.stringify({ event, ...fields })),
+    mail: {
+      origin: ORIGIN,
+      send: (mail) => {
+        mails.push(mail);
+        return send(mail);
+      },
+    },
+    ...options,
+  });
+  t.after(() => {
+    mailingSignaling.close();
+    mailing.close();
+  });
+  await new Promise<void>((done) => mailing.listen(0, "127.0.0.1", done));
+  const url = `ws://127.0.0.1:${(mailing.address() as AddressInfo).port}/signal`;
+  return { url, mails, lines, server: mailing };
+}
+
+/** Connects a host for the given links on a mail server. */
+async function mailHost(url: string, ...links: string[]): Promise<Client> {
+  const host = await connect(url, true);
+  host.send({ t: "host", links });
+  return host;
+}
+
+function emailMessage(link: string, fields: { to?: string; secret?: string; from?: string } = {}) {
+  return {
+    t: "email",
+    link,
+    to: "anna@example.se",
+    secret: SECRET,
+    from: "Bertil",
+    lang: "sv",
+    ...fields,
+  };
+}
+
+test("answers failed to an email when the server cannot send mail", async () => {
+  const link = linkId();
+  const host = await hostFor(link);
+  host.send(emailMessage(link));
+  assert.deepEqual(await host.next(), { t: "email", link, status: "failed" });
+});
+
+test("emails a hosted link's notice once and tells the host it was sent", async (t) => {
+  const { url, mails } = await mailServer(t);
+  const link = linkId();
+  const host = await mailHost(url, link);
+  host.send(emailMessage(link, { from: "" }));
+  assert.deepEqual(await host.next(), { t: "email", link, status: "sent" });
+  assert.deepEqual(mails, [
+    { to: "anna@example.se", lang: "sv", from: "", url: `${ORIGIN}/r/${link}#${SECRET}` },
+  ]);
+});
+
+test("builds the emailed link from the configured origin, never the request's Host", async (t) => {
+  const { url, mails, server: mailing } = await mailServer(t);
+  const hostHeaders: (string | undefined)[] = [];
+  mailing.prependListener("upgrade", (req) => hostHeaders.push(req.headers.host));
+  const socket = new WsClient(url, { headers: { host: "evil.example" } });
+  t.after(() => socket.terminate());
+  const received: unknown[] = [];
+  socket.on("message", (data) => received.push(JSON.parse(String(data))));
+  await new Promise((done) => socket.once("open", done));
+  const link = linkId();
+  socket.send(JSON.stringify({ t: "host", links: [link] }));
+  socket.send(JSON.stringify(emailMessage(link)));
+  for (let wait = 0; wait < 200 && received.length < 2; wait += 1) {
+    await new Promise((done) => setTimeout(done, 5));
+  }
+  assert.deepEqual(hostHeaders, ["evil.example"]);
+  assert.deepEqual(received, [
+    { t: "hello", mail: true },
+    { t: "email", link, status: "sent" },
+  ]);
+  assert.deepEqual(
+    mails.map((mail) => ("url" in mail ? mail.url : "")),
+    [`${ORIGIN}/r/${link}#${SECRET}`],
+  );
+});
+
+test("refuses an email from a guest or for a link this socket does not host", async (t) => {
+  const { url, mails } = await mailServer(t);
+  const link = linkId();
+  await mailHost(url, link);
+  const stranger = await connect(url, true);
+  stranger.send(emailMessage(link));
+  assert.deepEqual(await stranger.next(), { t: "error", code: "not-on-link" });
+  const guest = await connect(url, true);
+  const attempt = linkId();
+  guest.send({ t: "join", link, attempt });
+  assert.deepEqual(await guest.next(), { t: "joined", link, attempt, iceServers: [] });
+  guest.send(emailMessage(link));
+  assert.deepEqual(await guest.next(), { t: "error", code: "wrong-role" });
+  assert.deepEqual(mails, []);
+});
+
+test("refuses a second email for a bound link, even while the first is out", async (t) => {
+  let finish = () => {};
+  const { url, mails } = await mailServer(
+    t,
+    () =>
+      new Promise<void>((done) => {
+        finish = done;
+      }),
+  );
+  const link = linkId();
+  const host = await mailHost(url, link);
+  host.send(emailMessage(link));
+  host.send(emailMessage(link, { to: "bob@example.se" }));
+  assert.deepEqual(await host.next(), { t: "email", link, status: "failed" });
+  finish();
+  assert.deepEqual(await host.next(), { t: "email", link, status: "sent" });
+  host.send(emailMessage(link, { to: "bob@example.se" }));
+  assert.deepEqual(await host.next(), { t: "email", link, status: "failed" });
+  assert.deepEqual(
+    mails.map((mail) => mail.to),
+    ["anna@example.se"],
+  );
+});
+
+test("unbinds a link whose notice fails, so it stays a plain link", async (t) => {
+  let fail = true;
+  const { url, mails } = await mailServer(t, async () => {
+    if (fail) {
+      throw new Error("mail not sent");
+    }
+  });
+  const link = linkId();
+  const host = await mailHost(url, link);
+  host.send(emailMessage(link));
+  assert.deepEqual(await host.next(), { t: "email", link, status: "failed" });
+  const guest = await connect(url, true);
+  const attempt = linkId();
+  guest.send({ t: "join", link, attempt });
+  assert.deepEqual(await guest.next(), { t: "joined", link, attempt, iceServers: [] });
+  assert.deepEqual(await host.next(), { t: "joined", link, attempt, iceServers: [] });
+  fail = false;
+  host.send(emailMessage(link));
+  assert.deepEqual(await host.next(), { t: "email", link, status: "sent" });
+  assert.equal(mails.length, 2);
+});
+
+test("keeps a link's binding when the host re-sends its set and drops it when unhosted", async (t) => {
+  const { url, mails } = await mailServer(t);
+  const link = linkId();
+  const other = linkId();
+  const host = await mailHost(url, link, other);
+  host.send(emailMessage(link));
+  assert.deepEqual(await host.next(), { t: "email", link, status: "sent" });
+  host.send({ t: "host", links: [other, link] });
+  host.send(emailMessage(link, { to: "bob@example.se" }));
+  assert.deepEqual(await host.next(), { t: "email", link, status: "failed" });
+  host.send({ t: "host", links: [other] });
+  host.send({ t: "host", links: [other, link] });
+  host.send(emailMessage(link, { to: "bob@example.se" }));
+  assert.deepEqual(await host.next(), { t: "email", link, status: "sent" });
+  assert.deepEqual(
+    mails.map((mail) => mail.to),
+    ["anna@example.se", "bob@example.se"],
+  );
+});
+
+test("refuses a host message that carries an address", async (t) => {
+  const { url } = await mailServer(t);
+  const host = await connect(url, true);
+  host.send({ t: "host", links: [linkId()], to: "anna@example.se" });
+  assert.deepEqual(await host.next(), { t: "error", code: "bad-message" });
+  assert.equal(await host.closed, 1008);
+});
+
+test("forgets a link's binding when its host closes while the mail is still out", async (t) => {
+  let calls = 0;
+  let failFirst: (error: Error) => void = () => {};
+  const { url, mails } = await mailServer(t, () => {
+    calls += 1;
+    return calls === 1
+      ? new Promise<void>((_, fail) => {
+          failFirst = fail;
+        })
+      : Promise.resolve();
+  });
+  const link = linkId();
+  const first = await mailHost(url, link);
+  first.send(emailMessage(link));
+  const guest = await connect(url, true);
+  const attempt = linkId();
+  guest.send({ t: "join", link, attempt });
+  assert.deepEqual(await guest.next(), { t: "joined", link, attempt, iceServers: [] });
+  first.socket.close();
+  assert.deepEqual(await guest.next(), { t: "host-gone" });
+
+  const second = await mailHost(url, link);
+  second.send(emailMessage(link, { to: "bob@example.se" }));
+  assert.deepEqual(await second.next(), { t: "email", link, status: "sent" });
+  // The first send failing late must not unbind the second host's link.
+  failFirst(new Error("mail not sent"));
+  second.send(emailMessage(link));
+  assert.deepEqual(await second.next(), { t: "email", link, status: "failed" });
+  assert.equal(mails.length, 2);
+});
+
+test("caps one socket at 20 notices an hour", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"] });
+  const { url } = await mailServer(t);
+  const links = Array.from({ length: 20 }, linkId);
+  const last = linkId();
+  const host = await mailHost(url, ...links, last);
+  for (const [i, link] of links.entries()) {
+    host.send(emailMessage(link, { to: `r${i}@example.se` }));
+    assert.deepEqual(await host.next(), { t: "email", link, status: "sent" });
+  }
+  host.send(emailMessage(last, { to: "last@example.se" }));
+  assert.deepEqual(await host.next(), { t: "email", link: last, status: "limit" });
+  t.mock.timers.tick(HOUR_MS);
+  host.send(emailMessage(last, { to: "last@example.se" }));
+  assert.deepEqual(await host.next(), { t: "email", link: last, status: "sent" });
+});
+
+test("caps one client address at 50 notices an hour", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"] });
+  const { url } = await mailServer(t);
+  let count = 0;
+  for (const size of [20, 20, 10]) {
+    const links = Array.from({ length: size }, linkId);
+    const host = await mailHost(url, ...links);
+    for (const link of links) {
+      host.send(emailMessage(link, { to: `r${count}@example.se` }));
+      assert.deepEqual(await host.next(), { t: "email", link, status: "sent" });
+      count += 1;
+    }
+  }
+  const last = linkId();
+  const host = await mailHost(url, last);
+  host.send(emailMessage(last, { to: "last@example.se" }));
+  assert.deepEqual(await host.next(), { t: "email", link: last, status: "limit" });
+  t.mock.timers.tick(HOUR_MS);
+  host.send(emailMessage(last, { to: "last@example.se" }));
+  assert.deepEqual(await host.next(), { t: "email", link: last, status: "sent" });
+});
+
+test("caps one destination address at 5 notices an hour, in any case, across heartbeats", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"] });
+  const { url } = await mailServer(t, async () => {}, { heartbeatMs: 10 });
+  const addresses = [
+    "anna@example.se",
+    "ANNA@example.se",
+    "Anna@Example.SE",
+    "anna@EXAMPLE.se",
+    "aNNa@example.se",
+  ];
+  const links = addresses.map(() => linkId());
+  const last = linkId();
+  const host = await mailHost(url, ...links, last);
+  for (const [i, link] of links.entries()) {
+    host.send(emailMessage(link, { to: addresses[i] ?? "" }));
+    assert.deepEqual(await host.next(), { t: "email", link, status: "sent" });
+  }
+  const sleep = () => new Promise((done) => setTimeout(done, 50));
+  await sleep();
+  host.send(emailMessage(last, { to: "ANNA@EXAMPLE.SE" }));
+  assert.deepEqual(await host.next(), { t: "email", link: last, status: "limit" });
+  host.send(emailMessage(last, { to: "bertil@example.se" }));
+  assert.deepEqual(await host.next(), { t: "email", link: last, status: "sent" });
+  t.mock.timers.tick(HOUR_MS);
+  await sleep();
+  const again = linkId();
+  host.send({ t: "host", links: [...links, last, again] });
+  host.send(emailMessage(again, { to: "ANNA@EXAMPLE.SE" }));
+  assert.deepEqual(await host.next(), { t: "email", link: again, status: "sent" });
+});
+
+test("counts a notice against no cap when another cap refuses it", async (t) => {
+  const { url } = await mailServer(t, async () => {}, {
+    limits: { noticesPerRecipient: 1, noticesPerClient: 2 },
+  });
+  const [first, refused, second] = [linkId(), linkId(), linkId()];
+  const host = await mailHost(url, first, refused, second);
+  host.send(emailMessage(first));
+  assert.deepEqual(await host.next(), { t: "email", link: first, status: "sent" });
+  host.send(emailMessage(refused));
+  assert.deepEqual(await host.next(), { t: "email", link: refused, status: "limit" });
+  host.send(emailMessage(second, { to: "bob@example.se" }));
+  assert.deepEqual(await host.next(), { t: "email", link: second, status: "sent" });
+});
+
+test("never logs an emailed link's address, secret, URL or sender name", async (t) => {
+  const secret = randomBytes(32).toString("base64url");
+  const from = "Kanarie Namnsson";
+  const { url, mails, lines } = await mailServer(
+    t,
+    async (mail) => {
+      if (mail.to.startsWith("leaky")) {
+        // An SMTP error that quotes everything it was given.
+        throw new Error(`550 <${mail.to}> ${"url" in mail ? `${mail.url} ${mail.from}` : ""}`);
+      }
+    },
+    { limits: { noticesPerRecipient: 1 } },
+  );
+  const [sent, limited, failed] = [linkId(), linkId(), linkId()];
+  const host = await mailHost(url, sent, limited, failed);
+  const canary = "Canary.Address@Example.se";
+  host.send(emailMessage(sent, { to: canary, secret, from }));
+  assert.deepEqual(await host.next(), { t: "email", link: sent, status: "sent" });
+  host.send(emailMessage(sent, { to: canary, secret, from }));
+  assert.deepEqual(await host.next(), { t: "email", link: sent, status: "failed" });
+  host.send(emailMessage(limited, { to: canary.toLowerCase(), secret, from }));
+  assert.deepEqual(await host.next(), { t: "email", link: limited, status: "limit" });
+  host.send(emailMessage(failed, { to: "leaky.canary@example.se", secret, from }));
+  assert.deepEqual(await host.next(), { t: "email", link: failed, status: "failed" });
+  assert.equal(mails.length, 2);
+
+  const emails = lines.filter((line) => line.includes('"event":"email"'));
+  assert.deepEqual(
+    emails.map((line) => JSON.parse(line).reason),
+    [undefined, "failed", "limit", "failed"],
+  );
+  for (const line of lines) {
+    const lower = line.toLowerCase();
+    for (const needle of ["canary", "kanarie", "namnsson", secret.toLowerCase(), "fidant.se"]) {
+      assert.ok(!lower.includes(needle), `${needle} leaked into the log: ${line}`);
+    }
+  }
+  for (const line of emails) {
+    assert.deepEqual(
+      Object.keys(JSON.parse(line)).filter((key) => key !== "reason"),
+      ["event", "link"],
+    );
   }
 });

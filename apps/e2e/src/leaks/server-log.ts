@@ -1,4 +1,5 @@
 import {
+  CODE_RESULTS,
   CONNECTION_PATHS,
   ERROR_CODES,
   REFUSE_REASONS,
@@ -64,9 +65,10 @@ export const serverLogAllowlist: LogAllowlist = {
     "relay-dropped",
     "left",
     "path",
+    "email",
   ]),
   // LogReason in @sigill/protocol.
-  reasons: new Set<string>([...REFUSE_REASONS, ...UPGRADE_REJECT_REASONS]),
+  reasons: new Set<string>([...REFUSE_REASONS, ...UPGRADE_REJECT_REASONS, ...CODE_RESULTS]),
   codes: new Set<string>(ERROR_CODES),
   paths: new Set<string>(CONNECTION_PATHS),
 };

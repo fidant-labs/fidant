@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  CODE_RESULTS,
   CONNECTION_PATHS,
   ERROR_CODES,
   REFUSE_REASONS,
@@ -34,6 +35,8 @@ test("passes the lines the server writes", () => {
     line({ event: "relay", link: "abcdef", bytes: 0 }),
     line({ event: "error", code: "not-on-link" }),
     line({ event: "path", path: "relay" }),
+    line({ event: "email", link: "abcdef" }),
+    line({ event: "email", link: "abcdef", reason: "limit" }),
     "",
     "   ",
   ];
@@ -42,7 +45,7 @@ test("passes the lines the server writes", () => {
 
 test("passes every reason, code and path that @sigill/protocol defines", () => {
   const lines = [
-    ...[...REFUSE_REASONS, ...UPGRADE_REJECT_REASONS].map((reason) =>
+    ...[...REFUSE_REASONS, ...UPGRADE_REJECT_REASONS, ...CODE_RESULTS].map((reason) =>
       line({ event: "refused", reason }),
     ),
     ...ERROR_CODES.map((code) => line({ event: "error", code })),

@@ -1,7 +1,7 @@
 // Signaling messages exchanged over the /signal WebSocket.
 //
 // The server only ever sees link IDs and opaque base64url blobs, except in
-// `email`, which carries a link the server emails for the sender, key included
+// `email`, which carries the secret of a link the server emails for the sender
 // (decision 0008). SDP and ICE candidates are encrypted in the browser before
 // they are relayed, and no other message carries a key.
 
@@ -21,8 +21,6 @@ export const MAX_ICE_STRING = 256;
 
 /** The longest email address SMTP allows. */
 export const MAX_ADDRESS = 254;
-/** The longest link an `email` message may carry. */
-export const MAX_EMAIL_URL = 512;
 /** Longest sender name META and `email` accept, in UTF-16 code units like `maxLength`. */
 export const MAX_FROM_LENGTH = 100;
 
@@ -32,8 +30,8 @@ const ICE_URL_PATTERN = /^(turn|turns|stun):/;
 const ADDRESS_PATTERN =
   /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
 
-const EMAIL_URL_PATTERN =
-  /^https:\/\/[A-Za-z0-9.:[\]-]+\/r\/([A-Za-z0-9_-]{22})#[A-Za-z0-9_-]{43}$/;
+/** A link's secret: 32 random bytes as base64url, without padding. */
+const SECRET_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
 const CODE_PATTERN = /^[0-9]{6}$/;
 
@@ -133,12 +131,15 @@ export type RefuseMessage = { t: "refuse"; link: string; attempt: string; reason
 /** The sender reports how its connection on a link ended up. */
 export type PathMessage = { t: "path"; link: string; path: ConnectionPath };
 
-/** The sender asks the server to email one of its links. Once per link, never folded into `host`. */
+/**
+ * The sender asks the server to email one of its links. Once per link, never folded into `host`.
+ * The server builds the link from its own origin, `link` and `secret`.
+ */
 export type EmailMessage = {
   t: "email";
   link: string;
   to: string;
-  url: string;
+  secret: string;
   from: string;
   lang: (typeof LANGS)[number];
 };
@@ -248,16 +249,18 @@ function isMaskedAddress(value: unknown): value is string {
 }
 
 /**
- * C0 and C1 control characters (U+0000–001F, U+007F–009F) and the Unicode
- * direction controls (U+200E, U+200F, U+202A–202E, U+2066–2069).
+ * C0 and C1 control characters (U+0000–001F, U+007F–009F), the line and paragraph
+ * separators (U+2028, U+2029) and the Unicode direction controls (U+200E, U+200F,
+ * U+202A–202E, U+2066–2069).
  */
-const FORBIDDEN_CHARACTERS = /[\p{Cc}\u200E\u200F\u202A-\u202E\u2066-\u2069]/u;
+const FORBIDDEN_CHARACTERS = /[\p{Cc}\p{Zl}\p{Zp}\u200E\u200F\u202A-\u202E\u2066-\u2069]/u;
 
 /**
  * Whether a file name, type or sender name contains characters META refuses: control
- * characters, which could break how the name is shown or saved, and direction
- * controls, which can make a name ending in ".exe" display as if it ended in
- * ".pdf". The sender checks it when a file is chosen; decodeMeta and `email` reject such names.
+ * characters and separators, which could break how the name is shown or saved or start
+ * a new line in a mail, and direction controls, which can make a name ending in ".exe"
+ * display as if it ended in ".pdf". The sender checks it when a file is chosen;
+ * decodeMeta and `email` reject such names.
  */
 export function hasForbiddenCharacters(text: string): boolean {
   return FORBIDDEN_CHARACTERS.test(text);
@@ -269,12 +272,8 @@ function isFrom(value: unknown): value is string {
   );
 }
 
-function isEmailUrl(value: unknown, link: string): value is string {
-  return (
-    typeof value === "string" &&
-    value.length <= MAX_EMAIL_URL &&
-    EMAIL_URL_PATTERN.exec(value)?.[1] === link
-  );
+function isSecret(value: unknown): value is string {
+  return typeof value === "string" && SECRET_PATTERN.test(value);
 }
 
 function isRelayData(value: unknown): value is string {
@@ -405,20 +404,20 @@ export function parseClientMessage(raw: string): ClientMessage | undefined {
       }
       return { t: "path", link: value.link, path: value.path };
     case "email": {
-      if (!hasKeys(value, ["t", "link", "to", "url", "from", "lang"])) {
+      if (!hasKeys(value, ["t", "link", "to", "secret", "from", "lang"])) {
         return undefined;
       }
-      const { link, to, url, from, lang } = value;
+      const { link, to, secret, from, lang } = value;
       if (
         !isLinkId(link) ||
         !isAddress(to) ||
-        !isEmailUrl(url, link) ||
+        !isSecret(secret) ||
         !isFrom(from) ||
         !isLang(lang)
       ) {
         return undefined;
       }
-      return { t: "email", link, to, url, from, lang };
+      return { t: "email", link, to, secret, from, lang };
     }
     case "gate":
       if (!hasKeys(value, ["t", "link"]) || !isLinkId(value.link)) {
