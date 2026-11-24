@@ -82,8 +82,10 @@ const field = "flex flex-1 flex-col gap-1";
 const fieldError = "mt-1 mb-0 text-destructive";
 const hint = "text-[0.9rem] text-muted-foreground";
 
-export function SendPage() {
+export function SendPage({ kind }: { kind: "file" | "text" }) {
   const { t, lang } = useI18n();
+  // Both kinds can be mounted at once, so the text page prefixes its element IDs.
+  const id = (name: string) => (kind === "text" ? `secret-${name}` : name);
   const [file, setFile] = useState<File | undefined>(undefined);
   const [hash, setHash] = useState<Hash>({ status: "none" });
   const [sender, setSender] = useState<SenderState>(initialSenderState);
@@ -396,7 +398,7 @@ export function SendPage() {
           : "";
       setFromError(problem);
       if (problem) {
-        document.getElementById("from")?.focus();
+        document.getElementById(id("from"))?.focus();
         return;
       }
       fromRef.current = typed;
@@ -415,7 +417,7 @@ export function SendPage() {
     requestAnimationFrame(() => {
       const target = neighbour
         ? document.querySelector<HTMLElement>(`[data-remove="${neighbour.linkId}"]`)
-        : document.getElementById("recipient-name");
+        : document.getElementById(id("recipient-name"));
       target?.focus();
     });
   };
@@ -430,18 +432,21 @@ export function SendPage() {
   // Phones show one panel at a time: the file first, then recipients after "Continue".
   const showRecipients = () => {
     setStep("recipients");
-    requestAnimationFrame(() => document.getElementById("recipients-heading")?.focus());
+    requestAnimationFrame(() => document.getElementById(id("recipients-heading"))?.focus());
   };
   const showFile = () => {
     setStep("file");
-    requestAnimationFrame(() => document.getElementById("continue")?.focus());
+    requestAnimationFrame(() => document.getElementById(id("continue"))?.focus());
   };
 
   return (
     <Page wide>
       <div class="pb-24 lg:grid lg:grid-cols-[minmax(0,1fr)_26rem] lg:items-start lg:gap-10 lg:pb-0">
-        <section class={step === "recipients" ? "max-lg:hidden" : ""} aria-labelledby="send-title">
-          <h1 id="send-title">{t.send.title}</h1>
+        <section
+          class={step === "recipients" ? "max-lg:hidden" : ""}
+          aria-labelledby={id("send-title")}
+        >
+          <h1 id={id("send-title")}>{t.send.title}</h1>
           <p class={lede}>{t.send.lede}</p>
 
           {isLocalhost && (
@@ -458,15 +463,15 @@ export function SendPage() {
           {!hasRecipients && (
             <div class="group relative my-4 rounded-2xl border-2 border-dashed border-border bg-card transition-colors focus-within:outline-3 focus-within:outline-offset-2 focus-within:outline-primary hover:border-foreground/40 hover:bg-muted/40">
               <input
-                id="file"
+                id={id("file")}
                 type="file"
                 class="absolute inset-0 size-full cursor-pointer opacity-0"
                 onChange={onFileChange}
                 aria-invalid={fileError ? "true" : "false"}
-                aria-describedby={fileError ? "file-error" : undefined}
+                aria-describedby={fileError ? id("file-error") : undefined}
               />
               <label
-                for="file"
+                for={id("file")}
                 class="flex flex-col items-center gap-3 px-4 py-14 text-center text-muted-foreground lg:py-20"
               >
                 <span class="inline-flex size-14 items-center justify-center rounded-xl bg-muted text-foreground">
@@ -482,7 +487,7 @@ export function SendPage() {
             </div>
           )}
           {fileError && (
-            <p id="file-error" class={fieldError}>
+            <p id={id("file-error")} class={fieldError}>
               {t.send.fileError[fileError]}
             </p>
           )}
@@ -517,22 +522,22 @@ export function SendPage() {
 
         <aside
           class={`${step === "file" ? "max-lg:hidden" : "max-lg:animate-in max-lg:slide-in-from-right-8 max-lg:fade-in"} lg:sticky lg:top-24 lg:rounded-2xl lg:border lg:border-border lg:bg-card lg:p-6`}
-          aria-labelledby="recipients-heading"
+          aria-labelledby={id("recipients-heading")}
         >
           <Button type="button" variant="ghost" className="mb-4 -ml-3 lg:hidden" onClick={showFile}>
             ← {t.send.back}
           </Button>
-          <h2 id="recipients-heading" tabIndex={-1} class="m-0 mb-4 text-[1.25rem] font-bold">
+          <h2 id={id("recipients-heading")} tabIndex={-1} class="m-0 mb-4 text-[1.25rem] font-bold">
             {t.send.recipientsHeading}
           </h2>
 
           <div class={field}>
-            <Label htmlFor="from">
+            <Label htmlFor={id("from")}>
               {t.send.fromLabel}{" "}
               <span class="font-normal text-muted-foreground">{t.send.optional}</span>
             </Label>
             <Input
-              id="from"
+              id={id("from")}
               type="text"
               autoComplete="name"
               maxLength={MAX_FROM_LENGTH}
@@ -543,14 +548,16 @@ export function SendPage() {
               }}
               disabled={hasRecipients}
               aria-invalid={fromError ? "true" : "false"}
-              aria-describedby={fromError ? "from-error from-hint" : "from-hint"}
+              aria-describedby={
+                fromError ? `${id("from-error")} ${id("from-hint")}` : id("from-hint")
+              }
             />
             {fromError && (
-              <p id="from-error" class={fieldError}>
+              <p id={id("from-error")} class={fieldError}>
                 {t.send.fromError[fromError]}
               </p>
             )}
-            <p id="from-hint" class={`m-0 ${hint}`}>
+            <p id={id("from-hint")} class={`m-0 ${hint}`}>
               {t.send.fromHint}
             </p>
           </div>
@@ -581,9 +588,9 @@ export function SendPage() {
             noValidate
           >
             <div class={field}>
-              <Label htmlFor="recipient-name">{t.send.recipientLabel}</Label>
+              <Label htmlFor={id("recipient-name")}>{t.send.recipientLabel}</Label>
               <Input
-                id="recipient-name"
+                id={id("recipient-name")}
                 name="name"
                 type="text"
                 placeholder={t.send.recipientPlaceholder}
@@ -592,7 +599,9 @@ export function SendPage() {
                 disabled={!file || full}
                 onInput={() => setNameError("")}
                 aria-invalid={nameError ? "true" : "false"}
-                aria-describedby={nameError ? "name-error recipient-hint" : "recipient-hint"}
+                aria-describedby={
+                  nameError ? `${id("name-error")} ${id("recipient-hint")}` : id("recipient-hint")
+                }
               />
             </div>
             <Button type="submit" disabled={!file || full}>
@@ -600,11 +609,11 @@ export function SendPage() {
             </Button>
           </form>
           {nameError && (
-            <p id="name-error" class={fieldError}>
+            <p id={id("name-error")} class={fieldError}>
               {t.send.nameError[nameError]}
             </p>
           )}
-          <p id="recipient-hint" class={hint}>
+          <p id={id("recipient-hint")} class={hint}>
             {!file ? t.send.fileFirst : full ? t.send.full(MAX_LINKS) : t.send.oneLinkEach}
           </p>
           <RecipientList
@@ -634,7 +643,7 @@ export function SendPage() {
       {step === "file" && (
         <div class="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-background/80 p-4 backdrop-blur-xl lg:hidden">
           <Button
-            id="continue"
+            id={id("continue")}
             type="button"
             size="lg"
             className="h-12 w-full text-base"

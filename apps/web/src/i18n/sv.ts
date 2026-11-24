@@ -39,6 +39,7 @@ export const sv: Messages = {
   tabTitles: {
     landing: "Fidant: privat filöverföring",
     send: "Skicka en fil – Fidant",
+    secret: "Dela en hemlighet – Fidant",
     receive: "Ta emot en fil – Fidant",
     privacy: "Integritet – Fidant",
     how: "Så fungerar det – Fidant",
@@ -52,6 +53,7 @@ export const sv: Messages = {
     themes: { system: "System", light: "Ljust", dark: "Mörkt" },
     label: "Huvudmeny",
     send: "Skicka en fil",
+    secret: "Dela en hemlighet",
     how: "Så fungerar det",
     privacy: "Integritet",
   },

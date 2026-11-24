@@ -24,7 +24,15 @@ function InsecurePage() {
   );
 }
 
-const NAMED: ReadonlyArray<Route> = ["privacy", "how", "send", "about", "terms", "security"];
+const NAMED: ReadonlyArray<Route> = [
+  "privacy",
+  "how",
+  "send",
+  "secret",
+  "about",
+  "terms",
+  "security",
+];
 
 function routeOf(path: string): Route {
   const named = NAMED.find((name) => new RegExp(`^/${name}/?$`).test(path));
@@ -38,9 +46,9 @@ function routeOf(path: string): Route {
 }
 
 /**
- * Navigation never reloads the page (see `navigate`). The send and receive pages
- * hold a transfer only in memory, so once opened they stay mounted, hidden while
- * another page shows.
+ * Navigation never reloads the page (see `navigate`). The send, secret and receive
+ * pages hold a transfer only in memory, so once opened they stay mounted, hidden
+ * while another page shows.
  */
 function App() {
   const { t } = useI18n();
@@ -86,7 +94,8 @@ function App() {
   }, [route]);
 
   const secure = hasSecureCrypto();
-  if (route === "send" || route === "receive") {
+  const holdsTransfer = route === "send" || route === "secret" || route === "receive";
+  if (holdsTransfer) {
     kept.current.add(route);
   }
   return (
@@ -100,7 +109,7 @@ function App() {
         {(route === "about" || route === "terms" || route === "security") && (
           <InfoPage page={route} />
         )}
-        {!secure && (route === "send" || route === "receive") && <InsecurePage />}
+        {!secure && holdsTransfer && <InsecurePage />}
         {secure && kept.current.has("receive") && (
           <div id="receive" hidden={route !== "receive"}>
             <ReceivePage />
@@ -108,7 +117,12 @@ function App() {
         )}
         {secure && kept.current.has("send") && (
           <div hidden={route !== "send"}>
-            <SendPage />
+            <SendPage kind="file" />
+          </div>
+        )}
+        {secure && kept.current.has("secret") && (
+          <div hidden={route !== "secret"}>
+            <SendPage kind="text" />
           </div>
         )}
       </div>

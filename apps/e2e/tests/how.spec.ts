@@ -19,12 +19,13 @@ test.afterEach(() => {
   expect(errors).toEqual([]);
 });
 
-async function expectNoOverflow(page: Page) {
-  await page.setViewportSize({ width: 360, height: 800 });
+async function expectNoOverflow(page: Page, width = 360) {
+  await page.setViewportSize({ width, height: 800 });
   await page.goto("/how");
   await expect(page.locator("main h1")).toBeVisible();
-  await expect(page.locator("header nav").getByRole("link")).toHaveCount(3);
-  const width = await page.evaluate(async () => {
+  // The header hides Share a secret below 768 px.
+  await expect(page.locator("header nav").getByRole("link")).toHaveCount(width < 768 ? 3 : 4);
+  const measured = await page.evaluate(async () => {
     await document.fonts.ready;
     const items = [...document.querySelectorAll("header nav li")];
     return {
@@ -33,8 +34,8 @@ async function expectNoOverflow(page: Page) {
       inner: innerWidth,
     };
   });
-  expect(width.scroll).toBeLessThanOrEqual(width.inner);
-  expect(width.right).toBeLessThanOrEqual(width.inner);
+  expect(measured.scroll).toBeLessThanOrEqual(measured.inner);
+  expect(measured.right).toBeLessThanOrEqual(measured.inner);
 }
 
 async function expectFinalFrames(page: Page) {
@@ -87,12 +88,16 @@ test("the landing page links to the six steps, which end with a link to /privacy
   );
 });
 
-test("the top nav links to How it works between Send a file and Privacy", async ({ page }) => {
+test("the top nav links to How it works between Share a secret and Privacy", async ({ page }) => {
   await page.goto("/how");
   const links = page.locator("header nav").getByRole("link");
-  await expect(links).toHaveText(["Send a file", "How it works", "Privacy"]);
-  await expect(links.nth(1)).toHaveAttribute("href", "/how");
-  await expect(links.nth(1)).toHaveAttribute("aria-current", "page");
+  await expect(links).toHaveText(["Send a file", "Share a secret", "How it works", "Privacy"]);
+  await expect(links.nth(1)).toHaveAttribute("href", "/secret");
+  await expect(links.nth(2)).toHaveAttribute("href", "/how");
+  await expect(links.nth(2)).toHaveAttribute("aria-current", "page");
+  await expect(
+    page.locator("footer").getByRole("link", { name: "Share a secret" }),
+  ).toHaveAttribute("href", "/secret");
 });
 
 test.describe("in Swedish", () => {
@@ -107,6 +112,10 @@ test.describe("in Swedish", () => {
 
   test("the Swedish page fits a phone screen", async ({ page }) => {
     await expectNoOverflow(page);
+  });
+
+  test("the Swedish header fits all four links at 768 px", async ({ page }) => {
+    await expectNoOverflow(page, 768);
   });
 });
 

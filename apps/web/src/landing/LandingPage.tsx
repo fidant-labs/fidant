@@ -68,6 +68,12 @@ export function LandingPage() {
         <Link href="/send" class={`${buttonVariants({ size: "lg" })} h-12 gap-2 px-6 text-base`}>
           {l.cta} <Icon name="arrow" class="size-4" />
         </Link>
+        <Link
+          href="/secret"
+          class={`${buttonVariants({ variant: "outline", size: "lg" })} h-12 px-6 text-base`}
+        >
+          {t.menu.secret}
+        </Link>
         <Link href="/how" class="rounded-sm font-medium underline underline-offset-4">
           {l.how}
         </Link>

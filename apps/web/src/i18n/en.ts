@@ -39,6 +39,7 @@ export const en = {
   tabTitles: {
     landing: "Fidant: private file transfer",
     send: "Send a file – Fidant",
+    secret: "Share a secret – Fidant",
     receive: "Receive a file – Fidant",
     privacy: "Privacy – Fidant",
     how: "How it works – Fidant",
@@ -52,6 +53,7 @@ export const en = {
     themes: { system: "System", light: "Light", dark: "Dark" },
     label: "Main",
     send: "Send a file",
+    secret: "Share a secret",
     how: "How it works",
     privacy: "Privacy",
   },

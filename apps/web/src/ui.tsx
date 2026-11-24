@@ -113,6 +113,7 @@ export const display = "font-display font-normal tracking-tight";
 export type Route =
   | "landing"
   | "send"
+  | "secret"
   | "privacy"
   | "how"
   | "receive"
@@ -153,8 +154,9 @@ export function Link({
   );
 }
 
-const MENU: ReadonlyArray<readonly ["send" | "how" | "privacy", string]> = [
+const MENU: ReadonlyArray<readonly ["send" | "secret" | "how" | "privacy", string]> = [
   ["send", "/send"],
+  ["secret", "/secret"],
   ["how", "/how"],
   ["privacy", "/privacy"],
 ];
@@ -264,7 +266,7 @@ export function Header({ current, theme, onTheme }: { current: Route } & ThemePr
         <nav aria-label={t.menu.label}>
           <ul class="flex items-center gap-0.5 sm:gap-1">
             {MENU.map(([section, href]) => (
-              <li key={section}>
+              <li key={section} class={section === "secret" ? "max-md:hidden" : undefined}>
                 <Link
                   href={href}
                   aria-current={section === current ? "page" : undefined}
@@ -294,9 +296,10 @@ export function Header({ current, theme, onTheme }: { current: Route } & ThemePr
 }
 
 const FOOTER_LINKS: ReadonlyArray<
-  readonly ["how" | "privacy" | "about" | "terms" | "security", string]
+  readonly ["how" | "secret" | "privacy" | "about" | "terms" | "security", string]
 > = [
   ["how", "/how"],
+  ["secret", "/secret"],
   ["about", "/about"],
   ["privacy", "/privacy"],
   ["terms", "/terms"],
@@ -319,7 +322,9 @@ export function Footer({ theme, onTheme }: ThemeProps) {
             {FOOTER_LINKS.map(([page, href]) => (
               <li key={page}>
                 <Link href={href} class={link}>
-                  {page === "how" || page === "privacy" ? t.menu[page] : t.footer[page]}
+                  {page === "how" || page === "secret" || page === "privacy"
+                    ? t.menu[page]
+                    : t.footer[page]}
                 </Link>
               </li>
             ))}
