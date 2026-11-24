@@ -590,7 +590,7 @@ export const en = {
         body: [
           "WebRTC tries the direct routes first: over the local network, or through each side's public address, which the browser learns from our STUN service. The file then goes straight between the browsers. The sender's page shows which route each connection took.",
           "If no direct route works, which is common on mobile data and office networks, the traffic goes through our TURN relay in Stockholm. The relay forwards encrypted packets. It can't decrypt them and doesn't store them.",
-          "To use the relay a browser needs credentials, which our server creates for each pairing and gives only to the two paired pages. They expire after 5 minutes. Browsers can reach the relay over UDP or TCP, but it forwards only over UDP. It refuses to forward to other machines on private or internal networks (with one accepted exception: the relay's own box, see decision 0007), and limits how many relayed connections run at once.",
+          "To use the relay a browser needs credentials, which our server creates for each pairing and gives only to the two paired pages. They expire after 5 minutes. Browsers reach the relay over UDP, or over TLS on port 443 where a network lets out only web traffic. It forwards only over UDP, and only from its own IPv4 address. It refuses to forward to other machines on private or internal networks (with one accepted exception: the relay's own box, see decision 0007), and limits how many relayed connections run at once.",
           "On every route, each browser sees the other's IP address, like on a video call.",
         ],
       },
@@ -615,7 +615,7 @@ export const en = {
         body: [
           "Our server sees each page's IP address and browser details, the link IDs, the sender's relay choice, the connection path the sender reports for each attempt (direct, STUN, relay or failed), whether a link was already used, when each side connects and disconnects, and the encrypted setup messages and their sizes. It never sees the file, its name, its type or its exact size, the secret or the keys, and it can't read the setup messages. It keeps what it knows in memory only, and forgets a page within a minute after it disconnects.",
           "Its log lines use a fixed list of fields, such as the first 6 characters of a link ID and whether a connection was direct. Never names, keys, file data or IP addresses. They are deleted after 30 days.",
-          "Our relay sees both IP addresses and the encrypted traffic, so the file's size only roughly. It keeps no log. Only to fix a fault or stop abuse do we turn one on, with connection times, IP addresses and data volumes, for at most 7 days.",
+          "Our relay sees both IP addresses and the encrypted traffic, so the file's size only roughly. On port 443 a proxy in front of the relay passes each connection on without decrypting it. The proxy sees the address and logs nothing, and the relay then sees only the machine's own address. The relay keeps no log. Only to fix a fault or stop abuse do we turn one on, with connection times, IP addresses and data volumes, for at most 7 days.",
         ],
         link: ["Every log field, on the privacy page", "/privacy"],
       },
