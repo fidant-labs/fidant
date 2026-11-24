@@ -38,7 +38,6 @@
 // The secret stays in this tab (it is never stripped from the address bar in
 // this demo). The file name and size are shown, never logged or sent anywhere.
 
-import type { ConnectionPath } from "@sigill/protocol";
 import { cn } from "cn";
 import { type ComponentChildren, Fragment, type VNode } from "preact";
 import { useEffect, useMemo, useReducer, useRef, useState } from "preact/hooks";
@@ -49,7 +48,7 @@ import { encodeBase64url } from "../lib/base64url.ts";
 import { displayName, formatBytes, formatProgress, toHex } from "../lib/format.ts";
 import { deriveSignalKey } from "../lib/keys.ts";
 import { LINK_ID_BYTES, parseRecipientLocation } from "../lib/link.ts";
-import { createRecipientPeer, type Peer } from "../lib/peer.ts";
+import { createRecipientPeer, type OpenPath, type Peer } from "../lib/peer.ts";
 import type { FileOffer } from "../lib/receive-file.ts";
 import { ReceiveError, receiveFile } from "../lib/receive-file.ts";
 import { peerLostProblem } from "../lib/receive-problem.ts";
@@ -120,7 +119,7 @@ export function ReceivePage() {
   const [reachedServer, setReachedServer] = useState(false);
   const [tie, setTie] = useState<Tie>("closed");
   const [viaRelay, setViaRelay] = useState(false);
-  const [path, setPath] = useState<Exclude<ConnectionPath, "failed"> | undefined>(undefined);
+  const [path, setPath] = useState<OpenPath | undefined>(undefined);
   const attemptRef = useRef<Attempt | undefined>(undefined);
 
   /** Closes everything an attempt holds. `linger` keeps the peer up for a moment. */
@@ -171,9 +170,6 @@ export function ReceivePage() {
     const current = () => attemptRef.current === attempt && !attempt.ended;
     const lostMessage = () => peerLostProblem(attempt);
     const offlineMessage = () => (attempt.receiving ? "offlineReceiving" : "offline");
-    // Before the channel opens, a refused relay is the likely reason the browsers never connected.
-    const unopened = (problem: ProblemKey): ProblemKey =>
-      attempt.relayRefused && !attempt.channelOpen ? "noRelay" : problem;
     const finish = (next: View, linger = false) => {
       if (!current()) {
         return;
@@ -194,17 +190,14 @@ export function ReceivePage() {
       }
       attempt.abort.abort(new Error("connection lost"));
       attempt.timers.push(
-        setTimeout(
-          () => finish({ s: "failed", problem: unopened(lostMessage()) }),
-          HOST_GONE_GRACE_MS,
-        ),
+        setTimeout(() => finish({ s: "failed", problem: lostMessage() }), HOST_GONE_GRACE_MS),
       );
     };
     // Without it, a sender whose signals never arrive leaves "Connecting…" up for good.
     attempt.timers.push(
       setTimeout(() => {
         if (!attempt.channelOpen) {
-          finish({ s: "failed", problem: attempt.peer ? unopened("connect") : "server" });
+          finish({ s: "failed", problem: attempt.peer ? lostMessage() : "server" });
         }
       }, CONNECT_TIMEOUT_MS),
     );
@@ -308,7 +301,7 @@ export function ReceivePage() {
           // on this attempt (its peer failed or never connected), not that the
           // link is in use or used: the sender only signals a join it took.
           if (attempt.heardSender) {
-            finish({ s: "failed", problem: unopened(lostMessage()) });
+            finish({ s: "failed", problem: lostMessage() });
           } else if (
             message.reason === "unknown" &&
             (rejoins > 0 || failedBefore) &&
@@ -328,7 +321,7 @@ export function ReceivePage() {
           } else {
             finish(
               message.reason === "drop"
-                ? { s: "failed", problem: unopened(lostMessage()) }
+                ? { s: "failed", problem: lostMessage() }
                 : { s: "refused", problem: message.reason },
             );
           }
