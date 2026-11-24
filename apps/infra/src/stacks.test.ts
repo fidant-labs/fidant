@@ -308,6 +308,23 @@ test("fidant.eu and fidant.org declare that they send no mail", () => {
   }
 });
 
+test("only Caddy's two certificate authorities may issue for any name, and no wildcards", () => {
+  for (const zoneName of ["fidant.se", "fidant.eu", "fidant.org"]) {
+    dns.hasResourceProperties("AWS::Route53::RecordSet", {
+      HostedZoneId: zoneRef(zoneName),
+      Name: `${zoneName}.`,
+      Type: "CAA",
+      ResourceRecords: ['0 issue "letsencrypt.org"', '0 issue "sectigo.com"', '0 issuewild ";"'],
+    });
+  }
+  assert.equal(
+    Object.values(dns.findResources("AWS::Route53::RecordSet")).filter(
+      (record) => record.Properties.Type === "CAA",
+    ).length,
+    3,
+  );
+});
+
 test("fidant.se gets the mail records", () => {
   const zone = zoneRef("fidant.se");
   dns.hasResourceProperties("AWS::Route53::RecordSet", {
