@@ -19,6 +19,17 @@ test.afterEach(() => {
   expect(errors).toEqual([]);
 });
 
+async function expectNoOverflow(page: Page) {
+  await page.setViewportSize({ width: 375, height: 800 });
+  await page.goto("/how");
+  await expect(page.locator("main h1")).toBeVisible();
+  const width = await page.evaluate(async () => {
+    await document.fonts.ready;
+    return { scroll: document.documentElement.scrollWidth, inner: innerWidth };
+  });
+  expect(width.scroll).toBeLessThanOrEqual(width.inner);
+}
+
 async function expectBelowHeader(page: Page, selector: string) {
   await expect
     .poll(() =>
@@ -60,6 +71,11 @@ test.describe("in Swedish", () => {
     await page.goto("/how");
     await expect(page.locator("main h1")).toHaveText("Så fungerar det");
     await expect(page).toHaveTitle("Så fungerar det – Fidant");
+    await expect(page.locator("main section h2")).toHaveCount(SECTIONS.length);
+  });
+
+  test("the Swedish page fits a phone screen", async ({ page }) => {
+    await expectNoOverflow(page);
   });
 });
 
@@ -91,35 +107,65 @@ test("with reduced motion nothing animates", async ({ page }) => {
     await expect(drawing).toHaveAttribute("data-seen", "");
   }
   expect(await page.evaluate(() => document.getAnimations().length)).toBe(0);
+  const notFinal = await page.evaluate(
+    () =>
+      [...document.querySelectorAll("main svg *")].filter((element) => {
+        const style = getComputedStyle(element);
+        return (
+          style.opacity !== "1" ||
+          style.translate !== "none" ||
+          !["0", "0px"].includes(style.strokeDashoffset)
+        );
+      }).length,
+  );
+  expect(notFinal).toBe(0);
 });
 
-test("a drawing waits until it is scrolled into view, then plays", async ({ page }) => {
+test("each drawing waits until it is scrolled into view, then plays", async ({ page }) => {
   await page.goto("/how");
+  const states = (id: string) =>
+    page
+      .locator(`#${id} > svg`)
+      .evaluate((svg) => svg.getAnimations({ subtree: true }).map((a) => a.playState));
   const never = page.locator("#never > svg");
-  const states = () =>
-    never.evaluate((svg) => svg.getAnimations({ subtree: true }).map((a) => a.playState));
   await expect(never).toBeAttached();
   await expect(never).not.toHaveAttribute("data-seen");
-  const before = await states();
+  const before = await states("never");
   expect(before.length).toBeGreaterThan(0);
   expect(before.every((state) => state === "paused")).toBe(true);
 
-  await never.scrollIntoViewIfNeeded();
-  await expect(never).toHaveAttribute("data-seen", "");
-  await expect
-    .poll(async () =>
-      (await states()).every((state) => state === "running" || state === "finished"),
-    )
-    .toBe(true);
+  for (const id of SECTIONS) {
+    const drawing = page.locator(`#${id} > svg`);
+    await drawing.scrollIntoViewIfNeeded();
+    await expect(drawing).toHaveAttribute("data-seen", "");
+    await expect
+      .poll(async () => {
+        const after = await states(id);
+        return after.length > 0 && after.every((s) => s === "running" || s === "finished");
+      })
+      .toBe(true);
+  }
 });
 
 test("the page fits a phone screen", async ({ page }) => {
-  await page.setViewportSize({ width: 375, height: 800 });
-  await page.goto("/how");
-  await expect(page.locator("main h1")).toBeVisible();
-  const width = await page.evaluate(async () => {
-    await document.fonts.ready;
-    return { scroll: document.documentElement.scrollWidth, inner: innerWidth };
+  await expectNoOverflow(page);
+});
+
+test("a receive link's fragment is never looked up as an anchor", async ({ page }) => {
+  const fragment = "A".repeat(43);
+  await page.addInitScript(() => {
+    const calls: string[] = [];
+    Object.assign(window, { idLookups: calls });
+    const original = document.getElementById.bind(document);
+    document.getElementById = (id: string) => {
+      calls.push(id);
+      return original(id);
+    };
   });
-  expect(width.scroll).toBeLessThanOrEqual(width.inner);
+  await page.goto(`/r/unknown#${fragment}`);
+  await expect(page.locator("main h1")).toBeVisible();
+  const lookups = await page.evaluate(
+    () => (window as unknown as { idLookups: string[] }).idLookups,
+  );
+  expect(lookups).not.toContain(fragment);
 });
