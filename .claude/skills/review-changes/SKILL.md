@@ -15,6 +15,7 @@ Run this from the **main session**. Subagents cannot launch subagents, so the re
 - Base: `git rev-parse --abbrev-ref origin/HEAD`, falling back to `origin/main`. Fetch and merge it first (`git fetch origin && git merge --no-edit origin/main`) so the review sees the merged tree and nothing has to merge after the mark. Never rebase. Outside a worktree, ask before making that merge commit.
 - Merge base: `git merge-base <base> HEAD`.
 - The diff under review is `git diff <merge-base>` (committed plus uncommitted tracked changes) and any untracked files from `git status --porcelain`.
+- **After a clean mark**, review only what changed since it. The marked commit is in `$(git rev-parse --git-path deep-review-clean-head)`. When that commit is an ancestor of `HEAD` (`git merge-base --is-ancestor`), the delta base is the output of `git merge-tree --write-tree <marked commit> <merge-base>` when it exits 0 (a clean merge prints only the tree id): the marked tree with the base merged in, so base changes stay out of the delta. Reviewers then read `git diff <delta base>` plus untracked files, and step 3 picks lanes and applies its tiny and docs-only rules by the delta. The delta narrows only what reviewers read; everywhere else in this skill, "the diff" is the whole-branch diff defined above, untracked files included. When the file is missing, the commit is not an ancestor or `merge-tree` exits non-zero, review the whole branch.
 - Record the changed paths, total changed lines and file count. Reviewers run the diff commands themselves; never paste the diff into a prompt.
 
 ## 2. Briefing
@@ -54,6 +55,7 @@ Every reviewer prompt contains:
 2. The briefing, verbatim.
 3. The severity scale and output contract below.
 4. `You are one of N parallel reviewers. Report only findings within your lane. Do not repeat general feedback other lanes cover.`
+5. `Report every instance now. When a finding belongs to a class, such as every file a credentialed job reads or every caller of a changed function, list the whole class. Later rounds only check fixes.`
 
 Security findings about authorisation must name the concrete capability an attacker gains beyond the access the role already has. Without that they are not blockers.
 
@@ -106,11 +108,13 @@ For every remaining blocker and major inside the diff, dispatch one fix subagent
 
 Findings outside the diff and architect "restructure the module" findings are not fixed here. They go into a follow-ups list for the pull request body.
 
-Then re-run only the lanes whose paths the fixes touched, verify their new findings, and repeat. From round 2 on, a re-run lane reviews the fix delta (`git diff <before> <after>`), not the whole branch diff; it gets the findings it is checking and may read surrounding code for context. A round-2+ finding on lines the delta did not change is something round 1 missed: it drops to `minor` and goes to the report, unless it is a security hole or data loss.
+Read each fix delta yourself. A fix is **mechanical** when it only edits comments or docs prose, corrects a typo, removes an unused import or export, or deletes code that nothing references. Every other fix, and any fix you are unsure about, is a behaviour fix. Directive comments such as `biome-ignore` or `@ts-expect-error`, and any change to `AGENTS.md`, `CLAUDE.md` or files under `.claude/`, are not mechanical. When every blocker and major not deferred to follow-ups got a fix, every fix is mechanical, and the narrow gates pass, the loop is clean and no reviewer round follows.
+
+Otherwise re-run only the lanes whose paths the fixes touched, verify their new findings, and repeat. From round 2 on, a re-run lane reviews the fix delta (`git diff <before> <after>`), not the whole branch diff; it gets the findings it is checking and may read surrounding code for context. A round-2+ finding on lines the delta did not change is something round 1 missed: it drops to `minor` and goes to the report, unless it is a blocker that names the concrete capability an attacker gains or the data that is lost.
 
 - **Clean:** 0 blockers and 0 majors. Stop.
 - **No progress:** a round fixed nothing while blockers or majors remain. Stop and report.
-- **Cap:** 3 rounds. Stop and report.
+- **Cap:** 3 rounds, with no exception for security. Stop, list the open blockers and majors, and ask the user with `AskUserQuestion` whether to run another round, fix them without another review, or stop. New work that is not a fix gets its own review and its own count.
 
 A stopped loop means the work is not done. Never open a pull request or call the work finished with known blockers or majors.
 
@@ -126,4 +130,4 @@ When the result is clean and the gate is green, commit the reviewed changes once
 bash .claude/scripts/review-gate.sh mark
 ```
 
-It refuses while reviewed changes are uncommitted. The hook only lets `gh pr create` through when this mark matches the branch's current diff, so any later commit needs another review. A clean merge of the base keeps the mark.
+It refuses while reviewed changes are uncommitted. The hook only lets `gh pr create` through when this mark matches the branch's current diff, so any later commit needs another review (of the delta, see step 1). A clean merge of the base keeps the mark.
