@@ -76,7 +76,12 @@ async function startCoturn(): Promise<RunningService> {
     await stop();
     throw new Error(`${(error as Error).message} See ${coturnLog}.`);
   }
-  const urls = [`turn:${host}:${port}?transport=udp`, `turn:${host}:${port}?transport=tcp`];
+  // The same shape as production's TURN_URLS (apps/infra/box/user-data.sh).
+  const urls = [
+    `stun:${host}:${port}`,
+    `turn:${host}:${port}?transport=udp`,
+    `turn:${host}:${port}?transport=tcp`,
+  ];
   return {
     name: "coturn",
     port,
