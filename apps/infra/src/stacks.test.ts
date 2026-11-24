@@ -289,6 +289,10 @@ test("the app box routes 443 by SNI to Caddy and to coturn's TLS, and copies Cad
   const haproxyStart = userData.indexOf("\ncat >/etc/haproxy/haproxy.cfg <<'EOF'\n");
   const haproxy = userData.slice(haproxyStart, userData.indexOf("\nEOF\n", haproxyStart));
   assert.doesNotMatch(haproxy, /^\s*log\b/m);
+  assert.match(
+    haproxy,
+    /^global\n(?:\t#.*\n)?\tuser haproxy\n\tgroup haproxy\n\tchroot \/var\/lib\/haproxy\n/m,
+  );
   assert.deepEqual(haproxy.match(/^\t(bind|use_backend|default_backend|server) .*/gm), [
     "\tbind :::443 v4v6",
     "\tuse_backend coturn if { req.ssl_sni -i turn.fidant.se } !{ req.ssl_alpn acme-tls/1 }",

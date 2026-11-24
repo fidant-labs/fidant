@@ -177,6 +177,10 @@ systemctl mask haproxy
 apt-get -o DPkg::Lock::Timeout=600 install -y haproxy
 cat >/etc/haproxy/haproxy.cfg <<'EOF'
 global
+	# Bind 443 as root, then parse every untrusted ClientHello unprivileged, like Ubuntu's own config.
+	user haproxy
+	group haproxy
+	chroot /var/lib/haproxy
 	maxconn 4096
 
 defaults

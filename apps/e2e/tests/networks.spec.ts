@@ -34,8 +34,6 @@ interface Scenario {
    * `none`: the row pauses coturn, so the browsers cannot connect at all.
    */
   path: RegExp | "none";
-  /** Set while the row is not implemented yet: why it is skipped. */
-  todo?: string;
   /** Send a larger file and check that both sides report progress honestly along the way. */
   progress?: true;
 }
@@ -197,7 +195,6 @@ test("the leak scan sees what reaches coturn", async ({ leaks, canary }) => {
 
 for (const row of scenarios) {
   test.describe(row.title, () => {
-    test.fixme(Boolean(row.todo), row.todo);
     test.use({
       remoteBrowsers: {
         sender: remoteBrowsers[row.sender],
