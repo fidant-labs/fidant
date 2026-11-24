@@ -1,11 +1,38 @@
 import { createHash } from "node:crypto";
-import { CfnOutput, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
+import { fileURLToPath } from "node:url";
+import { CfnOutput, Duration, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
+import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
+import { SnsAction } from "aws-cdk-lib/aws-cloudwatch-actions";
+import * as events from "aws-cdk-lib/aws-events";
+import * as targets from "aws-cdk-lib/aws-events-targets";
+import * as iam from "aws-cdk-lib/aws-iam";
+import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as lightsail from "aws-cdk-lib/aws-lightsail";
+import * as logs from "aws-cdk-lib/aws-logs";
+import * as sns from "aws-cdk-lib/aws-sns";
+import { EmailSubscription } from "aws-cdk-lib/aws-sns-subscriptions";
 import type { Construct } from "constructs";
+import { relayCapBytes, relayWarnBytes } from "./config.ts";
 import { renderUserData } from "./user-data.ts";
 
+const anywhere = { cidrs: ["0.0.0.0/0"], ipv6Cidrs: ["::/0"] };
+
+const otherPorts: lightsail.CfnInstance.PortProperty[] = [
+  { protocol: "tcp", fromPort: 80, toPort: 80, ...anywhere },
+  { protocol: "tcp", fromPort: 443, toPort: 443, ...anywhere },
+  { protocol: "tcp", fromPort: 22, toPort: 22, cidrListAliases: ["lightsail-connect"] },
+];
+
+const relayPorts: lightsail.CfnInstance.PortProperty[] = [
+  { protocol: "tcp", fromPort: 3478, toPort: 3478, ...anywhere },
+  { protocol: "udp", fromPort: 3478, toPort: 3478, ...anywhere },
+  { protocol: "udp", fromPort: 49152, toPort: 65535, ...anywhere },
+];
+
+export type BoxStackProps = StackProps & { alertEmail: string };
+
 export class BoxStack extends Stack {
-  constructor(scope: Construct, id: string, props: StackProps) {
+  constructor(scope: Construct, id: string, props: BoxStackProps) {
     super(scope, id, props);
 
     const userData = renderUserData();
@@ -17,38 +44,7 @@ export class BoxStack extends Stack {
       bundleId: "micro_3_0",
       userData,
       networking: {
-        ports: [
-          { protocol: "tcp", fromPort: 80, toPort: 80, cidrs: ["0.0.0.0/0"], ipv6Cidrs: ["::/0"] },
-          {
-            protocol: "tcp",
-            fromPort: 443,
-            toPort: 443,
-            cidrs: ["0.0.0.0/0"],
-            ipv6Cidrs: ["::/0"],
-          },
-          { protocol: "tcp", fromPort: 22, toPort: 22, cidrListAliases: ["lightsail-connect"] },
-          {
-            protocol: "tcp",
-            fromPort: 3478,
-            toPort: 3478,
-            cidrs: ["0.0.0.0/0"],
-            ipv6Cidrs: ["::/0"],
-          },
-          {
-            protocol: "udp",
-            fromPort: 3478,
-            toPort: 3478,
-            cidrs: ["0.0.0.0/0"],
-            ipv6Cidrs: ["::/0"],
-          },
-          {
-            protocol: "udp",
-            fromPort: 49152,
-            toPort: 65535,
-            cidrs: ["0.0.0.0/0"],
-            ipv6Cidrs: ["::/0"],
-          },
-        ],
+        ports: [...otherPorts, ...relayPorts],
       },
     });
 
@@ -59,5 +55,89 @@ export class BoxStack extends Stack {
     address.applyRemovalPolicy(RemovalPolicy.RETAIN);
 
     new CfnOutput(this, "PublicIp", { value: address.attrIpAddress });
+
+    const fn = new lambda.Function(this, "RelayCap", {
+      runtime: lambda.Runtime.NODEJS_24_X,
+      handler: "index.handler",
+      code: lambda.Code.fromAsset(fileURLToPath(new URL("./relay-cap/", import.meta.url)), {
+        exclude: ["*.test.ts"],
+      }),
+      timeout: Duration.seconds(30),
+      retryAttempts: 0,
+      logGroup: new logs.LogGroup(this, "RelayCapLogs", {
+        retention: logs.RetentionDays.ONE_MONTH,
+        removalPolicy: RemovalPolicy.DESTROY,
+      }),
+      environment: {
+        BOX: box.ref,
+        LIMIT_BYTES: String(relayCapBytes),
+        OPEN_PORTS: JSON.stringify([...otherPorts, ...relayPorts]),
+        CAPPED_PORTS: JSON.stringify(otherPorts),
+      },
+    });
+    fn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["lightsail:GetInstanceMetricData", "lightsail:PutInstancePublicPorts"],
+        resources: [box.attrInstanceArn],
+      }),
+    );
+    fn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["ssm:GetParameter", "ssm:PutParameter"],
+        resources: [
+          this.formatArn({
+            service: "ssm",
+            resource: "parameter",
+            resourceName: "fidant/relay-cap",
+          }),
+        ],
+      }),
+    );
+    new events.Rule(this, "RelayCapSchedule", {
+      schedule: events.Schedule.rate(Duration.minutes(5)),
+      targets: [new targets.LambdaFunction(fn, { retryAttempts: 0 })],
+    });
+
+    const topic = new sns.Topic(this, "Alerts", { displayName: "Fidant relay" });
+    topic.addSubscription(new EmailSubscription(props.alertEmail));
+    const notify = new SnsAction(topic);
+    const monthBytes = new cloudwatch.Metric({
+      namespace: "Fidant",
+      metricName: "RelayMonthBytes",
+      dimensionsMap: { Service: "relay" },
+      statistic: cloudwatch.Stats.MAXIMUM,
+      period: Duration.minutes(5),
+    });
+    const alarms = [
+      new cloudwatch.Alarm(this, "RelayWarn", {
+        alarmName: "Fidant relay traffic past 80 % of the monthly cap",
+        metric: monthBytes,
+        threshold: relayWarnBytes,
+        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+        evaluationPeriods: 1,
+        treatMissingData: cloudwatch.TreatMissingData.IGNORE,
+      }),
+      new cloudwatch.Alarm(this, "RelayCapped", {
+        alarmName: "Fidant relay stopped: monthly traffic cap reached",
+        metric: monthBytes,
+        threshold: relayCapBytes,
+        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+        evaluationPeriods: 1,
+        treatMissingData: cloudwatch.TreatMissingData.IGNORE,
+      }),
+      new cloudwatch.Alarm(this, "RelayCapFailing", {
+        alarmName: "Fidant relay cap failing",
+        metric: fn.metricErrors({ period: Duration.minutes(5) }),
+        threshold: 1,
+        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+        evaluationPeriods: 3,
+        datapointsToAlarm: 3,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      }),
+    ];
+    for (const alarm of alarms) {
+      alarm.addAlarmAction(notify);
+      alarm.addOkAction(notify);
+    }
   }
 }
