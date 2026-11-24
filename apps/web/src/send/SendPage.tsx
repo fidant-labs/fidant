@@ -3,7 +3,8 @@
 //
 // Wiring (see lib/peer.ts and lib/sender-state.ts):
 // - On mount, connect to the signaling server and host every link ID on the
-//   list; re-host the full list after every add or remove.
+//   list, with whether recipients may use our TURN relay; re-host the full
+//   list after every add or remove and every change of the relay checkbox.
 // - Server `joined` → reducer `joined`, whose `start` effect derives the
 //   link's signal key and creates a sender peer with the ICE servers from
 //   `joined`. `relay` goes to that peer.
@@ -14,13 +15,16 @@
 //   that has not opened SETUP_TIMEOUT_MS after the join → `timeout`. Both
 //   refuse the joiner so the server unbinds it (see sender-state.ts).
 // - Each connection reports its path to the server once: direct, stun or
-//   relay when the channel opens, failed on an ICE failure or a timeout.
+//   relay when the channel opens, failed on an ICE failure or a timeout. A
+//   relay path under a refused relay counts as failed too, and the reducer
+//   then ends the attempt. An open channel's path also goes to the reducer,
+//   for the recipient's card.
 // - Effects run outside render: `close` tears the peer down, `refuse` tells
 //   the server to refuse the joiner.
 //
 // Names, the file and link secrets stay in this tab. The server only ever
-// gets link IDs, attempt IDs, opaque sealed signals, refusal reasons and
-// connection paths.
+// gets link IDs, attempt IDs, opaque sealed signals, refusal reasons,
+// connection paths and the relay choice.
 
 import { type ConnectionPath, type IceServer, MAX_LINKS } from "@sigill/protocol";
 import { useEffect, useReducer, useRef, useState } from "preact/hooks";
@@ -88,12 +92,14 @@ export function SendPage() {
   const [fileError, setFileError] = useState<ErrorOf<"fileError">>("");
   const [from, setFrom] = useState("");
   const [fromError, setFromError] = useState<ErrorOf<"fromError">>("");
+  const [allowRelay, setAllowRelay] = useState(true);
   const [step, setStep] = useState<"file" | "recipients">("file");
 
   // Mutable state used from network callbacks, outside render.
   const senderRef = useRef<SenderState>(initialSenderState);
   // Set when the first recipient is added; the name field stays locked while anyone is on the list.
   const fromRef = useRef("");
+  const allowRelayRef = useRef(true);
   const fileRef = useRef<{ file: File; sha256: Promise<Uint8Array> } | undefined>(undefined);
   const hashAbortRef = useRef<AbortController | undefined>(undefined);
   const signalingRef = useRef<SignalingClient | undefined>(undefined);
@@ -101,7 +107,11 @@ export function SendPage() {
   const dispatchRef = useRef<(action: SenderAction) => void>(() => {});
 
   const host = () => {
-    signalingRef.current?.send({ t: "host", links: hostedLinks(senderRef.current) });
+    signalingRef.current?.send({
+      t: "host",
+      links: hostedLinks(senderRef.current),
+      turn: allowRelayRef.current,
+    });
   };
 
   const closeConnection = (linkId: string) => {
@@ -164,9 +174,11 @@ export function SendPage() {
         // connection; send it while the link is still hosted.
         void info.path.then((path) => {
           if (findRecipient(senderRef.current, linkId)) {
-            sendPath(linkId, connection, path);
+            const refused = path === "relay" && recipient.turn === false;
+            sendPath(linkId, connection, refused ? "failed" : path);
+            dispatch({ type: "path", linkId, attempt, path });
             // ponytail: sticky for the page, since the relay's log lines stay after the transfer
-            if (path === "relay") {
+            if (path === "relay" && !refused) {
               setViaRelay(true);
             }
           }
@@ -273,6 +285,7 @@ export function SendPage() {
             linkId: message.link,
             attempt: message.attempt,
             iceServers: message.iceServers,
+            turn: message.turn,
           });
           break;
         case "left":
@@ -528,6 +541,20 @@ export function SendPage() {
             </p>
           </div>
 
+          <Label className="mt-4 items-start leading-snug font-normal">
+            <input
+              type="checkbox"
+              class="mt-0.5 size-4 flex-none accent-primary"
+              checked={allowRelay}
+              onChange={(event) => {
+                allowRelayRef.current = event.currentTarget.checked;
+                setAllowRelay(allowRelayRef.current);
+                host();
+              }}
+            />
+            {t.send.allowRelay}
+          </Label>
+
           <form class="mt-6 flex flex-wrap items-end gap-2" onSubmit={onAdd} noValidate>
             <div class={field}>
               <Label htmlFor="recipient-name">{t.send.recipientLabel}</Label>
@@ -572,6 +599,7 @@ export function SendPage() {
             online: !lostServer,
             links: hostedLinks(sender).length,
             connected,
+            relay: allowRelay,
           })}
           relayed={relayed}
           afterwards={t.server.senderAfterwards(!lostServer)}

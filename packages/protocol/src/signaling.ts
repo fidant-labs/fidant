@@ -1,8 +1,8 @@
 // Signaling messages exchanged over the /signal WebSocket.
 //
-// The server only ever sees link IDs and opaque base64url blobs. SDP and ICE
-// candidates are encrypted in the browser before they are relayed, and keys
-// never appear in these messages.
+// The server only ever sees link IDs, whether the sender allows our TURN relay,
+// and opaque base64url blobs. SDP and ICE candidates are encrypted in the
+// browser before they are relayed, and keys never appear in these messages.
 
 /** A link ID: 16 random bytes as base64url, without padding. */
 export const LINK_ID_PATTERN = /^[A-Za-z0-9_-]{22}$/;
@@ -78,8 +78,11 @@ export type LogFields = {
   path?: ConnectionPath;
 };
 
-/** The sender announces its full list of link IDs. Re-sent whenever the list changes. */
-export type HostMessage = { t: "host"; links: string[] };
+/**
+ * The sender announces its full list of link IDs, and in `turn` whether recipients who join from
+ * now on may use our TURN relay. Re-sent whenever either changes.
+ */
+export type HostMessage = { t: "host"; links: string[]; turn: boolean };
 /**
  * A recipient asks to be connected to the sender hosting a link. `attempt` is a fresh random ID
  * (same shape as a link ID) for this join, so a refusal can name the attempt it refuses. It is
@@ -98,15 +101,25 @@ export type ClientMessage = HostMessage | JoinMessage | RelayMessage | RefuseMes
 
 /**
  * A STUN or TURN server for RTCPeerConnection. For TURN, `username` and `credential` are
- * short-lived credentials the server minted; the shared secret behind them never leaves it.
+ * short-lived credentials the server minted; the shared secret behind them never leaves it. An
+ * entry without them lists only `stun:` URLs.
  */
-export type IceServer = { urls: string[]; username: string; credential: string };
+export type IceServer =
+  | { urls: string[] }
+  | { urls: string[]; username: string; credential: string };
 
 /**
  * Pairs a recipient with the sender on a link: sent to the recipient first (its join ack), then
- * to the sender. Both get the ICE servers to use for this one connection.
+ * to the sender. Both get the ICE servers to use for this one connection, and in `turn` the
+ * sender's relay choice as it stood when this recipient joined.
  */
-export type JoinedMessage = { t: "joined"; link: string; attempt: string; iceServers: IceServer[] };
+export type JoinedMessage = {
+  t: "joined";
+  link: string;
+  attempt: string;
+  iceServers: IceServer[];
+  turn: boolean;
+};
 /** Tells the sender that the recipient on a link went away. */
 export type LeftMessage = { t: "left"; link: string };
 /** Tells a recipient why it cannot connect. */
@@ -176,14 +189,17 @@ function parseIceServer(value: unknown): IceServer | undefined {
     return undefined;
   }
   const fields = value as Fields;
-  if (!hasKeys(fields, ["urls", "username", "credential"])) {
-    return undefined;
-  }
   const { urls, username, credential } = fields;
   if (!Array.isArray(urls) || urls.length === 0 || urls.length > MAX_ICE_URLS) {
     return undefined;
   }
   if (!urls.every((url) => isIceString(url) && ICE_URL_PATTERN.test(url))) {
+    return undefined;
+  }
+  if (hasKeys(fields, ["urls"])) {
+    return urls.every((url) => url.startsWith("stun:")) ? { urls: [...urls] } : undefined;
+  }
+  if (!hasKeys(fields, ["urls", "username", "credential"])) {
     return undefined;
   }
   if (!isIceString(username) || !isIceString(credential)) {
@@ -219,7 +235,7 @@ export function parseClientMessage(raw: string): ClientMessage | undefined {
   }
   switch (value.t) {
     case "host": {
-      if (!hasKeys(value, ["t", "links"])) {
+      if (!hasKeys(value, ["t", "links", "turn"]) || typeof value.turn !== "boolean") {
         return undefined;
       }
       const links = value.links;
@@ -232,7 +248,7 @@ export function parseClientMessage(raw: string): ClientMessage | undefined {
       if (new Set(links).size !== links.length) {
         return undefined;
       }
-      return { t: "host", links: [...links] };
+      return { t: "host", links: [...links], turn: value.turn };
     }
     case "join":
       if (!hasKeys(value, ["t", "link", "attempt"])) {
@@ -273,14 +289,23 @@ export function parseServerMessage(raw: string): ServerMessage | undefined {
   }
   switch (value.t) {
     case "joined": {
-      if (!hasKeys(value, ["t", "link", "attempt", "iceServers"])) {
+      if (
+        !hasKeys(value, ["t", "link", "attempt", "iceServers", "turn"]) ||
+        typeof value.turn !== "boolean"
+      ) {
         return undefined;
       }
       const iceServers = parseIceServers(value.iceServers);
       if (!isLinkId(value.link) || !isLinkId(value.attempt) || !iceServers) {
         return undefined;
       }
-      return { t: "joined", link: value.link, attempt: value.attempt, iceServers };
+      return {
+        t: "joined",
+        link: value.link,
+        attempt: value.attempt,
+        iceServers,
+        turn: value.turn,
+      };
     }
     case "left":
       if (!hasKeys(value, ["t", "link"]) || !isLinkId(value.link)) {
