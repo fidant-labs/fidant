@@ -27,7 +27,7 @@
 ## Decision
 
 - The send page has a checkbox, "Allow our relay if a direct connection isn't possible". It is on by default, applies to that send only and isn't remembered. It stays editable after recipients are added.
-- `host` carries `turn: boolean` for the whole send, and the sender re-sends `host` whenever the checkbox changes. The server keeps the latest value per sender, in memory only, and never logs it. It logs `host` only when the link list changes, so a toggle leaves no log line either.
+- `host` carries `turn: boolean` for the whole send, and the sender re-sends `host` whenever the checkbox changes. The server keeps the latest value per sender, in memory only, and never logs it.
 - `join` reads the sender's current value. `joined` carries it as `turn` to both browsers, so each attempt knows the setting it got.
 - With `turn: false`, `joined.iceServers` keeps only the `stun:` URLs, with no `username` or `credential`, and the server mints no credential. With no `stun:` URL configured, `iceServers` is empty.
 - `parseIceServers` accepts an entry without credentials only when all its URLs are `stun:`.
@@ -42,11 +42,10 @@
   - A modified recipient can get valid credentials from another pairing, for example by hosting and joining a link of its own, and route its end through our relay. If it doesn't send that relay candidate, the sender sees a peer-reflexive candidate and reads the path as `stun`.
   - It can do the same with any public TURN server.
   - That recipient can decrypt the file anyway. The opt-out only decides which infrastructure carries the encrypted traffic.
-- The backstop is best effort, and it fails open: `connectionPath` returns `direct` when it finds no selected pair, and `readPath` does the same when `getStats` fails. It catches only a recipient that reveals its relay candidate. It runs only after the data channel opens and after a first `stun` reading waits a second to read again, so the encrypted setup frames (INIT and META) may already have passed, and so may file chunks if the recipient accepts at once.
+- The backstop is best effort, and it fails open: `connectionPath` returns `direct` when it finds no selected pair, and `readPath` does the same when `getStats` fails. It runs only after the data channel opens, so the encrypted setup frames (INIT and META) may already have passed. File chunks start only after the recipient accepts, so in practice it fires before any file data.
 - Refused sends still use STUN on the relay box (`stun:turn.fidant.se`). coturn sees each browser's address for the binding request. No file data passes through it.
-- Refused sends get only the `stun:` URLs in `TURN_URLS`. With no `stun:` URL configured they get no STUN at all, and browsers behind NAT can then connect only on the same network. 0007 plans to give the `stun:turn.fidant.se` slot to a `turns:` URL; that change must keep a `stun:` URL, by raising `MAX_ICE_URLS` or giving up another slot.
 - Unticking the box doesn't affect a recipient who has already joined, including one already connected through the relay. Ticking it helps a refused recipient only once they press "Try again".
 - A refused connection can take up to `SETUP_TIMEOUT_MS` (20 s) to show its message. Without relay candidates, ICE may never start, and then the sender's setup timeout ends the attempt.
-- Under `turn: false`, any attempt that ends before its channel opens is shown as a refused relay, even when the cause was something else, for example the recipient closing the tab while connecting. The sender's message says "may" and the recipient's says "probably" for that reason.
+- Under `turn: false`, any attempt that ends before its channel opens is shown as a refused relay, even when the cause was something else, for example the recipient closing the tab while connecting. The sender's message says "may" for that reason.
 - The local demo has no TURN server. The flag is still sent and echoed, so the messages appear there too.
 - Tabs opened before the deploy that added `turn` stop working until they are reloaded. The server rejects an old `host`, and an old receive page ignores the new `joined`.

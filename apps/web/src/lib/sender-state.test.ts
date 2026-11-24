@@ -522,8 +522,14 @@ test("a relay path only records the path when the relay was allowed or the file 
 
 test("refusesRelay is true only for a relay path on the active attempt that refused it", () => {
   const { state: s0, linkId } = withRecipient();
-  const offered = (turn: boolean) =>
-    findRecipient(run(s0, joined(linkId, A, turn), { type: "channel-open", linkId }).state, linkId);
+  const offered = (turn: boolean) => {
+    const found = findRecipient(
+      run(s0, joined(linkId, A, turn), { type: "channel-open", linkId }).state,
+      linkId,
+    );
+    assert.ok(found);
+    return found;
+  };
   const refused = offered(false);
   assert.equal(refusesRelay(refused, A, "relay"), true);
   assert.equal(refusesRelay(refused, A, "direct"), false);
@@ -541,9 +547,9 @@ test("refusesRelay is true only for a relay path on the active attempt that refu
     ).state,
     linkId,
   );
-  assert.equal(delivered?.turn, false);
+  assert.ok(delivered);
+  assert.equal(delivered.turn, false);
   assert.equal(refusesRelay(delivered, A, "relay"), false, "delivered");
-  assert.equal(refusesRelay(undefined, A, "relay"), false, "no recipient");
 });
 
 test("remove drops a recipient and closes its connection if active", () => {

@@ -157,14 +157,10 @@ export function isActive(recipient: Recipient): boolean {
 }
 
 /** True for a relay path on the recipient's active `attempt` whose `joined` refused the relay. */
-export function refusesRelay(
-  recipient: Recipient | undefined,
-  attempt: string,
-  path: OpenPath,
-): boolean {
+export function refusesRelay(recipient: Recipient, attempt: string, path: OpenPath): boolean {
   return (
     path === "relay" &&
-    recipient?.attempt === attempt &&
+    recipient.attempt === attempt &&
     recipient.turn === false &&
     isActive(recipient)
   );
