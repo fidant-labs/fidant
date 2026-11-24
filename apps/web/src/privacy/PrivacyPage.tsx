@@ -19,7 +19,7 @@ function Facts({ rows }: { rows: ReadonlyArray<readonly [string, string]> }) {
           {rows.map(([term, value]) => (
             <div key={term} class="py-3 first:pt-0 last:pb-0">
               <dt class="font-semibold">{term}</dt>
-              <dd class="mt-[0.15rem] text-muted-foreground">{value}</dd>
+              <dd class="mt-0.5 text-muted-foreground">{value}</dd>
             </div>
           ))}
         </dl>
@@ -40,7 +40,7 @@ export function PrivacyPage() {
         <h2 class={h2} id="how-heading">
           {p.howHeading}
         </h2>
-        <ol class="list-decimal pl-6 [&>li]:my-[0.6rem]">
+        <ol class="list-decimal pl-6 [&>li]:my-2.5">
           {p.steps.map(([bold, rest]) => (
             <li key={bold}>
               <strong>{bold}</strong>

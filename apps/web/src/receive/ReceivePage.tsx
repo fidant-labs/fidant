@@ -487,7 +487,7 @@ export function ReceivePage() {
       const { offer, blob, sha256 } = view;
       body = (
         <>
-          <div class="flex items-center gap-[0.6rem] text-primary">
+          <div class="flex items-center gap-2.5 text-primary">
             <Icon name="check" class="size-8 stroke-[2.5]" />
             <h1 class="m-0">{t.receive.doneTitle}</h1>
           </div>

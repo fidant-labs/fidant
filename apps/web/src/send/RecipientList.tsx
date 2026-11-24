@@ -81,7 +81,7 @@ function RecipientRow({ recipient, fileSize, onRemove }: RowProps) {
       <Card>
         <CardContent>
           <p
-            class={`m-0 flex items-center gap-[0.4rem] font-semibold wrap-anywhere ${STATUS_COLOR[status] ?? ""}`}
+            class={`m-0 flex items-center gap-1.5 font-semibold wrap-anywhere ${STATUS_COLOR[status] ?? ""}`}
             aria-live="polite"
           >
             {status === "delivered" && <Icon name="check" />}
