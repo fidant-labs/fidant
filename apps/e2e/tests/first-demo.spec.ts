@@ -92,18 +92,15 @@ function makeFile(leaks: Leaks, canary: SeededRandom, size: number): CanaryFile 
   return leaks.watch(canaryFile(canary.fork("file"), { size }));
 }
 
-/** Opens the sender page, runs `init(arg)` in it before any page script, types the sender's name if given, and chooses the file. */
-async function openSender<A>(
+/** Opens the sender page, runs `setup` on it before it loads, types the sender's name if given, and chooses the file. */
+async function openSender(
   demo: Demo,
   file: CanaryFile,
   from = "",
-  init?: (arg: A) => void,
-  arg?: A,
+  setup?: (page: Page) => Promise<unknown>,
 ): Promise<Page> {
   const page = await demo.open("sender");
-  if (init) {
-    await page.addInitScript(init as (arg: unknown) => void, arg);
-  }
+  await setup?.(page);
   await page.goto("/send");
   if (from) {
     await page.getByLabel("Your name").fill(from);
@@ -269,10 +266,12 @@ test("a sender whose connection setup fails logs why and lets the recipient try 
   leaks,
   canary,
 }) => {
-  const sender = await openSender(demo, makeFile(leaks, canary, 10), "", () => {
-    RTCPeerConnection.prototype.setLocalDescription = () =>
-      Promise.reject(new DOMException("injected", "OperationError"));
-  });
+  const sender = await openSender(demo, makeFile(leaks, canary, 10), "", (page) =>
+    page.addInitScript(() => {
+      RTCPeerConnection.prototype.setLocalDescription = () =>
+        Promise.reject(new DOMException("injected", "OperationError"));
+    }),
+  );
   const link = await addRecipient(leaks, sender, makeName(leaks, canary, "Anna"));
   const recipient = await demo.open("recipient");
   await recipient.goto(link);
@@ -518,7 +517,7 @@ test("the Why? link to /how keeps a transfer alive on both pages", async ({
 
 test("a lost sender says whether the file may have been saved", async ({ demo, leaks, canary }) => {
   const file = makeFile(leaks, canary, 100_001);
-  const sender = await openSender(demo, file, "", breakableSender);
+  const sender = await openSender(demo, file, "", (page) => page.addInitScript(breakableSender));
   const stall = (stalled: boolean) =>
     sender.evaluate((on) => {
       (globalThis as { stalled?: boolean }).stalled = on;
@@ -637,6 +636,44 @@ function expectRefusal(page: Page) {
   };
 }
 
+/** A signaling message as JSON; only a `relay` message has `data`. */
+type Signal = { t: string; data: string };
+
+/**
+ * Passes `page`'s signaling socket through `edit`, as a hostile server could: `sent` is true for
+ * what the page sends. Register it before the page loads. A page route takes precedence over the
+ * recorder's context route, which still blocks every other socket, and the recorder still sees the
+ * frames as the page sends and receives them.
+ */
+function tamperSignal(page: Page, edit: (message: Signal, sent: boolean) => Signal) {
+  const pass = (text: string | Buffer, sent: boolean) =>
+    JSON.stringify(edit(JSON.parse(text.toString()) as Signal, sent));
+  return page.routeWebSocket(
+    // Only the stack's own socket, so the recorder still blocks a `/signal` on any other host.
+    (url) =>
+      url.href === new URL("/signal", process.env.SIGILL_E2E_BASE_URL).href.replace(/^http/, "ws"),
+    (ws) => {
+      const server = ws.connectToServer();
+      ws.onMessage((text) => server.send(pass(text, true)));
+      server.onMessage((text) => ws.send(pass(text, false)));
+    },
+  );
+}
+
+/** Counts `page`'s downloads; the returned check expects the connect error well before the 30 s connect timeout, no offer, no download and no delivery to `name`. */
+function expectNoConnection(page: Page) {
+  let downloads = 0;
+  page.on("download", () => downloads++);
+  return async (sender: Page, name: string) => {
+    await expect(page.getByText("Couldn't connect to the sender's computer")).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(page.getByRole("button", { name: "Download" })).toHaveCount(0);
+    expect(downloads, "downloads").toBe(0);
+    await expect(delivered(sender, name)).toHaveCount(0);
+  };
+}
+
 test.describe("a hostile path", () => {
   for (const mode of ["flip", "drop-last", "reorder", "repeat"] as const) {
     test(`a recipient refuses data channel frames that are tampered: ${mode}`, async ({
@@ -646,7 +683,9 @@ test.describe("a hostile path", () => {
     }) => {
       // Three 48 KiB chunks, so there is a first, a middle and a last one.
       const file = makeFile(leaks, canary, 100_001);
-      const sender = await openSender(demo, file, "", tamperSender, mode);
+      const sender = await openSender(demo, file, "", (page) =>
+        page.addInitScript(tamperSender, mode),
+      );
       const name = makeName(leaks, canary, "Anna");
       const link = await addRecipient(leaks, sender, name);
       const recipient = await demo.open("recipient");
@@ -663,7 +702,9 @@ test.describe("a hostile path", () => {
     canary,
   }) => {
     const file = makeFile(leaks, canary, 100_001);
-    const sender = await openSender(demo, file, "", tamperSender, "other");
+    const sender = await openSender(demo, file, "", (page) =>
+      page.addInitScript(tamperSender, "other" as const),
+    );
     const anna = makeName(leaks, canary, "Anna");
     const erik = makeName(leaks, canary, "Erik");
     const annaLink = await addRecipient(leaks, sender, anna);
@@ -678,6 +719,71 @@ test.describe("a hostile path", () => {
     await second.goto(erikLink);
     await refused(sender, erik);
     await expect(second.getByRole("button", { name: "Download" })).toHaveCount(0);
+  });
+
+  // The server relays signals it can't open: changing or moving their sealed bytes makes them fail
+  // to open in the browser, so a hostile server can't swap the DTLS fingerprint in the SDP.
+
+  test("a recipient refuses a relayed signal with one character changed", async ({
+    demo,
+    leaks,
+    canary,
+  }) => {
+    const sender = await openSender(demo, makeFile(leaks, canary, 10));
+    const name = makeName(leaks, canary, "Anna");
+    const link = await addRecipient(leaks, sender, name);
+    const recipient = await demo.open("recipient");
+    let changed = false;
+    await tamperSignal(recipient, (message, sent) => {
+      if (sent || changed || message.t !== "relay") {
+        return message;
+      }
+      changed = true;
+      const i = message.data.length >> 1;
+      const other = message.data[i] === "A" ? "B" : "A";
+      return { ...message, data: message.data.slice(0, i) + other + message.data.slice(i + 1) };
+    });
+    const failed = expectNoConnection(recipient);
+    await recipient.goto(link);
+    await failed(sender, name);
+    expect(changed, "changed the sender's offer").toBe(true);
+  });
+
+  test("a sender refuses its own offer reflected as the answer", async ({
+    demo,
+    leaks,
+    canary,
+  }) => {
+    let offer: string | undefined;
+    let reflected = false;
+    const warnings: string[] = [];
+    const sender = await openSender(demo, makeFile(leaks, canary, 10), "", (page) => {
+      page.on("console", (message) => warnings.push(message.text()));
+      return tamperSignal(page, (message, sent) => {
+        if (message.t !== "relay") {
+          return message;
+        }
+        if (sent) {
+          offer ??= message.data;
+          return message;
+        }
+        if (reflected || offer === undefined) {
+          return message;
+        }
+        reflected = true;
+        return { ...message, data: offer };
+      });
+    });
+    const name = makeName(leaks, canary, "Anna");
+    const link = await addRecipient(leaks, sender, name);
+    const recipient = await demo.open("recipient");
+    const failed = expectNoConnection(recipient);
+    await recipient.goto(link);
+    await expect
+      .poll(() => warnings, { timeout: 10_000 })
+      .toContain("sigill: sender dropped a connection: bad-signal");
+    await failed(sender, name);
+    expect(reflected, "reflected the offer").toBe(true);
   });
 });
 
