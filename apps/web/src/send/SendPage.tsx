@@ -101,7 +101,7 @@ export function SendPage() {
   const dispatchRef = useRef<(action: SenderAction) => void>(() => {});
 
   const host = () => {
-    signalingRef.current?.send({ t: "host", links: hostedLinks(senderRef.current) });
+    signalingRef.current?.send({ t: "host", links: hostedLinks(senderRef.current), turn: true });
   };
 
   const closeConnection = (linkId: string) => {

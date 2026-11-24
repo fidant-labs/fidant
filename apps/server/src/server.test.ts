@@ -139,7 +139,7 @@ for (const turn of [false, true]) {
     try {
       const link = "AAAAAAAAAAAAAAAAAAAAAA";
       const attempt = "ZZZZZZZZZZZZZZZZZZZZZZ";
-      host.socket.send(JSON.stringify({ t: "host", links: [link] }));
+      host.socket.send(JSON.stringify({ t: "host", links: [link], turn: true }));
       // A round trip on the host's socket proves the link is registered.
       host.socket.send(JSON.stringify({ t: "relay", link: attempt, data: "x" }));
       await host.next();
