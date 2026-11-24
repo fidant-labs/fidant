@@ -69,9 +69,9 @@ function Computer({ x, y }: { x: number; y: number }) {
   );
 }
 
-function Server({ x, y, s }: { x: number; y: number; s: number }) {
+function Server({ x, y }: { x: number; y: number }) {
   return (
-    <At x={x} y={y} s={s} class="text-muted-foreground">
+    <At x={x} y={y} s={2.5} class="text-muted-foreground">
       {ICONS.server}
     </At>
   );
@@ -136,7 +136,7 @@ const ART = {
         mask="url(#art-open)"
         class="text-muted-foreground"
       />
-      <Server x={120} y={24} s={2.5} />
+      <Server x={120} y={24} />
       <Computer x={44} y={108} />
       <Computer x={196} y={108} />
     </Art>
@@ -154,7 +154,7 @@ const ART = {
   relay: (
     <Art view="0 0 240 144">
       <path d="M94 50 72 72m74-22 22 22" class="text-muted-foreground" />
-      <Server x={120} y={24} s={2.5} />
+      <Server x={120} y={24} />
       <Computer x={44} y={108} />
       <Computer x={196} y={108} />
       <g class={`${animate.relay} [--art-from:-152px_0] [--art-via:-76px_-76px]`}>
@@ -164,7 +164,7 @@ const ART = {
   ),
   never: (
     <Art view="0 18 240 106">
-      <Server x={42} y={72} s={2.5} />
+      <Server x={42} y={72} />
       <At x={124} y={72} s={2.5}>
         {ICONS.eye}
       </At>
