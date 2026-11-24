@@ -11,7 +11,7 @@ import { Card, CardContent } from "#components/ui/card";
 import type { Messages } from "../i18n/en.ts";
 import { useI18n } from "../i18n/I18n.tsx";
 import { formatProgress } from "../lib/format.ts";
-import type { Recipient, RecipientStatus } from "../lib/sender-state.ts";
+import { type Recipient, type RecipientStatus, TOO_SMALL_FOR_TEXT } from "../lib/sender-state.ts";
 import { Direct, Icon, PathLine } from "../ui.tsx";
 
 const STATUS_COLOR: Partial<Record<RecipientStatus, string>> = {
@@ -58,7 +58,7 @@ type RowProps = {
 };
 
 function RecipientRow({ recipient, fileSize, statusText, onRemove }: RowProps) {
-  const { name, url, status, bytesSent, linkId, path, noRelay } = recipient;
+  const { name, url, status, bytesSent, linkId, path, noRelay, error } = recipient;
   const { t, lang } = useI18n();
   const [copyNote, setCopyNote] = useState<CopyNote | "">("");
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -96,7 +96,13 @@ function RecipientRow({ recipient, fileSize, statusText, onRemove }: RowProps) {
             {status === "delivered" && <Icon name="check" />}
             {(status === "failed" || noRelay) && <Icon name="alert" />}
             {status === "declined" && !noRelay && <Icon name="declined" />}
-            <span>{noRelay ? t.send.noRelay(name) : statusText[status](name)}</span>
+            <span>
+              {noRelay
+                ? t.send.noRelay(name)
+                : error === TOO_SMALL_FOR_TEXT
+                  ? t.secret.unsendable(name)
+                  : statusText[status](name)}
+            </span>
           </p>
           {path && <PathLine path={path} />}
           {status === "receiving" && (

@@ -89,7 +89,6 @@ test("a text goes from /secret to the recipient, who shows and copies it", async
     ["autocomplete", "off"],
     ["autocorrect", "off"],
     ["autocapitalize", "off"],
-    ["maxlength", "10000"],
   ] as const) {
     await expect(field).toHaveAttribute(attribute, value);
   }
@@ -132,6 +131,46 @@ test("a text goes from /secret to the recipient, who shows and copies it", async
   await expect(delivered(sender, name)).toBeVisible();
   expect(await page.evaluate(() => (globalThis as { pickerCalls?: number }).pickerCalls)).toBe(0);
   expect(downloads).toEqual([]);
+});
+
+test("a pasted text over 10,000 characters stays whole and can't be shared until shortened", async ({
+  actor,
+  leaks,
+  canary,
+}) => {
+  const long = base32Token(canary.fork("long text"), 12_000);
+  leaks.watchContent("long text", long);
+  const { page: sender } = await actor("sender");
+  await sender.goto("/secret");
+  const field = sender.getByLabel("Your text");
+  const error = sender.locator("#secret-text-error");
+  const live = error.locator("[role=status]");
+  const add = sender.getByRole("button", { name: "Add", exact: true });
+  await expect(live).toBeAttached();
+  await expect(live).toBeEmpty();
+
+  await field.focus();
+  // The editing path a paste takes; maxlength used to cut it here without a word.
+  await sender.keyboard.insertText(long);
+  await expect(field).toHaveValue(long);
+  await expect(field).toHaveAttribute("aria-invalid", "true");
+  await expect(error).toHaveText("12,000 of 10,000 characters. Shorten the text to share it.");
+  await expect(live).toHaveText("Shorten the text to share it.");
+  await expect(field).toHaveAccessibleDescription(
+    "12,000 of 10,000 characters. Shorten the text to share it. Up to 10,000 characters.",
+  );
+  await expect(add).toBeDisabled();
+  await expect(sender.locator("#secret-recipient-name")).toBeDisabled();
+  await expect(sender.locator("#secret-recipient-hint")).toHaveText(
+    "Shorten the text to share it.",
+  );
+  await expect(sender.getByText("Write or paste the text first.")).toHaveCount(0);
+
+  await field.fill(long.slice(0, 10_000));
+  await expect(field).toHaveAttribute("aria-invalid", "false");
+  await expect(error).toBeEmpty();
+  await expect(field).toHaveAccessibleDescription("Up to 10,000 characters.");
+  await expect(add).toBeEnabled();
 });
 
 test("declining a text keeps the link working", async ({ actor, leaks, canary }) => {
@@ -180,4 +219,35 @@ test("a recipient sees the text wording when the sender closes the page during t
   await expect(page.getByText("The sender's page is closed")).toBeVisible();
   await expect(page.getByText("The text comes straight from their browser")).toBeVisible();
   await expect(page.getByText("The file comes straight from their browser")).toHaveCount(0);
+});
+
+test("a connection too small to carry a text in one chunk fails the card and sends nothing", async ({
+  actor,
+  leaks,
+  canary,
+}) => {
+  const text = makeText(leaks, canary);
+  const name = makeName(leaks, canary, "Hugo");
+  const { page: sender } = await actor("sender");
+  await sender.addInitScript(() => {
+    const g = globalThis as { sent?: number };
+    g.sent = 0;
+    Object.defineProperty(RTCSctpTransport.prototype, "maxMessageSize", { get: () => 32_831 });
+    const send = RTCDataChannel.prototype.send;
+    RTCDataChannel.prototype.send = function (this: RTCDataChannel, ...args: unknown[]) {
+      g.sent = (g.sent ?? 0) + 1;
+      Reflect.apply(send, this, args);
+    } as RTCDataChannel["send"];
+  });
+  await sender.goto("/secret");
+  const link = await share(leaks, sender, text, "", name);
+
+  const { page } = await openRecipient(actor, link);
+  await expect(
+    recipientRow(sender, name).getByText(
+      `The text wasn't sent through ${name}'s link, because its length would have shown on this connection. The link still works.`,
+    ),
+  ).toBeVisible();
+  expect(await sender.evaluate(() => (globalThis as { sent?: number }).sent)).toBe(0);
+  await expect(page.getByRole("button", { name: "Show", exact: true })).toHaveCount(0);
 });

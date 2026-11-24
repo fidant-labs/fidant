@@ -334,6 +334,9 @@ export const sv: Messages = {
     lede: "Klistra in ett lösenord, en API-nyckel eller annan kort text. Den går från den här webbläsaren till dem du väljer, krypterad hela vägen, och laddas aldrig upp eller sparas.",
     label: "Din text",
     hint: (max: number) => `Högst ${max.toLocaleString("sv")} tecken.`,
+    count: (length: number, max: number) =>
+      `${length.toLocaleString("sv")} av ${max.toLocaleString("sv")} tecken.`,
+    tooLong: "Korta texten för att kunna dela den.",
     lostServer:
       "Anslutningen till servern bröts. Försöker ansluta igen… Texter som redan är på väg kan komma fram. Ingen ny kan ansluta förrän den är tillbaka, så håll sidan öppen.",
     problems: {
@@ -375,6 +378,8 @@ export const sv: Messages = {
       failed: (name: string) =>
         `Texten kom inte fram oskadd via länken till ${name}. Länken kan öppnas igen för att försöka på nytt.`,
     },
+    unsendable: (name: string) =>
+      `Texten skickades inte via länken till ${name}, eftersom dess längd skulle ha synts på den här förbindelsen. Länken fungerar fortfarande.`,
     offerTitle: (from: string) =>
       from ? `${from} har skickat en text till dig` : "Du har fått en text",
     show: "Visa",
@@ -473,7 +478,7 @@ export const sv: Messages = {
     license: "Öppen källkod, MIT-licens",
   },
   preview: {
-    title: "Fidant: privat filöverföring",
+    title: "Privat filöverföring med Fidant",
     receiveTitle: "Skickat till dig med Fidant",
     receiveDescription:
       "Öppna länken för att ta emot det. Det är krypterat hela vägen, och länken fungerar bara medan avsändarens sida är öppen.",
@@ -641,7 +646,7 @@ export const sv: Messages = {
         body: [
           "Den som kan se den krypterade trafiken, till exempel nätverken på vägen eller vårt relä, ser hur stora ramarna är. Därför avrundas storleken uppåt med metoden Padmé, som lägger till högst 12 %, och sedan till hela delar. Alla ramar med fildata är lika stora, och utfyllnaden är nollor som mottagaren kontrollerar.",
           "Den exakta storleken finns bara i de krypterade META och END. META är alltid lika stor, så inte heller filnamnets längd syns.",
-          "En delad text är högst 32 KiB, och varje text fylls ut till exakt en del, så länge förbindelsen tillåter tillräckligt stora meddelanden. Med alla webbläsare vi testade i november 2026 (Chromium, Firefox och WebKit) är den delen 48 KiB. Så varje text ser likadan ut på nätet, oavsett längd, och likadan som vilken fil som helst på upp till 48 KiB.",
+          "En delad text är högst 32 KiB, och varje text fylls ut till exakt en del. Appen ser till det: om en förbindelse bara tillåter meddelanden som är för små för en del på 32 KiB skickas ingenting över den, och avsändaren ser att texten inte skickades. Med alla webbläsare vi testade i november 2026 (Chromium, Firefox och WebKit) är delen 48 KiB. Så varje text ser likadan ut på nätet, oavsett längd, och likadan som vilken fil som helst på upp till 48 KiB.",
         ],
       },
       {

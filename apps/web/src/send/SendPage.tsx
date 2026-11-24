@@ -17,6 +17,9 @@
 //   `left` → reducer `left`, which only matters before the channel opens.
 // - When the data channel opens, sendFile runs the transfer and reports
 //   accepted, progress, declined and receipt back to the reducer.
+// - On /secret, a connection whose max message size can't carry every text in
+//   one chunk (textFitsOneChunk) gets nothing: reducer `unsendable` fails the
+//   recipient's card and refuses the joiner.
 // - A peer that closes or fails before delivery → `dropped`; a data channel
 //   that has not opened SETUP_TIMEOUT_MS after the join → `timeout`. Both
 //   refuse the joiner so the server unbinds it (see sender-state.ts).
@@ -61,7 +64,7 @@ import {
 } from "../lib/sender-state.ts";
 import { addRelay, NO_RELAYS } from "../lib/server-facts.ts";
 import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
-import { MAX_TEXT_LENGTH, textFile } from "../lib/text-secret.ts";
+import { MAX_TEXT_LENGTH, textFile, textFitsOneChunk } from "../lib/text-secret.ts";
 import { FileCard, Icon, lede, Page, ServerPanel, TechDetails } from "../ui.tsx";
 import { RecipientList } from "./RecipientList.tsx";
 
@@ -110,6 +113,7 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
   const [fromError, setFromError] = useState<ErrorOf<"fromError">>("");
   const [allowRelay, setAllowRelay] = useState(true);
   const [step, setStep] = useState<"file" | "recipients">("file");
+  const [textLength, setTextLength] = useState(0);
 
   // Mutable state used from network callbacks, outside render.
   const senderRef = useRef<SenderState>(initialSenderState);
@@ -201,6 +205,11 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
             }
           }
         });
+        // Judged by the longest text, so a refusal says nothing about this text's length.
+        if (text && !textFitsOneChunk(info.maxMessageSize)) {
+          dispatch({ type: "unsendable", linkId });
+          return;
+        }
         dispatch({ type: "channel-open", linkId });
         const chosen = fileRef.current;
         if (!chosen) {
@@ -453,6 +462,7 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
   };
 
   const hasRecipients = sender.recipients.length > 0;
+  const tooLong = textLength > MAX_TEXT_LENGTH;
   const full = sender.recipients.length >= MAX_LINKS;
   const isLocalhost = LOCAL_HOSTS.has(location.hostname);
   // ponytail: counts by status, so it over-counts if a recipient's signaling drops mid-transfer; track joined/left if that matters
@@ -495,9 +505,8 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
               <Label htmlFor={id("text")}>{t.secret.label}</Label>
               <textarea
                 id={id("text")}
-                class="w-full min-w-0 resize-y rounded-lg border border-input bg-transparent px-2.5 py-2 font-mono text-base transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 md:text-sm dark:bg-input/30 dark:disabled:bg-input/80"
+                class="w-full min-w-0 resize-y rounded-lg border border-input bg-transparent px-2.5 py-2 font-mono text-base transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30 dark:disabled:bg-input/80 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40"
                 rows={6}
-                maxLength={MAX_TEXT_LENGTH}
                 spellcheck={false}
                 translate={false}
                 autocomplete="off"
@@ -506,11 +515,23 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
                 autoCorrect="off"
                 autocapitalize="off"
                 disabled={hasRecipients}
-                onInput={(event) => prepare(textFile(event.currentTarget.value))}
-                aria-describedby={id("text-hint")}
+                onInput={(event) => {
+                  const value = event.currentTarget.value;
+                  setTextLength(value.length);
+                  prepare(textFile(value));
+                }}
+                aria-invalid={tooLong ? "true" : "false"}
+                aria-describedby={
+                  tooLong ? `${id("text-error")} ${id("text-hint")}` : id("text-hint")
+                }
               />
               <p id={id("text-hint")} class={`m-0 ${hint}`}>
                 {t.secret.hint(MAX_TEXT_LENGTH)}
+              </p>
+              {/* Always rendered so the status is announced; the count stays outside it so each key isn't read out. */}
+              <p id={id("text-error")} class={tooLong ? fieldError : "-mt-1 mb-0"}>
+                {tooLong && `${t.secret.count(textLength, MAX_TEXT_LENGTH)} `}
+                <span role="status">{tooLong && t.secret.tooLong}</span>
               </p>
             </div>
           )}
@@ -670,7 +691,9 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
           <p id={id("recipient-hint")} class={hint}>
             {!file
               ? text
-                ? t.secret.first
+                ? tooLong
+                  ? t.secret.tooLong
+                  : t.secret.first
                 : t.send.fileFirst
               : full
                 ? t.send.full(MAX_LINKS)

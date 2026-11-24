@@ -20,6 +20,7 @@
 // | receiving                      | receipt(false) | failed     | close              |
 // | connecting, offered, receiving | dropped        | waiting    | refuse drop, close |
 // | connecting                     | timeout        | waiting    | refuse drop, close |
+// | connecting                     | unsendable     | failed     | refuse drop, close |
 // | connecting                     | left           | waiting    | close              |
 // | connecting                     | server-lost    | waiting    | close              |
 // | connecting, offered, receiving | path relay (1) | waiting    | refuse drop, close |
@@ -57,10 +58,11 @@
 //   connecting recipient, since the server forgot their joins with the socket.
 //   Unlike `left` it never sets `noRelay`: the server dropped, not the relay.
 // - Every join carries the recipient's attempt ID, and every refusal names the
-//   attempt it refuses. A join is refused with its own attempt; `dropped` and
-//   `timeout` refuse the attempt stored when the recipient started
-//   connecting. The server ignores a refusal whose attempt is not the bound
-//   joiner's, so a late drop of one attempt cannot turn away the next joiner.
+//   attempt it refuses. A join is refused with its own attempt; `dropped`,
+//   `timeout` and `unsendable` refuse the attempt stored when the recipient
+//   started connecting. The server ignores a refusal whose attempt is not the
+//   bound joiner's, so a late drop of one attempt cannot turn away the next
+//   joiner.
 // - A drop before delivery returns the recipient to "waiting" with bytesSent
 //   0. There is no resume: the next join starts over.
 // - A decline marks the recipient "declined", so the sender sees the link was
@@ -69,6 +71,11 @@
 // - A mismatching RECEIPT marks the recipient "failed" with an error. The link
 //   stays usable: the next join clears the error and starts over, exactly like
 //   a join from "waiting".
+// - `unsendable` means the data channel just opened but the connection can't
+//   carry a text in one chunk (see textFitsOneChunk in text-secret.ts), so
+//   nothing was sent. The recipient is marked "failed" with an error, the
+//   joiner is refused with "drop" and the connection closed, and the next join
+//   starts over, as after a mismatching RECEIPT.
 // - Events that do not fit the current status (for example a late progress
 //   after a drop) are ignored, as are events for link IDs not on the list.
 // - `path` records how the current attempt's connection runs. It applies only
@@ -138,6 +145,7 @@ export type SenderAction =
   | { type: "left"; linkId: string }
   | { type: "server-lost" }
   | { type: "declined"; linkId: string }
+  | { type: "unsendable"; linkId: string }
   | { type: "path"; linkId: string; attempt: string; path: OpenPath };
 
 export type SenderEffect =
@@ -151,6 +159,7 @@ export type SenderUpdate = { state: SenderState; effects: SenderEffect[] };
 export const SETUP_TIMEOUT_MS = 20_000;
 
 export const CHECKSUM_MISMATCH = "The recipient's checksum did not match.";
+export const TOO_SMALL_FOR_TEXT = "The connection can't carry a text in one chunk.";
 
 export const initialSenderState: SenderState = { recipients: [] };
 
@@ -273,7 +282,7 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
       if (action.type === "dropped" ? !isActive(current) : current.status !== "connecting") {
         return { state, effects: [] };
       }
-      return end(state, current, current.status === "connecting");
+      return end(state, current, waiting(current, current.status === "connecting"));
     case "left":
       if (current.status !== "connecting") {
         return { state, effects: [] };
@@ -290,22 +299,27 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
         state: replace(state, reset(current, "declined")),
         effects: [{ type: "close", linkId }],
       };
+    case "unsendable":
+      if (current.status !== "connecting") {
+        return { state, effects: [] };
+      }
+      return end(state, current, { ...reset(current, "failed"), error: TOO_SMALL_FOR_TEXT });
     case "path":
       if (current.attempt !== action.attempt) {
         return { state, effects: [] };
       }
       if (refusesRelay(current, action.attempt, action.path)) {
-        return end(state, current, true);
+        return end(state, current, waiting(current, true));
       }
       return { state: replace(state, { ...current, path: action.path }), effects: [] };
   }
 }
 
-/** Ends the current attempt: back to waiting, its joiner refused and its connection closed. */
-function end(state: SenderState, current: Recipient, blocked: boolean): SenderUpdate {
+/** Ends the current attempt as `next`: its joiner refused and its connection closed. */
+function end(state: SenderState, current: Recipient, next: Recipient): SenderUpdate {
   const { linkId, attempt } = current;
   return {
-    state: replace(state, waiting(current, blocked)),
+    state: replace(state, next),
     effects: [
       // An active recipient always has the attempt its join stored.
       ...(attempt === undefined

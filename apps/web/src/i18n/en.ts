@@ -334,6 +334,9 @@ export const en = {
     lede: "Paste a password, an API key or any short text. It goes from this browser to the people you choose, encrypted the whole way, and is never uploaded or stored.",
     label: "Your text",
     hint: (max: number) => `Up to ${max.toLocaleString("en-US")} characters.`,
+    count: (length: number, max: number) =>
+      `${length.toLocaleString("en-US")} of ${max.toLocaleString("en-US")} characters.`,
+    tooLong: "Shorten the text to share it.",
     lostServer:
       "Lost the connection to the server. Trying to reconnect… Texts already on their way can finish. Nobody new can connect until it's back, so keep this page open.",
     // Only the problems after an offer whose file wording would be wrong; the rest come from receive.problems.
@@ -376,6 +379,8 @@ export const en = {
       failed: (name: string) =>
         `The text didn't arrive intact through ${name}'s link. The link can be opened again to retry.`,
     },
+    unsendable: (name: string) =>
+      `The text wasn't sent through ${name}'s link, because its length would have shown on this connection. The link still works.`,
     offerTitle: (from: string) => (from ? `${from} sent you a text` : "You've been sent a text"),
     show: "Show",
     receivingTitle: "Opening the text…",
@@ -483,7 +488,7 @@ export const en = {
     license: "Open source, MIT license",
   },
   preview: {
-    title: "Fidant: private file transfer",
+    title: "Private file transfer with Fidant",
     receiveTitle: "Sent to you with Fidant",
     receiveDescription:
       "Open the link to receive it. It's encrypted the whole way, and the link works only while the sender's page is open.",
@@ -651,7 +656,7 @@ export const en = {
         body: [
           "Anyone who can see the encrypted traffic, such as the networks on the way or our relay, sees how big the frames are. So the size is rounded up with the Padmé scheme, which adds at most 12 %, and then to whole chunks. Every chunk frame has the same size, and the padding is zeros that the recipient checks.",
           "The exact size travels only inside the encrypted META and END. META always has the same size, so the length of the file name doesn't show either.",
-          "A shared text is at most 32 KiB, and every text is padded to exactly one chunk, as long as the connection allows large enough messages. With every browser we tested in November 2026 (Chromium, Firefox and WebKit), that chunk is 48 KiB. So every text looks the same on the wire, whatever its length, and the same as any file of up to 48 KiB.",
+          "A shared text is at most 32 KiB, and every text is padded to exactly one chunk. The app enforces this: if a connection only allows messages too small for a 32 KiB chunk, nothing is sent over it, and the sender sees that the text wasn't sent. With every browser we tested in November 2026 (Chromium, Firefox and WebKit), the chunk is 48 KiB. So every text looks the same on the wire, whatever its length, and the same as any file of up to 48 KiB.",
         ],
       },
       {
