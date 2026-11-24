@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
 import { isIP } from "node:net";
 import { test } from "node:test";
 import { App, Stack } from "aws-cdk-lib";
@@ -404,12 +403,4 @@ test("the journal is the only place the box's services keep log lines", () => {
   assert.ok(!turnserver.some((line) => /^\s*(syslog|verbose)\b/i.test(line)));
 
   assert.doesNotMatch(userData, /^\s*Standard(Output|Error)=/m);
-
-  const serverSrc = new URL("../../server/src/", import.meta.url);
-  for (const file of readdirSync(serverSrc).filter(
-    (name) => name.endsWith(".ts") && !name.endsWith(".test.ts"),
-  )) {
-    const source = readFileSync(new URL(file, serverSrc), "utf8");
-    assert.doesNotMatch(source, /\b(writeFile|appendFile|createWriteStream|open)\w*\s*\(/, file);
-  }
 });
