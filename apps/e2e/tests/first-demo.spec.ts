@@ -249,7 +249,7 @@ test("refuses used, unknown and malformed links", async ({ demo, leaks, canary, 
   ).toHaveCount(0);
 });
 
-test("a sender whose connection setup fails logs why, without the error's message", async ({
+test("a sender whose connection setup fails logs why and lets the recipient try again", async ({
   demo,
   observed,
   leaks,
@@ -269,6 +269,21 @@ test("a sender whose connection setup fails logs why, without the error's messag
     .poll(logged)
     .toContain("sigill: sender dropped a connection: setup-failed (OperationError)");
   expect((await logged()).filter((text) => text.includes("injected"))).toEqual([]);
+
+  const refusals = async () =>
+    (await observed("recipient").records()).flatMap((r) => {
+      if (r.type !== "frame-received" || r.base64) {
+        return [];
+      }
+      const message = JSON.parse(r.payload) as { t: string; reason?: string };
+      return message.t === "refused" ? [message.reason] : [];
+    });
+  await expect.poll(refusals).toEqual(["drop"]);
+  await expect(
+    recipient.getByRole("heading", { name: "Couldn't connect to the sender's computer" }),
+  ).toBeVisible();
+  await expect(recipient.getByRole("button", { name: "Try again" })).toBeVisible();
+  await expect(recipient.getByText("This link is open somewhere else")).toHaveCount(0);
 });
 
 test("a declined offer shows as declined, and the link can be reopened", async ({
