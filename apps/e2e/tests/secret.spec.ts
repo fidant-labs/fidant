@@ -1,5 +1,13 @@
 import type { Download, Page } from "@playwright/test";
-import { type Actor, expect, type Leaks, test } from "../src/fixtures.ts";
+import {
+  type Actor,
+  delivered,
+  expect,
+  type Leaks,
+  makeName,
+  recipientRow,
+  test,
+} from "../src/fixtures.ts";
 import { base32Token, type SeededRandom } from "../src/leaks/canary.ts";
 
 /** A watched text, unique to this run, long enough that any 16 bytes of it count. */
@@ -8,13 +16,6 @@ function makeText(leaks: Leaks, canary: SeededRandom): string {
   const text = `${base32Token(random, 40)}\n${base32Token(random, 40)} åäö €`;
   leaks.watchContent("text", text);
   return text;
-}
-
-/** A watched person's name, unique to this run. */
-function makeName(leaks: Leaks, canary: SeededRandom, first: string): string {
-  const name = `${first}-${base32Token(canary.fork(`name ${first}`), 8)}`;
-  leaks.watchText(`name ${first}`, name);
-  return name;
 }
 
 /** Fills the text and the sender's name on /secret, adds a recipient and returns their link, with its secret watched. */
@@ -58,12 +59,6 @@ async function openRecipient(actor: (name: string) => Promise<Actor>, link: stri
   await page.goto(link);
   return { page, downloads };
 }
-
-const recipientRow = (sender: Page, name: string) =>
-  sender.getByRole("list", { name: "Recipients" }).getByRole("listitem").filter({ hasText: name });
-
-const delivered = (sender: Page, name: string) =>
-  recipientRow(sender, name).getByText(`Delivered through ${name}'s link`);
 
 test("a text goes from /secret to the recipient, who shows and copies it", async ({
   actor,
