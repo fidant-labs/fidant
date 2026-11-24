@@ -780,6 +780,7 @@ export const en = {
           "INIT: the sender sends the transfer ID. It is the only frame not encrypted. Changing it changes the file key, so the next frame fails to decrypt.",
           "META: the file name, size and type and the sender's typed name, encrypted. The recipient sees them and chooses.",
           "ACCEPT or DECLINE: the recipient's answer, encrypted. ACCEPT also proves that the recipient has the key. No file data is sent before it.",
+          "CREDIT: how many chunks the sender may send, encrypted. The recipient grants 128 at a time and more as it writes them, so a slow recipient never has more than about 6 MiB waiting. A sender that sends more is stopped.",
           "CHUNK: the file in frames of equal size, up to 48 KiB each.",
           "END: the file's exact size and the checksum computed when it was chosen.",
           "RECEIPT: the checksum the recipient computed from what arrived. The sender counts the file as delivered only when it matches.",
@@ -789,7 +790,7 @@ export const en = {
         heading: "Checking the file",
         body: [
           "The recipient's browser hashes the file as it arrives, and checks the size, the number of chunks, the padding and the checksum against END. Only when everything matches is the file kept. Any other ending, such as a frame that fails to decrypt or a connection that closes early, throws away what was written.",
-          "Chrome and Edge can write the file straight to a place on the disk the recipient chooses. Other browsers collect it in memory and start the download at the end. The download is always marked as plain binary data, whatever type the sender claims, so a file can't run as a web page on Fidant's site.",
+          "Chrome and Edge can write the file straight to a place on the disk the recipient chooses. Other browsers collect it in memory and start the download at the end, and for a file over 256 MiB the recipient is warned first. The download is always marked as plain binary data, whatever type the sender claims, so a file can't run as a web page on Fidant's site.",
           "Names with control characters, line separators or the Unicode characters that override or isolate text direction are refused, so a name ending in .exe can't be made to look like one ending in .pdf.",
         ],
       },
