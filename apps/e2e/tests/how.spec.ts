@@ -20,14 +20,21 @@ test.afterEach(() => {
 });
 
 async function expectNoOverflow(page: Page) {
-  await page.setViewportSize({ width: 375, height: 800 });
+  await page.setViewportSize({ width: 360, height: 800 });
   await page.goto("/how");
   await expect(page.locator("main h1")).toBeVisible();
+  await expect(page.locator("header nav").getByRole("link")).toHaveCount(3);
   const width = await page.evaluate(async () => {
     await document.fonts.ready;
-    return { scroll: document.documentElement.scrollWidth, inner: innerWidth };
+    const items = [...document.querySelectorAll("header nav li")];
+    return {
+      scroll: document.documentElement.scrollWidth,
+      right: Math.max(...items.map((item) => item.getBoundingClientRect().right)),
+      inner: innerWidth,
+    };
   });
   expect(width.scroll).toBeLessThanOrEqual(width.inner);
+  expect(width.right).toBeLessThanOrEqual(width.inner);
 }
 
 async function expectFinalFrames(page: Page) {
@@ -78,6 +85,14 @@ test("the landing page links to the six steps, which end with a link to /privacy
     "href",
     "/how",
   );
+});
+
+test("the top nav links to How it works between Send a file and Privacy", async ({ page }) => {
+  await page.goto("/how");
+  const links = page.locator("header nav").getByRole("link");
+  await expect(links).toHaveText(["Send a file", "How it works", "Privacy"]);
+  await expect(links.nth(1)).toHaveAttribute("href", "/how");
+  await expect(links.nth(1)).toHaveAttribute("aria-current", "page");
 });
 
 test.describe("in Swedish", () => {

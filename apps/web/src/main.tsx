@@ -7,7 +7,7 @@ import { LandingPage } from "./landing/LandingPage.tsx";
 import { PrivacyPage } from "./privacy/PrivacyPage.tsx";
 import { ReceivePage } from "./receive/ReceivePage.tsx";
 import { SendPage } from "./send/SendPage.tsx";
-import { applyTheme, initialTheme } from "./theme.ts";
+import { applyTheme, initialTheme, type Theme } from "./theme.ts";
 import { Footer, Header, Page, Problem, type Route } from "./ui.tsx";
 
 /** Encryption needs Web Crypto, which browsers only offer on HTTPS or localhost. */
@@ -45,6 +45,11 @@ function routeOf(path: string): Route {
 function App() {
   const { t } = useI18n();
   const [route, setRoute] = useState(() => routeOf(location.pathname));
+  const [theme, setTheme] = useState(initialTheme);
+  const chooseTheme = (next: Theme) => {
+    applyTheme(next);
+    setTheme(next);
+  };
   const kept = useRef(new Set<Route>());
   useEffect(() => {
     const onPop = () => setRoute(routeOf(location.pathname));
@@ -86,7 +91,7 @@ function App() {
   }
   return (
     <div class="flex min-h-dvh flex-col">
-      <Header current={route} />
+      <Header current={route} theme={theme} onTheme={chooseTheme} />
       <div class="flex-1">
         {route === "landing" && <LandingPage />}
         {/* The privacy page uses no crypto, so it opens even without a secure connection. */}
@@ -107,7 +112,7 @@ function App() {
           </div>
         )}
       </div>
-      <Footer />
+      <Footer theme={theme} onTheme={chooseTheme} />
     </div>
   );
 }
