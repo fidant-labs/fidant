@@ -41,6 +41,9 @@ export const sv: Messages = {
     send: "Skicka en fil – Fidant",
     receive: "Ta emot en fil – Fidant",
     privacy: "Integritet – Fidant",
+    about: "Om Fidant – Fidant",
+    terms: "Användarvillkor – Fidant",
+    security: "Säkerhet – Fidant",
   },
   menu: {
     language: "Språk",
@@ -65,7 +68,7 @@ export const sv: Messages = {
       ["Lägg till vem den är till", "Varje person får en egen länk som fungerar en gång."],
       [
         "Dela länken",
-        "När de öppnar den går filen direkt från din webbläsare till deras, krypterad hela vägen.",
+        "När de öppnar den går filen från din webbläsare till deras, krypterad hela vägen.",
       ],
     ] as ReadonlyArray<readonly [string, string]>,
     neverHeading: "Vi får aldrig",
@@ -361,7 +364,7 @@ export const sv: Messages = {
       {
         heading: "Dina filer är dina",
         body: [
-          "Filerna går direkt mellan webbläsare och vi har dem aldrig, så vi kan inte läsa, återskapa, radera eller granska dem åt dig. Skicka bara filer som du har rätt att dela, och bara till dem du vill dela dem med.",
+          "Filerna går mellan webbläsare, krypterade hela vägen, och vi har aldrig nyckeln, så vi kan inte läsa, återskapa, radera eller granska dem åt dig. Skicka bara filer som du har rätt att dela, och bara till dem du vill dela dem med.",
           "Använd inte Fidant till något olagligt.",
         ],
       },
@@ -386,7 +389,7 @@ export const sv: Messages = {
         heading: "Så skyddas filen",
         body: [
           "Din webbläsare krypterar filen med AES-256-GCM innan den lämnar din dator. Nyckeln finns i den del av länken som står efter #, och den skickar webbläsare aldrig till någon server.",
-          "Filen går direkt mellan de två webbläsarna. Vår server skickar bara vidare några små meddelanden för att koppla upp, och de är krypterade så att servern inte kan läsa dem.",
+          "Filen går direkt mellan de två webbläsarna. Om ett nätverk stoppar det går den i stället krypterad via vårt relä. Vår server skickar bara vidare några små meddelanden för att koppla upp, och de är krypterade så att servern inte kan läsa dem.",
           "Mottagarens webbläsare kontrollerar filens SHA-256-kontrollsumma, så en fil som ändrats eller skadats på vägen sparas inte.",
         ],
       },
@@ -395,7 +398,7 @@ export const sv: Messages = {
         body: [
           "Den som får tag på en länk kan öppna filen. Skicka varje länk bara till den den är till, på ett sätt du litar på.",
           "Avsändarens namn skrivs av avsändaren och kontrolleras inte.",
-          "De två webbläsarna ser varandras IP-adress, precis som i ett videosamtal.",
+          "De två webbläsarna ser varandras IP-adress, precis som i ett videosamtal. När filen går via vårt relä ser reläet båda IP-adresserna och ungefär hur stor filen är.",
           "En dator som redan är kapad kan läsa filen innan den krypteras eller efter att den låsts upp.",
           "Fidant har ännu inte granskats av någon oberoende part.",
         ],

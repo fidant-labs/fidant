@@ -41,6 +41,9 @@ export const en = {
     send: "Send a file – Fidant",
     receive: "Receive a file – Fidant",
     privacy: "Privacy – Fidant",
+    about: "About – Fidant",
+    terms: "Terms of use – Fidant",
+    security: "Security – Fidant",
   },
   menu: {
     language: "Language",
@@ -65,7 +68,7 @@ export const en = {
       ["Add who it's for", "Each person gets their own link, which works once."],
       [
         "Share the link",
-        "When they open it, the file goes straight from your browser to theirs, encrypted the whole way.",
+        "When they open it, the file goes from your browser to theirs, encrypted the whole way.",
       ],
     ] as ReadonlyArray<readonly [string, string]>,
     neverHeading: "We never get",
@@ -368,7 +371,7 @@ export const en = {
       {
         heading: "Your files are yours",
         body: [
-          "Files go directly between browsers and we never have them, so we can't read, recover, delete or check them for you. Only send files you have the right to share, and only to people you mean to share them with.",
+          "Files go between browsers, encrypted the whole way, and we never have the key, so we can't read, recover, delete or check them for you. Only send files you have the right to share, and only to people you mean to share them with.",
           "Don't use Fidant for anything illegal.",
         ],
       },
@@ -393,7 +396,7 @@ export const en = {
         heading: "How the file is protected",
         body: [
           "Your browser encrypts the file with AES-256-GCM before it leaves your computer. The key is in the part of the link after #, which browsers never send to a server.",
-          "The file goes directly between the two browsers. Our server only passes on a few small setup messages, which are encrypted so it can't read them.",
+          "The file goes directly between the two browsers. If a network blocks that, it passes through our relay instead, still encrypted. Our server only passes on a few small setup messages, which are encrypted so it can't read them.",
           "The recipient's browser checks the file's SHA-256 checksum, so a file that was changed or damaged on the way is not saved.",
         ],
       },
@@ -402,7 +405,7 @@ export const en = {
         body: [
           "Anyone who gets hold of a link can open the file. Send each link only to the person it is for, over a channel you trust.",
           "The sender's name is typed by the sender and not verified.",
-          "The two browsers see each other's IP address, the same as on a video call.",
+          "The two browsers see each other's IP address, the same as on a video call. When the file goes through our relay, the relay sees both IP addresses and roughly how big the file is.",
           "A computer that is already compromised can read the file before it is encrypted or after it is unlocked.",
           "Fidant has not been independently audited yet.",
         ],
