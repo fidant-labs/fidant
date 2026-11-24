@@ -1,5 +1,6 @@
 import { render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
+import { HowPage } from "./how/HowPage.tsx";
 import { I18nProvider, useI18n } from "./i18n/I18n.tsx";
 import { InfoPage } from "./info/InfoPage.tsx";
 import { LandingPage } from "./landing/LandingPage.tsx";
@@ -23,7 +24,7 @@ function InsecurePage() {
   );
 }
 
-const NAMED: ReadonlyArray<Route> = ["privacy", "send", "about", "terms", "security"];
+const NAMED: ReadonlyArray<Route> = ["privacy", "how", "send", "about", "terms", "security"];
 
 function routeOf(path: string): Route {
   const named = NAMED.find((name) => new RegExp(`^/${name}/?$`).test(path));
@@ -82,6 +83,7 @@ function App() {
         {route === "landing" && <LandingPage />}
         {/* The privacy page uses no crypto, so it opens even without a secure connection. */}
         {route === "privacy" && <PrivacyPage />}
+        {route === "how" && <HowPage />}
         {(route === "about" || route === "terms" || route === "security") && (
           <InfoPage page={route} />
         )}

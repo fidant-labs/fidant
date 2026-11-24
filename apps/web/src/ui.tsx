@@ -76,7 +76,17 @@ export function Icon({ name, class: cls }: { name: IconName; class?: string }) {
 
 export const lede = "mt-2 mb-6 text-[1.05rem] text-muted-foreground";
 
-export type Route = "landing" | "send" | "privacy" | "receive" | "about" | "terms" | "security";
+export const display = "font-display font-normal tracking-tight";
+
+export type Route =
+  | "landing"
+  | "send"
+  | "privacy"
+  | "how"
+  | "receive"
+  | "about"
+  | "terms"
+  | "security";
 
 /** Changes the page without reloading it, so a transfer held in memory survives. */
 export function navigate(href: string) {
@@ -252,7 +262,10 @@ export function Header({ current }: { current: Route }) {
   );
 }
 
-const FOOTER_LINKS: ReadonlyArray<readonly ["privacy" | "about" | "terms" | "security", string]> = [
+const FOOTER_LINKS: ReadonlyArray<
+  readonly ["how" | "privacy" | "about" | "terms" | "security", string]
+> = [
+  ["how", "/how"],
   ["about", "/about"],
   ["privacy", "/privacy"],
   ["terms", "/terms"],
