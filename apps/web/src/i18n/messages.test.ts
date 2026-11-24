@@ -64,7 +64,7 @@ test("index.html's noscript text is the English landing page", () => {
     [en.menu.privacy, "/privacy"],
     [en.footer.terms, "/terms"],
     [en.footer.source, "https://github.com/sigill-labs/sigill"],
-  ]) {
+  ] as const) {
     assert.ok(noscript.includes(`<a href="${path}">${label}</a>`), label);
   }
 });
