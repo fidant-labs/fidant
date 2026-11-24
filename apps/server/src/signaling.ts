@@ -471,7 +471,7 @@ export function attachSignaling(
     log("path", { path });
   }
 
-  /** Emails a hosted link's notice once; bound before the send, unbound if it fails. */
+  /** Emails a hosted link's notice once; the link is bound from before the send until unhosted. */
   async function email(socket: WebSocket, peer: Peer, message: EmailMessage): Promise<void> {
     const { link, to, secret, from, lang } = message;
     if (peer.role === "guest") {
@@ -523,9 +523,6 @@ export function attachSignaling(
     // The link was unhosted, and perhaps hosted and emailed again, while the mail was out.
     if (emailed.get(link) !== state) {
       return;
-    }
-    if (!sent) {
-      emailed.delete(link);
     }
     reply(sent ? "sent" : "failed");
   }

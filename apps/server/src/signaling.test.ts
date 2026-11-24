@@ -885,7 +885,7 @@ test("refuses a second email for a bound link, even while the first is out", asy
   );
 });
 
-test("unbinds a link whose notice fails and refuses any later email for it", async (t) => {
+test("keeps a link gated when its notice fails and refuses any later email for it", async (t) => {
   let fail = true;
   const { url, mails } = await mailServer(t, async () => {
     if (fail) {
@@ -900,9 +900,30 @@ test("unbinds a link whose notice fails and refuses any later email for it", asy
   host.send(emailMessage(link));
   assert.deepEqual(await host.next(), { t: "email", link, status: "failed" });
   const guest = await connect(url, true);
-  assert.equal(await gateOf(guest, link), "");
-  await mailJoin(guest, host, link);
+  assert.equal(await gateOf(guest, link), "a***@example.se");
+  guest.send({ t: "join", link, attempt: linkId() });
+  assert.deepEqual(await guest.next(), { t: "gate", link, to: "a***@example.se" });
+  await heardNothing(host);
   assert.equal(mails.length, 1);
+  await codeFor(guest, host, link, mails);
+});
+
+test("spends a link whose email hit a notice cap, even after the hour", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"] });
+  const { url, mails } = await mailServer(t, async () => {}, {
+    limits: { noticesPerRecipient: 1 },
+  });
+  const [first, capped, fresh] = [linkId(), linkId(), linkId()];
+  const host = await mailHost(url, first, capped, fresh);
+  await emailLink(host, first);
+  host.send(emailMessage(capped));
+  assert.deepEqual(await host.next(), { t: "email", link: capped, status: "limit" });
+  t.mock.timers.tick(HOUR_MS);
+  host.send(emailMessage(capped));
+  assert.deepEqual(await host.next(), { t: "email", link: capped, status: "failed" });
+  assert.equal(mails.length, 1);
+  await emailLink(host, fresh);
+  assert.equal(mails.length, 2);
 });
 
 test("refuses an email for a link that had a guest", async (t) => {
