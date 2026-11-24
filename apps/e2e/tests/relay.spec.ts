@@ -97,6 +97,10 @@ test("a transfer forced through the TURN relay", async ({ actor, leaks, canary }
     await expect(page.getByText("Through our relay", { exact: true })).toBeVisible();
     await page.getByText("Why?", { exact: true }).click();
     await expect(page.getByText("So the file goes through our relay in Stockholm.")).toBeVisible();
+    await expect(page.getByRole("link", { name: /More about how it works/ })).toHaveAttribute(
+      "href",
+      "/how#relay",
+    );
     // The only ICE servers the page was given are the local coturn's.
     const urls = await peerList(page, "iceUrls");
     expect(urls?.length).toBeGreaterThan(0);

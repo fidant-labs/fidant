@@ -200,6 +200,10 @@ test("delivers a file to two recipients with a verified checksum", async ({
     await expect(scope.getByText("Direct connection", { exact: true })).toBeVisible();
     await scope.getByText("Why?", { exact: true }).click();
     await expect(scope.getByText("The file goes straight between the two devices.")).toBeVisible();
+    await expect(scope.getByRole("link", { name: /More about how it works/ })).toHaveAttribute(
+      "href",
+      "/how#direct",
+    );
   }
 
   const panel = sender.getByRole("region", { name: "What our server has right now" });

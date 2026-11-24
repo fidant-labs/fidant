@@ -430,14 +430,26 @@ export function TechDetails({
 /** How a connection runs, with a "Why?" that explains it. The summary holds the label too, so it makes sense on its own. */
 export function PathLine({ path }: { path: OpenPath }) {
   const { t } = useI18n();
-  const { label, explain } = t.connection[path === "relay" ? "relay" : "direct"];
+  const kind = path === "relay" ? "relay" : "direct";
+  const { label, explain } = t.connection[kind];
+  // The link opens a new tab because leaving this page would end the transfer.
   return (
     <details class="mt-2 text-[0.9rem]">
       <summary class="cursor-pointer">
         <span class="font-medium">{label}</span>{" "}
         <span class="text-muted-foreground underline underline-offset-4">{t.connection.why}</span>
       </summary>
-      <p class="mt-1 mb-0 text-muted-foreground">{explain}</p>
+      <p class="mt-1 mb-0 text-muted-foreground">
+        {explain}{" "}
+        <a
+          href={`/how#${kind}`}
+          target="_blank"
+          rel="noopener"
+          class="rounded-sm font-medium underline underline-offset-4"
+        >
+          {t.connection.more}
+        </a>
+      </p>
     </details>
   );
 }
