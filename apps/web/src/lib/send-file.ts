@@ -6,9 +6,15 @@
 //   sender → recipient   INIT(transferId)                     plaintext
 //   sender → recipient   META{name, size, type, chunkSize, from}  encrypted
 //   recipient → sender   ACCEPT  (or DECLINE: stop here)
+//   recipient → sender   CREDIT(granted)                      again as chunks are written
 //   sender → recipient   CHUNK × n                            all chunkSize, zero-padded
 //   sender → recipient   END(sha256, size)
 //   recipient → sender   RECEIPT(sha256 the recipient computed)
+//
+// The sender sends CHUNK i (0-based) only while i < the highest CREDIT so far,
+// so a recipient that writes slowly holds at most its credit window in memory.
+// END needs no credit, and CREDITs that arrive after END change nothing. The
+// channel's bufferedAmount still paces sending as well.
 //
 // Every attempt gets a fresh transferId, so a restart after a drop never
 // reuses a (file key, nonce) pair. Encryption happens in one sequential loop
@@ -19,6 +25,7 @@
 // fake channel. The file name only travels inside the encrypted META frame.
 
 import {
+  decodeCredit,
   encodeEnd,
   encodeInit,
   encodeMeta,
@@ -128,19 +135,26 @@ export async function sendFile(options: SendFileOptions): Promise<SendResult> {
     }
     options.onAccepted();
 
-    // The recipient may send nothing more until it has END, but read its next
-    // frame now: a bad frame mid-stream then stops sending right away instead
-    // of after the whole file.
-    let streaming = true;
-    const reply = inbox.next();
-    reply.then(
-      () => {
-        if (streaming) {
-          abort.abort(new Error("recipient sent a frame before END"));
+    // Read the recipient's frames in the background: CREDITs raise the limit
+    // the chunk loop waits on, RECEIPT counts only after END, and anything else
+    // (or a bad frame) stops sending right away instead of after the whole file.
+    let granted = 0;
+    let ended = false;
+    let wake: (() => void) | undefined;
+    const receipt = (async () => {
+      for (;;) {
+        const frame = await inbox.next();
+        if (frame.kind === RecipientKind.CREDIT) {
+          granted = Math.max(granted, decodeCredit(frame.body));
+          wake?.();
+        } else if (frame.kind === RecipientKind.RECEIPT && ended) {
+          return frame.body;
+        } else {
+          throw new Error(ended ? "expected RECEIPT" : "recipient sent a frame before END");
         }
-      },
-      (error: unknown) => abort.abort(error),
-    );
+      }
+    })();
+    receipt.catch((error: unknown) => abort.abort(error));
 
     // Progress counts bytes handed to the channel minus what is still
     // buffered, so it follows what has actually gone out. Padding counts as
@@ -159,7 +173,15 @@ export async function sendFile(options: SendFileOptions): Promise<SendResult> {
     // Every CHUNK is exactly chunkSize bytes, and there are as many as the
     // padded length needs; the bytes past the end of the file are zeros.
     const total = paddedLength(file.size, chunkSize);
-    for (let offset = 0; offset < total; offset += chunkSize) {
+    for (let offset = 0, index = 0; offset < total; offset += chunkSize, index++) {
+      while (index >= granted) {
+        await abortable(
+          new Promise<void>((resolve) => {
+            wake = resolve;
+          }),
+          signal,
+        );
+      }
       if (channel.bufferedAmount > BUFFER_HIGH_BYTES) {
         await bufferLow(channel, signal);
       }
@@ -174,16 +196,13 @@ export async function sendFile(options: SendFileOptions): Promise<SendResult> {
 
     const sha256 = await abortable(options.sha256, signal);
     send(await writer.encrypt(SenderKind.END, encodeEnd(sha256, file.size)));
-    streaming = false;
+    ended = true;
 
-    const receipt = await abortable(reply, signal);
-    if (receipt.kind !== RecipientKind.RECEIPT) {
-      throw new Error("expected RECEIPT");
-    }
+    const theirs = await abortable(receipt, signal);
     clearInterval(progressTimer);
     progressTimer = undefined;
     report();
-    return { type: "receipt", match: equalBytes(receipt.body, sha256) };
+    return { type: "receipt", match: equalBytes(theirs, sha256) };
   } finally {
     if (progressTimer !== undefined) {
       clearInterval(progressTimer);

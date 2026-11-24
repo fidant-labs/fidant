@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   decodeInit,
   decodeMeta,
+  encodeCredit,
   type FileMeta,
   FrameReader,
   FrameWriter,
@@ -35,7 +36,16 @@ type Behaviour =
   | "bad-receipt"
   | "close-after-meta"
   | "wrong-key"
-  | "garbage-mid-stream";
+  | "garbage-mid-stream"
+  /** Never grants credit, so no CHUNK may be sent. */
+  | "no-credit"
+  /** Grants 1 chunk with ACCEPT, then 1 more per chunk received. */
+  | "stingy"
+  /** Sends one more CREDIT after END, before RECEIPT. */
+  | "credit-after-end";
+
+/** The window the scripted recipient grants unless it is "stingy". */
+const WINDOW = 8;
 
 /**
  * A fake open data channel whose far end is a scripted recipient using the
@@ -43,23 +53,39 @@ type Behaviour =
  */
 function fakeChannel(secret: string, behaviour: Behaviour) {
   const target = new EventTarget();
-  const received: { meta?: FileMeta; bytes: number; frames: number; chunkFrames: number[] } = {
-    bytes: 0,
-    frames: 0,
-    chunkFrames: [],
-  };
+  const received: {
+    meta?: FileMeta;
+    bytes: number;
+    frames: number;
+    chunkFrames: number[];
+    /** CHUNKs the sender sent beyond the credit delivered to it so far. */
+    overdrawn: number;
+  } = { bytes: 0, frames: 0, chunkFrames: [], overdrawn: 0 };
+  let granted = 0;
+  let delivered = 0;
+  let chunksSent = 0;
   let readyState: RTCDataChannelState = "open";
   let incoming: Promise<void> = Promise.resolve();
   let reader: FrameReader | undefined;
   let writer: FrameWriter | undefined;
   const verifier = new ReceiveVerifier();
 
-  const reply = async (kind: number, body: Uint8Array) => {
+  const reply = async (kind: RecipientKind, body: Uint8Array) => {
     if (!writer) {
       throw new Error("no writer");
     }
-    const frame = await writer.encrypt(kind as 16 | 17 | 18, body);
-    setTimeout(() => target.dispatchEvent(new MessageEvent("message", { data: frame.buffer })));
+    const frame = await writer.encrypt(kind, body);
+    const to = granted;
+    setTimeout(() => {
+      if (kind === RecipientKind.CREDIT) {
+        delivered = to;
+      }
+      target.dispatchEvent(new MessageEvent("message", { data: frame.buffer }));
+    });
+  };
+  const grant = async (to: number) => {
+    granted = to;
+    await reply(RecipientKind.CREDIT, encodeCredit(to));
   };
   const close = () => {
     readyState = "closed";
@@ -92,9 +118,13 @@ function fakeChannel(secret: string, behaviour: Behaviour) {
         await reply(RecipientKind.DECLINE, new Uint8Array());
       } else {
         await reply(RecipientKind.ACCEPT, new Uint8Array());
+        if (behaviour !== "no-credit") {
+          await grant(behaviour === "stingy" ? 1 : WINDOW);
+        }
       }
     } else if (frame.kind === SenderKind.CHUNK) {
       received.bytes += verifier.chunk(frame.body).length;
+      await grant(received.chunkFrames.length + (behaviour === "stingy" ? 1 : WINDOW));
       if (behaviour === "garbage-mid-stream" && received.chunkFrames.length === 1) {
         const garbage = new Uint8Array(HEADER_BYTES + TAG_BYTES + 32);
         setTimeout(() =>
@@ -105,6 +135,9 @@ function fakeChannel(secret: string, behaviour: Behaviour) {
       const sha = verifier.end(frame.body);
       if (behaviour === "bad-receipt") {
         sha[0] = (sha[0] as number) ^ 1;
+      }
+      if (behaviour === "credit-after-end") {
+        await grant(granted + WINDOW);
       }
       await reply(RecipientKind.RECEIPT, sha);
     }
@@ -117,6 +150,9 @@ function fakeChannel(secret: string, behaviour: Behaviour) {
       return readyState;
     },
     send(data) {
+      if (data[1] === SenderKind.CHUNK && chunksSent++ >= delivered) {
+        received.overdrawn++;
+      }
       const copy = data.slice();
       incoming = incoming.then(() => handle(copy));
     },
@@ -283,6 +319,38 @@ test("stops sending as soon as the recipient sends a bad frame mid-stream", asyn
     fake.received.chunkFrames.length < total / 2,
     `sent ${fake.received.chunkFrames.length} of ${total} chunks`,
   );
+});
+
+test("sends no CHUNK without credit, and aborting still rejects", async () => {
+  const { secret } = createLink("https://localhost");
+  const fake = fakeChannel(secret, "no-credit");
+  const controller = new AbortController();
+  const o = options(fake.channel, secret, new Uint8Array(100_000), controller.signal);
+  const pending = sendFile(o.value);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(o.wasAccepted(), true);
+  controller.abort(new Error("stopped"));
+  await assert.rejects(pending, /stopped/);
+  await fake.done();
+  assert.equal(fake.received.chunkFrames.length, 0);
+});
+
+test("never sends more CHUNKs than the recipient granted", async () => {
+  const { secret } = createLink("https://localhost");
+  const fake = fakeChannel(secret, "stingy");
+  const bytes = new Uint8Array(randomBytes(10 * MAX_CHUNK_BYTES + 5));
+  const result = await sendFile(options(fake.channel, secret, bytes).value);
+  await fake.done();
+  assert.deepEqual(result, { type: "receipt", match: true });
+  assert.equal(fake.received.chunkFrames.length, 11);
+  assert.equal(fake.received.overdrawn, 0);
+});
+
+test("a CREDIT after END is accepted", async () => {
+  const { secret } = createLink("https://localhost");
+  const fake = fakeChannel(secret, "credit-after-end");
+  const result = await sendFile(options(fake.channel, secret, new Uint8Array(1000)).value);
+  assert.deepEqual(result, { type: "receipt", match: true });
 });
 
 for (const [label, any] of [
