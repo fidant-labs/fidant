@@ -144,6 +144,12 @@ cat >>/etc/turnserver.conf <<'EOF'
 @TURNSERVER_CONF@
 EOF
 { printf 'external-ip=@BOX_ADDRESS@/%s\nstatic-auth-secret=' "$private_ip"; cat /etc/sigill/turn-secret; } >>/etc/turnserver.conf
+install -d /etc/systemd/system/coturn.service.d
+cat >/etc/systemd/system/coturn.service.d/online.conf <<'EOF'
+[Unit]
+Wants=network-online.target
+After=network-online.target
+EOF
 systemctl unmask coturn
 systemctl enable --now coturn
 
