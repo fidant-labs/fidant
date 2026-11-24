@@ -40,7 +40,7 @@ export const sv: Messages = {
     landing: "Fidant: privat filöverföring",
     send: "Skicka en fil – Fidant",
     secret: "Dela en hemlighet – Fidant",
-    receive: "Ta emot en fil – Fidant",
+    receive: "Ta emot – Fidant",
     privacy: "Integritet – Fidant",
     how: "Så fungerar det – Fidant",
     about: "Om Fidant – Fidant",
@@ -342,6 +342,20 @@ export const sv: Messages = {
       failed: (name: string) =>
         `Texten kom inte fram oskadd via länken till ${name}. Länken kan öppnas igen för att försöka på nytt.`,
     },
+    offerTitle: (from: string) =>
+      from ? `${from} har skickat en text till dig` : "Du har fått en text",
+    show: "Visa",
+    receivingTitle: "Öppnar texten…",
+    doneTitle: "Här är texten",
+    textLabel: "Texten",
+    notSaved: "Den sparas inte någonstans. Kopiera den innan du stänger fliken.",
+    copy: "Kopiera text",
+    copyNote: {
+      copied: "Kopierad",
+      failed: "Det gick inte att kopiera. Markera texten och kopiera den själv.",
+    },
+    declinedTitle: "Du tackade nej till texten",
+    showAgain: "Visa texten igen",
   },
   server: {
     heading: "Vad vår server har just nu",

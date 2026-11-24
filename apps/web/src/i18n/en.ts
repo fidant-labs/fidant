@@ -40,7 +40,7 @@ export const en = {
     landing: "Fidant: private file transfer",
     send: "Send a file – Fidant",
     secret: "Share a secret – Fidant",
-    receive: "Receive a file – Fidant",
+    receive: "Receive – Fidant",
     privacy: "Privacy – Fidant",
     how: "How it works – Fidant",
     about: "About – Fidant",
@@ -343,6 +343,19 @@ export const en = {
       failed: (name: string) =>
         `The text didn't arrive intact through ${name}'s link. The link can be opened again to retry.`,
     },
+    offerTitle: (from: string) => (from ? `${from} sent you a text` : "You've been sent a text"),
+    show: "Show",
+    receivingTitle: "Opening the text…",
+    doneTitle: "Here's the text",
+    textLabel: "The text",
+    notSaved: "It isn't saved anywhere. Copy it before you close this tab.",
+    copy: "Copy text",
+    copyNote: {
+      copied: "Copied",
+      failed: "Couldn't copy. Select the text and copy it yourself.",
+    },
+    declinedTitle: "You declined the text",
+    showAgain: "Show the text again",
   },
   server: {
     heading: "What our server has right now",

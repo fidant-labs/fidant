@@ -1,5 +1,5 @@
 // The recipient page: open a link, see what is offered, accept it, and save
-// the file once its checksum is verified.
+// the file, or show the text, once its checksum is verified.
 //
 // One attempt (see lib/peer.ts and lib/receive-file.ts):
 // - Connect to the signaling server, derive the link's signal key, and send
@@ -26,7 +26,8 @@
 //   attempt starts, the attempt fails with "connect" (a peer exists) or
 //   "server" (no `joined` yet), so "Connecting…" never stays up for good.
 // - When the data channel opens, receiveFile runs the transfer. The offer
-//   screen resolves its decision with a Sink (Download) or undefined (Decline).
+//   screen resolves its decision with a Sink (Download or Show) or undefined
+//   (Decline). Show always collects a text in memory, never in a save dialog.
 //
 // When an attempt ends for any reason, its signaling socket is closed: the
 // server keeps a guest bound to its link until then, and a later opener would
@@ -36,7 +37,8 @@
 // a new peer.
 //
 // The secret stays in this tab (it is never stripped from the address bar in
-// this demo). The file name and size are shown, never logged or sent anywhere.
+// this demo). The file name and size, or the text, are shown, never logged or
+// sent anywhere.
 
 import { cn } from "cn";
 import { type ComponentChildren, Fragment, type VNode } from "preact";
@@ -54,7 +56,8 @@ import { ReceiveError, receiveFile } from "../lib/receive-file.ts";
 import { peerLostProblem } from "../lib/receive-problem.ts";
 import { addRelay, NO_RELAYS, type Tie } from "../lib/server-facts.ts";
 import { connectSignaling, retryDelay, type SignalingClient } from "../lib/signaling-client.ts";
-import { createSink, isPickerCancel, type Sink } from "../lib/sink.ts";
+import { BlobSink, createSink, isPickerCancel, type Sink } from "../lib/sink.ts";
+import { isTextOffer } from "../lib/text-secret.ts";
 import {
   Direct,
   FileCard,
@@ -68,16 +71,20 @@ import {
 
 const caption = "text-[0.9rem] text-muted-foreground";
 
+type CopyNote = keyof Messages["secret"]["copyNote"];
+
 /** Which problem to show. Text comes from the dictionary at render time, so a language switch re-renders it. */
 type ProblemKey = keyof Messages["receive"]["problems"];
+
+type Offer = FileOffer & { text: boolean };
 
 type View =
   | { s: "connecting" }
   | { s: "refused"; problem: ProblemKey }
-  | { s: "offer"; offer: FileOffer }
-  | { s: "receiving"; offer: FileOffer; bytes: number }
-  | { s: "done"; offer: FileOffer; blob: Blob | undefined; sha256: string }
-  | { s: "declined" }
+  | { s: "offer"; offer: Offer }
+  | { s: "receiving"; offer: Offer; bytes: number }
+  | { s: "done"; offer: Offer; blob: Blob | undefined; sha256: string }
+  | { s: "declined"; text: boolean }
   | { s: "failed"; problem: ProblemKey };
 
 type Attempt = {
@@ -355,7 +362,7 @@ export function ReceivePage() {
         return;
       }
       attempt.channelOpen = true;
-      let offered: FileOffer | undefined;
+      let offered: Offer | undefined;
       receiveFile({
         channel,
         maxMessageSize,
@@ -366,7 +373,11 @@ export function ReceivePage() {
             if (!current()) {
               return;
             }
-            const offer = { ...received, from: displayName(received.from) };
+            const offer: Offer = {
+              ...received,
+              from: displayName(received.from),
+              text: isTextOffer(received),
+            };
             offered = offer;
             attempt.decide = (sink) => {
               attempt.decide = undefined;
@@ -388,7 +399,7 @@ export function ReceivePage() {
       }).then(
         (result) => {
           if (result.type === "declined") {
-            finish({ s: "declined" }, true);
+            finish({ s: "declined", text: offered?.text === true }, true);
           } else if (offered) {
             const sha256 = toHex(result.sha256);
             finish({ s: "done", offer: offered, blob: result.blob, sha256 }, true);
@@ -486,6 +497,14 @@ export function ReceivePage() {
 
   const onDecline = () => attemptRef.current?.decide?.(undefined);
 
+  const onShow = () => {
+    const attempt = attemptRef.current;
+    if (view.s !== "offer" || !attempt?.decide || attempt.ended || attempt.abort.signal.aborted) {
+      return;
+    }
+    attempt.decide(new BlobSink());
+  };
+
   if (!link) {
     return (
       <Page>
@@ -516,13 +535,19 @@ export function ReceivePage() {
       const { offer } = view;
       body = (
         <>
-          <h1>{t.receive.offerTitle(offer.from)}</h1>
+          <h1>{offer.text ? t.secret.offerTitle(offer.from) : t.receive.offerTitle(offer.from)}</h1>
           {offer.from && <p class="text-muted-foreground">{t.receive.unverified}</p>}
-          <FileCard name={offer.name} size={formatBytes(offer.size, lang)} />
+          {!offer.text && <FileCard name={offer.name} size={formatBytes(offer.size, lang)} />}
           <div class="mt-6 mb-8 flex flex-col items-start gap-2">
-            <Button type="button" size="lg" onClick={onAccept} disabled={picking}>
-              <Icon name="download" class="size-4" /> {t.receive.download}
-            </Button>
+            {offer.text ? (
+              <Button type="button" size="lg" onClick={onShow}>
+                <Icon name="eye" class="size-4" /> {t.secret.show}
+              </Button>
+            ) : (
+              <Button type="button" size="lg" onClick={onAccept} disabled={picking}>
+                <Icon name="download" class="size-4" /> {t.receive.download}
+              </Button>
+            )}
             <Button type="button" variant="link" onClick={onDecline} disabled={picking}>
               {t.receive.decline}
             </Button>
@@ -539,19 +564,23 @@ export function ReceivePage() {
       const { offer, bytes } = view;
       body = (
         <>
-          <h1>{t.receive.receivingTitle}</h1>
-          <FileCard name={offer.name} size={formatBytes(offer.size, lang)} />
-          <div class="my-3 flex flex-wrap items-center gap-3">
-            <progress
-              class="min-w-40 flex-1 accent-primary"
-              aria-label={t.receive.progressLabel}
-              max={Math.max(offer.size, 1)}
-              value={offer.size === 0 ? 0 : bytes}
-            />
-            <span class="text-[0.85rem] text-muted-foreground tabular-nums">
-              {formatProgress(bytes, offer.size, lang)}
-            </span>
-          </div>
+          <h1>{offer.text ? t.secret.receivingTitle : t.receive.receivingTitle}</h1>
+          {!offer.text && (
+            <>
+              <FileCard name={offer.name} size={formatBytes(offer.size, lang)} />
+              <div class="my-3 flex flex-wrap items-center gap-3">
+                <progress
+                  class="min-w-40 flex-1 accent-primary"
+                  aria-label={t.receive.progressLabel}
+                  max={Math.max(offer.size, 1)}
+                  value={offer.size === 0 ? 0 : bytes}
+                />
+                <span class="text-[0.85rem] text-muted-foreground tabular-nums">
+                  {formatProgress(bytes, offer.size, lang)}
+                </span>
+              </div>
+            </>
+          )}
           <Direct from={t.common.sender} to={t.common.you} state="active" />
           <p class={caption}>{t.receive.receivingCaption}</p>
           {path && <PathLine path={path} />}
@@ -561,6 +590,23 @@ export function ReceivePage() {
     }
     case "done": {
       const { offer, blob, sha256 } = view;
+      if (offer.text && blob) {
+        body = (
+          <>
+            <div class="flex items-center gap-2.5 text-primary">
+              <Icon name="check" class="size-8 stroke-[2.5]" />
+              <h1 class="m-0">{t.secret.doneTitle}</h1>
+            </div>
+            <ShownText blob={blob} />
+            <p class="text-muted-foreground">{t.secret.notSaved}</p>
+            <Direct from={t.common.sender} to={t.common.you} state="done" />
+            <p class={caption}>{t.receive.doneCaption}</p>
+            {path && <PathLine path={path} />}
+            <OfferDetails offer={offer} />
+          </>
+        );
+        break;
+      }
       body = (
         <>
           <div class="flex items-center gap-2.5 text-primary">
@@ -588,10 +634,10 @@ export function ReceivePage() {
     case "declined":
       body = (
         <>
-          <h1>{t.receive.declinedTitle}</h1>
+          <h1>{view.text ? t.secret.declinedTitle : t.receive.declinedTitle}</h1>
           <p>{t.receive.declinedBody}</p>
           <Button type="button" variant="link" onClick={() => start()}>
-            {t.receive.showAgain}
+            {view.text ? t.secret.showAgain : t.receive.showAgain}
           </Button>
         </>
       );
@@ -620,17 +666,73 @@ export function ReceivePage() {
   );
 }
 
-function OfferDetails({ offer, sha256 }: { offer: FileOffer; sha256?: string }) {
+function OfferDetails({ offer, sha256 }: { offer: Offer; sha256?: string }) {
   const { t } = useI18n();
-  const rows: Array<readonly [string, ComponentChildren]> = [
-    [t.common.size, t.format.bytes(offer.size)],
-    [t.common.type, offer.type || t.common.typeMissing],
-    [t.receive.encryptionLabel, t.receive.encryption],
-  ];
+  const rows: Array<readonly [string, ComponentChildren]> = offer.text
+    ? []
+    : [
+        [t.common.size, t.format.bytes(offer.size)],
+        [t.common.type, offer.type || t.common.typeMissing],
+      ];
+  rows.push([t.receive.encryptionLabel, t.receive.encryption]);
   if (sha256) {
     rows.push([t.receive.sha256Checked, <code key="sha256">{sha256}</code>]);
   }
   return <TechDetails rows={rows} />;
+}
+
+/** A received text, as plain text in a read-only field, with a button that copies it. */
+function ShownText({ blob }: { blob: Blob }) {
+  const { t } = useI18n();
+  const [text, setText] = useState("");
+  const [copyNote, setCopyNote] = useState<CopyNote | "">("");
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  // Blob.text() decodes UTF-8 like a non-fatal TextDecoder: invalid bytes become U+FFFD.
+  useEffect(() => {
+    void blob.text().then(setText);
+  }, [blob]);
+  useEffect(() => () => clearTimeout(timer.current), []);
+
+  const showNote = (note: CopyNote) => {
+    clearTimeout(timer.current);
+    setCopyNote(note);
+    timer.current = setTimeout(() => setCopyNote(""), 4000);
+  };
+
+  const copy = async () => {
+    try {
+      if (!navigator.clipboard) {
+        throw new Error("no clipboard");
+      }
+      await navigator.clipboard.writeText(text);
+      showNote("copied");
+    } catch {
+      showNote("failed");
+    }
+  };
+
+  return (
+    <div class="my-4 flex flex-col gap-3">
+      <textarea
+        class="w-full min-w-0 resize-y rounded-lg border border-input bg-transparent px-2.5 py-2 font-mono text-base transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-input/30"
+        rows={8}
+        value={text}
+        readOnly
+        aria-label={t.secret.textLabel}
+        spellcheck={false}
+        translate={false}
+      />
+      <div class="flex flex-wrap items-center gap-3">
+        <Button type="button" onClick={copy}>
+          {t.secret.copy}
+        </Button>
+        <span class="text-[0.85rem] text-muted-foreground" role="status">
+          {copyNote && t.secret.copyNote[copyNote]}
+        </span>
+      </div>
+    </div>
+  );
 }
 
 /** Starts the download once by itself, and stays as a button in case the browser blocked that. */

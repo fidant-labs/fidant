@@ -97,7 +97,7 @@ test("each page has its own tab title", async ({ page }) => {
     ["/secret", "Share a secret – Fidant"],
     ["/privacy", "Privacy – Fidant"],
     ["/how", "How it works – Fidant"],
-    ["/r/unknown", "Receive a file – Fidant"],
+    ["/r/unknown", "Receive – Fidant"],
   ] as const) {
     await page.goto(path);
     await expect(page).toHaveTitle(title);

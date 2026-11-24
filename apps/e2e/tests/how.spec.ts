@@ -204,7 +204,7 @@ test("only the How it works page looks up its fragment as an anchor", async ({ p
 
   // The tab title is set by the effect that runs just before the anchor lookup.
   for (const [path, title] of [
-    [`/r/unknown#${fragment}`, "Receive a file – Fidant"],
+    [`/r/unknown#${fragment}`, "Receive – Fidant"],
     [`/#${fragment}`, "Fidant: private file transfer"],
   ] as const) {
     await page.goto(path);
