@@ -44,6 +44,7 @@ Today:
 
 - Browser requests and responses: URL, every header and request bodies.
 - WebSocket frames, sent and received, including `/signal`.
+- Browser console messages: the text and the page URL without its fragment.
 - Server stdout and stderr. Stdout must also pass a strict allowlist: one JSON object per line, with known keys and values only (`src/leaks/server-log.ts`).
 - coturn's verbose log, `observations/run/coturn.log`.
 - In the network scenarios only, every packet to and from coturn, `observations/run/coturn.pcap`. The `pcap` service of `networks/compose.yaml` runs tcpdump in coturn's network namespace with `NET_RAW`, so no sudo is needed (decision 0001 expected sudo on CI). The file is scanned as raw bytes, one capture per test from where it stood when the test began. It holds STUN and TURN headers and DTLS ciphertext only, so it is safe as a CI artifact. `pnpm e2e` has no packet capture.

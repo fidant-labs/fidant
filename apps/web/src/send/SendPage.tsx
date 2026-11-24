@@ -155,6 +155,7 @@ export function SendPage() {
     try {
       signalKey = await deriveSignalKey(recipient.secret, linkId);
     } catch {
+      console.warn("sigill: sender dropped a connection: signal-key");
       dispatch({ type: "dropped", linkId });
       return;
     }
@@ -214,7 +215,8 @@ export function SendPage() {
           },
         );
       },
-      onClose(reason) {
+      onClose(reason, _detail, name) {
+        console.warn(`sigill: sender dropped a connection: ${reason}${name ? ` (${name})` : ""}`);
         if (reason === "connection-failed") {
           sendPath(linkId, connection, "failed");
         }
@@ -306,10 +308,19 @@ export function SendPage() {
       }
     };
     window.addEventListener("beforeunload", onBeforeUnload);
+    // Once the page is really going, close the peers so recipients hear it now, not when ICE
+    // consent runs out about 15 s later.
+    const onPageHide = () => {
+      for (const linkId of [...connectionsRef.current.keys()]) {
+        closeConnection(linkId);
+      }
+    };
+    window.addEventListener("pagehide", onPageHide);
 
     return () => {
       disposed = true;
       window.removeEventListener("beforeunload", onBeforeUnload);
+      window.removeEventListener("pagehide", onPageHide);
       hashAbortRef.current?.abort();
       for (const linkId of [...connectionsRef.current.keys()]) {
         closeConnection(linkId);
@@ -555,7 +566,17 @@ export function SendPage() {
             {t.send.allowRelay}
           </Label>
 
-          <form class="mt-6 flex flex-wrap items-end gap-2" onSubmit={onAdd} noValidate>
+          <form
+            class="mt-6 flex flex-wrap items-end gap-2"
+            onSubmit={onAdd}
+            // A held Enter that started on the last Remove button lands here and would submit an empty name.
+            onKeyDown={(event) => {
+              if (event.repeat && event.key === "Enter") {
+                event.preventDefault();
+              }
+            }}
+            noValidate
+          >
             <div class={field}>
               <Label htmlFor="recipient-name">{t.send.recipientLabel}</Label>
               <Input
