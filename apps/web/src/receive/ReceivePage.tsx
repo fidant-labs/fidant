@@ -696,7 +696,7 @@ function OfferDetails({ offer, sha256 }: { offer: Offer; sha256?: string }) {
   return <TechDetails rows={rows} />;
 }
 
-/** A received text, as plain text in a read-only field, with a button that copies it. */
+/** A received text, as plain text outside any form field so session restore has none of it to save, with a button that copies it. */
 function ShownText({ blob }: { blob: Blob }) {
   const { t } = useI18n();
   const [text, setText] = useState("");
@@ -729,17 +729,15 @@ function ShownText({ blob }: { blob: Blob }) {
 
   return (
     <div class="my-4 flex flex-col gap-3">
-      <textarea
-        class="w-full min-w-0 resize-y rounded-lg border border-input bg-transparent px-2.5 py-2 font-mono text-base transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-input/30"
-        rows={8}
-        value={text}
-        readOnly
+      <section
+        class="max-h-52 overflow-y-auto rounded-lg border border-input px-2.5 py-2 text-base transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-input/30"
         aria-label={t.secret.textLabel}
-        spellcheck={false}
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: the box scrolls, so keyboard users must reach it.
+        tabIndex={0}
         translate={false}
-        autocomplete="off"
-        writingsuggestions="false"
-      />
+      >
+        <pre class="whitespace-pre-wrap wrap-anywhere">{text}</pre>
+      </section>
       <div class="flex flex-wrap items-center gap-3">
         <Button type="button" onClick={copy}>
           {t.secret.copy}
