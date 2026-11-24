@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomBytes, randomInt } from "node:crypto";
 import { test } from "node:test";
-import { isLinkId } from "@sigill/protocol";
+import { EMAILED_LINK_MARKER, isLinkId } from "@sigill/protocol";
 import { decodeBase64url, encodeBase64url } from "./base64url.ts";
 import { createLink, isSecret, parseRecipientLocation } from "./link.ts";
 
@@ -37,11 +37,34 @@ test("createLink makes a fresh ID and secret in the URL", () => {
 test("parseRecipientLocation reads back a created link", () => {
   const link = createLink("https://localhost:8443");
   const url = new URL(link.url);
-  assert.deepEqual(parseRecipientLocation(url), { linkId: link.linkId, secret: link.secret });
+  assert.deepEqual(parseRecipientLocation(url), {
+    linkId: link.linkId,
+    secret: link.secret,
+    emailed: false,
+  });
   assert.deepEqual(parseRecipientLocation({ pathname: `/r/${link.linkId}/`, hash: url.hash }), {
     linkId: link.linkId,
     secret: link.secret,
+    emailed: false,
   });
+});
+
+test("parseRecipientLocation strips an emailed link's marker and keeps the secret", () => {
+  const { linkId, secret } = createLink("https://localhost:8443");
+  const pathname = `/r/${linkId}`;
+  assert.deepEqual(parseRecipientLocation({ pathname, hash: `#${EMAILED_LINK_MARKER}${secret}` }), {
+    linkId,
+    secret,
+    emailed: true,
+  });
+  for (const hash of [
+    `#${EMAILED_LINK_MARKER}`,
+    `#${EMAILED_LINK_MARKER}${EMAILED_LINK_MARKER}${secret}`,
+    `#${EMAILED_LINK_MARKER}${secret.slice(1)}`,
+    `#${secret}${EMAILED_LINK_MARKER}`,
+  ]) {
+    assert.equal(parseRecipientLocation({ pathname, hash }), undefined, hash);
+  }
 });
 
 test("parseRecipientLocation rejects malformed IDs and secrets", () => {

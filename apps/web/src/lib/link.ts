@@ -2,9 +2,10 @@
 //
 // The link ID (16 random bytes) is the only part the server ever sees. The
 // secret (32 random bytes) sits in the URL fragment, which browsers never send
-// to a server; both keys for the link are derived from it (see keys.ts).
+// to a server; both keys for the link are derived from it (see keys.ts). The
+// copy Fidant emails puts EMAILED_LINK_MARKER before the secret.
 
-import { isLinkId } from "@sigill/protocol";
+import { EMAILED_LINK_MARKER, isLinkId } from "@sigill/protocol";
 import { decodeBase64url, encodeBase64url } from "./base64url.ts";
 
 export const LINK_ID_BYTES = 16;
@@ -30,21 +31,23 @@ export function isSecret(value: unknown): value is string {
 }
 
 /**
- * Reads the link ID and secret from a recipient page location
- * (`/r/<linkId>` plus `#<secret>`). Returns undefined if either is malformed.
+ * Reads the link ID and secret from a recipient page location (`/r/<linkId>` plus `#<secret>`,
+ * or `#<marker><secret>` for an emailed link). Returns undefined if either is malformed.
  */
 export function parseRecipientLocation(location: {
   pathname: string;
   hash: string;
-}): { linkId: string; secret: string } | undefined {
+}): { linkId: string; secret: string; emailed: boolean } | undefined {
   const match = /^\/r\/([^/]+)\/?$/.exec(location.pathname);
   const linkId = match?.[1];
   if (!isLinkId(linkId)) {
     return undefined;
   }
-  const secret = location.hash.startsWith("#") ? location.hash.slice(1) : "";
+  const fragment = location.hash.startsWith("#") ? location.hash.slice(1) : "";
+  const emailed = fragment.startsWith(EMAILED_LINK_MARKER);
+  const secret = emailed ? fragment.slice(EMAILED_LINK_MARKER.length) : fragment;
   if (!isSecret(secret)) {
     return undefined;
   }
-  return { linkId, secret };
+  return { linkId, secret, emailed };
 }

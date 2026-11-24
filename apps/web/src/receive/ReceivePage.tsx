@@ -6,7 +6,8 @@
 //   `gate`. A link that was emailed needs a code first: unless this tab holds
 //   a token for it in sessionStorage, the page asks the server to email a code
 //   and trades the right code for a token. A `gate` answer to a `join` means
-//   the token was refused, so the code step comes back.
+//   the token was refused, so the code step comes back. A link Fidant emailed
+//   is marked, and the page never joins it unless `gate` says it needs a code.
 // - Then send `join`. The server answers with `joined`, carrying this pairing's ICE
 //   servers, before it tells the sender; the recipient peer is created
 //   synchronously on it, so the sender's offer, which comes later on the same
@@ -138,7 +139,7 @@ export function ReceivePage() {
     if (!link) {
       return;
     }
-    const { linkId, secret } = link;
+    const { linkId, secret, emailed } = link;
     const previous = attemptRef.current;
     if (previous && !previous.ended) {
       release(previous);
@@ -234,6 +235,11 @@ export function ReceivePage() {
       switch (message.t) {
         case "gate": {
           if (!current() || message.link !== linkId) {
+            break;
+          }
+          // Someone else may host this link ID now, without the code that guards the emailed one.
+          if (emailed && !message.to) {
+            finish({ s: "refused", problem: "unbound" });
             break;
           }
           // The code step has no deadline; `join` arms it again.

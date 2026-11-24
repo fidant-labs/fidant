@@ -298,6 +298,10 @@ export const sv: Messages = {
         title: "Länken är inte aktiv",
         body: "Filen kommer direkt från avsändarens webbläsare, så länken fungerar bara medan avsändaren har sidan öppen. Be om en ny länk.",
       },
+      unbound: {
+        title: "Länken fungerar inte längre",
+        body: "Be avsändaren att skicka den igen.",
+      },
       used: {
         title: "Länken har redan använts",
         body: "Varje länk fungerar en gång. Om du fortfarande behöver filen kan du be avsändaren om en ny länk.",

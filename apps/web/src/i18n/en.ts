@@ -301,6 +301,10 @@ export const en = {
         title: "This link isn't active",
         body: "The file comes straight from the sender's browser, so the link only works while they have the page open. Ask them for a new link.",
       },
+      unbound: {
+        title: "This link no longer works",
+        body: "Ask the sender to send it again.",
+      },
       used: {
         title: "This link has already been used",
         body: "Each link works once. If you still need the file, ask the sender for a new link.",

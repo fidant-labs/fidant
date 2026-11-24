@@ -25,6 +25,9 @@ export const MAX_ADDRESS = 254;
 /** Longest sender name META and `email` accept, in UTF-16 code units like `maxLength`. */
 export const MAX_FROM_LENGTH = 100;
 
+/** Starts the fragment of the link Fidant emails, before the secret, so the recipient page knows it. */
+export const EMAILED_LINK_MARKER = "e.";
+
 const ICE_URL_PATTERN = /^(turn|turns|stun):/;
 
 // The HTML spec's valid email address, so it matches what <input type="email"> accepts.
