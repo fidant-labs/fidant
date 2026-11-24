@@ -866,7 +866,7 @@ test.describe("emailed links", () => {
     const emailed = await addEmailed(leaks, sender, name, to, from);
     expect(emailed.notice.HTML).toBe("");
     expect(emailed.notice.Text).toContain(
-      `${from} (name typed by the sender, not verified) wants to send you a file.`,
+      `${from} (name typed by the sender, not verified) wants to send you a file or a text.`,
     );
 
     const recipient = await demo.open("recipient");
@@ -1034,6 +1034,38 @@ test.describe("emailed links", () => {
     ).toBeVisible();
     await expect(sender.getByRole("button", { name: `Copy link for ${name}` })).toHaveCount(0);
     await expect(sender.getByRole("button", { name: `Copy link for ${plainName}` })).toBeVisible();
+  });
+
+  test("a text from /secret can be emailed and shows after the code", async ({
+    demo,
+    leaks,
+    canary,
+  }) => {
+    const text = `${base32Token(canary.fork("text"), 40)} åäö`;
+    leaks.watchContent("text", text);
+    const sender = await demo.open("sender");
+    await sender.goto("/secret");
+    await sender.getByLabel("Your text").fill(text);
+    const email = sender.getByLabel("Their email address");
+    await expect(email).toHaveId("secret-recipient-email");
+    const name = makeName(leaks, canary, "Anna");
+    const to = addressFor(canary, "Anna");
+    await email.fill(to);
+    await expect(sender.locator("#secret-email-notice")).toContainText(
+      "anyone who can read that mailbox could receive the text.",
+    );
+    const emailed = await addEmailed(leaks, sender, name, to);
+
+    const recipient = await demo.open("recipient");
+    await recipient.goto(emailed.link);
+    await enterCode(recipient, await requestCode(recipient, to));
+    await expect(recipient.getByRole("heading", { name: "You've been sent a text" })).toBeVisible();
+    await recipient.getByRole("button", { name: "Show", exact: true }).click();
+    await expect(recipient.getByRole("region", { name: "The text", exact: true })).toHaveJSProperty(
+      "textContent",
+      text,
+    );
+    await expect(delivered(sender, name)).toBeVisible();
   });
 });
 

@@ -13,13 +13,13 @@ export type Mailer = (mail: Mail) => Promise<void>;
 
 const TEXT = {
   en: {
-    noticeSubject: "A file for you on Fidant",
+    noticeSubject: "A link for you on Fidant",
     named: (name: string) =>
-      `${name} (name typed by the sender, not verified) wants to send you a file.`,
-    someone: "Someone wants to send you a file.",
+      `${name} (name typed by the sender, not verified) wants to send you a file or a text.`,
+    someone: "Someone wants to send you a file or a text.",
     open: "Open this link to get it:",
     noticeEnd: [
-      "The file is not stored anywhere. The link works only while the sender's page is open.",
+      "It is not stored anywhere. The link works only while the sender's page is open.",
       "On the link's page, ask for a code. We will email it to this address.",
     ],
     codeSubject: "Your Fidant code",
@@ -30,13 +30,13 @@ const TEXT = {
     ],
   },
   sv: {
-    noticeSubject: "En fil till dig på Fidant",
+    noticeSubject: "En länk till dig på Fidant",
     named: (name: string) =>
-      `${name} (namn som avsändaren skrivit in, inte verifierat) vill skicka en fil till dig.`,
-    someone: "Någon vill skicka en fil till dig.",
+      `${name} (namn som avsändaren skrivit in, inte verifierat) vill skicka en fil eller en text till dig.`,
+    someone: "Någon vill skicka en fil eller en text till dig.",
     open: "Öppna länken för att hämta den:",
     noticeEnd: [
-      "Filen sparas inte någonstans. Länken fungerar bara medan avsändarens sida är öppen.",
+      "Den sparas inte någonstans. Länken fungerar bara medan avsändarens sida är öppen.",
       "Be om en kod på länkens sida. Vi mejlar den till den här adressen.",
     ],
     codeSubject: "Din kod från Fidant",

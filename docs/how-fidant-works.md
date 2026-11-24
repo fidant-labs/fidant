@@ -137,7 +137,7 @@ An observer learns a file's size only roughly, plus the chunk size, which follow
 
 `apps/web/src/lib/text-secret.ts`, `apps/web/src/send/SendPage.tsx`, `apps/web/src/receive/ReceivePage.tsx`
 
-`/secret` sends a typed or pasted text instead of a file, over the transfer above unchanged: the same keys, frames, checks, RECEIPT and one-time links. The server, the relay and the signaling messages are the same as for a file.
+`/secret` sends a typed or pasted text instead of a file, over the transfer above unchanged: the same keys, frames, checks, RECEIPT and one-time links. The server, the relay and the signaling messages are the same as for a file, and so is emailing the link (see "Emailed links").
 
 - The sender's browser turns the text into an in-memory file named `secret.txt` of type `application/x-fidant-text`. The name and type travel inside the encrypted META, like any file's.
 - A text is at most 10,000 UTF-16 code units (`MAX_TEXT_LENGTH`), so at most 30,000 bytes of UTF-8. The field's `maxlength` stops typing at the limit, and `textFile` refuses a longer text set any other way.
@@ -188,7 +188,7 @@ The send page has "Allow our relay if a direct connection isn't possible", on by
 
 `apps/server/src/signaling.ts`, `apps/server/src/mail.ts`, `apps/web/src/send/SendPage.tsx`, `apps/web/src/receive/ReceivePage.tsx`, `docs/decisions/0012-email-recipients.md`
 
-The sender can give a recipient an email address. Fidant then emails that recipient their link, and the recipient's browser can connect only after they enter a one-time code sent to the same address. This is the one case where a link's secret leaves the browser: our server and the mail service see it. Recipients without an address work as described above.
+The sender can give a recipient an email address, on `/send` for a file and on `/secret` for a text. Fidant then emails that recipient their link, and the recipient's browser can connect only after they enter a one-time code sent to the same address. This is the one case where a link's secret leaves the browser: our server and the mail service see it. Recipients without an address work as described above.
 
 ### Registering an emailed link
 
@@ -208,7 +208,7 @@ server → sender    email {link, status, mark}              sent or failed, wit
 - The secret and the typed name exist on the server only in that send attempt, until it ends. They are never stored or logged.
 - The reply to the sender carries the value, never the secret: `sent`, or `failed` if the attempt failed or timed out. A failed notice leaves the link email-bound, because a timed-out notice may still arrive. To send again, the sender removes the recipient and adds them again, which makes a new link.
 - The sender's card offers no link until the reply arrives. With a value, the page builds the same marked link from its own secret and shows and copies only that. After a refusal without a value, it offers the plain link.
-- The notice is plain text, from `MAIL_FROM` to that one address, with no Reply-To. Its subject names neither the sender nor the file. Its body has the typed name marked as not verified ("Someone" when it is empty) and the link. No email names the file or gives its size or type.
+- The notice is plain text, from `MAIL_FROM` to that one address, with no Reply-To. Its subject names neither the sender nor the file. Its body has the typed name marked as not verified ("Someone" when it is empty) and the link, and says "a file or a text" for both. No email names the file, gives its size or type, or says whether the link carries a file or a text.
 
 ### Opening an emailed link
 
@@ -262,7 +262,7 @@ recipient → server     join {link, attempt, token}
 
 - Our server, while it builds and sends the notice, and the mail service.
 - Anyone who can read the mail in transit, the recipient's mailbox provider for as long as the mail is kept, and link scanners that fetch it. A scanner can't connect without the code.
-- Anyone who can read that mailbox, who can also get the code and so the file.
+- Anyone who can read that mailbox, who can also get the code and so the file or text.
 - With the key, our server could open that link's sealed setup messages, swap the DTLS fingerprints and sit in the middle of the transfer. The code doesn't stop this, because Fidant sends the code. Check words that both screens show will close the gap (SIG-109, planned). A sender who doesn't want any of this leaves the email field empty and passes the link on themselves.
 
 ## What the server and relay see, keep and log

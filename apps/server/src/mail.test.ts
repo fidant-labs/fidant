@@ -9,11 +9,11 @@ const to = "anna@example.se";
 
 test("the notice names the sender as unverified and carries the link in its body only", () => {
   const en = compose({ to, lang: "en", url, from: "Bertil" });
-  assert.equal(en.subject, "A file for you on Fidant");
+  assert.equal(en.subject, "A link for you on Fidant");
   assert.match(en.text, /^Bertil \(name typed by the sender, not verified\) wants to send you a/);
   assert.ok(en.text.includes(`\n${url}\n`));
   const sv = compose({ to, lang: "sv", url, from: "Bertil" });
-  assert.equal(sv.subject, "En fil till dig på Fidant");
+  assert.equal(sv.subject, "En länk till dig på Fidant");
   assert.match(sv.text, /^Bertil \(namn som avsändaren skrivit in, inte verifierat\) vill skicka/);
   assert.ok(sv.text.includes(`\n${url}\n`));
   for (const mail of [en, sv]) {
@@ -26,11 +26,11 @@ test("the notice says someone when the sender typed no name", () => {
   for (const from of ["", "  "]) {
     assert.match(
       compose({ to, lang: "en", url, from }).text,
-      /^Someone wants to send you a file\./,
+      /^Someone wants to send you a file or a text\./,
     );
     assert.match(
       compose({ to, lang: "sv", url, from }).text,
-      /^Någon vill skicka en fil till dig\./,
+      /^Någon vill skicka en fil eller en text till dig\./,
     );
   }
 });

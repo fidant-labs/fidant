@@ -718,12 +718,12 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
             </div>
             {mail && (
               <div class="flex basis-full flex-col gap-1">
-                <Label htmlFor="recipient-email">
+                <Label htmlFor={id("recipient-email")}>
                   {t.send.emailLabel}{" "}
                   <span class="font-normal text-muted-foreground">{t.send.optional}</span>
                 </Label>
                 <Input
-                  id="recipient-email"
+                  id={id("recipient-email")}
                   name="email"
                   type="email"
                   autoComplete="off"
@@ -734,15 +734,17 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
                     setEmailError(false);
                   }}
                   aria-invalid={emailError ? "true" : "false"}
-                  aria-describedby={emailError ? "email-error email-notice" : "email-notice"}
+                  aria-describedby={
+                    emailError ? `${id("email-error")} ${id("email-notice")}` : id("email-notice")
+                  }
                 />
                 {emailError && (
-                  <p id="email-error" class={fieldError}>
+                  <p id={id("email-error")} class={fieldError}>
                     {t.send.emailError}
                   </p>
                 )}
-                <p id="email-notice" class={`m-0 ${hint}`} aria-live="polite">
-                  {emailFilled && t.send.emailNotice}
+                <p id={id("email-notice")} class={`m-0 ${hint}`} aria-live="polite">
+                  {emailFilled && (text ? t.secret.emailNotice : t.send.emailNotice)}
                 </p>
               </div>
             )}
