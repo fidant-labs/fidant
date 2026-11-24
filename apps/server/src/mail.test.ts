@@ -16,6 +16,8 @@ test("the notice names the sender as unverified and carries the link in its body
   assert.equal(sv.subject, "En länk till dig på Fidant");
   assert.match(sv.text, /^Bertil \(namn som avsändaren skrivit in, inte verifierat\) vill skicka/);
   assert.ok(sv.text.includes(`\n${url}\n`));
+  assert.ok(en.text.includes("What they send is not stored anywhere."));
+  assert.ok(sv.text.includes("Det som skickas sparas inte någonstans."));
   for (const mail of [en, sv]) {
     assert.ok(!mail.subject.includes("Bertil"));
     assert.ok(!mail.subject.includes(url));

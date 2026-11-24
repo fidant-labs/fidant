@@ -19,7 +19,7 @@ const TEXT = {
     someone: "Someone wants to send you a file or a text.",
     open: "Open this link to get it:",
     noticeEnd: [
-      "It is not stored anywhere. The link works only while the sender's page is open.",
+      "What they send is not stored anywhere. The link works only while the sender's page is open.",
       "On the link's page, ask for a code. We will email it to this address.",
     ],
     codeSubject: "Your Fidant code",
@@ -36,7 +36,7 @@ const TEXT = {
     someone: "Någon vill skicka en fil eller en text till dig.",
     open: "Öppna länken för att hämta den:",
     noticeEnd: [
-      "Den sparas inte någonstans. Länken fungerar bara medan avsändarens sida är öppen.",
+      "Det som skickas sparas inte någonstans. Länken fungerar bara medan avsändarens sida är öppen.",
       "Be om en kod på länkens sida. Vi mejlar den till den här adressen.",
     ],
     codeSubject: "Din kod från Fidant",
