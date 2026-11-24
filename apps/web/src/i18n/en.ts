@@ -99,7 +99,7 @@ export const en = {
     relay: {
       label: "Through our relay",
       explain:
-        "The two networks couldn't connect directly, which is common on mobile data and office Wi-Fi. So the file goes through our relay in Stockholm. It stays locked the whole way, and the relay can't open it or keep it. The relay sees both devices' internet addresses and roughly how big the file is.",
+        "The two networks couldn't connect directly, which is common on mobile data and office Wi-Fi. So the file goes through our relay in Stockholm. It stays locked the whole way: the relay can't open it and doesn't keep it. The relay sees both devices' internet addresses and roughly how big the file is.",
     },
   },
   format: {
@@ -260,7 +260,7 @@ export const en = {
       },
       noRelay: {
         title: "Couldn't connect directly to the sender",
-        body: "The sender doesn't allow our relay, and your networks couldn't connect directly. Another network may work, for example your phone's mobile data.",
+        body: "The sender doesn't allow our relay, and your networks probably couldn't connect directly. Ask the sender to allow the relay, or try another network, for example your phone's mobile data.",
       },
       server: {
         title: "Couldn't reach the server",

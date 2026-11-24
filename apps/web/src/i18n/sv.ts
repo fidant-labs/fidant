@@ -99,7 +99,7 @@ export const sv: Messages = {
     relay: {
       label: "Via vårt relä",
       explain:
-        "De två nätverken kunde inte ansluta direkt till varandra, vilket är vanligt på mobildata och kontors-wifi. Därför går filen via vårt relä i Stockholm. Den är låst hela vägen, och reläet kan varken öppna den eller spara den. Reläet ser båda enheternas internetadresser och ungefär hur stor filen är.",
+        "De två nätverken kunde inte ansluta direkt till varandra, vilket är vanligt på mobildata och kontors-wifi. Därför går filen via vårt relä i Stockholm. Den är låst hela vägen: reläet kan inte öppna den och sparar den inte. Reläet ser båda enheternas internetadresser och ungefär hur stor filen är.",
     },
   },
   format: {
@@ -260,7 +260,7 @@ export const sv: Messages = {
       },
       noRelay: {
         title: "Det gick inte att ansluta direkt till avsändaren",
-        body: "Avsändaren tillåter inte vårt relä, och era nätverk kunde inte ansluta direkt till varandra. Ett annat nätverk kan fungera, till exempel mobildata i din telefon.",
+        body: "Avsändaren tillåter inte vårt relä, och era nätverk kunde troligen inte ansluta direkt till varandra. Be avsändaren att tillåta reläet, eller prova ett annat nätverk, till exempel mobildata i din telefon.",
       },
       server: {
         title: "Det gick inte att nå servern",
