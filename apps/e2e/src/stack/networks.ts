@@ -79,6 +79,35 @@ export async function sendToRelay(payload: Uint8Array): Promise<void> {
   await sending;
 }
 
+/** Runs a command in the box container and returns its stdout. */
+export async function inBox(...command: string[]): Promise<string> {
+  const { stdout } = await run("docker", [...compose, "exec", "-T", "box", ...command], {
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  return stdout;
+}
+
+/** Every address of the browsers' network namespaces and their routers, as the box may see them. */
+export async function clientAddresses(): Promise<string[]> {
+  const { stdout: ids } = await run("docker", [
+    ...compose,
+    "ps",
+    "-q",
+    "net-a1",
+    "net-a2",
+    "net-b1",
+    "router-a",
+    "router-b",
+  ]);
+  const { stdout } = await run("docker", [
+    "inspect",
+    "-f",
+    "{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}",
+    ...ids.split("\n").filter(Boolean),
+  ]);
+  return stdout.split(/\s+/).filter(Boolean);
+}
+
 /** Fails at once with a clear message when Docker or Compose v2 is missing or not running. */
 export function assertDocker(): void {
   try {
