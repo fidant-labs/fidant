@@ -1,7 +1,12 @@
 import { defineConfig } from "@playwright/test";
+import { remoteBrowsers, serverIp } from "./src/stack/networks.ts";
+
+// `pnpm e2e:networks` runs only tests/networks.spec.ts, in browsers inside Docker networks.
+const networks = Boolean(process.env.SIGILL_E2E_NETWORKS);
 
 export default defineConfig({
   testDir: "tests",
+  ...(networks ? { testMatch: "networks.spec.ts" } : { testIgnore: "networks.spec.ts" }),
   outputDir: "test-results",
   globalSetup: "./global-setup.ts",
   workers: 1,
@@ -25,10 +30,13 @@ export default defineConfig({
       name: "chromium",
       use: {
         browserName: "chromium",
+        // The built-in browser fixture, which checks for unrecorded contexts, needs no host Chromium.
+        ...(networks ? { connectOptions: { wsEndpoint: remoteBrowsers.a1 } } : {}),
         launchOptions: {
           args: [
-            // Resolve every host except localhost to nothing, so a stray request cannot reach the internet.
-            "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost",
+            // Resolve every host except the server's to nothing, so a stray request cannot reach the
+            // internet. The rule catches IP literals too.
+            `--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE ${networks ? serverIp : "localhost"}`,
             // Expose real host candidates in WebRTC instead of mDNS names.
             "--disable-features=WebRtcHideLocalIpsWithMdns",
           ],

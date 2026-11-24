@@ -13,6 +13,16 @@ pnpm e2e                                                    # from the repositor
 
 coturn is the TURN relay (`brew install coturn` on macOS, the `coturn` package on Linux). It listens on 127.0.0.1 only, with a secret made for the run, and the server gets `TURN_URLS` and `TURN_SECRET_FILE` so the `joined` signaling message hands each paired browser credentials for it. Without `turnserver` on PATH the stack starts without it and `joined` carries no ICE servers; with `CI` set, that fails the run instead. Global setup sets `SIGILL_E2E_TURN_URLS` only when coturn runs, so a spec that needs the relay can skip on it.
 
+## Network scenarios
+
+```sh
+pnpm e2e:networks  # from the repository root; needs Docker with Compose v2
+```
+
+`pnpm e2e:networks` runs only `tests/networks.spec.ts`. Global setup starts `networks/compose.yaml`: two sites behind NAT routers (`networks/router.sh`), a browser container per site address running `playwright run-server` (a1 and a2 at site A, b1 at site B, published on 127.0.0.1:39011, 39012 and 39021), and coturn at 198.51.100.20 on the public network, which has no way out. The server runs in its own container at 198.51.100.10 on that network, so the browsers reach it through their routers. The host never connects to it: it reads the port from the server's output, and the browsers get `https://198.51.100.10:<port>` as their base URL. On Docker Desktop the host cannot reach 198.51.100.x at all, and does not need to.
+
+Each row of the spec's table names the sender's and recipient's site, the mode of router-b (`routerMode()` in `src/stack/networks.ts`) and the candidate pair ICE must select. Teardown removes every container and network, also after a failed run; a run that was killed is cleaned up by the next one. The first run pulls the images, so it needs the internet once.
+
 ## Writing a test
 
 Import `test` and `expect` from `src/fixtures.ts`, not from `@playwright/test`.

@@ -28,6 +28,11 @@ case "${1:-}" in
     # Without that route, the public network is the only place it can reach.
     ip route del default 2>/dev/null || true
     iptables -P FORWARD DROP
+    # Drop unsolicited packets to the router itself, like a home router. Dropped in INPUT, they
+    # never enter the conntrack table. Otherwise a peer's early ICE check to our public port
+    # leaves an entry that clashes with our own mapping to that peer, MASQUERADE picks another
+    # port, and hole punching fails as if the NAT were symmetric.
+    iptables -A INPUT -i "$wan" -m conntrack --ctstate NEW -j DROP
     reset
     ;;
   cone)
