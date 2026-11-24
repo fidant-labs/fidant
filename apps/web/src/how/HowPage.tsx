@@ -65,6 +65,11 @@ export function HowPage() {
             {h.moreLink}
           </Link>
         </p>
+        <p class="mb-0">
+          <Link href="/technical" class="rounded-sm font-medium underline underline-offset-4">
+            {h.techLink}
+          </Link>
+        </p>
       </div>
     </main>
   );

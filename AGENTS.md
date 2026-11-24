@@ -39,6 +39,7 @@ Planning lives in Linear: workspace `sigill`, team `SIG`, issue keys like `SIG-2
 - `packages/*`: code used by more than one app. Create a package only when a second consumer exists.
 - `packages/protocol` (`@sigill/protocol`): signaling message types, parsers and limits shared by the server and the web client.
 - `docs/decisions/`: decision records. See its README for the format.
+- `docs/how-fidant-works.md`: how Fidant moves a file and why no infrastructure can read it. The source of truth for the security model and data flow (see Invariants).
 - Workspace packages export TypeScript source directly (`"exports": { ".": "./src/index.ts" }`). Internal packages have no build step.
 - Every package with TypeScript has a `typecheck` script (`tsc --noEmit -p .`) and, if it has tests, a `test` script. The root scripts run them recursively.
 
@@ -66,5 +67,6 @@ Planning lives in Linear: workspace `sigill`, team `SIG`, issue keys like `SIG-2
 - Never send file content, file names, file metadata or keys to the server or any other infrastructure, and never log them. The one deliberate exception: the BankID receipt text names the file.
 - Keys live only in the URL fragment or in browser memory. The one exception: the server-held half of a verified transfer's split key, which the server stores and releases only after the receipt is signed (see `docs/decisions/0001-e2e-tests-and-leak-model.md`).
 - What counts as a leak, concretely, is defined in `docs/decisions/0001-e2e-tests-and-leak-model.md`.
+- `docs/how-fidant-works.md` describes the code on `main`. A change that touches security or data flow updates it in the same pull request: keys, encryption, the link format, frames, signaling messages, connection paths and the relay, what the server or relay sees, keeps or logs, limits, HTTP headers, or a new mode of transfer. The same pull request updates the web text that explains it: the `technical` page in `apps/web/src/i18n/en.ts` and `sv.ts`, and `/how`, `/privacy`, `/security` and the landing page wherever the change makes them untrue.
 - This repository is public. Never commit secrets, real personal data or customer data. The pre-commit hook runs gitleaks.
 - The project must run fully local for tests and demos, with no internet. Add infrastructure (database, storage, relay) only when a feature needs it.

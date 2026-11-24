@@ -24,7 +24,15 @@ function InsecurePage() {
   );
 }
 
-const NAMED: ReadonlyArray<Route> = ["privacy", "how", "send", "about", "terms", "security"];
+const NAMED: ReadonlyArray<Route> = [
+  "privacy",
+  "how",
+  "send",
+  "about",
+  "terms",
+  "security",
+  "technical",
+];
 
 function routeOf(path: string): Route {
   const named = NAMED.find((name) => new RegExp(`^/${name}/?$`).test(path));
@@ -97,9 +105,10 @@ function App() {
         {/* The privacy page uses no crypto, so it opens even without a secure connection. */}
         {route === "privacy" && <PrivacyPage />}
         {route === "how" && <HowPage />}
-        {(route === "about" || route === "terms" || route === "security") && (
-          <InfoPage page={route} />
-        )}
+        {(route === "about" ||
+          route === "terms" ||
+          route === "security" ||
+          route === "technical") && <InfoPage page={route} />}
         {!secure && (route === "send" || route === "receive") && <InsecurePage />}
         {secure && kept.current.has("receive") && (
           <div id="receive" hidden={route !== "receive"}>

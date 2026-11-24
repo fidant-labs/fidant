@@ -9,7 +9,8 @@
         "https://localhost:8444/about",
         "https://localhost:8444/privacy",
         "https://localhost:8444/terms",
-        "https://localhost:8444/security"
+        "https://localhost:8444/security",
+        "https://localhost:8444/technical"
       ],
       "settings": {
         "chromeFlags": "--headless=new --no-sandbox --ignore-certificate-errors"
