@@ -100,8 +100,8 @@ export const keyOf = (line: string) => line.split(/[\s=]/, 1)[0] ?? "";
 
 /**
  * Production's coturn config (apps/infra/box/turnserver.conf), which both e2e stacks start from.
- * Its `no-tls`, `no-dtls` and `no-cli` stay: new coturn has DTLS and the CLI off already and warns
- * about them, but older packages such as Ubuntu's need them, or the CLI listens on a fixed port.
+ * Its `no-dtls` and `no-cli` stay: new coturn has DTLS and the CLI off already and warns about
+ * them, but older packages such as Ubuntu's need them, or the CLI listens on a fixed port.
  */
 const productionConfig = configLines(
   readFileSync(join(repoRoot, "apps", "infra", "box", "turnserver.conf"), "utf8"),
@@ -112,6 +112,9 @@ const replaced: Record<string, string> = {
   "listening-port": "each run picks its own port",
   realm: "production's has a template placeholder",
   "log-file": "tests read coturn's log, and the leak check scans it",
+  "tls-listening-port": "a run with TLS sets its own port and certificate",
+  cert: "a run with TLS sets its own port and certificate",
+  pkey: "a run with TLS sets its own port and certificate",
 };
 /** Production peer denials the loopback stack drops, because every local peer is on loopback. */
 const loopbackDenials = ["denied-peer-ip=127.0.0.0-127.255.255.255", "denied-peer-ip=::1"];
@@ -126,8 +129,10 @@ export function coturnConfig(options: {
   port: number;
   secret: string;
   stateDir: string;
+  /** TURN over TLS on `port` with this certificate and key. Without it, coturn has no TLS. */
+  tls?: { port: number; cert: string; pkey: string };
 }): string {
-  const { ip, port, secret, stateDir } = options;
+  const { ip, port, secret, stateDir, tls } = options;
   const loopback = ip === host;
   const kept = productionConfig
     .filter((line) => !Object.hasOwn(replaced, keyOf(line)))
@@ -145,6 +150,10 @@ export function coturnConfig(options: {
     "realm=sigill.local",
     // On loopback, every peer of the local stack is on loopback too.
     ...(loopback ? ["allow-loopback-peers"] : []),
+    // ponytail: the loopback stack keeps plain TURN over TCP; TLS is covered by the networks suite.
+    ...(tls
+      ? [`tls-listening-port=${tls.port}`, `cert=${tls.cert}`, `pkey=${tls.pkey}`]
+      : ["no-tls"]),
     // The default pid file and user database are under /var, which a test run may not write.
     `pidfile=${join(stateDir, "turnserver.pid")}`,
     `userdb=${join(stateDir, "turndb")}`,
