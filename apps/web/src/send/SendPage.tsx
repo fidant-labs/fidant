@@ -293,10 +293,19 @@ export function SendPage() {
       }
     };
     window.addEventListener("beforeunload", onBeforeUnload);
+    // Once the page is really going, close the peers so recipients hear it now, not when ICE
+    // consent runs out about 15 s later.
+    const onPageHide = () => {
+      for (const linkId of [...connectionsRef.current.keys()]) {
+        closeConnection(linkId);
+      }
+    };
+    window.addEventListener("pagehide", onPageHide);
 
     return () => {
       disposed = true;
       window.removeEventListener("beforeunload", onBeforeUnload);
+      window.removeEventListener("pagehide", onPageHide);
       hashAbortRef.current?.abort();
       for (const linkId of [...connectionsRef.current.keys()]) {
         closeConnection(linkId);

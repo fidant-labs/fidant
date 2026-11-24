@@ -470,10 +470,10 @@ test("a lost sender says whether the file may have been saved", async ({ demo, l
   await expect(erik.getByText("The connection to the sender was lost")).toBeVisible();
   await expect(erik.getByText("The file may not have been saved.")).toBeVisible();
 
-  // Mid-download, the sender's page closes. The server says so at once, but the page waits for
-  // the peer connection to drop, which Chromium notices only when ICE consent expires (about 15 s).
+  // Mid-download, the sender's page closes. Its pagehide closes the peers, so the drop arrives
+  // at once instead of when ICE consent expires (about 15 s).
   const bo = await join("Bo", true);
   await sender.close();
-  await expect(bo.getByText("The sender's page is closed")).toBeVisible({ timeout: 30_000 });
+  await expect(bo.getByText("The sender's page is closed")).toBeVisible({ timeout: 3_000 });
   await expect(bo.getByText("The file may not have been saved.")).toBeVisible();
 });
