@@ -7,7 +7,7 @@ import { Icon, Link } from "../ui.tsx";
 
 // Made-up, but the real shape: a 16-byte link ID and a 32-byte secret, both base64url (lib/link.ts).
 const EXAMPLE_ID = "q7Hc2mXa9pLr0VbN3tYw8g";
-const EXAMPLE_KEY = "Zt4kP0x9QmR2sV7bN1cL8hJ5wE3yA6uD0fG4iK2oT9e"; // gitleaks:allow (made up, see above)
+const EXAMPLE_KEY = "Zt4kP0x9QmR2sV7bN1cL8hJ5wE3yA6uD0fG4iK2oT9c"; // gitleaks:allow (made up, see above)
 
 const display = "font-display font-normal tracking-tight";
 
@@ -103,6 +103,7 @@ export function LandingPage() {
       <section class="mt-24 grid gap-10 sm:grid-cols-2" aria-label={p.serverHeading}>
         <Terms heading={l.neverHeading} rows={p.never} />
         <Terms heading={l.seesHeading} rows={p.sees} />
+        <p class="text-muted-foreground sm:col-span-2 m-0">{l.relayNote}</p>
       </section>
 
       <p class="mt-16 max-w-2xl border-l-2 border-foreground pl-4 text-[1.05rem]">{l.caveat}</p>

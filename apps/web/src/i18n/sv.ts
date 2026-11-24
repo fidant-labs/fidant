@@ -55,7 +55,7 @@ export const sv: Messages = {
   },
   landing: {
     title: "Skicka en fil som bara mottagaren kan öppna.",
-    lede: "Fidant krypterar filen i din webbläsare och lämnar den direkt till den du väljer. Den laddas aldrig upp, och ingen på vägen, inte heller vi, kan läsa den.",
+    lede: "Fidant krypterar filen i din webbläsare innan den går till den du väljer. Den sparas aldrig, och ingen på vägen, inte heller vi, kan läsa den.",
     cta: "Skicka en fil",
     how: "Läs hur det fungerar",
     noAccount: "Inget konto. Inget sparas.",
@@ -71,8 +71,10 @@ export const sv: Messages = {
         "När de öppnar den går filen från din webbläsare till deras, krypterad hela vägen.",
       ],
     ] as ReadonlyArray<readonly [string, string]>,
-    neverHeading: "Vi får aldrig",
-    seesHeading: "Vi ser bara",
+    neverHeading: "Vår server får aldrig",
+    seesHeading: "Vår server ser bara",
+    relayNote:
+      "Om de två webbläsarna inte kan ansluta direkt går filen i stället via vårt relä, fortfarande krypterad. Reläet ser då båda IP-adresserna och ungefär hur stor filen är, men kan inte låsa upp den.",
     caveat: "Haken: eftersom inget sparas måste fliken vara öppen tills filen har kommit fram.",
   },
   insecure: {
@@ -317,7 +319,7 @@ export const sv: Messages = {
   },
   footer: {
     label: "Webbplats",
-    tagline: "Filer krypteras i din webbläsare och skickas direkt till mottagaren.",
+    tagline: "Filer krypteras i din webbläsare och kan bara läsas av mottagaren.",
     about: "Om Fidant",
     terms: "Villkor",
     security: "Säkerhet",

@@ -55,7 +55,7 @@ export const en = {
   },
   landing: {
     title: "Send a file only the recipient can open.",
-    lede: "Fidant encrypts the file in your browser and hands it straight to the person you choose. It is never uploaded, and nobody in between, us included, can read it.",
+    lede: "Fidant encrypts the file in your browser before it goes to the person you choose. It is never stored, and nobody in between, us included, can read it.",
     cta: "Send a file",
     how: "Read how it works",
     noAccount: "No account. Nothing stored.",
@@ -71,8 +71,10 @@ export const en = {
         "When they open it, the file goes from your browser to theirs, encrypted the whole way.",
       ],
     ] as ReadonlyArray<readonly [string, string]>,
-    neverHeading: "We never get",
-    seesHeading: "We only see",
+    neverHeading: "Our server never gets",
+    seesHeading: "Our server only sees",
+    relayNote:
+      "If the two browsers can't connect directly, the file passes through our relay instead, still encrypted. The relay then sees both IP addresses and roughly how big the file is, and can't unlock it.",
     caveat: "The catch: since nothing is stored, keep your tab open until the file has arrived.",
   },
   insecure: {
@@ -324,7 +326,7 @@ export const en = {
   },
   footer: {
     label: "Site",
-    tagline: "Files encrypted in your browser, sent straight to the recipient.",
+    tagline: "Files encrypted in your browser, readable only by the recipient.",
     about: "About",
     terms: "Terms",
     security: "Security",
