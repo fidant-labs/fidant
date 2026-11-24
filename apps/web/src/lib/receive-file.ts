@@ -121,6 +121,12 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
   // INIT and META can be held together before takeRaw(), but no CHUNK comes
   // until ACCEPT, and by then both have been handed out.
   const inbox = createInbox(channel, signal, CREDIT_WINDOW_CHUNKS + 1);
+  // A sender that overruns its credit fails the inbox while the sink may be
+  // stuck. Subscribe to that once: racing inbox.failed per CHUNK would leave
+  // one reaction on it for every CHUNK of the transfer.
+  const inboxFailed = new AbortController();
+  inbox.failed.catch((error: unknown) => inboxFailed.abort(error));
+  const writeSignal = anySignal([signal, inboxFailed.signal]);
   let sink: Sink | undefined;
 
   try {
@@ -192,9 +198,7 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
       if (frame.kind === SenderKind.CHUNK) {
         const data = verifier.chunk(frame.body);
         if (data.length > 0) {
-          // A sender that overruns its credit fails the inbox while the sink
-          // may be stuck, so stop waiting for the write then.
-          await Promise.race([abortable(saving(sink.write(data)), signal), inbox.failed]);
+          await abortable(saving(sink.write(data)), writeSignal);
         }
         written++;
         if (written + CREDIT_WINDOW_CHUNKS - granted >= CREDIT_WINDOW_CHUNKS / 2) {

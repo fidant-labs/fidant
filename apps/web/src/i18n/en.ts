@@ -780,7 +780,7 @@ export const en = {
           "INIT: the sender sends the transfer ID. It is the only frame not encrypted. Changing it changes the file key, so the next frame fails to decrypt.",
           "META: the file name, size and type and the sender's typed name, encrypted. The recipient sees them and chooses.",
           "ACCEPT or DECLINE: the recipient's answer, encrypted. ACCEPT also proves that the recipient has the key. No file data is sent before it.",
-          "CREDIT: how many chunks the sender may send, encrypted. The recipient grants 128 at a time and more as it writes them, so a slow recipient never has more than about 6 MiB waiting. A sender that sends more is stopped.",
+          "CREDIT: how many chunks the sender may send, encrypted. The recipient grants 128 at a time and more as it writes them, so a slow recipient never has more than about 6 MiB waiting. A sender that gets further ahead than that is stopped.",
           "CHUNK: the file in frames of equal size, up to 48 KiB each.",
           "END: the file's exact size and the checksum computed when it was chosen.",
           "RECEIPT: the checksum the recipient computed from what arrived. The sender counts the file as delivered only when it matches.",
