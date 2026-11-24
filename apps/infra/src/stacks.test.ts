@@ -124,9 +124,9 @@ test("any other account gets no stacks", () => {
 const recordSet = "AWS::Route53::RecordSet";
 const committed = Template.fromStack(stacksFor(dnsAccount)[0] as Stack);
 
-test("the committed config points every site name at the box, over IPv4 only", () => {
+test("the committed config points every site name and the relay at the box, over IPv4 only", () => {
   assert.equal(isIP(boxAddress), 4);
-  for (const name of siteNames) {
+  for (const name of [...siteNames, "turn.fidant.se"]) {
     committed.hasResourceProperties(recordSet, {
       Name: `${name}.`,
       Type: "A",
@@ -244,4 +244,14 @@ test("every site name points at the box over IPv4 only", () => {
     });
   }
   dns.resourcePropertiesCountIs("AWS::Route53::RecordSet", { Type: "AAAA" }, 0);
+});
+
+test("only fidant.se gets the relay name, pointing at the box over IPv4", () => {
+  const relay = Object.values(dns.findResources(recordSet)).filter((record) =>
+    String(record.Properties.Name).startsWith("turn."),
+  );
+  assert.deepEqual(
+    relay.map(({ Properties: p }) => [p.HostedZoneId, p.Name, p.Type, p.ResourceRecords]),
+    [[zoneRef("fidant.se"), "turn.fidant.se.", "A", ["192.0.2.10"]]],
+  );
 });
