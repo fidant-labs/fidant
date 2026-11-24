@@ -66,7 +66,7 @@ async function expectBelowHeader(page: Page, selector: string) {
     .toBe(true);
 }
 
-test("the landing page links to the six steps, which end with a link to /privacy", async ({
+test("the landing page links to the six steps, which end with links to /privacy and /technical", async ({
   page,
 }) => {
   await page.goto("/");
@@ -81,7 +81,10 @@ test("the landing page links to the six steps, which end with a link to /privacy
     await expect(sections.nth(index).locator("h2")).toHaveCount(1);
     await expect(sections.nth(index).locator('svg[aria-hidden="true"]')).toHaveCount(1);
   }
-  await expect(page.locator("main a").last()).toHaveAttribute("href", "/privacy");
+  const endLinks = page.locator("main > div a");
+  await expect(endLinks).toHaveCount(2);
+  await expect(endLinks.nth(0)).toHaveAttribute("href", "/privacy");
+  await expect(endLinks.nth(1)).toHaveAttribute("href", "/technical");
   await expect(page.locator("footer").getByRole("link", { name: "How it works" })).toHaveAttribute(
     "href",
     "/how",

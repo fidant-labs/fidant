@@ -32,6 +32,7 @@ const NAMED: ReadonlyArray<Route> = [
   "about",
   "terms",
   "security",
+  "technical",
 ];
 
 function routeOf(path: string): Route {
@@ -106,9 +107,10 @@ function App() {
         {/* The privacy page uses no crypto, so it opens even without a secure connection. */}
         {route === "privacy" && <PrivacyPage />}
         {route === "how" && <HowPage />}
-        {(route === "about" || route === "terms" || route === "security") && (
-          <InfoPage page={route} />
-        )}
+        {(route === "about" ||
+          route === "terms" ||
+          route === "security" ||
+          route === "technical") && <InfoPage page={route} />}
         {!secure && holdsTransfer && <InsecurePage />}
         {secure && kept.current.has("receive") && (
           <div id="receive" hidden={route !== "receive"}>
