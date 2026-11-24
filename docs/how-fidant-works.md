@@ -70,7 +70,7 @@ sender ⇄ recipient     WebRTC data channel "sigill" opens
 
 ## Two layers of encryption
 
-WebRTC encrypts the data channel with DTLS. Fidant doesn't rely on that: every frame on the channel after INIT is also encrypted with AES-256-GCM under the file key, which only the two browsers hold. INIT is sent in clear and carries only the random transfer ID, which is the file key's salt; changing it changes the key, so the next frame fails to decrypt.
+WebRTC encrypts the data channel with DTLS. Fidant doesn't rely on that: every frame on the channel after INIT is also encrypted with AES-256-GCM under the file key, which only the two browsers hold. For an emailed link our server had the secret, so by sitting in the middle it could derive the file key too. INIT is sent in clear and carries only the random transfer ID, which is the file key's salt; changing it changes the key, so the next frame fails to decrypt.
 
 ## Frames
 
@@ -210,7 +210,7 @@ recipient → server     join {link, attempt, token}
 
 - The recipient page reads the value from `#e.<value>.<secret>` and sends `gate` with it before every `join`, rejoins and reloads included. The server answers with the masked address (`a***@example.se`) only when the value matches the link's current binding. Any other `gate` (no value, a wrong value, a link that is not email-bound or unknown) gets `to: ""`, the same answer as for a plain link. So someone with only the link ID can't see the masked address or cause code emails.
 - For a marked link, `to: ""` means the binding is gone: the page joins nothing and says the link no longer works (`unbound`).
-- `send-code` and `code` carry the value too and do nothing for a wrong one. A code is 6 digits from `randomInt`, works for 10 minutes and 5 wrong tries, and replaces any earlier code for the link. The server compares it with `timingSafeEqual`. A right code gets a token of 16 random bytes, base64url.
+- `send-code` and `code` carry the value too. With a wrong one, `send-code` answers `failed` and `code` answers `expired`, and no code is sent or checked. A code is 6 digits from `randomInt`, works for 10 minutes or until the fifth wrong try, and replaces any earlier code for the link. The server compares it with `timingSafeEqual`. A right code gets a token of 16 random bytes, base64url.
 - The page keeps the token in that tab's `sessionStorage` under `token:<link ID>` and joins with it. A reload or a rejoin in the same tab reuses it. Another tab or browser needs its own code, except a tab the browser copies sessionStorage into, such as a duplicated tab.
 - The server refuses a `join` on an email-bound link without a token its current binding issued, and a `join` that carries a token on any other link. It logs `refused` with reason `unverified` and answers `gate {link, to: ""}`, never the masked address. The page then drops its token and, for a marked link, asks `gate` again.
 - The page shows no sender name before the code. As for any link, the recipient reads it from META.
@@ -221,15 +221,15 @@ recipient → server     join {link, attempt, token}
 - Unhosting the link (a `host` without it, which is what removing the recipient sends, or the sender's socket closing) drops all of it, and so does a server restart. The emailed link then connects to nothing, even if someone hosts the same link ID again as a plain link.
 - The limits are `LIMITS` and the code constants in `apps/server/src/signaling.ts`:
 
-| Limit                                             | Value                     |
-| ------------------------------------------------- | ------------------------- |
-| Notices from one sender socket                    | 20 an hour                |
-| Notices from one client address (IPv6 by its /64) | 50 an hour                |
-| Notices to one email address                      | 5 an hour                 |
-| Codes for one link                                | 5 while it is hosted      |
-| Time between two codes for one link               | 30 s                      |
-| Codes to one email address                        | 10 an hour                |
-| A code's life                                     | 10 minutes, 5 wrong tries |
+| Limit                                             | Value                                    |
+| ------------------------------------------------- | ---------------------------------------- |
+| Notices from one sender socket                    | 20 an hour                               |
+| Notices from one client address (IPv6 by its /64) | 50 an hour                               |
+| Notices to one email address                      | 5 an hour                                |
+| Codes for one link                                | 5 while it is hosted                     |
+| Time between two codes for one link               | 30 s                                     |
+| Codes to one email address                        | 10 an hour                               |
+| A code's life                                     | 10 minutes, or until the fifth wrong try |
 
 - The counters per email address and per client address hold only send times, under an HMAC-SHA-256 of the lowercased address or the client address with a 32-byte random key made when the server starts. They outlive the link, stay in memory for at most an hour and are pruned on the heartbeat. The per-socket count lives on the socket and goes with it.
 
