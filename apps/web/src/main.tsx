@@ -28,6 +28,7 @@ const NAMED: ReadonlyArray<Route> = [
   "privacy",
   "how",
   "send",
+  "secret",
   "about",
   "terms",
   "security",
@@ -46,9 +47,9 @@ function routeOf(path: string): Route {
 }
 
 /**
- * Navigation never reloads the page (see `navigate`). The send and receive pages
- * hold a transfer only in memory, so once opened they stay mounted, hidden while
- * another page shows.
+ * Navigation never reloads the page (see `navigate`). The send, secret and receive
+ * pages hold a transfer only in memory, so once opened they stay mounted, hidden
+ * while another page shows.
  */
 function App() {
   const { t } = useI18n();
@@ -94,7 +95,8 @@ function App() {
   }, [route]);
 
   const secure = hasSecureCrypto();
-  if (route === "send" || route === "receive") {
+  const holdsTransfer = route === "send" || route === "secret" || route === "receive";
+  if (holdsTransfer) {
     kept.current.add(route);
   }
   return (
@@ -109,7 +111,7 @@ function App() {
           route === "terms" ||
           route === "security" ||
           route === "technical") && <InfoPage page={route} />}
-        {!secure && (route === "send" || route === "receive") && <InsecurePage />}
+        {!secure && holdsTransfer && <InsecurePage />}
         {secure && kept.current.has("receive") && (
           <div id="receive" hidden={route !== "receive"}>
             <ReceivePage />
@@ -117,7 +119,12 @@ function App() {
         )}
         {secure && kept.current.has("send") && (
           <div hidden={route !== "send"}>
-            <SendPage />
+            <SendPage kind="file" />
+          </div>
+        )}
+        {secure && kept.current.has("secret") && (
+          <div hidden={route !== "secret"}>
+            <SendPage kind="text" />
           </div>
         )}
       </div>
@@ -126,14 +133,15 @@ function App() {
   );
 }
 
-/** The browser handles a drag only when an enabled input takes that kind (files into the file input, text into the others); anything else is cancelled so it cannot open the file and lose the page. */
+/** The browser handles a drag only when an enabled field takes that kind (files into the file input, text into the other inputs and an editable textarea); anything else is cancelled so it cannot open the file and lose the page. */
 function ignoreStrayDrop(event: DragEvent) {
   const target = event.target;
   const files = event.dataTransfer?.types.includes("Files") ?? false;
   if (
-    target instanceof HTMLInputElement &&
-    !target.disabled &&
-    (target.type === "file") === files
+    (target instanceof HTMLInputElement &&
+      !target.disabled &&
+      (target.type === "file") === files) ||
+    (target instanceof HTMLTextAreaElement && !target.disabled && !target.readOnly && !files)
   ) {
     return;
   }

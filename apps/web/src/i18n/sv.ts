@@ -39,7 +39,8 @@ export const sv: Messages = {
   tabTitles: {
     landing: "Fidant: privat filöverföring",
     send: "Skicka en fil – Fidant",
-    receive: "Ta emot en fil – Fidant",
+    secret: "Dela en hemlighet – Fidant",
+    receive: "Ta emot – Fidant",
     privacy: "Integritet – Fidant",
     how: "Så fungerar det – Fidant",
     about: "Om Fidant – Fidant",
@@ -53,6 +54,7 @@ export const sv: Messages = {
     themes: { system: "System", light: "Ljust", dark: "Mörkt" },
     label: "Huvudmeny",
     send: "Skicka en fil",
+    secret: "Dela en hemlighet",
     how: "Så fungerar det",
     privacy: "Integritet",
   },
@@ -328,6 +330,66 @@ export const sv: Messages = {
       },
     },
   },
+  secret: {
+    lede: "Klistra in ett lösenord, en API-nyckel eller annan kort text. Den går från den här webbläsaren till dem du väljer, krypterad hela vägen, och laddas aldrig upp eller sparas.",
+    label: "Din text",
+    hint: (max: number) => `Högst ${max.toLocaleString("sv")} tecken.`,
+    lostServer:
+      "Anslutningen till servern bröts. Försöker ansluta igen… Texter som redan är på väg kan komma fram. Ingen ny kan ansluta förrän den är tillbaka, så håll sidan öppen.",
+    problems: {
+      offline: {
+        title: "Avsändarens sida är stängd",
+        body: "Texten kommer direkt från avsändarens webbläsare, så sidan måste vara öppen. Be om en ny länk.",
+      },
+      offlineReceiving: {
+        title: "Avsändarens sida är stängd",
+        body: "Texten kommer direkt från avsändarens webbläsare, så sidan måste vara öppen. Texten visades inte. Be om en ny länk.",
+      },
+      lost: {
+        title: "Anslutningen till avsändaren bröts",
+        body: "Texten visades inte.",
+      },
+      lostReceiving: {
+        title: "Anslutningen till avsändaren bröts",
+        body: "Texten visades inte. Försök igen för att vara säker på att du får den.",
+      },
+      checksum: {
+        title: "Texten kom inte fram oskadd",
+        body: "Den ändrades eller skadades på vägen, så den visades inte. Försök igen, och säg till avsändaren om det fortsätter att hända.",
+        detail: "SHA-256-kontrollsumman för den mottagna texten stämde inte med avsändarens.",
+      },
+      invalid: {
+        title: "Något gick fel med överföringen",
+        body: "Avsändarens webbläsare skickade data som vi inte kunde läsa, så ingenting visades.",
+        detail:
+          "En del av överföringen från avsändaren gick inte att dekryptera eller följde inte överföringsformatet.",
+      },
+    },
+    back: "Tillbaka till texten",
+    first: "Skriv eller klistra in texten först.",
+    locked: "Ta bort alla mottagare för att ändra ditt namn eller din text.",
+    keepOpen: "Ha fliken öppen tills alla har fått texten. Den skickas härifrån.",
+    status: {
+      declined: (name: string) =>
+        `Länken till ${name} öppnades och texten avböjdes. Länken fungerar fortfarande.`,
+      failed: (name: string) =>
+        `Texten kom inte fram oskadd via länken till ${name}. Länken kan öppnas igen för att försöka på nytt.`,
+    },
+    offerTitle: (from: string) =>
+      from ? `${from} har skickat en text till dig` : "Du har fått en text",
+    show: "Visa",
+    receivingTitle: "Öppnar texten…",
+    doneTitle: "Här är texten",
+    textLabel: "Texten",
+    notSaved: "Den sparas inte någonstans. Kopiera den innan du stänger fliken.",
+    copy: "Kopiera text",
+    copyNote: {
+      copied: "Kopierad",
+      failed: "Det gick inte att kopiera. Markera texten och kopiera den själv.",
+    },
+    declinedTitle: "Du tackade nej till texten",
+    showAgain: "Visa texten igen",
+  },
   server: {
     heading: "Vad vår server har just nu",
     seesLabel: "Ser",
@@ -573,6 +635,18 @@ export const sv: Messages = {
         body: [
           "Den som kan se den krypterade trafiken, till exempel nätverken på vägen eller vårt relä, ser hur stora ramarna är. Därför avrundas storleken uppåt med metoden Padmé, som lägger till högst 12 %, och sedan till hela delar. Alla ramar med fildata är lika stora, och utfyllnaden är nollor som mottagaren kontrollerar.",
           "Den exakta storleken finns bara i de krypterade META och END. META är alltid lika stor, så inte heller filnamnets längd syns.",
+          "En delad text är högst 32 KiB, och varje text fylls ut till exakt en del, så länge förbindelsen tillåter tillräckligt stora meddelanden. Med alla webbläsare vi testade i november 2026 (Chromium, Firefox och WebKit) är den delen 48 KiB. Så varje text ser likadan ut på nätet, oavsett längd, och likadan som vilken fil som helst på upp till 48 KiB.",
+        ],
+      },
+      {
+        heading: "Att dela en text",
+        body: [
+          "Sidan Dela en hemlighet skickar en text som du skriver eller klistrar in på samma sätt som en fil: samma nycklar, ramar, kontroller och engångslänkar. Ingenting sparas, så avsändarens sida måste vara öppen tills varje mottagare har fått texten.",
+          "Avsändarens webbläsare gör om texten till en fil som bara finns i minnet, med ett fast namn och en typ som visar att det är en text. Precis som för en fil finns namnet och typen bara i den krypterade META. En text kan ha upp till 10 000 tecken, vilket är högst 30 000 byte.",
+          "Textrutan säger åt webbläsaren att stänga av stavningskontroll, autokorrigering, automatisk stor bokstav, autofyll, skrivförslag och översättning för den. Rutan som visar en mottagen text har också autofyll och skrivförslag avstängda.",
+          "Mottagarens webbläsare behandlar ett erbjudande som en text bara om det har exakt den typen och är högst 32 KiB. Allt annat erbjuds som en fil. För en text ser mottagaren namnet som avsändaren skrev men inte storleken, och väljer Visa eller Tacka nej. Efter Tacka nej fungerar länken fortfarande.",
+          "Visa håller texten i webbläsarens minne, aldrig i en sparadialog eller en nedladdning. Först när kontrollerna mot END stämmer avkodas texten och visas: som ren text i en skrivskyddad ruta med stavningskontroll och översättning avstängda, aldrig som en del av sidans HTML. Knappen Kopiera text lägger den i urklippet.",
+          "Vår server och vårt relä hanterar en text som vilken fil som helst. När sidan Dela en hemlighet laddas från vår server, genom att någon skriver adressen, laddar om sidan eller följer en länk, kan vår server se att någon har öppnat den. Sidan öppnar sedan en signaleringsanslutning som varje avsändarsida gör, och när man går till den inne i appen öppnas också en. Servern får aldrig texten eller dess längd, och en anslutning säger inte vilken sida som öppnade den, men efter en full laddning kan servern koppla anslutningen som följer från samma adress till besöket och dra slutsatsen att den som besöker sidan delar en text och med hur många länkar. Sidvisningar loggas inte.",
         ],
       },
       {
@@ -603,9 +677,9 @@ export const sv: Messages = {
       {
         heading: "Vad vår server och vårt relä ser och sparar",
         body: [
-          "Vår server ser varje sidas IP-adress och webbläsaruppgifter, länk-ID:na, avsändarens val om reläet, vilken väg avsändaren rapporterar för varje försök (direkt, STUN, relä eller misslyckad), om en länk redan har använts, när varje sida ansluter och kopplar ner samt de krypterade meddelandena för uppkopplingen och deras storlek. Den ser aldrig filen, dess namn, typ eller exakta storlek, hemligheten eller nycklarna, och den kan inte läsa meddelandena. Den har det den vet bara i minnet och glömmer en sida inom en minut efter att den kopplat ner.",
+          "Vår server ser varje sidas IP-adress och webbläsaruppgifter, länk-ID:na, avsändarens val om reläet, vilken väg avsändaren rapporterar för varje försök (direkt, STUN, relä eller misslyckad), om en länk redan har använts, när varje sida ansluter och kopplar ner samt de krypterade meddelandena för uppkopplingen och deras storlek. Den ser aldrig filen, dess namn, typ eller exakta storlek, en delad text eller dess längd, hemligheten eller nycklarna, och den kan inte läsa meddelandena. Den har det den vet bara i minnet och glömmer en sida inom en minut efter att den kopplat ner.",
           "Dess loggrader har en fast lista med fält, till exempel de 6 första tecknen i ett länk-ID och om en förbindelse gick direkt. Aldrig namn, nycklar, filinnehåll eller IP-adresser. De raderas efter 30 dagar.",
-          "Vårt relä ser båda IP-adresserna och den krypterade trafiken, alltså filens storlek bara ungefär. Det för ingen logg. Bara för att rätta ett fel eller stoppa missbruk slår vi på en, med tider för anslutningar, IP-adresser och datamängder, i högst 7 dagar.",
+          "Vårt relä ser båda IP-adresserna och den krypterade trafiken, alltså filens storlek bara ungefär och ingenting av en texts längd. Det för ingen logg. Bara för att rätta ett fel eller stoppa missbruk slår vi på en, med tider för anslutningar, IP-adresser och datamängder, i högst 7 dagar.",
         ],
         link: ["Alla loggfält, på integritetssidan", "/privacy"],
       },
@@ -620,11 +694,12 @@ export const sv: Messages = {
       {
         heading: "Det här skyddar den inte mot",
         body: [
-          "Länken är nyckeln. Den som får tag på en länk kan öppna filen tills länken har använts. Skicka varje länk bara till den den är till, på ett sätt du litar på.",
+          "Länken är nyckeln. Den som får tag på en länk kan öppna filen eller texten tills länken har använts. Skicka varje länk bara till den den är till, på ett sätt du litar på.",
           "Din webbläsare kör den kod vår server skickar. En server som skickade annan kod skulle kunna läsa filer. Koden är offentlig, men webbläsare kan ännu inte kontrollera att det de fick stämmer med den.",
           "Avsändarens namn skrivs av avsändaren och kontrolleras inte.",
           "Den andra webbläsaren ser din IP-adress. Nätverken på vägen, och vårt relä när det används, ser båda IP-adresserna, när överföringen sker och ungefär hur stor filen är. Vår server ser båda IP-adresserna, vilken mottagare som ansluter till vilken avsändare och när, och hur många mottagare en avsändare har. Så den får veta vem som skickar till vem, men inte vad.",
           "Skadlig kod på någon av datorerna kan läsa filen innan den krypteras eller efter att den dekrypterats.",
+          "När mottagaren kopierar en text hamnar den i enhetens urklipp, där urklippshistorik, synkning av urklippet till andra enheter och andra appar kan läsa den. När en text väl har visats kan Fidant inte nå den: den går varken att ta tillbaka eller radera.",
           "Fidant har ännu inte granskats av någon oberoende part.",
         ],
       },
@@ -643,7 +718,7 @@ export const sv: Messages = {
   },
   privacy: {
     title: "Integritet",
-    lede: "Din fil går från din webbläsare till webbläsaren hos den du skickar till, direkt när era nätverk tillåter det och annars via vårt relä. Den låses innan den lämnar din dator, och bara den som har länken kan låsa upp den. Vi får aldrig filen, dess namn eller nyckeln.",
+    lede: "Din fil går från din webbläsare till webbläsaren hos den du skickar till, direkt när era nätverk tillåter det och annars via vårt relä. Den låses innan den lämnar din dator, och bara den som har länken kan låsa upp den. Vi får aldrig filen, dess namn eller nyckeln. Detsamma gäller en text som du delar från sidan Dela en hemlighet.",
     howHeading: "Så går det till att skicka",
     steps: [
       [
@@ -681,6 +756,10 @@ export const sv: Messages = {
     neverHeading: "Aldrig",
     never: [
       ["Din fil", "Varken innehållet, filnamnet, storleken eller filtypen."],
+      [
+        "Din text",
+        "Varken texten du delar från sidan Dela en hemlighet eller dess längd: varje text fylls ut till samma storlek innan den lämnar din webbläsare.",
+      ],
       ["Nyckeln", "Den del av länken som låser upp filen når aldrig oss."],
       ["Namn", "Varken namnet du skriver för dig själv eller namnen på dem du skickar till."],
     ],
