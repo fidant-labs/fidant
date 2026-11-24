@@ -15,6 +15,7 @@ Run this from the **main session**. Subagents cannot launch subagents, so the re
 - Base: `git rev-parse --abbrev-ref origin/HEAD`, falling back to `origin/main`. Fetch and merge it first (`git fetch origin && git merge --no-edit origin/main`) so the review sees the merged tree and nothing has to merge after the mark. Never rebase. Outside a worktree, ask before making that merge commit.
 - Merge base: `git merge-base <base> HEAD`.
 - The diff under review is `git diff <merge-base>` (committed plus uncommitted tracked changes) and any untracked files from `git status --porcelain`.
+- **After a clean mark**, review only what changed since it. The marked commit is in `$(git rev-parse --git-path deep-review-clean-head)`. When that commit is an ancestor of `HEAD` (`git merge-base --is-ancestor`), the delta base is the first output line of `git merge-tree --write-tree <marked commit> <base>`: the marked tree with the base merged in, so base changes stay out of the delta. The diff under review is then `git diff <delta base>` plus untracked files, and step 3 picks lanes and applies its tiny and docs-only rules by the delta. When the file is missing, the commit is not an ancestor or `merge-tree` exits non-zero, review the whole branch.
 - Record the changed paths, total changed lines and file count. Reviewers run the diff commands themselves; never paste the diff into a prompt.
 
 ## 2. Briefing
@@ -126,4 +127,4 @@ When the result is clean and the gate is green, commit the reviewed changes once
 bash .claude/scripts/review-gate.sh mark
 ```
 
-It refuses while reviewed changes are uncommitted. The hook only lets `gh pr create` through when this mark matches the branch's current diff, so any later commit needs another review. A clean merge of the base keeps the mark.
+It refuses while reviewed changes are uncommitted. The hook only lets `gh pr create` through when this mark matches the branch's current diff, so any later commit needs another review (of the delta, see step 1). A clean merge of the base keeps the mark.
