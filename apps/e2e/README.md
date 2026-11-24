@@ -43,7 +43,8 @@ Not wired yet. Each arrives with the first issue that needs the service:
 | DynamoDB requests, responses and snapshots   | SIG-42         |
 | BankID simulator and TSA, through the proxy  | SIG-42         |
 | File-name carriers (`src/leaks/carriers.ts`) | SIG-42, SIG-43 |
-| Object storage and mail (Mailpit)            | SIG-43         |
+| Object storage                               | SIG-43         |
+| Mail (Mailpit)                               | SIG-107        |
 | coturn packet capture                        | SIG-44         |
 
 ## Adding an observation point

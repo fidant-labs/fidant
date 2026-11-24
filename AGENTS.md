@@ -1,6 +1,6 @@
 # Sigill
 
-Secure file transfer. Files are encrypted in the sender's browser, and no infrastructure (our servers, hosts, relays, email) can read file content, except through a link that Fidant emails (see Invariants). Verified transfers add BankID identity, a signed receipt, and a tamper-evident audit log.
+Secure file transfer. Files are encrypted in the sender's browser, and no infrastructure (our servers, hosts, relays, email) can read file content, except through a peer-to-peer link that Fidant emails (see Invariants). Verified transfers add BankID identity, a signed receipt, and a tamper-evident audit log.
 
 Planning lives in Linear: workspace `sigill`, team `SIG`, issue keys like `SIG-21`.
 
@@ -60,8 +60,8 @@ Planning lives in Linear: workspace `sigill`, team `SIG`, issue keys like `SIG-2
 
 ## Invariants
 
-- Never send file content, file names, file metadata or keys to the server or any other infrastructure, and never log them. Two deliberate exceptions: the BankID receipt text names the file, and a link that Fidant emails carries its key through our server and our mail service (see `docs/decisions/0008-email-recipients.md`).
-- Keys live only in the URL fragment or in browser memory. Two exceptions: the server-held half of a verified transfer's split key, which the server stores and releases only after the receipt is signed (see `docs/decisions/0001-e2e-tests-and-leak-model.md`), and the key in a link that Fidant emails, which our server holds in memory only until the mail service has the notice (see `docs/decisions/0008-email-recipients.md`).
-- What counts as a leak, concretely, is defined in `docs/decisions/0001-e2e-tests-and-leak-model.md`, read with the records that amend it: 0002, 0003, 0004 and `docs/decisions/0008-email-recipients.md`.
+- Never send file content, file names, file metadata or keys to the server or any other infrastructure, and never log them. Two deliberate exceptions: the BankID receipt text names the file, and a peer-to-peer link that Fidant emails carries its key through our server and our mail service (see `docs/decisions/0008-email-recipients.md`).
+- Keys live only in the URL fragment or in browser memory. Two exceptions: the server-held half of a verified transfer's split key, which the server stores and releases only after the receipt is signed (see `docs/decisions/0001-e2e-tests-and-leak-model.md`), and the key in a peer-to-peer link that Fidant emails, which passes through our server's memory, only until its one send attempt ends, and through our mail service (see `docs/decisions/0008-email-recipients.md`).
+- What counts as a leak, concretely, is defined in `docs/decisions/0001-e2e-tests-and-leak-model.md`, read with the records in `docs/decisions/` that amend it.
 - This repository is public. Never commit secrets, real personal data or customer data. The pre-commit hook runs gitleaks.
 - The project must run fully local for tests and demos, with no internet. Add infrastructure (database, storage, relay) only when a feature needs it.
