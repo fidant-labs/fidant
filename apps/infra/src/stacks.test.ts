@@ -163,6 +163,19 @@ test("the app box is open only on 80, 443 and the relay's ports, and on 22 only 
   assert.doesNotMatch(topLevel, /pipefail|\[\[/);
 });
 
+test("the app box keeps log lines for at most 30 days, before any service starts logging", () => {
+  const stack = stacksFor(pocAccount).find((child) => child.stackName === "FidantApp");
+  const [instance] = Object.values(
+    Template.fromStack(stack as Stack).findResources("AWS::Lightsail::Instance"),
+  );
+  const userData = String(instance?.Properties.UserData);
+  const dropIn = userData.indexOf(
+    "\ncat >/etc/systemd/journald.conf.d/zz-retention.conf <<'EOF'\n[Journal]\nMaxRetentionSec=29day\nMaxFileSec=1day\nForwardToSyslog=no\nEOF\nsystemctl restart systemd-journald\n",
+  );
+  assert.ok(dropIn > 0);
+  assert.ok(dropIn < userData.indexOf("\napt-get "));
+});
+
 test("the app box runs coturn after the site is up, with a secret that stays on the box", () => {
   const stack = stacksFor(pocAccount).find((child) => child.stackName === "FidantApp");
   const box = Template.fromStack(stack as Stack);

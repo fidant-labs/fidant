@@ -16,6 +16,10 @@ export function I18nProvider({ children }: { children: ComponentChildren }) {
   const [lang, setLangState] = useState(initialLanguage);
   useLayoutEffect(() => {
     document.documentElement.lang = lang;
+    // The meta description is the footer tagline; index.html carries the English one for crawlers.
+    document
+      .querySelector('meta[name="description"]')
+      ?.setAttribute("content", MESSAGES[lang].footer.tagline);
   }, [lang]);
   const setLang = (next: Lang) => {
     rememberLanguage(next);
