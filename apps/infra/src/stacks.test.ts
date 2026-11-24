@@ -281,7 +281,7 @@ test("the committed config keeps fidant.se's Proton mail records", () => {
   committed.hasResourceProperties(recordSet, {
     Name: "_dmarc.fidant.se.",
     Type: "TXT",
-    ResourceRecords: [Match.stringLikeRegexp('^"v=DMARC1; p=(quarantine|reject)[;"]')],
+    ResourceRecords: [Match.stringLikeRegexp('^"v=DMARC1; p=reject[;"]')],
   });
 });
 
