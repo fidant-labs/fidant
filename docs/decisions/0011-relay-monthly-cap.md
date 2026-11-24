@@ -39,7 +39,7 @@
 - SSM parameter `/fidant/relay-cap` holds JSON: the month (`YYYY-MM`), the bytes counted per box name, and whether the ports are closed.
 - The total is the sum over every box name of the month, and each box's count only goes up. A replaced box starts at zero in Lightsail's metrics, but the old box's bytes stay in the total, as they do in the pooled allowance.
 - A new month starts a fresh state and reopens the ports on the first run.
-- A malformed parameter makes the run fail. It does not guess.
+- A malformed parameter makes the run fail. It does not guess. To repair it, overwrite it with a valid state, or delete it. Deleting it forgets that the cap closed the ports, so if the cap was active, restore the ports by hand too.
 
 ### Alerts
 
@@ -49,6 +49,7 @@
   - "Fidant relay stopped: monthly traffic cap reached", at 1.8 TB.
   - "Fidant relay cap failing", when the Lambda errors in 3 runs in a row.
 - Missing data does not set off the first two. The third treats missing data as fine.
+- All three also email when they return to OK, so a recovery email is expected. The cap alarm's OK mail arrives on the 1st, when the ports reopen.
 
 ### Result of the live test
 
@@ -79,13 +80,20 @@ aws ssm get-parameter --name /fidant/relay-cap --profile fidant-poc --region eu-
 
 ### Lift the cap
 
-- Raise `relayCapBytes` in `apps/infra/src/config.ts` (and `relayWarnBytes` with it) and deploy `FidantApp`. The next run reopens the ports.
+- Raise `relayCapBytes` in `apps/infra/src/config.ts` (and `relayWarnBytes` with it) and deploy `FidantApp`. A merge to main that touches `apps/infra/**` deploys it through `deploy-infra.yml`, or deploy by hand with `pnpm --filter @sigill/infra cdk deploy FidantApp --profile fidant-poc`. The next run reopens the ports.
 - Keep the limit under the bundle's allowance, or traffic past it is billed at 0.09 USD/GB.
 
 ### Pause the cap
 
-- Disable the EventBridge rule `RelayCapSchedule` in the console. Enabling it again resumes the cap.
-- While it is paused, nothing closes or reopens the ports.
+- `RelayCapSchedule` is the CDK construct id. The deployed rule is named like `FidantApp-RelayCapSchedule<hash>`. Find it, then disable it:
+
+```sh
+aws events list-rules --name-prefix FidantApp-RelayCapSchedule --profile fidant-poc --region eu-north-1
+aws events disable-rule --name <name> --profile fidant-poc --region eu-north-1
+```
+
+- `aws events enable-rule` with the same arguments resumes the cap.
+- While it is paused, nothing closes or reopens the ports. Pausing while the cap is active leaves the relay ports closed. To reopen them, raise the cap instead, or restore all six ports by hand with `put-instance-public-ports`.
 
 ### Confirm the email subscription
 
