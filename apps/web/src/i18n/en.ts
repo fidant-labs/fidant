@@ -22,7 +22,7 @@ const logFields: Record<"event" | keyof LogFields, readonly [string, string]> = 
   ],
   bytes: ["message sizes", "To spot oversized or broken messages and to size the server."],
   reason: [
-    "why a link or connection was refused",
+    "why a link, connection, email or code was refused",
     "To see why connections fail, so we can fix the cause.",
   ],
   code: ["error codes", "To find bugs in the browser app or the server."],
@@ -57,7 +57,7 @@ export const en = {
   },
   landing: {
     title: "Send a file only the recipient can open.",
-    lede: "Fidant encrypts the file in your browser before it goes to the person you choose. It is never stored, and nobody in between, us included, can read it.",
+    lede: "Fidant encrypts the file in your browser before it goes to the person you choose. It is never stored, and unless you ask us to email the link, nobody in between, us included, can read it.",
     cta: "Send a file",
     how: "Read how it works",
     noAccount: "No account. Nothing stored.",
@@ -81,7 +81,7 @@ export const en = {
   },
   how: {
     title: "How it works",
-    lede: "What happens to your file, step by step. In short: it is locked on your computer, and only someone with the link can unlock it.",
+    lede: "What happens to your file, step by step. In short: it is locked on your computer, and only someone with the link can unlock it. If you ask us to email the link, that includes us.",
     sections: {
       stays: {
         heading: "Your file stays on your computer",
@@ -93,16 +93,16 @@ export const en = {
       link: {
         heading: "You get a link with the key inside",
         body: [
-          "You get one link for each person. Each link works once. You send it yourself, for example by email or chat.",
-          "The key that unlocks the file is the part after the # sign. Browsers never send that part to us, so we never see the key.",
-          "Anyone with the link can open the file. Send each link only to the person it is for.",
+          "You get one link for each person. Each link works once. You send it yourself, for example by email or chat, or give us their email address and we email it to them.",
+          "The key that unlocks the file is the part after the # sign. Browsers never send that part to us, so we never see the key, unless you ask us to email the link. Then your browser gives it to our server once, to put in the email.",
+          "Anyone with the link can open the file. A link we email also asks for a code that we email to the same address, so it works for anyone who can read that mailbox. Send each link only to the person it is for.",
         ],
       },
       open: {
         heading: "They open the link while your page is open",
         body: [
           "Nothing is stored, so your page must stay open until they have the file.",
-          "Our server helps the two browsers find each other, like an operator connecting a phone call. It passes on a few small locked messages that it can't read.",
+          "Our server helps the two browsers find each other, like an operator connecting a phone call. It passes on a few small locked messages that it can't read, unless it emailed the link and so had the key.",
           "They see the file's name and size and choose whether to download it.",
         ],
       },
@@ -126,8 +126,8 @@ export const en = {
       never: {
         heading: "What we never see",
         body: [
-          "Not your file. Not its name. Not the key that unlocks it.",
-          "That goes for our server and our relay.",
+          "Not your file. Not its name. Not the key that unlocks it, unless you ask us to email the link.",
+          "That goes for our server and our relay. Our relay never sees the key at all.",
         ],
       },
     },
@@ -178,6 +178,8 @@ export const en = {
     fromLabel: "Your name",
     optional: "(optional)",
     fromHint: "Shown to the people you send to.",
+    fromHintEmail:
+      "If we email a link, your name also goes in that email, marked as not verified. Our server puts it there and doesn't keep it.",
     allowRelay: "Allow our relay if a direct connection isn't possible",
     fromError: {
       unsafe: "Your name contains characters that can't be sent. Remove them and try again.",
@@ -206,7 +208,7 @@ export const en = {
     emailLabel: "Their email address",
     emailError: "Enter a valid email address, like name@example.com.",
     emailNotice:
-      "Fidant emails this link for you, so our server sees its key once. The key isn't stored or logged.",
+      "Fidant emails this link for you, so our server sees its key once. The key isn't stored or logged. The link, key included, stays in their mailbox, so anyone who can read that mailbox could receive the file.",
     fileFirst: "Choose a file first.",
     full: (max: number) => `You can send to up to ${max} people at a time.`,
     oneLinkEach: "Each person gets their own link, which works once.",
@@ -381,47 +383,78 @@ export const en = {
       links,
       connected,
       relay,
+      emailed,
+      sending,
+      mailed,
     }: {
       online: boolean;
       links: number;
       connected: number;
       /** Whether the sender allows our TURN relay. */
       relay: boolean;
+      /** Hosted links the server emails or may be emailing. */
+      emailed: number;
+      /** Of those, links whose email the server may still be sending. */
+      sending: number;
+      /** Whether this page ever asked the server to email a link. */
+      mailed: boolean;
     }) => {
       if (!online) {
-        return "Nothing once it notices the connection has closed. That takes up to a minute if the network dropped.";
+        return mailed
+          ? "Only scrambled counts of the emails it sent for you, for up to an hour, once it notices the connection has closed. That takes up to a minute if the network dropped."
+          : "Nothing once it notices the connection has closed. That takes up to a minute if the network dropped.";
       }
       const choice = relay
         ? "Your choice to allow our relay."
         : "Your choice not to allow our relay.";
+      const counts = mailed
+        ? " Scrambled counts of the emails it sent for you, for up to an hour."
+        : "";
       if (links === 0) {
-        return `No links yet. ${choice}`;
+        return `No links yet. ${choice}${counts}`;
       }
-      const ids =
-        links === 1
-          ? "The ID of your link, never the part that unlocks the file."
-          : `The IDs of your ${links} links, never the part that unlocks the file.`;
-      const held = `${ids} ${choice}`;
+      const ids = links === 1 ? "The ID of your link" : `The IDs of your ${links} links`;
+      const email =
+        emailed === 0
+          ? ""
+          : emailed === 1
+            ? " For the link it emails: the recipient's email address and the codes sent there."
+            : ` For the ${emailed} links it emails: the recipients' email addresses and the codes sent there.`;
+      const key =
+        sending === 0
+          ? `${ids}, never the part that unlocks the file.${email}`
+          : `${ids}.${email} While it sends an email, also the part of that link that unlocks the file, and your name.`;
+      const held = `${key} ${choice}${counts}`;
       if (connected === 0) {
         return held;
       }
       const who = connected === 1 ? "1 recipient" : `${connected} recipients`;
       return `${held} ${who} connected right now.`;
     },
-    recipientHolds: (tie: Tie) =>
-      ({
-        paired:
-          "The ID of your link, never the part that unlocks the file, and that this page is connected to the sender.",
-        unpaired:
-          "Nothing that ties this page to your link. Only the sender's page can keep your link's ID there.",
-        closed:
-          "Nothing about this page once it notices the connection has closed, which takes up to a minute if the network dropped. Only the sender's page can keep your link's ID there.",
-      })[tie],
-    /** `size` is already formatted, like "9.2 KB". */
-    passedOn: (messages: number, size: string) =>
+    /** `emailed`: the link is one the server emailed. */
+    recipientHolds: (tie: Tie, emailed: boolean) =>
+      (emailed
+        ? {
+            paired:
+              "The ID of your link, your email address, that this tab entered the right code, and that this page is connected to the sender. It had the part that unlocks the file only while it emailed you the link.",
+            unpaired:
+              "Your email address, which the sender gave for this link, the latest code it emailed you and whether this tab entered it. Only the sender's page can keep them there.",
+            closed:
+              "Nothing about this page once it notices the connection has closed, which takes up to a minute if the network dropped, apart from whether this tab entered the right code. Only the sender's page can keep that, your link's ID and your email address there.",
+          }
+        : {
+            paired:
+              "The ID of your link, never the part that unlocks the file, and that this page is connected to the sender.",
+            unpaired:
+              "Nothing that ties this page to your link. Only the sender's page can keep your link's ID there.",
+            closed:
+              "Nothing about this page once it notices the connection has closed, which takes up to a minute if the network dropped. Only the sender's page can keep your link's ID there.",
+          })[tie],
+    /** `size` is already formatted, like "9.2 KB". `emailed`: the server emailed a link on this page. */
+    passedOn: (messages: number, size: string, emailed: boolean) =>
       messages === 0
         ? "Nothing yet."
-        : `${messages} ${messages === 1 ? "setup message" : "setup messages"} (${size}), all encrypted so the server can't read them.`,
+        : `${messages} ${messages === 1 ? "setup message" : "setup messages"} (${size}), all encrypted so the server can't read them${emailed ? ", except for a link it emailed, whose key it had" : ""}.`,
     fileData: "None. The file goes directly between browsers.",
     fileDataRelayed:
       "None. The browsers couldn't connect directly, so the file passes encrypted through our relay instead.",
@@ -434,23 +467,30 @@ export const en = {
     relayKeepsLabel: "Our relay keeps",
     relayKeeps:
       "Nothing of the file once it has passed through. Log lines from fixing a fault or stopping abuse are deleted within 7 days.",
-    senderAfterwards: (online: boolean): string =>
-      online
-        ? "When you close this tab, the server forgets your links, within a minute at most. Its log lines stay."
-        : "Your links are gone from the server within a minute of the connection closing. Its log lines stay.",
-    afterwardsRecipient:
-      "When this page disconnects, the server drops what it has about this page, within a minute at most. Its log lines stay.",
+    /** `mailed`: this page asked the server to email a link. */
+    senderAfterwards: (online: boolean, mailed: boolean): string =>
+      `${
+        online
+          ? "When you close this tab, the server forgets your links, within a minute at most. Its log lines stay."
+          : "Your links are gone from the server within a minute of the connection closing. Its log lines stay."
+      }${mailed ? " So do scrambled counts of the emails it sent for you, for up to an hour." : ""}`,
+    /** `emailed`: the link is one the server emailed. */
+    afterwardsRecipient: (emailed: boolean): string =>
+      emailed
+        ? "When this page disconnects, the server drops what it has about this page, within a minute at most, apart from what the code check needs: your email address and whether this tab entered the right code stay until the sender's page closes, and a scrambled count of the codes sent to your address for up to an hour. Its log lines stay."
+        : "When this page disconnects, the server drops what it has about this page, within a minute at most. Its log lines stay.",
     logs: `What happened, like a link being opened, with ${new Intl.ListFormat("en", {
       type: "conjunction",
     }).format(
       Object.entries(logFields)
         .filter(([field]) => field !== "event")
         .map(([, [what]]) => what),
-    )}. Never names, keys, file data or IP addresses.`,
+    )}. Never names, email addresses, emailed codes, keys, file data or IP addresses.`,
   },
   footer: {
     label: "Site",
-    tagline: "Files encrypted in your browser, readable only by the recipient.",
+    tagline:
+      "Files encrypted in your browser, readable only by the recipient unless you ask us to email the link.",
     about: "About",
     terms: "Terms",
     security: "Security",
@@ -459,7 +499,7 @@ export const en = {
   },
   about: {
     title: "About Fidant",
-    lede: "Fidant is a way to send a file to someone without trusting anyone in between, including us.",
+    lede: "Fidant is a way to send a file to someone without trusting anyone in between, including us, unless you ask us to email the link.",
     sections: [
       {
         heading: "Who runs it",
@@ -497,14 +537,14 @@ export const en = {
       {
         heading: "Your files are yours",
         body: [
-          "Files go between browsers, encrypted the whole way, and we never have the key, so we can't read, recover, delete or check them for you. Only send files you have the right to share, and only to people you mean to share them with.",
+          "Files go between browsers, encrypted the whole way. We never have the key, unless you ask us to email a link, and we never keep it, so we can't recover, delete or check your files for you. Only send files you have the right to share, and only to people you mean to share them with.",
           "Don't use Fidant for anything illegal.",
         ],
       },
       {
         heading: "Links",
         body: [
-          "Anyone who has a link can open the file it points to. Each link works once, and only while the sender's page is open.",
+          "Anyone who has a link can open the file it points to. A link we email also needs a code we send to the same address. Each link works once, and only while the sender's page is open.",
         ],
       },
       {
@@ -521,15 +561,16 @@ export const en = {
       {
         heading: "How the file is protected",
         body: [
-          "Your browser encrypts the file with AES-256-GCM before it leaves your computer. The key is in the part of the link after #, which browsers never send to a server.",
-          "The file goes directly between the two browsers. If a network blocks that, it passes through our relay instead, still encrypted. Our server only passes on a few small setup messages, which are encrypted so it can't read them.",
+          "Your browser encrypts the file with AES-256-GCM before it leaves your computer. The key is in the part of the link after #, which browsers never send to a server. If you ask us to email a link, your browser gives that link's key to our server once, to put in the email, and the server doesn't store or log it.",
+          "The file goes directly between the two browsers. If a network blocks that, it passes through our relay instead, still encrypted. Our server only passes on a few small setup messages, which are encrypted so it can't read them, except for a link it emailed, whose key it had.",
           "The recipient's browser checks the file's SHA-256 checksum, so a file that was changed or damaged on the way is not saved.",
         ],
       },
       {
         heading: "What it doesn't protect against",
         body: [
-          "Anyone who gets hold of a link can open the file. Send each link only to the person it is for, over a channel you trust.",
+          "Anyone who gets hold of a link can open the file, and a link we email also needs a code we send to the same address. Send each link only to the person it is for, over a channel you trust.",
+          "A link we email stays in the recipient's mailbox. Anyone who can read that mailbox can also get the code, and so the file. And because our server had that link's key, you have to trust us not to read the file on its way. To avoid both, leave the email address empty and send the link yourself.",
           "The sender's name is typed by the sender and not verified.",
           "The two browsers see each other's IP address, the same as on a video call. When the file goes through our relay, the relay sees both IP addresses and roughly how big the file is.",
           "A computer that is already compromised can read the file before it is encrypted or after it is unlocked.",
@@ -550,7 +591,7 @@ export const en = {
   },
   privacy: {
     title: "Privacy",
-    lede: "Your file goes from your browser to the browser of the person you send it to, directly when your networks allow it and otherwise through our relay. It's locked before it leaves your computer, and only the person with the link can unlock it. We never get the file, its name or the key.",
+    lede: "Your file goes from your browser to the browser of the person you send it to, directly when your networks allow it and otherwise through our relay. It's locked before it leaves your computer, and only the person with the link can unlock it. We never get the file or its name, and never the key unless you ask us to email the link.",
     howHeading: "How sending works",
     // [bold, rest]: the bold part opens each step.
     steps: [
@@ -560,7 +601,7 @@ export const en = {
       ],
       [
         "You get one link per person.",
-        "Each link holds the key that unlocks the file. You send the link yourself, for example by email or chat.",
+        "Each link holds the key that unlocks the file. You send the link yourself, for example by email or chat, or we email it to an address you give us. A link we email also asks for a code we send to the same address.",
       ],
       [
         "They open the link while your page is still open.",
@@ -580,18 +621,24 @@ export const en = {
     // [before, after] a bold "#".
     keyPart: [
       "The key is the last part of the link, after the ",
-      " sign. Browsers never send that part to any website, ours included. That is why we can't unlock your file even if we wanted to.",
+      " sign. Browsers never send that part to any website, ours included. That is why we can't unlock your file even if we wanted to. The exception is a link you ask us to email: your browser gives its key to our server once, to put in the email, and we don't store or log it.",
     ] as readonly [string, string],
     direct:
       "Because the two browsers connect directly, each can see the other's network address (IP address), the same as on a video call. If a network blocks that, the file passes through our relay instead, still locked. The relay then sees both IP addresses and roughly how big the file is, and can't unlock it.",
     linkWarning:
-      "Anyone who has the link can open the file. Send each link only to the person it is for.",
+      "Anyone who has the link can open the file. A link we email also needs a code we send to the same address, so anyone who can read that mailbox can open it. Send each link only to the person it is for.",
     serverHeading: "What our server knows",
     neverHeading: "Never",
     never: [
       ["Your file", "Not the contents, not the file name, not its size or type."],
-      ["The key", "The part of the link that unlocks the file never reaches us."],
-      ["Names", "Neither the name you type for yourself nor the names of the people you send to."],
+      [
+        "The key, unless we email the link for you",
+        "The part of the link that unlocks the file never reaches us, unless you ask us to email the link. Then our server uses it once to write the email, and doesn't store or log it.",
+      ],
+      [
+        "Recipients' names",
+        "Not the names you give the people you send to. Your own name reaches us only if you ask us to email a link: it goes in that email, and we don't keep it.",
+      ],
     ] as ReadonlyArray<readonly [string, string]>,
     seesHeading: "Only what it needs to connect you",
     sees: [
@@ -605,15 +652,23 @@ export const en = {
       ],
       [
         "Setup messages",
-        "A few small, locked messages that help the two browsers connect. We pass them on without being able to read them, and don't keep them.",
+        "A few small, locked messages that help the two browsers connect. We pass them on and don't keep them. We can't read them, except those of a link we emailed, whose key we had.",
       ],
       [
         "The sender's relay choice",
         "Whether the sender allows our relay, so we only give recipients access to it when they do. We forget it within a minute after the sender's page closes, and never write it to our logs.",
       ],
+      [
+        "An email address, if you give one",
+        "If you ask us to email a link, your browser sends our server the recipient's email address, the link with its key, and your name. We keep the key and your name only until the email has gone. We keep the address in memory while your page is open, so we can email the recipient a code when they open the link. We also keep the latest code and which browser tabs entered the right one. We never log the address or write it to disk. Our mail service, Amazon SES, delivers the emails, and bounces go only to it, never to a mailbox of ours. An address that bounces as undeliverable goes on a list that Amazon SES keeps for all its customers, for up to 14 days, so that nobody sends it more mail. We can't turn that list off.",
+      ],
+      [
+        "Counts of emails",
+        "To limit how many emails anyone can send, we count the emails sent to each address and the emails each IP address asks us to send, for an hour. We keep each count under a scrambled form of the address (an HMAC), never the address itself.",
+      ],
     ] as ReadonlyArray<readonly [string, string]>,
     keepHeading: "What we keep",
-    keep: "We have no accounts, no database, no cookies and no tracking. Apart from the log lines below, nothing is kept once the sender's page is closed, within a minute at most.",
+    keep: "We have no accounts, no database, no cookies and no tracking. Apart from the log lines below and the email counts above, which last an hour, nothing is kept once the sender's page is closed, within a minute at most.",
     logFields,
     logRetention: "Log lines are deleted after 30 days.",
   },

@@ -209,6 +209,11 @@ export function findRecipient(state: SenderState, linkId: string): Recipient | u
   return state.recipients.find((r) => r.linkId === linkId);
 }
 
+/** True while the server holds, or may hold, an email binding for the recipient's link. */
+export function emailBound(recipient: Recipient): boolean {
+  return !recipient.unbound && (recipient.mark !== undefined || recipient.mail === "sending");
+}
+
 /**
  * Every link ID the sender should host: all recipients, including delivered
  * ones, so that the sender can answer a late join on them with "used", except
@@ -241,7 +246,7 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
     let changed = false;
     const recipients = state.recipients.map((r) => {
       let next = r;
-      if (!r.unbound && (r.mark !== undefined || r.mail === "sending")) {
+      if (emailBound(r)) {
         next = { ...next, unbound: true };
       }
       if (r.status === "connecting") {

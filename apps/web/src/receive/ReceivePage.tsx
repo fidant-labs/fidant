@@ -599,13 +599,15 @@ export function ReceivePage() {
     );
   }
 
+  const emailed = link?.mark !== undefined;
   const panel = reachedServer ? (
     <ServerPanel
       sees={t.server.seesRecipient}
-      holds={t.server.recipientHolds(tie)}
+      holds={t.server.recipientHolds(tie, emailed)}
       relayed={relayed}
-      afterwards={t.server.afterwardsRecipient}
+      afterwards={t.server.afterwardsRecipient(emailed)}
       viaRelay={viaRelay}
+      emailed={emailed}
     />
   ) : null;
 

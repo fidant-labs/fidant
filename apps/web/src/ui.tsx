@@ -461,6 +461,7 @@ export function ServerPanel({
   relayed,
   afterwards,
   viaRelay,
+  emailed,
 }: {
   sees: string;
   holds: string;
@@ -468,12 +469,17 @@ export function ServerPanel({
   afterwards: string;
   /** A connection on this page went through our TURN relay. */
   viaRelay: boolean;
+  /** The server got the key of a link on this page, to email it. */
+  emailed: boolean;
 }) {
   const { t, lang } = useI18n();
   const rows: ReadonlyArray<readonly [string, string]> = [
     [t.server.seesLabel, sees],
     [t.server.holdsLabel, holds],
-    [t.server.passedOnLabel, t.server.passedOn(relayed.messages, formatBytes(relayed.bytes, lang))],
+    [
+      t.server.passedOnLabel,
+      t.server.passedOn(relayed.messages, formatBytes(relayed.bytes, lang), emailed),
+    ],
     [t.server.fileDataLabel, viaRelay ? t.server.fileDataRelayed : t.server.fileData],
     [t.server.logsLabel, t.server.logs],
     [t.server.afterwardsLabel, afterwards],

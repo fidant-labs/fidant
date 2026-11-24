@@ -63,6 +63,7 @@ import { createLink } from "../lib/link.ts";
 import { createSenderPeer, type Peer } from "../lib/peer.ts";
 import { hashFile, sendFile } from "../lib/send-file.ts";
 import {
+  emailBound,
   findRecipient,
   hostedLinks,
   initialSenderState,
@@ -119,6 +120,8 @@ export function SendPage() {
   const [mail, setMail] = useState(false);
   const [emailFilled, setEmailFilled] = useState(false);
   const [emailError, setEmailError] = useState(false);
+  // ponytail: sticky for the page, since the server saw the key and keeps email counts for an hour
+  const [mailed, setMailed] = useState(false);
   const [fileError, setFileError] = useState<ErrorOf<"fileError">>("");
   const [from, setFrom] = useState("");
   const [fromError, setFromError] = useState<ErrorOf<"fromError">>("");
@@ -476,7 +479,9 @@ export function SendPage() {
         from: fromRef.current,
         lang,
       });
-      if (!sent) {
+      if (sent) {
+        setMailed(true);
+      } else {
         dispatchRef.current({ type: "email", linkId: link.linkId, status: "failed" });
       }
     }
@@ -504,6 +509,7 @@ export function SendPage() {
   const isLocalhost = LOCAL_HOSTS.has(location.hostname);
   // ponytail: counts by status, so it over-counts if a recipient's signaling drops mid-transfer; track joined/left if that matters
   const connected = sender.recipients.filter(isActive).length;
+  const emailed = sender.recipients.filter(emailBound);
   const unfinished = sender.recipients.some((r) => r.status !== "delivered");
 
   // Phones show one panel at a time: the file first, then recipients after "Continue".
@@ -631,6 +637,7 @@ export function SendPage() {
             )}
             <p id="from-hint" class={`m-0 ${hint}`}>
               {t.send.fromHint}
+              {mail && ` ${t.send.fromHintEmail}`}
             </p>
           </div>
 
@@ -733,10 +740,14 @@ export function SendPage() {
             links: hostedLinks(sender).length,
             connected,
             relay: allowRelay,
+            emailed: emailed.length,
+            sending: emailed.filter((r) => r.mail === "sending").length,
+            mailed,
           })}
           relayed={relayed}
-          afterwards={t.server.senderAfterwards(!lostServer)}
+          afterwards={t.server.senderAfterwards(!lostServer, mailed)}
           viaRelay={viaRelay}
+          emailed={mailed}
         />
       </div>
 

@@ -23,7 +23,7 @@ const logFields: Record<"event" | keyof LogFields, readonly [string, string]> = 
     "För att upptäcka för stora eller trasiga meddelanden och dimensionera servern.",
   ],
   reason: [
-    "varför en länk eller anslutning nekades",
+    "varför en länk, en anslutning, ett mejl eller en kod nekades",
     "För att se varför anslutningar misslyckas, så att vi kan åtgärda orsaken.",
   ],
   code: ["felkoder", "För att hitta fel i webbappen eller servern."],
@@ -57,7 +57,7 @@ export const sv: Messages = {
   },
   landing: {
     title: "Skicka en fil som bara mottagaren kan öppna.",
-    lede: "Fidant krypterar filen i din webbläsare innan den går till den du väljer. Den sparas aldrig, och ingen på vägen, inte heller vi, kan läsa den.",
+    lede: "Fidant krypterar filen i din webbläsare innan den går till den du väljer. Den sparas aldrig, och om du inte ber oss mejla länken kan ingen på vägen, inte heller vi, läsa den.",
     cta: "Skicka en fil",
     how: "Läs hur det fungerar",
     noAccount: "Inget konto. Inget sparas.",
@@ -81,7 +81,7 @@ export const sv: Messages = {
   },
   how: {
     title: "Så fungerar det",
-    lede: "Vad som händer med din fil, steg för steg. Kort sagt: den låses på din dator. Bara den som har länken kan låsa upp den.",
+    lede: "Vad som händer med din fil, steg för steg. Kort sagt: den låses på din dator. Bara den som har länken kan låsa upp den. Om du ber oss mejla länken gäller det även oss.",
     sections: {
       stays: {
         heading: "Din fil stannar på din dator",
@@ -93,16 +93,16 @@ export const sv: Messages = {
       link: {
         heading: "Du får en länk med nyckeln i",
         body: [
-          "Du får en länk per person. Varje länk fungerar en gång. Du skickar den själv, till exempel via mejl eller chatt.",
-          "Nyckeln som låser upp filen är delen efter tecknet #. Webbläsare skickar aldrig den delen till oss. Därför ser vi aldrig nyckeln.",
-          "Alla som har länken kan öppna filen. Skicka varje länk bara till den som den är avsedd för.",
+          "Du får en länk per person. Varje länk fungerar en gång. Du skickar den själv, till exempel via mejl eller chatt, eller ger oss mottagarens e-postadress så mejlar vi den.",
+          "Nyckeln som låser upp filen är delen efter tecknet #. Webbläsare skickar aldrig den delen till oss. Därför ser vi aldrig nyckeln, om du inte ber oss mejla länken. Då ger din webbläsare den till vår server en gång, för att lägga den i mejlet.",
+          "Alla som har länken kan öppna filen. En länk som vi mejlar kräver också en kod som vi mejlar till samma adress, så den fungerar för alla som kan läsa den inkorgen. Skicka varje länk bara till den som den är avsedd för.",
         ],
       },
       open: {
         heading: "De öppnar länken medan din sida är öppen",
         body: [
           "Inget sparas, så din sida måste vara öppen tills de har fått filen.",
-          "Vår server hjälper de två webbläsarna att hitta varandra. Den är som en telefonist som kopplar ett samtal. Den skickar vidare några små, låsta meddelanden som den inte kan läsa.",
+          "Vår server hjälper de två webbläsarna att hitta varandra. Den är som en telefonist som kopplar ett samtal. Den skickar vidare några små, låsta meddelanden som den inte kan läsa, om den inte har mejlat länken och därför haft nyckeln.",
           "De ser filens namn och storlek och väljer om de vill ladda ner den.",
         ],
       },
@@ -126,8 +126,8 @@ export const sv: Messages = {
       never: {
         heading: "Det här ser vi aldrig",
         body: [
-          "Inte din fil. Inte filens namn. Inte nyckeln som låser upp den.",
-          "Det gäller både vår server och vårt relä.",
+          "Inte din fil. Inte filens namn. Inte nyckeln som låser upp den, om du inte ber oss mejla länken.",
+          "Det gäller både vår server och vårt relä. Reläet ser aldrig nyckeln.",
         ],
       },
     },
@@ -178,6 +178,8 @@ export const sv: Messages = {
     fromLabel: "Ditt namn",
     optional: "(valfritt)",
     fromHint: "Visas för dem du skickar till.",
+    fromHintEmail:
+      "Om vi mejlar en länk står ditt namn också i mejlet, markerat som inte verifierat. Vår server lägger in det där och sparar det inte.",
     allowRelay: "Tillåt vårt relä om en direkt anslutning inte går",
     fromError: {
       unsafe: "Ditt namn innehåller tecken som inte kan skickas. Ta bort dem och försök igen.",
@@ -206,7 +208,7 @@ export const sv: Messages = {
     emailLabel: "Mottagarens e-postadress",
     emailError: "Skriv en giltig e-postadress, till exempel namn@example.se.",
     emailNotice:
-      "Fidant mejlar länken åt dig, så vår server ser länkens nyckel en gång. Nyckeln sparas inte och loggas inte.",
+      "Fidant mejlar länken åt dig, så vår server ser länkens nyckel en gång. Nyckeln sparas inte och loggas inte. Länken, nyckeln också, ligger kvar i mottagarens inkorg, så alla som kan läsa den inkorgen skulle kunna ta emot filen.",
     fileFirst: "Välj en fil först.",
     full: (max: number) => `Du kan skicka till högst ${max} personer åt gången.`,
     oneLinkEach: "Varje person får en egen länk, som fungerar en gång.",
@@ -375,21 +377,33 @@ export const sv: Messages = {
       "Din IP-adress och de vanliga uppgifterna om webbläsaren som alla webbplatser får, och samma sak för varje mottagare när de öppnar sin länk.",
     seesRecipient:
       "Din IP-adress och de vanliga uppgifterna om webbläsaren som alla webbplatser får.",
-    senderHolds: ({ online, links, connected, relay }) => {
+    senderHolds: ({ online, links, connected, relay, emailed, sending, mailed }) => {
       if (!online) {
-        return "Ingenting, när den har märkt att anslutningen har stängts. Det tar upp till en minut om nätverket bröts.";
+        return mailed
+          ? "Bara antalet mejl den skickade åt dig, i förvrängd form och i upp till en timme, när den har märkt att anslutningen har stängts. Det tar upp till en minut om nätverket bröts."
+          : "Ingenting, när den har märkt att anslutningen har stängts. Det tar upp till en minut om nätverket bröts.";
       }
       const choice = relay
         ? "Ditt val att tillåta vårt relä."
         : "Ditt val att inte tillåta vårt relä.";
+      const counts = mailed
+        ? " Antalet mejl den skickade åt dig, i förvrängd form, i upp till en timme."
+        : "";
       if (links === 0) {
-        return `Inga länkar ännu. ${choice}`;
+        return `Inga länkar ännu. ${choice}${counts}`;
       }
-      const ids =
-        links === 1
-          ? "ID:t för din länk, aldrig den del som låser upp filen."
-          : `ID:na för dina ${links} länkar, aldrig den del som låser upp filen.`;
-      const held = `${ids} ${choice}`;
+      const ids = links === 1 ? "ID:t för din länk" : `ID:na för dina ${links} länkar`;
+      const email =
+        emailed === 0
+          ? ""
+          : emailed === 1
+            ? " För länken den mejlar: mottagarens e-postadress och koderna som skickas dit."
+            : ` För de ${emailed} länkar den mejlar: mottagarnas e-postadresser och koderna som skickas dit.`;
+      const key =
+        sending === 0
+          ? `${ids}, aldrig den del som låser upp filen.${email}`
+          : `${ids}.${email} Medan den skickar ett mejl också den del av länken som låser upp filen, och ditt namn.`;
+      const held = `${key} ${choice}${counts}`;
       if (connected === 0) {
         return held;
       }
@@ -397,19 +411,28 @@ export const sv: Messages = {
         connected === 1 ? "1 mottagare är ansluten" : `${connected} mottagare är anslutna`;
       return `${held} ${who} just nu.`;
     },
-    recipientHolds: (tie: Tie) =>
-      ({
-        paired:
-          "ID:t för din länk, aldrig den del som låser upp filen, och att den här sidan är ansluten till avsändaren.",
-        unpaired:
-          "Ingenting som knyter den här sidan till din länk. Bara avsändarens sida kan hålla kvar din länks ID där.",
-        closed:
-          "Ingenting om den här sidan, när den har märkt att anslutningen har stängts. Det tar upp till en minut om nätverket bröts. Bara avsändarens sida kan hålla kvar din länks ID där.",
-      })[tie],
-    passedOn: (messages: number, size: string) =>
+    recipientHolds: (tie: Tie, emailed: boolean) =>
+      (emailed
+        ? {
+            paired:
+              "ID:t för din länk, din e-postadress, att den här fliken har angett rätt kod och att den här sidan är ansluten till avsändaren. Servern hade den del som låser upp filen bara medan den mejlade länken till dig.",
+            unpaired:
+              "Din e-postadress, som avsändaren angav för den här länken, den senaste koden den mejlade dig och om den här fliken har angett den. Bara avsändarens sida kan hålla kvar dem där.",
+            closed:
+              "Ingenting om den här sidan, när den har märkt att anslutningen har stängts, utom om den här fliken har angett rätt kod. Det tar upp till en minut om nätverket bröts. Bara avsändarens sida kan hålla kvar det, din länks ID och din e-postadress där.",
+          }
+        : {
+            paired:
+              "ID:t för din länk, aldrig den del som låser upp filen, och att den här sidan är ansluten till avsändaren.",
+            unpaired:
+              "Ingenting som knyter den här sidan till din länk. Bara avsändarens sida kan hålla kvar din länks ID där.",
+            closed:
+              "Ingenting om den här sidan, när den har märkt att anslutningen har stängts. Det tar upp till en minut om nätverket bröts. Bara avsändarens sida kan hålla kvar din länks ID där.",
+          })[tie],
+    passedOn: (messages: number, size: string, emailed: boolean) =>
       messages === 0
         ? "Inget ännu."
-        : `${messages} ${messages === 1 ? "uppkopplingsmeddelande" : "uppkopplingsmeddelanden"} (${size}), alla krypterade så att servern inte kan läsa dem.`,
+        : `${messages} ${messages === 1 ? "uppkopplingsmeddelande" : "uppkopplingsmeddelanden"} (${size}), alla krypterade så att servern inte kan läsa dem${emailed ? ", utom för en länk som den har mejlat och därför haft nyckeln till" : ""}.`,
     fileData: "Inget. Filen går direkt mellan webbläsarna.",
     fileDataRelayed:
       "Inget. Webbläsarna kunde inte ansluta direkt, så filen går krypterad via vårt relä i stället.",
@@ -422,23 +445,28 @@ export const sv: Messages = {
     relayKeepsLabel: "Vårt relä sparar",
     relayKeeps:
       "Ingenting av filen när den har passerat. Loggrader som sparas när vi felsöker eller stoppar missbruk raderas inom 7 dagar.",
-    senderAfterwards: (online: boolean) =>
-      online
-        ? "När du stänger den här fliken glömmer servern dina länkar, inom högst en minut. Loggraderna finns kvar."
-        : "Dina länkar försvinner från servern inom en minut efter att anslutningen stängdes. Loggraderna finns kvar.",
-    afterwardsRecipient:
-      "När den här sidan kopplas från släpper servern det den har om sidan, inom högst en minut. Loggraderna finns kvar.",
+    senderAfterwards: (online: boolean, mailed: boolean) =>
+      `${
+        online
+          ? "När du stänger den här fliken glömmer servern dina länkar, inom högst en minut. Loggraderna finns kvar."
+          : "Dina länkar försvinner från servern inom en minut efter att anslutningen stängdes. Loggraderna finns kvar."
+      }${mailed ? " Det gör också antalet mejl den skickade åt dig, i förvrängd form, i upp till en timme." : ""}`,
+    afterwardsRecipient: (emailed: boolean) =>
+      emailed
+        ? "När den här sidan kopplas från släpper servern det den har om sidan, inom högst en minut, utom det som kodkontrollen behöver: din e-postadress och om den här fliken har angett rätt kod finns kvar tills avsändarens sida stängs, och antalet koder som skickats till din adress, i förvrängd form, i upp till en timme. Loggraderna finns kvar."
+        : "När den här sidan kopplas från släpper servern det den har om sidan, inom högst en minut. Loggraderna finns kvar.",
     logs: `Vad som hände, till exempel att en länk öppnades, med ${new Intl.ListFormat("sv", {
       type: "conjunction",
     }).format(
       Object.entries(logFields)
         .filter(([field]) => field !== "event")
         .map(([, [what]]) => what),
-    )}. Aldrig namn, nycklar, filinnehåll eller IP-adresser.`,
+    )}. Aldrig namn, e-postadresser, mejlade koder, nycklar, filinnehåll eller IP-adresser.`,
   },
   footer: {
     label: "Webbplats",
-    tagline: "Filer krypteras i din webbläsare och kan bara läsas av mottagaren.",
+    tagline:
+      "Filer krypteras i din webbläsare och kan bara läsas av mottagaren, om du inte ber oss mejla länken.",
     about: "Om Fidant",
     terms: "Villkor",
     security: "Säkerhet",
@@ -447,7 +475,7 @@ export const sv: Messages = {
   },
   about: {
     title: "Om Fidant",
-    lede: "Fidant är ett sätt att skicka en fil till någon utan att behöva lita på någon på vägen, inte heller på oss.",
+    lede: "Fidant är ett sätt att skicka en fil till någon utan att behöva lita på någon på vägen, inte heller på oss, så länge du inte ber oss mejla länken.",
     sections: [
       {
         heading: "Vem som driver det",
@@ -485,14 +513,14 @@ export const sv: Messages = {
       {
         heading: "Dina filer är dina",
         body: [
-          "Filerna går mellan webbläsare, krypterade hela vägen, och vi har aldrig nyckeln, så vi kan inte läsa, återskapa, radera eller granska dem åt dig. Skicka bara filer som du har rätt att dela, och bara till dem du vill dela dem med.",
+          "Filerna går mellan webbläsare, krypterade hela vägen. Vi har aldrig nyckeln, om du inte ber oss mejla en länk, och vi sparar den aldrig, så vi kan inte återskapa, radera eller granska dina filer åt dig. Skicka bara filer som du har rätt att dela, och bara till dem du vill dela dem med.",
           "Använd inte Fidant till något olagligt.",
         ],
       },
       {
         heading: "Länkar",
         body: [
-          "Den som har en länk kan öppna filen den leder till. Varje länk fungerar en gång, och bara medan avsändarens sida är öppen.",
+          "Den som har en länk kan öppna filen den leder till. En länk som vi mejlar kräver också en kod som vi skickar till samma adress. Varje länk fungerar en gång, och bara medan avsändarens sida är öppen.",
         ],
       },
       {
@@ -509,15 +537,16 @@ export const sv: Messages = {
       {
         heading: "Så skyddas filen",
         body: [
-          "Din webbläsare krypterar filen med AES-256-GCM innan den lämnar din dator. Nyckeln finns i den del av länken som står efter #, och den skickar webbläsare aldrig till någon server.",
-          "Filen går direkt mellan de två webbläsarna. Om ett nätverk stoppar det går den i stället krypterad via vårt relä. Vår server skickar bara vidare några små meddelanden för att koppla upp, och de är krypterade så att servern inte kan läsa dem.",
+          "Din webbläsare krypterar filen med AES-256-GCM innan den lämnar din dator. Nyckeln finns i den del av länken som står efter #, och den skickar webbläsare aldrig till någon server. Om du ber oss mejla en länk ger din webbläsare länkens nyckel till vår server en gång, för att lägga den i mejlet, och servern sparar eller loggar den inte.",
+          "Filen går direkt mellan de två webbläsarna. Om ett nätverk stoppar det går den i stället krypterad via vårt relä. Vår server skickar bara vidare några små meddelanden för att koppla upp, och de är krypterade så att servern inte kan läsa dem, utom för en länk som den har mejlat och därför haft nyckeln till.",
           "Mottagarens webbläsare kontrollerar filens SHA-256-kontrollsumma, så en fil som ändrats eller skadats på vägen sparas inte.",
         ],
       },
       {
         heading: "Det här skyddar den inte mot",
         body: [
-          "Den som får tag på en länk kan öppna filen. Skicka varje länk bara till den den är till, på ett sätt du litar på.",
+          "Den som får tag på en länk kan öppna filen, och en länk som vi mejlar kräver också en kod som vi skickar till samma adress. Skicka varje länk bara till den den är till, på ett sätt du litar på.",
+          "En länk som vi mejlar ligger kvar i mottagarens inkorg. Den som kan läsa inkorgen kan också få koden, och därmed filen. Och eftersom vår server har haft länkens nyckel måste du lita på att vi inte läser filen på vägen. Vill du undvika båda, lämna e-postadressen tom och skicka länken själv.",
           "Avsändarens namn skrivs av avsändaren och kontrolleras inte.",
           "De två webbläsarna ser varandras IP-adress, precis som i ett videosamtal. När filen går via vårt relä ser reläet båda IP-adresserna och ungefär hur stor filen är.",
           "En dator som redan är kapad kan läsa filen innan den krypteras eller efter att den låsts upp.",
@@ -538,7 +567,7 @@ export const sv: Messages = {
   },
   privacy: {
     title: "Integritet",
-    lede: "Din fil går från din webbläsare till webbläsaren hos den du skickar till, direkt när era nätverk tillåter det och annars via vårt relä. Den låses innan den lämnar din dator, och bara den som har länken kan låsa upp den. Vi får aldrig filen, dess namn eller nyckeln.",
+    lede: "Din fil går från din webbläsare till webbläsaren hos den du skickar till, direkt när era nätverk tillåter det och annars via vårt relä. Den låses innan den lämnar din dator, och bara den som har länken kan låsa upp den. Vi får aldrig filen eller dess namn, och aldrig nyckeln om du inte ber oss mejla länken.",
     howHeading: "Så går det till att skicka",
     steps: [
       [
@@ -547,7 +576,7 @@ export const sv: Messages = {
       ],
       [
         "Du får en länk per person.",
-        "Varje länk innehåller nyckeln som låser upp filen. Du skickar länken själv, till exempel via mejl eller chatt.",
+        "Varje länk innehåller nyckeln som låser upp filen. Du skickar länken själv, till exempel via mejl eller chatt, eller så mejlar vi den till en adress du anger. En länk som vi mejlar kräver också en kod som vi skickar till samma adress.",
       ],
       [
         "De öppnar länken medan din sida fortfarande är öppen.",
@@ -566,18 +595,24 @@ export const sv: Messages = {
       "Tänk dig att du lämnar över en låst låda personligen. Det finns inget postkontor emellan som håller i den, och bara den som har nyckeln kan öppna den.",
     keyPart: [
       "Nyckeln är den sista delen av länken, efter tecknet ",
-      ". Webbläsare skickar aldrig den delen till någon webbplats, inte heller till vår. Därför kan vi inte låsa upp din fil, ens om vi ville.",
+      ". Webbläsare skickar aldrig den delen till någon webbplats, inte heller till vår. Därför kan vi inte låsa upp din fil, ens om vi ville. Undantaget är en länk som du ber oss mejla: då ger din webbläsare länkens nyckel till vår server en gång, för att lägga den i mejlet, och vi sparar eller loggar den inte.",
     ],
     direct:
       "Eftersom de två webbläsarna ansluter direkt till varandra kan båda se den andras nätverksadress (IP-adress), precis som i ett videosamtal. Om ett nätverk blockerar det går filen i stället via vårt relä, fortfarande låst. Reläet ser då båda IP-adresserna och ungefär hur stor filen är, men kan inte låsa upp den.",
     linkWarning:
-      "Alla som har länken kan öppna filen. Skicka varje länk bara till den som den är avsedd för.",
+      "Alla som har länken kan öppna filen. En länk som vi mejlar kräver också en kod som vi skickar till samma adress, så alla som kan läsa den inkorgen kan öppna den. Skicka varje länk bara till den som den är avsedd för.",
     serverHeading: "Vad vår server vet",
     neverHeading: "Aldrig",
     never: [
       ["Din fil", "Varken innehållet, filnamnet, storleken eller filtypen."],
-      ["Nyckeln", "Den del av länken som låser upp filen når aldrig oss."],
-      ["Namn", "Varken namnet du skriver för dig själv eller namnen på dem du skickar till."],
+      [
+        "Nyckeln, om vi inte mejlar länken åt dig",
+        "Den del av länken som låser upp filen når aldrig oss, om du inte ber oss mejla länken. Då använder vår server den en gång för att skriva mejlet, och sparar eller loggar den inte.",
+      ],
+      [
+        "Mottagarnas namn",
+        "Inte namnen du ger dem du skickar till. Ditt eget namn når oss bara om du ber oss mejla en länk: det står då i mejlet, och vi sparar det inte.",
+      ],
     ],
     seesHeading: "Bara det den behöver för att koppla ihop er",
     sees: [
@@ -591,15 +626,23 @@ export const sv: Messages = {
       ],
       [
         "Uppkopplingsmeddelanden",
-        "Några små, låsta meddelanden som hjälper de två webbläsarna att ansluta. Vi skickar dem vidare utan att kunna läsa dem, och sparar dem inte.",
+        "Några små, låsta meddelanden som hjälper de två webbläsarna att ansluta. Vi skickar dem vidare och sparar dem inte. Vi kan inte läsa dem, utom för en länk som vi har mejlat och därför haft nyckeln till.",
       ],
       [
         "Avsändarens val om reläet",
         "Om avsändaren tillåter vårt relä, så att vi bara ger mottagare tillgång till det när avsändaren gör det. Vi glömmer det inom en minut efter att avsändarens sida har stängts, och skriver aldrig in det i våra loggar.",
       ],
+      [
+        "En e-postadress, om du anger en",
+        "Om du ber oss mejla en länk skickar din webbläsare mottagarens e-postadress, länken med nyckeln och ditt namn till vår server. Nyckeln och ditt namn har vi bara tills mejlet har gått iväg. Adressen har vi i minnet medan din sida är öppen, så att vi kan mejla mottagaren en kod när länken öppnas. Vi har också den senaste koden och vilka flikar som har angett rätt kod. Vi loggar aldrig adressen och skriver den aldrig till disk. Vår e-posttjänst, Amazon SES, levererar mejlen, och studsar går bara dit, aldrig till en inkorg hos oss. En adress som studsar för att den inte går att leverera hamnar på en lista som Amazon SES har för alla sina kunder, i upp till 14 dagar, så att ingen skickar mer e-post till den. Den listan kan vi inte stänga av.",
+      ],
+      [
+        "Antal mejl",
+        "För att begränsa hur många mejl någon kan skicka räknar vi under en timme mejlen till varje adress och mejlen som varje IP-adress ber oss skicka. Antalet sparas under en förvrängd form av adressen (en HMAC), aldrig under själva adressen.",
+      ],
     ],
     keepHeading: "Vad vi sparar",
-    keep: "Vi har inga konton, ingen databas, inga cookies och ingen spårning. Förutom loggraderna nedan sparas ingenting när avsändarens sida har stängts, inom högst en minut.",
+    keep: "Vi har inga konton, ingen databas, inga cookies och ingen spårning. Förutom loggraderna nedan och antalet mejl ovan, som finns kvar en timme, sparas ingenting när avsändarens sida har stängts, inom högst en minut.",
     logFields,
     logRetention: "Loggraderna raderas efter 30 dagar.",
   },
