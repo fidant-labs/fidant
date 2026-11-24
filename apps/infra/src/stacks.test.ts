@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readdirSync, readFileSync } from "node:fs";
 import { isIP } from "node:net";
 import { test } from "node:test";
 import { App, Stack } from "aws-cdk-lib";
@@ -403,4 +404,105 @@ test("the journal is the only place the box's services keep log lines", () => {
   assert.ok(!turnserver.some((line) => /^\s*(syslog|verbose)\b/i.test(line)));
 
   assert.doesNotMatch(userData, /^\s*Standard(Output|Error)=/m);
+});
+
+const camelPorts = [
+  { protocol: "tcp", fromPort: 80, toPort: 80, cidrs: ["0.0.0.0/0"], ipv6Cidrs: ["::/0"] },
+  { protocol: "tcp", fromPort: 443, toPort: 443, cidrs: ["0.0.0.0/0"], ipv6Cidrs: ["::/0"] },
+  { protocol: "tcp", fromPort: 22, toPort: 22, cidrListAliases: ["lightsail-connect"] },
+  { protocol: "tcp", fromPort: 3478, toPort: 3478, cidrs: ["0.0.0.0/0"], ipv6Cidrs: ["::/0"] },
+  { protocol: "udp", fromPort: 3478, toPort: 3478, cidrs: ["0.0.0.0/0"], ipv6Cidrs: ["::/0"] },
+  { protocol: "udp", fromPort: 49152, toPort: 65535, cidrs: ["0.0.0.0/0"], ipv6Cidrs: ["::/0"] },
+];
+
+function appBox(): Template {
+  const stack = stacksFor(pocAccount).find((child) => child.stackName === "FidantApp");
+  return Template.fromStack(stack as Stack);
+}
+
+test("the relay cap checks the box's traffic every 5 minutes", () => {
+  const box = appBox();
+  const [instanceId] = Object.keys(box.findResources("AWS::Lightsail::Instance"));
+  const functions = Object.values(box.findResources("AWS::Lambda::Function"));
+  assert.equal(functions.length, 1);
+  const properties = functions[0]?.Properties;
+  assert.equal(properties.Runtime, "nodejs24.x");
+  assert.equal(properties.Handler, "index.handler");
+  assert.equal(properties.Timeout, 30);
+  const variables = properties.Environment.Variables;
+  assert.deepEqual(variables.BOX, { Ref: instanceId });
+  assert.equal(variables.LIMIT_BYTES, "1800000000000");
+  assert.deepEqual(JSON.parse(variables.OPEN_PORTS), camelPorts);
+  assert.deepEqual(JSON.parse(variables.CAPPED_PORTS), camelPorts.slice(0, 3));
+  box.hasResourceProperties("AWS::Events::Rule", { ScheduleExpression: "rate(5 minutes)" });
+  box.hasResourceProperties("AWS::Lambda::EventInvokeConfig", { MaximumRetryAttempts: 0 });
+});
+
+test("the relay cap may only read the box's metrics, set its ports, and keep its state", () => {
+  const box = appBox();
+  const [instanceId] = Object.keys(box.findResources("AWS::Lightsail::Instance"));
+  const policies = Object.values(box.findResources("AWS::IAM::Policy"));
+  assert.equal(policies.length, 1);
+  const statements = policies[0]?.Properties.PolicyDocument.Statement;
+  assert.equal(statements.length, 2);
+  assert.deepEqual(statements[0], {
+    Action: ["lightsail:GetInstanceMetricData", "lightsail:PutInstancePublicPorts"],
+    Effect: "Allow",
+    Resource: { "Fn::GetAtt": [instanceId, "InstanceArn"] },
+  });
+  assert.deepEqual(statements[1].Action, ["ssm:GetParameter", "ssm:PutParameter"]);
+  assert.equal(statements[1].Effect, "Allow");
+  const resource = statements[1].Resource["Fn::Join"];
+  assert.match(resource[1].at(-1), /:parameter\/fidant\/relay-cap$/);
+});
+
+test("relay traffic past 80 %, the cap, and a failing cap email the alert address", () => {
+  const box = appBox();
+  const [topicId] = Object.keys(box.findResources("AWS::SNS::Topic"));
+  box.hasResourceProperties("AWS::SNS::Subscription", {
+    Protocol: "email",
+    Endpoint: "budget-alert@fidant.se",
+  });
+  const alarms = Object.values(box.findResources("AWS::CloudWatch::Alarm")).map(
+    (alarm) => alarm.Properties,
+  );
+  assert.equal(alarms.length, 3);
+  const byName = (name: string) => alarms.find((alarm) => alarm.AlarmName === name);
+  const notify = [{ Ref: topicId }];
+  for (const [name, threshold] of [
+    ["Fidant relay traffic past 80 % of the monthly cap", 1_440_000_000_000],
+    ["Fidant relay stopped: monthly traffic cap reached", 1_800_000_000_000],
+    ["Fidant relay cap failing", 1],
+  ] as const) {
+    const alarm = byName(name);
+    assert.ok(alarm, name);
+    assert.equal(alarm.Threshold, threshold);
+    assert.deepEqual(alarm.AlarmActions, notify);
+    assert.deepEqual(alarm.OKActions, notify);
+    if (threshold !== 1) {
+      assert.equal(alarm.Namespace, "Fidant");
+      assert.equal(alarm.MetricName, "RelayMonthBytes");
+      assert.deepEqual(alarm.Dimensions, [{ Name: "Service", Value: "relay" }]);
+      assert.equal(alarm.Statistic, "Maximum");
+    }
+  }
+});
+
+test("the cap's Lambda code imports nothing outside its folder", () => {
+  const folder = new URL("./relay-cap/", import.meta.url);
+  const files = readdirSync(folder).filter((name) => !name.endsWith(".test.ts"));
+  assert.ok(files.includes("index.mjs"));
+  for (const file of files) {
+    const source = readFileSync(new URL(file, folder), "utf8");
+    for (const [, specifier = ""] of source.matchAll(/\bfrom\s+["']([^"']+)["']/g)) {
+      if (specifier.startsWith(".")) {
+        assert.ok(specifier.startsWith("./") && !specifier.includes(".."), `${file}: ${specifier}`);
+      } else if (!specifier.startsWith("node:")) {
+        assert.ok(
+          ["@aws-sdk/client-lightsail", "@aws-sdk/client-ssm"].includes(specifier),
+          `${file}: ${specifier}`,
+        );
+      }
+    }
+  }
 });
