@@ -8,7 +8,7 @@ import {
 } from "@playwright/test";
 import { parseStackOrigins } from "./hosts.ts";
 import { type Leaks, LeakWatch } from "./leak-watch.ts";
-import { runSeed, SeededRandom } from "./leaks/canary.ts";
+import { base32Token, runSeed, SeededRandom } from "./leaks/canary.ts";
 import { deleteSavedMail } from "./mail.ts";
 import {
   assertActorName,
@@ -274,4 +274,41 @@ async function record(
   const recorder = new Recorder(name, parseStackOrigins(process.env.SIGILL_E2E_STACK_ORIGINS));
   recorders.set(name, recorder);
   await recorder.attach(context);
+}
+
+/** A watched person's name, unique to this run. */
+export function makeName(leaks: Leaks, canary: SeededRandom, first: string): string {
+  const name = `${first}-${base32Token(canary.fork(`name ${first}`), 8)}`;
+  leaks.watchText(`name ${first}`, name);
+  return name;
+}
+
+export const recipientRow = (sender: Page, name: string) =>
+  sender.getByRole("list", { name: "Recipients" }).getByRole("listitem").filter({ hasText: name });
+
+export const delivered = (sender: Page, name: string) =>
+  recipientRow(sender, name).getByText(`Delivered through ${name}'s link`);
+
+/** Runs in the page through addInitScript, so it may use nothing from this module: `cut()` closes the sender's peers, `stalled` stops its data channels sending. */
+export function breakableSender() {
+  const g = globalThis as { cut?: () => void; stalled?: boolean };
+  const peers: RTCPeerConnection[] = [];
+  const Native = globalThis.RTCPeerConnection;
+  globalThis.RTCPeerConnection = class extends Native {
+    constructor(config?: RTCConfiguration) {
+      super(config);
+      peers.push(this);
+    }
+  };
+  g.cut = () => {
+    for (const peer of peers) {
+      peer.close();
+    }
+  };
+  const send = RTCDataChannel.prototype.send;
+  RTCDataChannel.prototype.send = function (this: RTCDataChannel, ...args: unknown[]) {
+    if (!g.stalled) {
+      Reflect.apply(send, this, args);
+    }
+  } as RTCDataChannel["send"];
 }

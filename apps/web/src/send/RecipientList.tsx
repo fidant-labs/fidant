@@ -7,7 +7,6 @@
 // it was made for.
 
 import { maskAddress } from "@sigill/protocol";
-import { useEffect, useRef, useState } from "preact/hooks";
 import { Button } from "#components/ui/button";
 import { Card, CardContent } from "#components/ui/card";
 import type { Messages } from "../i18n/en.ts";
@@ -19,7 +18,7 @@ import {
   TOO_SMALL_FOR_TEXT,
   unmarked,
 } from "../lib/sender-state.ts";
-import { Direct, Icon, PathLine } from "../ui.tsx";
+import { Direct, Icon, PathLine, useCopyNote } from "../ui.tsx";
 
 const STATUS_COLOR: Partial<Record<RecipientStatus, string>> = {
   failed: "text-destructive",
@@ -55,8 +54,6 @@ export function RecipientList({ recipients, fileSize, statusText, onRemove }: Pr
   );
 }
 
-type CopyNote = keyof Messages["send"]["copyNote"];
-
 type RowProps = {
   recipient: Recipient;
   fileSize: number;
@@ -68,28 +65,7 @@ function RecipientRow({ recipient, fileSize, statusText, onRemove }: RowProps) {
   const { name, url, status, bytesSent, linkId, path, noRelay, error, email, mail, unbound } =
     recipient;
   const { t, lang } = useI18n();
-  const [copyNote, setCopyNote] = useState<CopyNote | "">("");
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-
-  useEffect(() => () => clearTimeout(timer.current), []);
-
-  const showNote = (note: CopyNote) => {
-    clearTimeout(timer.current);
-    setCopyNote(note);
-    timer.current = setTimeout(() => setCopyNote(""), 4000);
-  };
-
-  const copy = async () => {
-    try {
-      if (!navigator.clipboard) {
-        throw new Error("no clipboard");
-      }
-      await navigator.clipboard.writeText(url);
-      showNote("copied");
-    } catch {
-      showNote("failed");
-    }
-  };
+  const { note, copy } = useCopyNote();
 
   const open = status === "waiting" || status === "declined" || status === "failed";
   // A link the server may still email, or whose email binding died, is not to be shared.
@@ -142,7 +118,7 @@ function RecipientRow({ recipient, fileSize, statusText, onRemove }: RowProps) {
           )}
           <div class="mt-3 flex flex-wrap items-center gap-3">
             {shareable && (
-              <Button type="button" aria-label={t.send.copyFor(name)} onClick={copy}>
+              <Button type="button" aria-label={t.send.copyFor(name)} onClick={() => copy(url)}>
                 {t.send.copy}
               </Button>
             )}
@@ -162,7 +138,7 @@ function RecipientRow({ recipient, fileSize, statusText, onRemove }: RowProps) {
               {t.send.remove}
             </Button>
             <span class="text-[0.85rem] text-muted-foreground" role="status">
-              {copyNote && t.send.copyNote[copyNote]}
+              {note && t.send.copyNote[note]}
             </span>
           </div>
           {shareable && (

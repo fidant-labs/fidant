@@ -73,7 +73,7 @@ import { peerLostProblem } from "../lib/receive-problem.ts";
 import { addRelay, type Kind, NO_RELAYS, type Tie } from "../lib/server-facts.ts";
 import { connectSignaling, retryDelay, type SignalingClient } from "../lib/signaling-client.ts";
 import { BlobSink, createSink, isPickerCancel, type Sink } from "../lib/sink.ts";
-import { isTextOffer } from "../lib/text-secret.ts";
+import { decodeText, isTextOffer } from "../lib/text-secret.ts";
 import {
   Direct,
   FileCard,
@@ -83,11 +83,10 @@ import {
   Problem,
   ServerPanel,
   TechDetails,
+  useCopyNote,
 } from "../ui.tsx";
 
 const caption = "text-[0.9rem] text-muted-foreground";
-
-type CopyNote = keyof Messages["secret"]["copyNote"];
 
 /** Which problem to show. Text comes from the dictionary at render time, so a language switch re-renders it. */
 type ProblemKey = keyof Messages["receive"]["problems"];
@@ -514,7 +513,7 @@ export function ReceivePage() {
       }).then(
         (result) => {
           if (result.type === "declined") {
-            finish({ s: "declined", text: offered?.text === true }, true);
+            finish({ s: "declined", text: attempt.text }, true);
           } else if (offered) {
             const sha256 = toHex(result.sha256);
             finish({ s: "done", offer: offered, blob: result.blob, sha256 }, true);
@@ -781,43 +780,40 @@ export function ReceivePage() {
     }
     case "done": {
       const { offer, blob, sha256 } = view;
-      if (offer.text && blob) {
-        body = (
-          <>
-            <div class="flex items-center gap-2.5 text-primary">
-              <Icon name="check" class="size-8 stroke-[2.5]" />
-              <h1 class="m-0">{t.secret.doneTitle}</h1>
-            </div>
-            <ShownText blob={blob} />
-            <p class="text-muted-foreground">{t.secret.notSaved}</p>
-            <Direct from={t.common.sender} to={t.common.you} state="done" />
-            <p class={caption}>{t.receive.doneCaption}</p>
-            {path && <PathLine path={path} />}
-            <OfferDetails offer={offer} emailed={emailed} />
-          </>
-        );
-        break;
-      }
+      const textBlob = offer.text ? blob : undefined;
       body = (
         <>
           <div class="flex items-center gap-2.5 text-primary">
             <Icon name="check" class="size-8 stroke-[2.5]" />
-            <h1 class="m-0">{t.receive.doneTitle}</h1>
+            <h1 class="m-0">{textBlob ? t.secret.doneTitle : t.receive.doneTitle}</h1>
           </div>
-          <FileCard name={offer.name} size={formatBytes(offer.size, lang)} />
-          <p>{t.receive.verified}</p>
-          {blob ? (
-            <div class="flex flex-wrap items-center gap-4">
-              <p class="text-muted-foreground">{t.receive.autoDownload}</p>
-              <SaveLink blob={blob} name={offer.name} label={t.receive.saveFile} />
-            </div>
+          {textBlob ? (
+            <>
+              <ShownText
+                blob={textBlob}
+                // RECEIPT already went out, so the link is spent: no Try again.
+                onUnreadable={() => setView({ s: "refused", problem: "save", text: true })}
+              />
+              <p class="text-muted-foreground">{t.secret.notSaved}</p>
+            </>
           ) : (
-            <p class="text-muted-foreground">{t.receive.savedWhereChosen}</p>
+            <>
+              <FileCard name={offer.name} size={formatBytes(offer.size, lang)} />
+              <p>{t.receive.verified}</p>
+              {blob ? (
+                <div class="flex flex-wrap items-center gap-4">
+                  <p class="text-muted-foreground">{t.receive.autoDownload}</p>
+                  <SaveLink blob={blob} name={offer.name} label={t.receive.saveFile} />
+                </div>
+              ) : (
+                <p class="text-muted-foreground">{t.receive.savedWhereChosen}</p>
+              )}
+            </>
           )}
           <Direct from={t.common.sender} to={t.common.you} state="done" />
           <p class={caption}>{t.receive.doneCaption}</p>
           {path && <PathLine path={path} />}
-          <OfferDetails offer={offer} sha256={sha256} emailed={emailed} />
+          <OfferDetails offer={offer} sha256={textBlob ? undefined : sha256} emailed={emailed} />
         </>
       );
       break;
@@ -884,7 +880,7 @@ function OfferDetails({
   emailed,
 }: {
   offer: Offer;
-  sha256?: string;
+  sha256?: string | undefined;
   emailed: boolean;
 }) {
   const { t } = useI18n();
@@ -905,35 +901,14 @@ function OfferDetails({
 }
 
 /** A received text, as plain text outside any form field so session restore has none of it to save, with a button that copies it. */
-function ShownText({ blob }: { blob: Blob }) {
+function ShownText({ blob, onUnreadable }: { blob: Blob; onUnreadable(): void }) {
   const { t } = useI18n();
-  const [text, setText] = useState("");
-  const [copyNote, setCopyNote] = useState<CopyNote | "">("");
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [text, setText] = useState<string | undefined>(undefined);
+  const { note, copy } = useCopyNote();
 
-  // Blob.text() decodes UTF-8 like a non-fatal TextDecoder: invalid bytes become U+FFFD.
   useEffect(() => {
-    void blob.text().then(setText);
+    void decodeText(blob).then(setText, onUnreadable);
   }, [blob]);
-  useEffect(() => () => clearTimeout(timer.current), []);
-
-  const showNote = (note: CopyNote) => {
-    clearTimeout(timer.current);
-    setCopyNote(note);
-    timer.current = setTimeout(() => setCopyNote(""), 4000);
-  };
-
-  const copy = async () => {
-    try {
-      if (!navigator.clipboard) {
-        throw new Error("no clipboard");
-      }
-      await navigator.clipboard.writeText(text);
-      showNote("copied");
-    } catch {
-      showNote("failed");
-    }
-  };
 
   return (
     <div class="my-4 flex flex-col gap-3">
@@ -947,11 +922,15 @@ function ShownText({ blob }: { blob: Blob }) {
         <pre class="whitespace-pre-wrap wrap-anywhere">{text}</pre>
       </section>
       <div class="flex flex-wrap items-center gap-3">
-        <Button type="button" onClick={copy}>
+        <Button
+          type="button"
+          onClick={() => text !== undefined && copy(text)}
+          disabled={text === undefined}
+        >
           {t.secret.copy}
         </Button>
         <span class="text-[0.85rem] text-muted-foreground" role="status">
-          {copyNote && t.secret.copyNote[copyNote]}
+          {note && t.secret.copyNote[note]}
         </span>
       </div>
     </div>

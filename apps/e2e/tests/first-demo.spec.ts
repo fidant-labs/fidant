@@ -3,12 +3,16 @@ import { readFile } from "node:fs/promises";
 import type { Page } from "@playwright/test";
 import { maskAddress } from "@sigill/protocol";
 import {
+  breakableSender,
   canaryFile,
   canaryKey,
+  delivered,
   expect,
   test as harness,
   type Leaks,
+  makeName,
   type Observed,
+  recipientRow,
 } from "../src/fixtures.ts";
 import { base32Token, type CanaryFile, type SeededRandom } from "../src/leaks/canary.ts";
 import type { Allowed } from "../src/leaks/needles.ts";
@@ -88,13 +92,6 @@ function makeFile(leaks: Leaks, canary: SeededRandom, size: number): CanaryFile 
   return leaks.watch(canaryFile(canary.fork("file"), { size }));
 }
 
-/** A watched person's name, unique to this run. */
-function makeName(leaks: Leaks, canary: SeededRandom, first: string): string {
-  const name = `${first}-${base32Token(canary.fork(`name ${first}`), 8)}`;
-  leaks.watchText(`name ${first}`, name);
-  return name;
-}
-
 /** Opens the sender page, runs `init` in it before any page script, types the sender's name if given, and chooses the file. */
 async function openSender(
   demo: Demo,
@@ -130,12 +127,6 @@ async function addRecipient(leaks: Leaks, sender: Page, name: string): Promise<s
   leaks.watchKey(`link secret for ${name}`, secret);
   return link;
 }
-
-const recipientRow = (sender: Page, name: string) =>
-  sender.getByRole("list", { name: "Recipients" }).getByRole("listitem").filter({ hasText: name });
-
-const delivered = (sender: Page, name: string) =>
-  recipientRow(sender, name).getByText(`Delivered through ${name}'s link`);
 
 /** Opens a link as `actor`, checks the offer, downloads, and returns the bytes of the automatic download. */
 async function receive(
@@ -523,30 +514,6 @@ test("the Why? link to /how keeps a transfer alive on both pages", async ({
   expect(sha256Hex(bytes)).toBe(sha256Hex(file.bytes));
   await expect(delivered(sender, name)).toBeVisible();
 });
-
-/** Lets a test cut the sender's peer connections (`cut()`) and stop its data channels sending (`stalled`). */
-function breakableSender() {
-  const g = globalThis as { cut?: () => void; stalled?: boolean };
-  const peers: RTCPeerConnection[] = [];
-  const Native = globalThis.RTCPeerConnection;
-  globalThis.RTCPeerConnection = class extends Native {
-    constructor(config?: RTCConfiguration) {
-      super(config);
-      peers.push(this);
-    }
-  };
-  g.cut = () => {
-    for (const peer of peers) {
-      peer.close();
-    }
-  };
-  const send = RTCDataChannel.prototype.send;
-  RTCDataChannel.prototype.send = function (this: RTCDataChannel, ...args: unknown[]) {
-    if (!g.stalled) {
-      Reflect.apply(send, this, args);
-    }
-  } as RTCDataChannel["send"];
-}
 
 test("a lost sender says whether the file may have been saved", async ({ demo, leaks, canary }) => {
   const file = makeFile(leaks, canary, 100_001);
