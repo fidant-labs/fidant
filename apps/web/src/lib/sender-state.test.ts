@@ -166,7 +166,7 @@ test("a drop before delivery returns the recipient to waiting and frees the link
     assert.deepEqual(
       dropped.effects,
       [
-        { type: "refuse", linkId, attempt: A, reason: "busy" },
+        { type: "refuse", linkId, attempt: A, reason: "drop" },
         { type: "close", linkId },
       ],
       "the server unbinds a joiner that may still be connected",
@@ -190,7 +190,7 @@ test("a drop or timeout refuses the attempt that started the connection, not a l
   for (const type of ["dropped", "timeout"] as const) {
     const ended = update(busy.state, { type, linkId });
     assert.deepEqual(ended.effects, [
-      { type: "refuse", linkId, attempt: A, reason: "busy" },
+      { type: "refuse", linkId, attempt: A, reason: "drop" },
       { type: "close", linkId },
     ]);
     assert.equal(findRecipient(ended.state, linkId)?.attempt, undefined, type);
@@ -200,7 +200,7 @@ test("a drop or timeout refuses the attempt that started the connection, not a l
   const next = run(dropped, joined(linkId, B), { type: "dropped", linkId });
   assert.deepEqual(next.effects, [
     { type: "start", linkId, attempt: B, iceServers: [] },
-    { type: "refuse", linkId, attempt: B, reason: "busy" },
+    { type: "refuse", linkId, attempt: B, reason: "drop" },
     { type: "close", linkId },
   ]);
 });
@@ -212,7 +212,7 @@ test("a channel that does not open in time is dropped and its joiner refused", (
   const result = update(connecting, { type: "timeout", linkId });
   assert.deepEqual(findRecipient(result.state, linkId), findRecipient(s0, linkId));
   assert.deepEqual(result.effects, [
-    { type: "refuse", linkId, attempt: A, reason: "busy" },
+    { type: "refuse", linkId, attempt: A, reason: "drop" },
     { type: "close", linkId },
   ]);
 
@@ -418,7 +418,7 @@ test("an attempt that ends while connecting under a refused relay marks the reci
       end === "left"
         ? [{ type: "close", linkId }]
         : [
-            { type: "refuse", linkId, attempt: A, reason: "busy" },
+            { type: "refuse", linkId, attempt: A, reason: "drop" },
             { type: "close", linkId },
           ],
       end,
@@ -482,7 +482,7 @@ test("a relay path under a refused relay ends the attempt like a timeout", () =>
       `after ${steps}`,
     );
     assert.deepEqual(result.effects, [
-      { type: "refuse", linkId, attempt: A, reason: "busy" },
+      { type: "refuse", linkId, attempt: A, reason: "drop" },
       { type: "close", linkId },
     ]);
   }

@@ -52,6 +52,7 @@ export const sv: Messages = {
     themes: { system: "System", light: "Ljust", dark: "Mörkt" },
     label: "Huvudmeny",
     send: "Skicka en fil",
+    how: "Så fungerar det",
     privacy: "Integritet",
   },
   landing: {
@@ -401,7 +402,6 @@ export const sv: Messages = {
   footer: {
     label: "Webbplats",
     tagline: "Filer krypteras i din webbläsare och kan bara läsas av mottagaren.",
-    how: "Så fungerar det",
     about: "Om Fidant",
     terms: "Villkor",
     security: "Säkerhet",

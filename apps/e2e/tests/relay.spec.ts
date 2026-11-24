@@ -242,3 +242,34 @@ test("a sender who refuses the relay: no credentials, no bytes, plain words on b
   expect(sha256Hex(await readFile(await (await downloading).path()))).toBe(sha256Hex(file.bytes));
   await expect(recipient.getByText("Through our relay", { exact: true })).toBeVisible();
 });
+
+test("a sender who refuses the relay and fails setup shows the refused relay", async ({
+  actor,
+  leaks,
+  canary,
+}) => {
+  const file = leaks.watch(canaryFile(canary.fork("file"), { size: 10_001 }));
+  const { context, page: sender } = await actor("sender");
+  await context.addInitScript(() => {
+    RTCPeerConnection.prototype.setLocalDescription = () =>
+      Promise.reject(new DOMException("injected", "OperationError"));
+  });
+  await sender.goto("/send");
+  await sender.getByLabel("Choose a file").setInputFiles({
+    name: file.name,
+    mimeType: file.mime,
+    buffer: file.bytes,
+  });
+  await sender.getByLabel("Allow our relay if a direct connection isn't possible").uncheck();
+  await sender.getByLabel("Who is it for?").fill("Anna");
+  await sender.getByRole("button", { name: "Add", exact: true }).click();
+  const link = (await sender.getByLabel("Link for Anna", { exact: true }).textContent()) ?? "";
+  leaks.watchKey("link secret", new URL(link).hash.slice(1));
+
+  const recipient = await relayOnly(actor, "recipient", "udp");
+  await recipient.goto(link);
+  await expect(recipient.getByText("The sender doesn't allow our relay")).toBeVisible({
+    timeout: 20_000,
+  });
+  await expect(recipient.getByText("Couldn't connect to the sender's computer")).toHaveCount(0);
+});

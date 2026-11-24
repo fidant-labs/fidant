@@ -256,7 +256,11 @@ export function ReceivePage() {
           if (attempt.heardSender) {
             finish({ s: "failed", problem: lostMessage() });
           } else {
-            finish({ s: "refused", problem: message.reason });
+            finish(
+              message.reason === "drop"
+                ? { s: "failed", problem: unopened(lostMessage()) }
+                : { s: "refused", problem: message.reason },
+            );
           }
           break;
         case "host-gone":

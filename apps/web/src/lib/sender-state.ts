@@ -18,10 +18,10 @@
 // | receiving                      | progress       | receiving  |                    |
 // | receiving                      | receipt(true)  | delivered  | close              |
 // | receiving                      | receipt(false) | failed     | close              |
-// | connecting, offered, receiving | dropped        | waiting    | refuse busy, close |
-// | connecting                     | timeout        | waiting    | refuse busy, close |
+// | connecting, offered, receiving | dropped        | waiting    | refuse drop, close |
+// | connecting                     | timeout        | waiting    | refuse drop, close |
 // | connecting                     | left           | waiting    | close              |
-// | connecting, offered, receiving | path relay (1) | waiting    | refuse busy, close |
+// | connecting, offered, receiving | path relay (1) | waiting    | refuse drop, close |
 // | (its attempt matches)          | path           | (same)     |                    |
 // | (not on the list)              | joined         | -          | refuse unknown     |
 //
@@ -47,11 +47,11 @@
 //   open, and someone who knows a link ID but not its secret can join and then
 //   stay silent or send garbage). So the sender also refuses the joiner, which
 //   makes the server unbind it and frees the link for the real recipient. The
-//   reason is "busy": the protocol has no better one, and an honest recipient
-//   that already got signals from the sender treats a refusal after them as a
-//   failed attempt, not as "in use" (see ReceivePage). If the joiner already
-//   left, the server ignores the refusal. `left` needs no refusal: the joiner
-//   is gone.
+//   reason is "drop", which tells the recipient the attempt failed and the
+//   link still works (see ReceivePage). "busy" is only for a join while a
+//   transfer is in progress; the server also sends it for a second joiner.
+//   If the joiner already left, the server ignores the refusal. `left` needs
+//   no refusal: the joiner is gone.
 // - Every join carries the recipient's attempt ID, and every refusal names the
 //   attempt it refuses. A join is refused with its own attempt; `dropped` and
 //   `timeout` refuse the attempt stored when the recipient started
@@ -294,7 +294,7 @@ function end(state: SenderState, current: Recipient, blocked: boolean): SenderUp
       // An active recipient always has the attempt its join stored.
       ...(attempt === undefined
         ? []
-        : [{ type: "refuse", linkId, attempt, reason: "busy" } as const]),
+        : [{ type: "refuse", linkId, attempt, reason: "drop" } as const]),
       { type: "close", linkId },
     ],
   };
