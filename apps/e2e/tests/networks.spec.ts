@@ -1,16 +1,31 @@
-import { createHash, randomBytes } from "node:crypto";
+import {
+  constants,
+  createHash,
+  generateKeyPairSync,
+  publicEncrypt,
+  randomBytes,
+} from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { buffer } from "node:stream/consumers";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { Page } from "@playwright/test";
 // ponytail: relative import, not a workspace dependency on the server, for one small function.
 import { turnCredentials } from "../../server/src/turn.ts";
-import { canaryFile, canaryKey, expect, type Leaks, type Observed, test } from "../src/fixtures.ts";
+import {
+  type Actor,
+  canaryFile,
+  canaryKey,
+  expect,
+  type Leaks,
+  type Observed,
+  test,
+} from "../src/fixtures.ts";
 import { readPeerConnections, recordPeerConnections, selectedPair } from "../src/ice.ts";
 import { checkServerLog, serverLogAllowlist } from "../src/leaks/server-log.ts";
 import { boxJournal, boxSyslog, serverStdoutLog } from "../src/paths.ts";
 import { winningJournald } from "../src/stack/box.ts";
 import {
+  applyRelaySecret,
   boxOrigin,
   clientAddresses,
   inBox,
@@ -517,6 +532,97 @@ function gather(page: Page, server: RTCIceServer): Promise<{ types: string[]; er
   }, server);
 }
 
+type RelayGlobals = typeof globalThis & {
+  relay?: { pc: RTCPeerConnection; channel?: RTCDataChannel; received?: Promise<string> };
+};
+
+/** Opens both peers on the app's origin, a secure context, recording their peer connections. */
+async function relayPeers(actor: (name: string) => Promise<Actor>): Promise<[Page, Page]> {
+  const open = async (name: string) => {
+    const { context, page } = await actor(name);
+    await recordPeerConnections(context);
+    await page.goto("/");
+    return page;
+  };
+  return [await open("sender"), await open("recipient")];
+}
+
+/** Connects the two pages over a relay-only data channel and sends 64 KiB through it. */
+async function relayedChannel(
+  sender: Page,
+  recipient: Page,
+  ice: RTCIceServer,
+): Promise<{ path: string; echoed: boolean }> {
+  const config: RTCConfiguration = { iceServers: [ice], iceTransportPolicy: "relay" };
+  // Each callback runs in a page, so it repeats the helpers it needs.
+  const offer = await sender.evaluate(async (config) => {
+    const pc = new RTCPeerConnection(config);
+    (globalThis as RelayGlobals).relay = { pc, channel: pc.createDataChannel("relay") };
+    await pc.setLocalDescription();
+    while (pc.iceGatheringState !== "complete") {
+      await new Promise((done) => pc.addEventListener("icegatheringstatechange", done));
+    }
+    return { type: "offer" as const, sdp: pc.localDescription?.sdp ?? "" };
+  }, config);
+  const answer = await recipient.evaluate(
+    async ({ config, offer }) => {
+      const pc = new RTCPeerConnection(config);
+      const received = new Promise<string>((resolve) => {
+        pc.addEventListener("datachannel", ({ channel }) => {
+          channel.binaryType = "arraybuffer";
+          channel.addEventListener("message", async ({ data }) => {
+            const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", data));
+            resolve(Array.from(digest, (b) => b.toString(16).padStart(2, "0")).join(""));
+          });
+        });
+      });
+      (globalThis as RelayGlobals).relay = { pc, received };
+      await pc.setRemoteDescription(offer);
+      await pc.setLocalDescription();
+      while (pc.iceGatheringState !== "complete") {
+        await new Promise((done) => pc.addEventListener("icegatheringstatechange", done));
+      }
+      return { type: "answer" as const, sdp: pc.localDescription?.sdp ?? "" };
+    },
+    { config, offer },
+  );
+  const sent = await sender.evaluate(async (answer) => {
+    const relay = (globalThis as RelayGlobals).relay;
+    const channel = relay?.channel;
+    if (!relay || !channel) {
+      throw new Error("no channel");
+    }
+    await relay.pc.setRemoteDescription(answer);
+    await new Promise((resolve, reject) => {
+      setTimeout(() => reject(new Error(`not open: ${relay.pc.connectionState}`)), 20_000);
+      channel.addEventListener("open", resolve);
+    });
+    const bytes = crypto.getRandomValues(new Uint8Array(64 * 1024));
+    channel.send(bytes);
+    const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+    return Array.from(digest, (b) => b.toString(16).padStart(2, "0")).join("");
+  }, answer);
+  const received = await recipient.evaluate(() =>
+    Promise.race([
+      (globalThis as RelayGlobals).relay?.received,
+      new Promise<string>((resolve) => setTimeout(() => resolve("nothing"), 20_000)),
+    ]),
+  );
+  await expect.poll(() => pathOf(sender)).not.toBe("none");
+  const path = await pathOf(sender);
+  for (const page of [sender, recipient]) {
+    await page.evaluate(() => (globalThis as RelayGlobals).relay?.pc.close());
+  }
+  return { path, echoed: sent === received };
+}
+
+/** TURN on the relay box by address, with credentials for `secret`. */
+const relayIce = (transport: "udp" | "tcp", secret: string): RTCIceServer => ({
+  // By address: Chrome resolves names through --host-resolver-rules for TCP only.
+  urls: `turn:${relayIp}:3478?transport=${transport}`,
+  ...turnCredentials(secret, Date.now()),
+});
+
 // The standalone relay (networks/relay), set up by apps/infra/relay/install.sh as on a new server.
 test.describe("the relay box", () => {
   test.use({ remoteBrowsers: { sender: remoteBrowsers.a1, recipient: remoteBrowsers.b1 } });
@@ -561,5 +667,114 @@ test.describe("the relay box", () => {
       expect(errors, name).toContain(401);
     }
     expect(await inRelay("systemctl", "show", "-p", "NRestarts", "--value", "coturn")).toBe("0\n");
+  });
+
+  test.describe("with a secret", () => {
+    let secret = "";
+    const rotated = randomBytes(32).toString("hex");
+    test.beforeAll(async () => {
+      secret = randomBytes(32).toString("hex");
+      await applyRelaySecret(secret);
+    });
+
+    test("relays over UDP", async ({ actor }) => {
+      const [sender, recipient] = await relayPeers(actor);
+      const { path, echoed } = await relayedChannel(sender, recipient, relayIce("udp", secret));
+      expect(echoed).toBe(true);
+      expect(path).toMatch(/^relay\+udp\/(relay|prflx)$/);
+    });
+
+    test("relays over TCP", async ({ actor }) => {
+      const [sender, recipient] = await relayPeers(actor);
+      const { path, echoed } = await relayedChannel(sender, recipient, relayIce("tcp", secret));
+      expect(echoed).toBe(true);
+      expect(path).toMatch(/^relay\+tcp\//);
+    });
+
+    test("accepts the new and the previous secret after a rotation, then drops the old one after 24 hours", async ({
+      actor,
+    }) => {
+      const [sender, recipient] = await relayPeers(actor);
+      try {
+        await applyRelaySecret(rotated);
+        for (const credentials of [secret, rotated]) {
+          const { echoed } = await relayedChannel(sender, recipient, relayIce("udp", credentials));
+          expect(echoed).toBe(true);
+        }
+        await inRelay("sh", "-c", "echo 0 >/var/lib/fidant-relay/previous-since");
+        await applyRelaySecret(rotated);
+        const { types, errors } = await gather(sender, relayIce("udp", secret));
+        expect(types).not.toContain("relay");
+        expect(errors).toContain(401);
+      } finally {
+        await applyRelaySecret(secret);
+      }
+    });
+
+    test("keeps its current secret when the hand-out can't be opened", async ({ actor }) => {
+      const seal = (key: string, plaintext: string) =>
+        publicEncrypt(
+          { key, padding: constants.RSA_PKCS1_OAEP_PADDING, oaepHash: "sha256" },
+          Buffer.from(plaintext),
+        ).toString("base64");
+      const otherKey = generateKeyPairSync("rsa", { modulusLength: 3072 }).publicKey;
+      const foreign = `${seal(otherKey.export({ type: "spki", format: "pem" }).toString(), secret)}\n`;
+      const notHex = `${seal(await inRelay("cat", "/etc/fidant-relay/relay.pub"), "x".repeat(64))}\n`;
+      /** What `script` prints on stdout and stderr when fed `body`, then its exit code. */
+      const feed = (script: string, body: string) =>
+        inRelay("sh", "-c", `printf '%s' '${body}' | ${script} 2>&1; echo "exit $?"`);
+      const cannotOpen = "fidant-relay: cannot open the secret\nexit 1\n";
+
+      expect(await feed("fidant-relay-apply-secret", "not base64\n")).toBe(cannotOpen);
+      expect(await feed("fidant-relay-apply-secret", foreign)).toBe(cannotOpen);
+      expect(await feed("fidant-relay-apply-secret", notHex)).toBe(
+        "fidant-relay: not a secret\nexit 1\n",
+      );
+      // What fidant.se answers for the hand-out's path until it serves hand-outs: its page.
+      const page = '<!doctype html>\n<html lang="en"><title>Fidant</title></html>\n';
+      expect(await feed("fidant-relay-secret -", page)).toBe("exit 0\n");
+      // A hand-out's shape, 512 characters and a newline, gets past the fetch's check.
+      expect(foreign).toHaveLength(513);
+      expect(await feed("fidant-relay-secret -", foreign)).toBe(cannotOpen);
+      expect(await inRelay("cat", "/var/lib/fidant-relay/current")).toBe(`${secret}\n`);
+
+      const [sender, recipient] = await relayPeers(actor);
+      const { echoed } = await relayedChannel(sender, recipient, relayIce("udp", secret));
+      expect(echoed).toBe(true);
+    });
+
+    test("keeps its key and secret when install.sh runs again", async ({ actor }) => {
+      const state = () =>
+        inRelay(
+          "sh",
+          "-c",
+          "sha256sum /etc/fidant-relay/relay.pub; cat /var/lib/fidant-relay/current",
+        );
+      const before = await state();
+      expect(before).toContain(secret);
+      await inRelay("sh", "-c", "set -a; . /relay-config/env; sh /relay/install.sh");
+      expect(await state()).toBe(before);
+
+      const [sender, recipient] = await relayPeers(actor);
+      const { echoed } = await relayedChannel(sender, recipient, relayIce("udp", secret));
+      expect(echoed).toBe(true);
+    });
+
+    test("keeps secrets and client addresses out of its journal", async () => {
+      const lines = (await inRelay("journalctl", "-o", "cat", "--no-pager")).split("\n");
+      // The fetch ran, offline here, and exited cleanly.
+      expect(lines).toContainEqual(expect.stringMatching(/^Finished fidant-relay-secret\.service/));
+      for (const value of [secret, rotated]) {
+        expect(lines.filter((line) => line.includes(value))).toEqual([]);
+      }
+      const addresses = await clientAddresses();
+      expect(addresses.length).toBeGreaterThan(0);
+      for (const ip of addresses) {
+        expect(
+          lines.filter((line) => addressPattern(ip).test(line)),
+          ip,
+        ).toEqual([]);
+      }
+    });
   });
 });

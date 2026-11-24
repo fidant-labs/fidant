@@ -26,9 +26,9 @@ systemctl restart systemd-journald
 
 systemctl mask coturn
 export DEBIAN_FRONTEND=noninteractive
-dpkg -s coturn certbot sqlite3 ufw >/dev/null 2>&1 || {
+dpkg -s coturn certbot sqlite3 ufw curl >/dev/null 2>&1 || {
   apt-get -o DPkg::Lock::Timeout=600 update
-  apt-get -o DPkg::Lock::Timeout=600 install -y coturn certbot sqlite3 ufw
+  apt-get -o DPkg::Lock::Timeout=600 install -y coturn certbot sqlite3 ufw curl
 }
 
 private_ip=$(ip -4 -o addr show scope global | awk '{ sub("/.*", "", $4); print $4; exit }')
@@ -105,6 +105,99 @@ AmbientCapabilities=CAP_NET_BIND_SERVICE
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 EOF
 
+# Reads a hand-out on stdin and gives coturn its secret and the previous one. No set -x: it holds them.
+cat >/usr/local/bin/fidant-relay-apply-secret <<'EOF'
+#!/bin/sh
+set -eu
+umask 077
+. /etc/fidant-relay/relay.env
+dir=/var/lib/fidant-relay
+db=$dir/turndb
+# Rolls back a journal left by a writer that died, which would make coturn refuse every allocation.
+sqlite3 "$db" 'SELECT count(*) FROM turn_secret' >/dev/null
+if ! secret=$(base64 -d 2>/dev/null | openssl pkeyutl -decrypt -inkey /etc/fidant-relay/relay.key \
+  -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -pkeyopt rsa_mgf1_md:sha256 2>/dev/null && echo .); then
+  echo 'fidant-relay: cannot open the secret' >&2
+  exit 1
+fi
+secret=${secret%.}
+case $secret in
+*[!0-9a-f]*) secret= ;;
+esac
+if [ ${#secret} -ne 64 ]; then
+  echo 'fidant-relay: not a secret' >&2
+  exit 1
+fi
+current=$(cat "$dir/current" 2>/dev/null || true)
+if [ "$secret" != "$current" ]; then
+  if [ -n "$current" ]; then
+    mv "$dir/current" "$dir/previous"
+    date +%s >"$dir/previous-since"
+  fi
+  printf '%s\n' "$secret" >"$dir/current"
+fi
+if [ -e "$dir/previous" ] && [ $(($(date +%s) - $(cat "$dir/previous-since" 2>/dev/null || echo 0))) -gt 86400 ]; then
+  rm -f "$dir/previous" "$dir/previous-since"
+fi
+wanted=$(cat "$dir/current" "$dir/previous" 2>/dev/null | LC_ALL=C sort -u)
+have=$(sqlite3 "$db" "SELECT value FROM turn_secret WHERE realm='$RELAY_NAME' ORDER BY value")
+# Each write makes coturn refuse new allocations until it commits, so write only a change.
+if [ "$wanted" != "$have" ]; then
+  {
+    echo '.timeout 2000'
+    echo 'BEGIN;'
+    printf "DELETE FROM turn_secret WHERE realm='%s';\n" "$RELAY_NAME"
+    for value in $wanted; do
+      printf "INSERT INTO turn_secret(realm,value) VALUES('%s','%s');\n" "$RELAY_NAME" "$value"
+    done
+    echo 'COMMIT;'
+  } | sqlite3 -bail "$db" 2>/dev/null || {
+    echo 'fidant-relay: cannot write the secrets' >&2
+    exit 1
+  }
+fi
+EOF
+chmod 700 /usr/local/bin/fidant-relay-apply-secret
+
+# The app answers unknown paths with its page, so only a body shaped like a hand-out goes on.
+cat >/usr/local/bin/fidant-relay-secret <<'EOF'
+#!/bin/sh
+set -eu
+if [ "${1-}" != - ]; then
+  . /etc/fidant-relay/relay.env
+  { curl -fs --max-time 10 --proto =https "$APP_URL/relay-secret/$RELAY_ID" || echo '!'; } |
+    /usr/local/bin/fidant-relay-secret -
+  exit
+fi
+body=$(head -c 2049; echo .)
+body=${body%.}
+[ ${#body} -le 2048 ] || exit 0
+body=${body%'
+'}
+case $body in
+'' | *[!A-Za-z0-9+/=]*) exit 0 ;;
+esac
+printf '%s\n' "$body" | LC_ALL=C grep -Eqx '[A-Za-z0-9+/]+={0,2}' || exit 0
+printf '%s\n' "$body" | /usr/local/bin/fidant-relay-apply-secret
+EOF
+chmod 700 /usr/local/bin/fidant-relay-secret
+cat >/etc/systemd/system/fidant-relay-secret.service <<'EOF'
+[Unit]
+Description=Fetch the relay's secret from the app
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/fidant-relay-secret
+EOF
+cat >/etc/systemd/system/fidant-relay-secret.timer <<'EOF'
+[Timer]
+OnActiveSec=10s
+OnUnitInactiveSec=60s
+
+[Install]
+WantedBy=timers.target
+EOF
+
 # Logging off: each blocked packet would put its source address in the journal.
 ufw logging off
 ufw default deny incoming
@@ -118,6 +211,7 @@ systemctl daemon-reload
 systemctl unmask coturn
 systemctl enable coturn
 systemctl restart coturn
+systemctl enable --now fidant-relay-secret.timer
 
 set +x
 echo "fidant-relay: public key for $RELAY_ID"

@@ -5,6 +5,8 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
+// ponytail: relative import, not a workspace dependency on the server, for one small function.
+import { sealRelaySecret } from "../../../server/src/relay-secret.ts";
 import { e2eDir, repoRoot, runDir } from "../paths.ts";
 import { boxFiles } from "./box.ts";
 import { coturnConfig } from "./coturn.ts";
@@ -94,8 +96,18 @@ export async function inBox(...command: string[]): Promise<string> {
 
 /** Runs a command in the relay box container and returns its stdout. */
 export async function inRelay(...command: string[]): Promise<string> {
-  const { stdout } = await run("docker", [...compose, "exec", "-T", "relay", ...command]);
+  const { stdout } = await run("docker", [...compose, "exec", "-T", "relay", ...command], {
+    maxBuffer: 64 * 1024 * 1024,
+  });
   return stdout;
+}
+
+/** Seals `secretHex` to the relay box's key and applies it there, as the app's hand-out will. */
+export async function applyRelaySecret(secretHex: string): Promise<void> {
+  const publicKey = await inRelay("cat", "/etc/fidant-relay/relay.pub");
+  const applying = run("docker", [...compose, "exec", "-T", "relay", "fidant-relay-apply-secret"]);
+  applying.child.stdin?.end(`${sealRelaySecret(publicKey, secretHex)}\n`);
+  await applying;
 }
 
 /** Every address of the browsers' network namespaces and their routers, as the box may see them. */
