@@ -3,9 +3,10 @@
 // The link ID (16 random bytes) is the only part the server ever sees. The
 // secret (32 random bytes) sits in the URL fragment, which browsers never send
 // to a server; both keys for the link are derived from it (see keys.ts). The
-// copy Fidant emails puts EMAILED_LINK_MARKER before the secret.
+// copy Fidant emails has the fragment `e.<mark>.<secret>`, where the mark is
+// the value the server picked when it emailed the link.
 
-import { EMAILED_LINK_MARKER, isLinkId } from "@sigill/protocol";
+import { isLinkId, parseEmailedFragment } from "@sigill/protocol";
 import { decodeBase64url, encodeBase64url } from "./base64url.ts";
 
 export const LINK_ID_BYTES = 16;
@@ -31,23 +32,23 @@ export function isSecret(value: unknown): value is string {
 }
 
 /**
- * Reads the link ID and secret from a recipient page location (`/r/<linkId>` plus `#<secret>`,
- * or `#<marker><secret>` for an emailed link). Returns undefined if either is malformed.
+ * Reads the link ID, secret and, for an emailed link, its mark from a recipient page location
+ * (`/r/<linkId>` plus `#<secret>` or `#e.<mark>.<secret>`). Returns undefined if any is malformed.
  */
 export function parseRecipientLocation(location: {
   pathname: string;
   hash: string;
-}): { linkId: string; secret: string; emailed: boolean } | undefined {
+}): { linkId: string; secret: string; mark?: string } | undefined {
   const match = /^\/r\/([^/]+)\/?$/.exec(location.pathname);
   const linkId = match?.[1];
   if (!isLinkId(linkId)) {
     return undefined;
   }
   const fragment = location.hash.startsWith("#") ? location.hash.slice(1) : "";
-  const emailed = fragment.startsWith(EMAILED_LINK_MARKER);
-  const secret = emailed ? fragment.slice(EMAILED_LINK_MARKER.length) : fragment;
+  const emailed = parseEmailedFragment(fragment);
+  const secret = emailed ? emailed.secret : fragment;
   if (!isSecret(secret)) {
     return undefined;
   }
-  return { linkId, secret, emailed };
+  return emailed ? { linkId, secret, mark: emailed.mark } : { linkId, secret };
 }

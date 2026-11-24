@@ -51,7 +51,7 @@ type CopyNote = keyof Messages["send"]["copyNote"];
 type RowProps = { recipient: Recipient; fileSize: number; onRemove(linkId: string): void };
 
 function RecipientRow({ recipient, fileSize, onRemove }: RowProps) {
-  const { name, url, status, bytesSent, linkId, path, noRelay, email, mail } = recipient;
+  const { name, url, status, bytesSent, linkId, path, noRelay, email, mail, unbound } = recipient;
   const { t, lang } = useI18n();
   const [copyNote, setCopyNote] = useState<CopyNote | "">("");
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -76,7 +76,10 @@ function RecipientRow({ recipient, fileSize, onRemove }: RowProps) {
     }
   };
 
-  const shareable = status === "waiting" || status === "declined" || status === "failed";
+  const open = status === "waiting" || status === "declined" || status === "failed";
+  // A link the server may still email, or whose email binding died, is not to be shared.
+  const shareable = open && mail !== "sending" && !unbound;
+  const lost = open && unbound;
 
   return (
     <li>
@@ -93,10 +96,10 @@ function RecipientRow({ recipient, fileSize, onRemove }: RowProps) {
           </p>
           {email && mail && (
             <p
-              class={`mt-1 mb-0 text-[0.9rem] wrap-anywhere ${mail === "failed" || mail === "limit" ? "text-destructive" : "text-muted-foreground"}`}
+              class={`mt-1 mb-0 text-[0.9rem] wrap-anywhere ${lost || mail === "failed" || mail === "limit" ? "text-destructive" : "text-muted-foreground"}`}
               aria-live="polite"
             >
-              {t.send.mail[mail](maskAddress(email))}
+              {t.send.mail[lost ? "lost" : mail](maskAddress(email))}
             </p>
           )}
           {path && <PathLine path={path} />}

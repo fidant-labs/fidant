@@ -2,19 +2,22 @@
 // the file once its checksum is verified.
 //
 // One attempt (see lib/peer.ts and lib/receive-file.ts):
-// - Connect to the signaling server, derive the link's signal key, and send
-//   `gate` once both are done. A link that was emailed needs a code first:
-//   unless this tab holds a token for it in sessionStorage, the page asks the
-//   server to email a code and trades the right code for a token. A `gate`
-//   answer to a `join` means the token was refused, so the code step comes
-//   back. A link Fidant emailed is marked, and the page never joins it unless
-//   `gate` says it needs a code.
-// - Then send `join`. The server answers with `joined`, carrying this
-//   pairing's ICE servers, before it tells the sender; the recipient peer is
-//   created synchronously on it, so the sender's offer, which comes later on
-//   the same socket, always finds a peer to answer it. Each attempt joins with
-//   a fresh random attempt ID, so a sender's late refusal of an earlier
-//   attempt cannot end this one.
+// - Connect to the signaling server and derive the link's signal key. Once
+//   both are done, a plain link sends `join`. A link Fidant emailed carries
+//   the server's mark (`#e.<mark>.<secret>`), and its page sends `gate` with
+//   the mark first, on every attempt. Unless the server answers with the
+//   masked address, the mark no longer matches a binding and the page joins
+//   nothing (`unbound`). Otherwise it joins with this tab's token from
+//   sessionStorage, or first asks the server to email a code and trades the
+//   right code for a token. A `gate` answer to a `join` is a refusal: the
+//   token is dropped and an emailed link asks `gate` again; a plain link is
+//   email-bound and ends as `unbound`.
+// - The server answers `join` with `joined`, carrying this pairing's ICE
+//   servers, before it tells the sender; the recipient peer is created
+//   synchronously on it, so the sender's offer, which comes later on the same
+//   socket, always finds a peer to answer it. Each attempt joins with a fresh
+//   random attempt ID, so a sender's late refusal of an earlier attempt cannot
+//   end this one.
 // - `relay` goes to the peer. `refused` ends the attempt with the matching
 //   message, and so does `host-gone` until the file starts arriving. A
 //   transfer under way no longer needs the server (the sender may only have
@@ -152,7 +155,7 @@ export function ReceivePage() {
     if (!link) {
       return;
     }
-    const { linkId, secret, emailed } = link;
+    const { linkId, secret, mark } = link;
     const previous = attemptRef.current;
     if (previous && !previous.ended) {
       release(previous);
@@ -216,15 +219,20 @@ export function ReceivePage() {
     };
     armConnectTimeout();
 
-    // Set before `gate` is sent, so it is there when `joined` arrives.
+    // Set before `join` is sent, so it is there when `joined` arrives.
     let signalKey: CryptoKey | undefined;
     let opened = false;
     /** A connection attempt failed, so the server may have restarted and lost the sender's link. */
     let failedBefore = false;
     let joinSent = false;
     const ask = () => {
-      if (opened && signalKey && current()) {
-        signaling.send({ t: "gate", link: linkId });
+      if (!opened || !signalKey || !current()) {
+        return;
+      }
+      if (mark) {
+        signaling.send({ t: "gate", link: linkId, mark });
+      } else {
+        join(undefined);
       }
     };
     const join = (token: string | undefined) => {
@@ -282,29 +290,30 @@ export function ReceivePage() {
           if (!current() || message.link !== linkId) {
             break;
           }
+          if (joinSent) {
+            joinSent = false;
+            storeToken(linkId, undefined);
+            if (mark) {
+              ask();
+            } else {
+              finish({ s: "refused", problem: "unbound" });
+            }
+            break;
+          }
           // Someone else may host this link ID now, without the code that guards the emailed one.
-          if (emailed && !message.to) {
+          if (!message.to) {
+            storeToken(linkId, undefined);
             finish({ s: "refused", problem: "unbound" });
+            break;
+          }
+          const token = readToken(linkId);
+          if (token) {
+            join(token);
             break;
           }
           // The code step has no deadline; `join` arms it again.
           clearTimeout(connectTimer);
-          if (joinSent) {
-            joinSent = false;
-            storeToken(linkId, undefined);
-          }
-          const token = message.to ? readToken(linkId) : undefined;
-          if (message.to && !token) {
-            setView({
-              s: "verify",
-              to: message.to,
-              asked: false,
-              sending: false,
-              result: undefined,
-            });
-          } else {
-            join(token);
-          }
+          setView({ s: "verify", to: message.to, asked: false, sending: false, result: undefined });
           break;
         }
         case "code":
@@ -555,17 +564,17 @@ export function ReceivePage() {
 
   const onSendCode = () => {
     const attempt = attemptRef.current;
-    if (view.s !== "verify" || view.sending || !attempt || !link) {
+    if (view.s !== "verify" || view.sending || !attempt || !link?.mark) {
       return;
     }
     setView({ ...view, asked: true, sending: true, result: undefined });
-    attempt.signaling.send({ t: "send-code", link: link.linkId });
+    attempt.signaling.send({ t: "send-code", link: link.linkId, mark: link.mark });
   };
 
   const onCode = (event: Event) => {
     event.preventDefault();
     const attempt = attemptRef.current;
-    if (view.s !== "verify" || !attempt || !link) {
+    if (view.s !== "verify" || !attempt || !link?.mark) {
       return;
     }
     const input = (event.currentTarget as HTMLFormElement).elements.namedItem(
@@ -579,7 +588,7 @@ export function ReceivePage() {
       return;
     }
     setView({ ...view, result: undefined });
-    attempt.signaling.send({ t: "code", link: link.linkId, code });
+    attempt.signaling.send({ t: "code", link: link.linkId, code, mark: link.mark });
   };
 
   if (!link) {

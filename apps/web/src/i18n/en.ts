@@ -235,6 +235,8 @@ export const en = {
         `Email not sent to ${to}: too many emails right now. Copy the link and share it yourself.`,
       verifying: (to: string) => `Code sent to ${to}`,
       verified: (to: string) => `Verified with the code sent to ${to}`,
+      lost: (to: string) =>
+        `The link emailed to ${to} stopped working when the connection to our server dropped. To send it again, remove this recipient and add them again.`,
     },
     progressFor: (name: string) => `Progress for ${name}`,
     copy: "Copy link",

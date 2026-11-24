@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomBytes, randomInt } from "node:crypto";
 import { test } from "node:test";
-import { EMAILED_LINK_MARKER, isLinkId } from "@sigill/protocol";
+import { emailedFragment, isLinkId } from "@sigill/protocol";
 import { decodeBase64url, encodeBase64url } from "./base64url.ts";
 import { createLink, isSecret, parseRecipientLocation } from "./link.ts";
 
@@ -37,31 +37,33 @@ test("createLink makes a fresh ID and secret in the URL", () => {
 test("parseRecipientLocation reads back a created link", () => {
   const link = createLink("https://localhost:8443");
   const url = new URL(link.url);
-  assert.deepEqual(parseRecipientLocation(url), {
-    linkId: link.linkId,
-    secret: link.secret,
-    emailed: false,
-  });
+  assert.deepEqual(parseRecipientLocation(url), { linkId: link.linkId, secret: link.secret });
   assert.deepEqual(parseRecipientLocation({ pathname: `/r/${link.linkId}/`, hash: url.hash }), {
     linkId: link.linkId,
     secret: link.secret,
-    emailed: false,
   });
 });
 
-test("parseRecipientLocation strips an emailed link's marker and keeps the secret", () => {
+test("parseRecipientLocation reads an emailed link's mark and keeps the secret", () => {
   const { linkId, secret } = createLink("https://localhost:8443");
+  const mark = createLink("https://localhost:8443").linkId;
   const pathname = `/r/${linkId}`;
-  assert.deepEqual(parseRecipientLocation({ pathname, hash: `#${EMAILED_LINK_MARKER}${secret}` }), {
-    linkId,
-    secret,
-    emailed: true,
-  });
+  assert.deepEqual(
+    parseRecipientLocation({ pathname, hash: `#${emailedFragment(mark, secret)}` }),
+    {
+      linkId,
+      secret,
+      mark,
+    },
+  );
   for (const hash of [
-    `#${EMAILED_LINK_MARKER}`,
-    `#${EMAILED_LINK_MARKER}${EMAILED_LINK_MARKER}${secret}`,
-    `#${EMAILED_LINK_MARKER}${secret.slice(1)}`,
-    `#${secret}${EMAILED_LINK_MARKER}`,
+    `#e.${secret}`,
+    `#e.${mark}`,
+    `#e.${mark}.`,
+    `#e.${mark}.${secret.slice(1)}`,
+    `#e.${mark.slice(1)}.${secret}`,
+    `#e.e.${mark}.${secret}`,
+    `#${secret}.e.${mark}`,
   ]) {
     assert.equal(parseRecipientLocation({ pathname, hash }), undefined, hash);
   }

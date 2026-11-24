@@ -30,7 +30,9 @@
 // - When the server's `hello` says it can send mail, the add form offers an
 //   email address. Adding a recipient with one sends a single `email` message
 //   after the `host` that includes its link; the server's `email` replies go
-//   to the reducer.
+//   to the reducer. Its card offers no link until the server answers, then
+//   the marked link the server emailed, or the plain one if it refused. A
+//   reconnect never hosts an emailed link again (reducer `server-lost`).
 //
 // Names, the file and link secrets stay in this tab. The server only ever
 // gets link IDs, attempt IDs, opaque sealed signals, refusal reasons,
@@ -329,7 +331,12 @@ export function SendPage() {
           setMail(message.mail);
           break;
         case "email":
-          dispatch({ type: "email", linkId: message.link, status: message.status });
+          dispatch({
+            type: "email",
+            linkId: message.link,
+            status: message.status,
+            mark: message.mark,
+          });
           break;
         case "relay":
           void connectionsRef.current.get(message.link)?.peer?.handleRelay(message.data);

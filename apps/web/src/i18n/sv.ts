@@ -234,6 +234,8 @@ export const sv: Messages = {
         `Mejlet till ${to} skickades inte: för många mejl just nu. Kopiera länken och dela den själv.`,
       verifying: (to: string) => `Kod skickad till ${to}`,
       verified: (to: string) => `Verifierad med koden som skickades till ${to}`,
+      lost: (to: string) =>
+        `Länken som mejlades till ${to} slutade fungera när anslutningen till vår server bröts. Ta bort mottagaren och lägg till den igen för att skicka den på nytt.`,
     },
     progressFor: (name: string) => `Förlopp för ${name}`,
     copy: "Kopiera länk",
