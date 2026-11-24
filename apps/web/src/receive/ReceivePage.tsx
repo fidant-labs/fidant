@@ -1,14 +1,23 @@
 // The recipient page: open a link, see what is offered, accept it, and save
-// the file once its checksum is verified.
+// the file, or show the text, once its checksum is verified.
 //
 // One attempt (see lib/peer.ts and lib/receive-file.ts):
-// - Connect to the signaling server, derive the link's signal key, and send
-//   `join` once both are done. The server answers with `joined`, carrying
-//   this pairing's ICE servers, before it tells the sender; the recipient peer
-//   is created synchronously on it, so the sender's offer, which comes later
-//   on the same socket, always finds a peer to answer it. Each attempt joins
-//   with a fresh random attempt ID, so a sender's late refusal of an earlier
-//   attempt cannot end this one.
+// - Connect to the signaling server and derive the link's signal key. Once
+//   both are done, a plain link sends `join`. A link Fidant emailed carries
+//   the server's mark (`#e.<mark>.<secret>`), and its page sends `gate` with
+//   the mark first, on every attempt. Unless the server answers with the
+//   masked address, the mark no longer matches a binding and the page joins
+//   nothing (`unbound`). Otherwise it joins with this tab's token from
+//   sessionStorage, or first asks the server to email a code and trades the
+//   right code for a token. A `gate` answer to a `join` is a refusal: the
+//   token is dropped and an emailed link asks `gate` again; a plain link is
+//   email-bound and ends as `unbound`.
+// - The server answers `join` with `joined`, carrying this pairing's ICE
+//   servers, before it tells the sender; the recipient peer is created
+//   synchronously on it, so the sender's offer, which comes later on the same
+//   socket, always finds a peer to answer it. Each attempt joins with a fresh
+//   random attempt ID, so a sender's late refusal of an earlier attempt cannot
+//   end this one.
 // - `relay` goes to the peer. `refused` ends the attempt with the matching
 //   message, and so does `host-gone` until the file starts arriving. A
 //   transfer under way no longer needs the server (the sender may only have
@@ -22,11 +31,16 @@
 //   unknown` after a drop or failed connect waits retryDelay and tries again,
 //   up to MAX_REJOINS times. Once the channel is open the transfer no longer
 //   needs the server, so a drop then only closes the signaling client.
+//   Reaching the code step resets the rejoin count (a token holder's rejoins
+//   do not), and the code field survives a rejoin. A `failed` or `expired`
+//   code result asks the gate again, so a binding that is gone ends as "no
+//   longer works".
 // - If the data channel hasn't opened CONNECT_TIMEOUT_MS (30 s) after the
 //   attempt starts, the attempt fails with "connect" (a peer exists) or
 //   "server" (no `joined` yet), so "Connecting…" never stays up for good.
 // - When the data channel opens, receiveFile runs the transfer. The offer
-//   screen resolves its decision with a Sink (Download) or undefined (Decline).
+//   screen resolves its decision with a Sink (Download or Show) or undefined
+//   (Decline). Show always collects a text in memory, never in a save dialog.
 //
 // When an attempt ends for any reason, its signaling socket is closed: the
 // server keeps a guest bound to its link until then, and a later opener would
@@ -36,12 +50,16 @@
 // a new peer.
 //
 // The secret stays in this tab (it is never stripped from the address bar in
-// this demo). The file name and size are shown, never logged or sent anywhere.
+// this demo). The file name and size, or the text, are shown, never logged or
+// sent anywhere.
 
+import { type CodeResult, isLinkId } from "@sigill/protocol";
 import { cn } from "cn";
 import { type ComponentChildren, Fragment, type VNode } from "preact";
 import { useEffect, useMemo, useReducer, useRef, useState } from "preact/hooks";
 import { Button, buttonVariants } from "#components/ui/button";
+import { Input } from "#components/ui/input";
+import { Label } from "#components/ui/label";
 import type { Messages } from "../i18n/en.ts";
 import { useI18n } from "../i18n/I18n.tsx";
 import { encodeBase64url } from "../lib/base64url.ts";
@@ -52,9 +70,10 @@ import { createRecipientPeer, type OpenPath, type Peer } from "../lib/peer.ts";
 import type { FileOffer } from "../lib/receive-file.ts";
 import { ReceiveError, receiveFile } from "../lib/receive-file.ts";
 import { peerLostProblem } from "../lib/receive-problem.ts";
-import { addRelay, NO_RELAYS, type Tie } from "../lib/server-facts.ts";
+import { addRelay, type Kind, NO_RELAYS, type Tie } from "../lib/server-facts.ts";
 import { connectSignaling, retryDelay, type SignalingClient } from "../lib/signaling-client.ts";
-import { createSink, isPickerCancel, type Sink } from "../lib/sink.ts";
+import { BlobSink, createSink, isPickerCancel, type Sink } from "../lib/sink.ts";
+import { decodeText, isTextOffer } from "../lib/text-secret.ts";
 import {
   Direct,
   FileCard,
@@ -64,6 +83,7 @@ import {
   Problem,
   ServerPanel,
   TechDetails,
+  useCopyNote,
 } from "../ui.tsx";
 
 const caption = "text-[0.9rem] text-muted-foreground";
@@ -71,14 +91,19 @@ const caption = "text-[0.9rem] text-muted-foreground";
 /** Which problem to show. Text comes from the dictionary at render time, so a language switch re-renders it. */
 type ProblemKey = keyof Messages["receive"]["problems"];
 
+type ProblemText = { title: string; body: string; detail?: string };
+
+type Offer = FileOffer & { text: boolean };
+
 type View =
   | { s: "connecting" }
-  | { s: "refused"; problem: ProblemKey }
-  | { s: "offer"; offer: FileOffer }
-  | { s: "receiving"; offer: FileOffer; bytes: number }
-  | { s: "done"; offer: FileOffer; blob: Blob | undefined; sha256: string }
-  | { s: "declined" }
-  | { s: "failed"; problem: ProblemKey };
+  | { s: "verify"; to: string; asked: boolean; sending: boolean; result: CodeResult | undefined }
+  | { s: "refused"; problem: ProblemKey; text?: boolean }
+  | { s: "offer"; offer: Offer }
+  | { s: "receiving"; offer: Offer; bytes: number }
+  | { s: "done"; offer: Offer; blob: Blob | undefined; sha256: string }
+  | { s: "declined"; text: boolean }
+  | { s: "failed"; problem: ProblemKey; text?: boolean };
 
 type Attempt = {
   abort: AbortController;
@@ -88,6 +113,8 @@ type Attempt = {
   channelOpen: boolean;
   /** Set once a signal from the sender arrived, so the sender took this join. */
   heardSender: boolean;
+  /** Set once the offer turned out to be a text, so later problems use text wording. */
+  text: boolean;
   /** Set once the recipient accepted and the file started arriving. */
   receiving: boolean;
   /** The server said the sender is gone while the file was arriving. */
@@ -112,6 +139,12 @@ const MAX_REJOINS = 4;
 
 export function ReceivePage() {
   const { t, lang } = useI18n();
+  const problemFor = (view: { problem: ProblemKey; text?: boolean }): ProblemText => {
+    const problems: Record<ProblemKey, ProblemText> = view.text
+      ? { ...t.receive.problems, ...t.secret.problems }
+      : t.receive.problems;
+    return problems[view.problem];
+  };
   const link = useMemo(() => parseRecipientLocation(location), []);
   const [view, setView] = useState<View>({ s: "connecting" });
   const [picking, setPicking] = useState(false);
@@ -121,6 +154,7 @@ export function ReceivePage() {
   const [viaRelay, setViaRelay] = useState(false);
   const [path, setPath] = useState<OpenPath | undefined>(undefined);
   const attemptRef = useRef<Attempt | undefined>(undefined);
+  const codeAsked = useRef<string | undefined>(undefined);
 
   /** Closes everything an attempt holds. `linger` keeps the peer up for a moment. */
   const release = (attempt: Attempt, linger = false) => {
@@ -142,7 +176,7 @@ export function ReceivePage() {
     if (!link) {
       return;
     }
-    const { linkId, secret } = link;
+    const { linkId, secret, mark } = link;
     const previous = attemptRef.current;
     if (previous && !previous.ended) {
       release(previous);
@@ -156,6 +190,7 @@ export function ReceivePage() {
       signaling,
       channelOpen: false,
       heardSender: false,
+      text: false,
       receiving: false,
       hostGone: false,
       relayRefused: false,
@@ -175,7 +210,11 @@ export function ReceivePage() {
         return;
       }
       release(attempt, linger);
-      setView(next);
+      setView(
+        attempt.text && (next.s === "refused" || next.s === "failed")
+          ? { ...next, text: true }
+          : next,
+      );
     };
     // The peer dropped, or never connected (ICE failed). If the sender's tab
     // closed, `host-gone` arrives within moments of the drop, before or after
@@ -194,28 +233,47 @@ export function ReceivePage() {
       );
     };
     // Without it, a sender whose signals never arrive leaves "Connecting…" up for good.
-    attempt.timers.push(
-      setTimeout(() => {
+    let connectTimer: ReturnType<typeof setTimeout> | undefined;
+    const armConnectTimeout = () => {
+      clearTimeout(connectTimer);
+      connectTimer = setTimeout(() => {
         if (!attempt.channelOpen) {
           finish({ s: "failed", problem: attempt.peer ? lostMessage() : "server" });
         }
-      }, CONNECT_TIMEOUT_MS),
-    );
+      }, CONNECT_TIMEOUT_MS);
+      attempt.timers.push(connectTimer);
+    };
+    armConnectTimeout();
 
     // Set before `join` is sent, so it is there when `joined` arrives.
     let signalKey: CryptoKey | undefined;
     let opened = false;
     /** A connection attempt failed, so the server may have restarted and lost the sender's link. */
     let failedBefore = false;
-    const join = () => {
-      if (opened && signalKey && current()) {
-        signaling.send({ t: "join", link: linkId, attempt: attemptId });
+    let joinSent = false;
+    const ask = () => {
+      if (!opened || !signalKey || !current()) {
+        return;
       }
+      if (mark) {
+        signaling.send({ t: "gate", link: linkId, mark });
+      } else {
+        join(undefined);
+      }
+    };
+    const join = (token: string | undefined) => {
+      joinSent = true;
+      armConnectTimeout();
+      signaling.send(
+        token === undefined
+          ? { t: "join", link: linkId, attempt: attemptId }
+          : { t: "join", link: linkId, attempt: attemptId, token },
+      );
     };
     void deriveSignalKey(secret, linkId).then(
       (key) => {
         signalKey = key;
-        join();
+        ask();
       },
       () => finish({ s: "failed", problem: "server" }),
     );
@@ -226,7 +284,7 @@ export function ReceivePage() {
       }
       opened = true;
       setTie("unpaired");
-      join();
+      ask();
     });
     signaling.onClose(({ byClient }) => {
       if (byClient || !current()) {
@@ -254,6 +312,68 @@ export function ReceivePage() {
     });
     signaling.subscribe((message) => {
       switch (message.t) {
+        case "gate": {
+          if (!current() || message.link !== linkId) {
+            break;
+          }
+          if (joinSent) {
+            joinSent = false;
+            storeToken(linkId, undefined);
+            if (mark) {
+              ask();
+            } else {
+              finish({ s: "refused", problem: "unbound" });
+            }
+            break;
+          }
+          // Someone else may host this link ID now, without the code that guards the emailed one.
+          if (!message.to) {
+            storeToken(linkId, undefined);
+            finish({ s: "refused", problem: "unbound" });
+            break;
+          }
+          const token = readToken(linkId);
+          if (token) {
+            join(token);
+            break;
+          }
+          // Time on the code step must not use up the attempts a dropped connection gets.
+          rejoins = 0;
+          // The code step has no deadline; `join` arms it again.
+          clearTimeout(connectTimer);
+          const to = message.to;
+          setView((v) =>
+            v.s === "verify"
+              ? v
+              : {
+                  s: "verify",
+                  to,
+                  asked: codeAsked.current === linkId,
+                  sending: false,
+                  result: undefined,
+                },
+          );
+          break;
+        }
+        case "code":
+          if (current() && message.link === linkId) {
+            const { result } = message;
+            setView((v) => (v.s === "verify" ? { ...v, sending: false, result } : v));
+            // The binding may be gone: the gate answers with no address if so.
+            if (!joinSent && (result === "failed" || result === "expired")) {
+              ask();
+            }
+          }
+          break;
+        case "token":
+          if (!current() || message.link !== linkId || joinSent) {
+            break;
+          }
+          storeToken(linkId, message.token);
+          codeAsked.current = undefined;
+          setView({ s: "connecting" });
+          join(message.token);
+          break;
         case "joined":
           if (
             !current() ||
@@ -355,7 +475,7 @@ export function ReceivePage() {
         return;
       }
       attempt.channelOpen = true;
-      let offered: FileOffer | undefined;
+      let offered: Offer | undefined;
       receiveFile({
         channel,
         maxMessageSize,
@@ -366,8 +486,13 @@ export function ReceivePage() {
             if (!current()) {
               return;
             }
-            const offer = { ...received, from: displayName(received.from) };
+            const offer: Offer = {
+              ...received,
+              from: displayName(received.from),
+              text: isTextOffer(received),
+            };
             offered = offer;
+            attempt.text = offer.text;
             attempt.decide = (sink) => {
               attempt.decide = undefined;
               if (sink) {
@@ -388,7 +513,7 @@ export function ReceivePage() {
       }).then(
         (result) => {
           if (result.type === "declined") {
-            finish({ s: "declined" }, true);
+            finish({ s: "declined", text: attempt.text }, true);
           } else if (offered) {
             const sha256 = toHex(result.sha256);
             finish({ s: "done", offer: offered, blob: result.blob, sha256 }, true);
@@ -486,6 +611,44 @@ export function ReceivePage() {
 
   const onDecline = () => attemptRef.current?.decide?.(undefined);
 
+  const onShow = () => {
+    const attempt = attemptRef.current;
+    if (view.s !== "offer" || !attempt?.decide || attempt.ended || attempt.abort.signal.aborted) {
+      return;
+    }
+    attempt.decide(new BlobSink());
+  };
+
+  const onSendCode = () => {
+    const attempt = attemptRef.current;
+    if (view.s !== "verify" || view.sending || !attempt || !link?.mark) {
+      return;
+    }
+    codeAsked.current = link.linkId;
+    setView({ ...view, asked: true, sending: true, result: undefined });
+    attempt.signaling.send({ t: "send-code", link: link.linkId, mark: link.mark });
+  };
+
+  const onCode = (event: Event) => {
+    event.preventDefault();
+    const attempt = attemptRef.current;
+    if (view.s !== "verify" || !attempt || !link?.mark) {
+      return;
+    }
+    const input = (event.currentTarget as HTMLFormElement).elements.namedItem(
+      "code",
+    ) as HTMLInputElement;
+    const code = input.value.replace(/\s/g, "");
+    // The server drops the connection on a malformed code, so only six digits go out.
+    if (!/^[0-9]{6}$/.test(code)) {
+      setView({ ...view, result: "wrong" });
+      input.focus();
+      return;
+    }
+    setView({ ...view, result: undefined });
+    attempt.signaling.send({ t: "code", link: link.linkId, code, mark: link.mark });
+  };
+
   if (!link) {
     return (
       <Page>
@@ -494,13 +657,18 @@ export function ReceivePage() {
     );
   }
 
+  const emailed = link?.mark !== undefined;
+  const isText = "offer" in view ? view.offer.text : "text" in view ? view.text : undefined;
+  const kind: Kind = isText === undefined ? "unknown" : isText ? "secret" : "file";
   const panel = reachedServer ? (
     <ServerPanel
       sees={t.server.seesRecipient}
-      holds={t.server.recipientHolds(tie)}
+      holds={t.server.recipientHolds(tie, emailed, kind)}
       relayed={relayed}
-      afterwards={t.server.afterwardsRecipient}
+      afterwards={t.server.afterwardsRecipient(emailed)}
       viaRelay={viaRelay}
+      emailed={emailed}
+      kind={kind}
     />
   ) : null;
 
@@ -509,20 +677,67 @@ export function ReceivePage() {
     case "connecting":
       body = <h1>{t.receive.connecting}</h1>;
       break;
+    case "verify": {
+      const { verify } = t.receive;
+      const isError = !view.sending && view.result !== undefined && view.result !== "sent";
+      body = (
+        <>
+          <h1>{verify.title}</h1>
+          <p>{verify.body(view.to)}</p>
+          <Button type="button" variant={view.asked ? "outline" : "default"} onClick={onSendCode}>
+            {verify.send}
+          </Button>
+          {view.asked && (
+            <form class="mt-6 flex flex-wrap items-end gap-2" onSubmit={onCode} noValidate>
+              <div class="flex flex-col gap-1">
+                <Label htmlFor="code">{verify.codeLabel}</Label>
+                <Input
+                  id="code"
+                  name="code"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  pattern="[0-9]{6}"
+                  required
+                  className="w-36"
+                  aria-invalid={view.result === "wrong" ? "true" : "false"}
+                  aria-describedby="code-note"
+                />
+              </div>
+              <Button type="submit">{verify.submit}</Button>
+            </form>
+          )}
+          <p
+            id="code-note"
+            class={isError ? "mt-3 text-destructive" : `mt-3 ${caption}`}
+            aria-live="polite"
+          >
+            {view.sending ? verify.sending : view.result && verify.results[view.result]}
+          </p>
+        </>
+      );
+      break;
+    }
     case "refused":
-      body = <Problem {...t.receive.problems[view.problem]} />;
+      body = <Problem {...problemFor(view)} />;
       break;
     case "offer": {
       const { offer } = view;
       body = (
         <>
-          <h1>{t.receive.offerTitle(offer.from)}</h1>
+          <h1>{offer.text ? t.secret.offerTitle(offer.from) : t.receive.offerTitle(offer.from)}</h1>
           {offer.from && <p class="text-muted-foreground">{t.receive.unverified}</p>}
-          <FileCard name={offer.name} size={formatBytes(offer.size, lang)} />
+          {!offer.text && <FileCard name={offer.name} size={formatBytes(offer.size, lang)} />}
           <div class="mt-6 mb-8 flex flex-col items-start gap-2">
-            <Button type="button" size="lg" onClick={onAccept} disabled={picking}>
-              <Icon name="download" class="size-4" /> {t.receive.download}
-            </Button>
+            {offer.text ? (
+              <Button type="button" size="lg" onClick={onShow}>
+                <Icon name="eye" class="size-4" /> {t.secret.show}
+              </Button>
+            ) : (
+              <Button type="button" size="lg" onClick={onAccept} disabled={picking}>
+                <Icon name="download" class="size-4" /> {t.receive.download}
+              </Button>
+            )}
             <Button type="button" variant="link" onClick={onDecline} disabled={picking}>
               {t.receive.decline}
             </Button>
@@ -530,7 +745,7 @@ export function ReceivePage() {
           <Direct from={offer.from || t.common.sender} to={t.common.you} state="ready" />
           <p class={caption}>{t.receive.offerCaption(offer.from)}</p>
           {path && <PathLine path={path} />}
-          <OfferDetails offer={offer} />
+          <OfferDetails offer={offer} emailed={emailed} />
         </>
       );
       break;
@@ -539,19 +754,23 @@ export function ReceivePage() {
       const { offer, bytes } = view;
       body = (
         <>
-          <h1>{t.receive.receivingTitle}</h1>
-          <FileCard name={offer.name} size={formatBytes(offer.size, lang)} />
-          <div class="my-3 flex flex-wrap items-center gap-3">
-            <progress
-              class="min-w-40 flex-1 accent-primary"
-              aria-label={t.receive.progressLabel}
-              max={Math.max(offer.size, 1)}
-              value={offer.size === 0 ? 0 : bytes}
-            />
-            <span class="text-[0.85rem] text-muted-foreground tabular-nums">
-              {formatProgress(bytes, offer.size, lang)}
-            </span>
-          </div>
+          <h1>{offer.text ? t.secret.receivingTitle : t.receive.receivingTitle}</h1>
+          {!offer.text && (
+            <>
+              <FileCard name={offer.name} size={formatBytes(offer.size, lang)} />
+              <div class="my-3 flex flex-wrap items-center gap-3">
+                <progress
+                  class="min-w-40 flex-1 accent-primary"
+                  aria-label={t.receive.progressLabel}
+                  max={Math.max(offer.size, 1)}
+                  value={offer.size === 0 ? 0 : bytes}
+                />
+                <span class="text-[0.85rem] text-muted-foreground tabular-nums">
+                  {formatProgress(bytes, offer.size, lang)}
+                </span>
+              </div>
+            </>
+          )}
           <Direct from={t.common.sender} to={t.common.you} state="active" />
           <p class={caption}>{t.receive.receivingCaption}</p>
           {path && <PathLine path={path} />}
@@ -561,26 +780,40 @@ export function ReceivePage() {
     }
     case "done": {
       const { offer, blob, sha256 } = view;
+      const textBlob = offer.text ? blob : undefined;
       body = (
         <>
           <div class="flex items-center gap-2.5 text-primary">
             <Icon name="check" class="size-8 stroke-[2.5]" />
-            <h1 class="m-0">{t.receive.doneTitle}</h1>
+            <h1 class="m-0">{textBlob ? t.secret.doneTitle : t.receive.doneTitle}</h1>
           </div>
-          <FileCard name={offer.name} size={formatBytes(offer.size, lang)} />
-          <p>{t.receive.verified}</p>
-          {blob ? (
-            <div class="flex flex-wrap items-center gap-4">
-              <p class="text-muted-foreground">{t.receive.autoDownload}</p>
-              <SaveLink blob={blob} name={offer.name} label={t.receive.saveFile} />
-            </div>
+          {textBlob ? (
+            <>
+              <ShownText
+                blob={textBlob}
+                // RECEIPT already went out, so the link is spent: no Try again.
+                onUnreadable={() => setView({ s: "refused", problem: "save", text: true })}
+              />
+              <p class="text-muted-foreground">{t.secret.notSaved}</p>
+            </>
           ) : (
-            <p class="text-muted-foreground">{t.receive.savedWhereChosen}</p>
+            <>
+              <FileCard name={offer.name} size={formatBytes(offer.size, lang)} />
+              <p>{t.receive.verified}</p>
+              {blob ? (
+                <div class="flex flex-wrap items-center gap-4">
+                  <p class="text-muted-foreground">{t.receive.autoDownload}</p>
+                  <SaveLink blob={blob} name={offer.name} label={t.receive.saveFile} />
+                </div>
+              ) : (
+                <p class="text-muted-foreground">{t.receive.savedWhereChosen}</p>
+              )}
+            </>
           )}
           <Direct from={t.common.sender} to={t.common.you} state="done" />
           <p class={caption}>{t.receive.doneCaption}</p>
           {path && <PathLine path={path} />}
-          <OfferDetails offer={offer} sha256={sha256} />
+          <OfferDetails offer={offer} sha256={textBlob ? undefined : sha256} emailed={emailed} />
         </>
       );
       break;
@@ -588,17 +821,16 @@ export function ReceivePage() {
     case "declined":
       body = (
         <>
-          <h1>{t.receive.declinedTitle}</h1>
+          <h1>{view.text ? t.secret.declinedTitle : t.receive.declinedTitle}</h1>
           <p>{t.receive.declinedBody}</p>
           <Button type="button" variant="link" onClick={() => start()}>
-            {t.receive.showAgain}
+            {view.text ? t.secret.showAgain : t.receive.showAgain}
           </Button>
         </>
       );
       break;
     case "failed": {
-      const problem: { title: string; body: string; detail?: string } =
-        t.receive.problems[view.problem];
+      const problem = problemFor(view);
       body = (
         <>
           <Problem {...problem} />
@@ -620,17 +852,89 @@ export function ReceivePage() {
   );
 }
 
-function OfferDetails({ offer, sha256 }: { offer: FileOffer; sha256?: string }) {
+/** This tab's token for an emailed link. Storage that is blocked acts as empty. */
+function readToken(linkId: string): string | undefined {
+  try {
+    const token = sessionStorage.getItem(`token:${linkId}`);
+    return isLinkId(token) ? token : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function storeToken(linkId: string, token: string | undefined): void {
+  try {
+    if (token === undefined) {
+      sessionStorage.removeItem(`token:${linkId}`);
+    } else {
+      sessionStorage.setItem(`token:${linkId}`, token);
+    }
+  } catch {
+    // Not kept: this attempt still joins, and a reload asks for a new code.
+  }
+}
+
+function OfferDetails({
+  offer,
+  sha256,
+  emailed,
+}: {
+  offer: Offer;
+  sha256?: string | undefined;
+  emailed: boolean;
+}) {
   const { t } = useI18n();
-  const rows: Array<readonly [string, ComponentChildren]> = [
-    [t.common.size, t.format.bytes(offer.size)],
-    [t.common.type, offer.type || t.common.typeMissing],
-    [t.receive.encryptionLabel, t.receive.encryption],
-  ];
+  const rows: Array<readonly [string, ComponentChildren]> = offer.text
+    ? []
+    : [
+        [t.common.size, t.format.bytes(offer.size)],
+        [t.common.type, offer.type || t.common.typeMissing],
+      ];
+  rows.push([
+    t.receive.encryptionLabel,
+    emailed ? t.receive.encryptionEmailed : t.receive.encryption,
+  ]);
   if (sha256) {
     rows.push([t.receive.sha256Checked, <code key="sha256">{sha256}</code>]);
   }
   return <TechDetails rows={rows} />;
+}
+
+/** A received text, as plain text outside any form field so session restore has none of it to save, with a button that copies it. */
+function ShownText({ blob, onUnreadable }: { blob: Blob; onUnreadable(): void }) {
+  const { t } = useI18n();
+  const [text, setText] = useState<string | undefined>(undefined);
+  const { note, copy } = useCopyNote();
+
+  useEffect(() => {
+    void decodeText(blob).then(setText, onUnreadable);
+  }, [blob]);
+
+  return (
+    <div class="my-4 flex flex-col gap-3">
+      <section
+        class="max-h-52 overflow-y-auto rounded-lg border border-input px-2.5 py-2 text-base transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-input/30"
+        aria-label={t.secret.textLabel}
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: the box scrolls, so keyboard users must reach it.
+        tabIndex={0}
+        translate={false}
+      >
+        <pre class="whitespace-pre-wrap wrap-anywhere">{text}</pre>
+      </section>
+      <div class="flex flex-wrap items-center gap-3">
+        <Button
+          type="button"
+          onClick={() => text !== undefined && copy(text)}
+          disabled={text === undefined}
+        >
+          {t.secret.copy}
+        </Button>
+        <span class="text-[0.85rem] text-muted-foreground" role="status">
+          {note && t.secret.copyNote[note]}
+        </span>
+      </div>
+    </div>
+  );
 }
 
 /** Starts the download once by itself, and stays as a button in case the browser blocked that. */

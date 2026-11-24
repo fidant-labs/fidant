@@ -1,6 +1,7 @@
 // Pieces shared by the pages.
 
 import type { AnchorHTMLAttributes, ComponentChildren } from "preact";
+import { useEffect, useId, useRef, useState } from "preact/hooks";
 import { DropdownMenu } from "radix-ui";
 import { Alert, AlertDescription, AlertTitle } from "#components/ui/alert";
 import { buttonVariants } from "#components/ui/button";
@@ -9,7 +10,7 @@ import { useI18n } from "./i18n/I18n.tsx";
 import { LANGUAGE_NAMES, type Lang } from "./i18n/language.ts";
 import { formatBytes } from "./lib/format.ts";
 import type { OpenPath } from "./lib/peer.ts";
-import type { Relayed } from "./lib/server-facts.ts";
+import type { Kind, Relayed } from "./lib/server-facts.ts";
 import type { Theme } from "./theme.ts";
 
 export const ICONS = {
@@ -113,6 +114,7 @@ export const display = "font-display font-normal tracking-tight";
 export type Route =
   | "landing"
   | "send"
+  | "secret"
   | "privacy"
   | "how"
   | "receive"
@@ -154,8 +156,9 @@ export function Link({
   );
 }
 
-const MENU: ReadonlyArray<readonly ["send" | "how" | "privacy", string]> = [
+const MENU: ReadonlyArray<readonly ["send" | "secret" | "how" | "privacy", string]> = [
   ["send", "/send"],
+  ["secret", "/secret"],
   ["how", "/how"],
   ["privacy", "/privacy"],
 ];
@@ -265,7 +268,7 @@ export function Header({ current, theme, onTheme }: { current: Route } & ThemePr
         <nav aria-label={t.menu.label}>
           <ul class="flex items-center gap-0.5 sm:gap-1">
             {MENU.map(([section, href]) => (
-              <li key={section}>
+              <li key={section} class={section === "secret" ? "max-md:hidden" : undefined}>
                 <Link
                   href={href}
                   aria-current={section === current ? "page" : undefined}
@@ -295,9 +298,10 @@ export function Header({ current, theme, onTheme }: { current: Route } & ThemePr
 }
 
 const FOOTER_LINKS: ReadonlyArray<
-  readonly ["how" | "privacy" | "about" | "terms" | "security", string]
+  readonly ["how" | "secret" | "privacy" | "about" | "terms" | "security", string]
 > = [
   ["how", "/how"],
+  ["secret", "/secret"],
   ["about", "/about"],
   ["privacy", "/privacy"],
   ["terms", "/terms"],
@@ -320,7 +324,9 @@ export function Footer({ theme, onTheme }: ThemeProps) {
             {FOOTER_LINKS.map(([page, href]) => (
               <li key={page}>
                 <Link href={href} class={link}>
-                  {page === "how" || page === "privacy" ? t.menu[page] : t.footer[page]}
+                  {page === "how" || page === "secret" || page === "privacy"
+                    ? t.menu[page]
+                    : t.footer[page]}
                 </Link>
               </li>
             ))}
@@ -462,33 +468,45 @@ export function ServerPanel({
   relayed,
   afterwards,
   viaRelay,
+  emailed,
+  kind,
 }: {
+  kind: Kind;
   sees: string;
   holds: string;
   relayed: Relayed;
   afterwards: string;
   /** A connection on this page went through our TURN relay. */
   viaRelay: boolean;
+  /** The server got the key of a link on this page, to email it. */
+  emailed: boolean;
 }) {
   const { t, lang } = useI18n();
+  const headingId = useId();
   const rows: ReadonlyArray<readonly [string, string]> = [
     [t.server.seesLabel, sees],
     [t.server.holdsLabel, holds],
-    [t.server.passedOnLabel, t.server.passedOn(relayed.messages, formatBytes(relayed.bytes, lang))],
-    [t.server.fileDataLabel, viaRelay ? t.server.fileDataRelayed : t.server.fileData],
-    [t.server.logsLabel, t.server.logs],
+    [
+      t.server.passedOnLabel,
+      t.server.passedOn(relayed.messages, formatBytes(relayed.bytes, lang), emailed),
+    ],
+    [
+      t.server.fileDataLabel(kind),
+      viaRelay ? t.server.fileDataRelayed(kind) : t.server.fileData(kind),
+    ],
+    [t.server.logsLabel, t.server.logs(kind)],
     [t.server.afterwardsLabel, afterwards],
     ...(viaRelay
       ? ([
-          [t.server.relaySeesLabel, t.server.relaySees],
-          [t.server.relayLogsLabel, t.server.relayLogs],
-          [t.server.relayKeepsLabel, t.server.relayKeeps],
+          [t.server.relaySeesLabel, t.server.relaySees(kind)],
+          [t.server.relayLogsLabel, t.server.relayLogs(kind)],
+          [t.server.relayKeepsLabel, t.server.relayKeeps(kind)],
         ] as const)
       : []),
   ];
   return (
-    <section class="mt-8 text-[0.9rem]" aria-labelledby="server-panel-heading">
-      <h2 id="server-panel-heading" class="m-0 text-[1rem] font-bold">
+    <section class="mt-8 text-[0.9rem]" aria-labelledby={headingId}>
+      <h2 id={headingId} class="m-0 text-[1rem] font-bold">
         {t.server.heading}
       </h2>
       <Facts rows={rows} />
@@ -507,4 +525,34 @@ export function Problem({ title, body }: { title: string; body: string }) {
       <AlertDescription>{body}</AlertDescription>
     </Alert>
   );
+}
+
+type CopyNote = "copied" | "failed";
+
+/** Copies a text to the clipboard; `note` says how it went, as a `copyNote` key, for 4 s. */
+export function useCopyNote() {
+  const [note, setNote] = useState<CopyNote | "">("");
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => () => clearTimeout(timer.current), []);
+
+  const showNote = (next: CopyNote) => {
+    clearTimeout(timer.current);
+    setNote(next);
+    timer.current = setTimeout(() => setNote(""), 4000);
+  };
+
+  const copy = async (text: string) => {
+    try {
+      if (!navigator.clipboard) {
+        throw new Error("no clipboard");
+      }
+      await navigator.clipboard.writeText(text);
+      showNote("copied");
+    } catch {
+      showNote("failed");
+    }
+  };
+
+  return { note, copy };
 }

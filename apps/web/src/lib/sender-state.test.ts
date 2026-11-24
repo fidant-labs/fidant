@@ -1,17 +1,21 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { MAX_LINKS } from "@sigill/protocol";
-import { createLink } from "./link.ts";
+import { type EmailStatus, MAX_LINKS } from "@sigill/protocol";
+import { createLink, type Link } from "./link.ts";
 import {
   CHECKSUM_MISMATCH,
+  emailBound,
   findRecipient,
   hostedLinks,
   initialSenderState,
+  type Recipient,
   refusesRelay,
   SETUP_TIMEOUT_MS,
   type SenderAction,
   type SenderEffect,
   type SenderState,
+  TOO_SMALL_FOR_TEXT,
+  unmarked,
   update,
 } from "./sender-state.ts";
 
@@ -327,6 +331,34 @@ test("a mismatching receipt fails the transfer and the next join retries", () =>
   assert.deepEqual(retry.effects, [{ type: "start", linkId, attempt: A, iceServers: [] }]);
 });
 
+test("unsendable fails a connecting recipient, frees the link and the next join retries", () => {
+  const { state: s0, linkId } = withRecipient();
+  const original = findRecipient(s0, linkId);
+  const connecting = update(s0, joined(linkId, A, false)).state;
+  const failed = update(connecting, { type: "unsendable", linkId });
+  assert.deepEqual(findRecipient(failed.state, linkId), {
+    ...original,
+    status: "failed",
+    bytesSent: 0,
+    error: TOO_SMALL_FOR_TEXT,
+  });
+  assert.deepEqual(failed.effects, [
+    { type: "refuse", linkId, attempt: A, reason: "drop" },
+    { type: "close", linkId },
+  ]);
+
+  const offered = update(connecting, { type: "channel-open", linkId }).state;
+  const late = update(offered, { type: "unsendable", linkId });
+  assert.equal(late.state, offered);
+  assert.deepEqual(late.effects, []);
+
+  const retry = update(failed.state, joined(linkId, B));
+  const retried = findRecipient(retry.state, linkId);
+  assert.equal(retried?.status, "connecting");
+  assert.equal(retried?.error, undefined);
+  assert.deepEqual(retry.effects, [{ type: "start", linkId, attempt: B, iceServers: [] }]);
+});
+
 test("events that do not fit the current status are ignored", () => {
   const { state: waiting, linkId } = withRecipient();
   const outOfPlace: Exclude<SenderAction, { type: "add" | "server-lost" }>[] = [
@@ -338,6 +370,7 @@ test("events that do not fit the current status are ignored", () => {
     { type: "left", linkId },
     { type: "timeout", linkId },
     { type: "declined", linkId },
+    { type: "unsendable", linkId },
   ];
   for (const action of outOfPlace) {
     const result = update(waiting, action);
@@ -636,6 +669,8 @@ test("effects never contain a recipient name or secret", () => {
     { type: "accepted", linkId },
     { type: "dropped", linkId },
     joined(linkId, A),
+    { type: "unsendable", linkId },
+    joined(linkId, A),
     { type: "channel-open", linkId },
     { type: "accepted", linkId },
     { type: "receipt", linkId, match: false },
@@ -660,4 +695,174 @@ test("effects never contain a recipient name or secret", () => {
       }[effect.type as string] ?? ["linkId", "type"],
     );
   }
+});
+
+test("add with an email starts its mail at sending and keeps both through attempts", () => {
+  const link = createLink(ORIGIN);
+  const { linkId } = link;
+  const email = "anna@example.se";
+  const added = run(initialSenderState, { type: "add", link, name: "Anna", email });
+  assert.deepEqual(added.effects, []);
+  assert.deepEqual(added.state.recipients, [
+    { name: "Anna", ...link, status: "waiting", bytesSent: 0, email, mail: "sending" },
+  ]);
+
+  const { state, effects } = run(
+    added.state,
+    { type: "email", linkId, status: "sent" },
+    { type: "joined", linkId, attempt: A, iceServers: [], turn: true },
+    { type: "dropped", linkId },
+  );
+  assert.ok(effects.every((effect) => !JSON.stringify(effect).includes(email)));
+  assert.equal(statusOf(state, linkId), "waiting");
+  assert.equal(findRecipient(state, linkId)?.email, email);
+  assert.equal(findRecipient(state, linkId)?.mail, "sent");
+});
+
+test("email keeps the latest status, except that verified stays and a notice reply never replaces a code", () => {
+  const link = createLink(ORIGIN);
+  const { linkId } = link;
+  const added = run(initialSenderState, {
+    type: "add",
+    link,
+    name: "Anna",
+    email: "anna@example.se",
+  }).state;
+  const mailAfter = (...statuses: EmailStatus[]) =>
+    findRecipient(
+      run(added, ...statuses.map((status): SenderAction => ({ type: "email", linkId, status })))
+        .state,
+      linkId,
+    )?.mail;
+
+  assert.equal(mailAfter("sent", "verifying", "verified"), "verified");
+  assert.equal(mailAfter("limit"), "limit");
+  assert.equal(
+    mailAfter("sent", "verifying", "verified", "verifying"),
+    "verified",
+    "another browser asking for a code does not hide that someone verified",
+  );
+  assert.equal(mailAfter("failed", "verifying"), "verifying", "a timed-out notice arrived");
+  assert.equal(mailAfter("failed", "verifying", "verified"), "verified");
+  for (const late of ["sent", "failed", "limit"] as const) {
+    assert.equal(mailAfter("verifying", late), "verifying", `a late ${late} after a code`);
+    assert.equal(mailAfter("verifying", "verified", late), "verified", `a late ${late}`);
+  }
+
+  const verified = run(added, { type: "email", linkId, status: "verified" }).state;
+  const late = update(verified, { type: "email", linkId, status: "verifying" });
+  assert.equal(late.state, verified);
+  assert.deepEqual(late.effects, []);
+});
+
+test("email is ignored for an unknown link and for a recipient without an address", () => {
+  const { state, linkId } = withRecipient();
+  const plain = update(state, { type: "email", linkId, status: "sent" });
+  assert.equal(plain.state, state);
+  assert.deepEqual(plain.effects, []);
+  assert.equal(findRecipient(state, linkId)?.mail, undefined);
+
+  const stranger = createLink(ORIGIN).linkId;
+  const unknown = update(state, { type: "email", linkId: stranger, status: "verified" });
+  assert.equal(unknown.state, state);
+  assert.deepEqual(unknown.effects, []);
+});
+
+test("a mark makes the recipient's link the one the server emailed; a refusal keeps it plain", () => {
+  const mark = "MMMMMMMMMMMMMMMMMMMMMM";
+  const after = (...actions: Omit<Extract<SenderAction, { type: "email" }>, "linkId">[]) => {
+    const link = createLink(ORIGIN);
+    const { linkId } = link;
+    const { state } = run(
+      initialSenderState,
+      { type: "add", link, name: "Anna", email: "anna@example.se" },
+      ...actions.map((action): SenderAction => ({ ...action, linkId })),
+    );
+    return { link, recipient: findRecipient(state, linkId) };
+  };
+
+  for (const status of ["sent", "failed"] as const) {
+    const { link, recipient } = after(
+      { type: "email", status, mark },
+      { type: "email", status: "verifying" },
+    );
+    assert.equal(recipient?.mark, mark);
+    assert.equal(recipient?.url, `${ORIGIN}/r/${link.linkId}#e.${mark}.${link.secret}`);
+    assert.equal(recipient?.mail, "verifying");
+  }
+  const { link: early, recipient: late } = after(
+    { type: "email", status: "verifying" },
+    { type: "email", status: "sent", mark },
+  );
+  assert.equal(late?.mail, "verifying", "the notice reply came after a code");
+  assert.equal(late?.url, `${ORIGIN}/r/${early.linkId}#e.${mark}.${early.secret}`);
+  for (const status of ["limit", "failed"] as const) {
+    const { link, recipient } = after({ type: "email", status });
+    assert.equal(recipient?.mark, undefined);
+    assert.equal(recipient?.url, link.url);
+  }
+  const { link, recipient } = after();
+  assert.equal(recipient?.url, link.url);
+});
+
+test("a verifying or verified reply before the notice reply still counts as bound on server-lost", () => {
+  for (const status of ["verifying", "verified"] as const) {
+    const link = createLink(ORIGIN);
+    const { state } = run(
+      initialSenderState,
+      { type: "add", link, name: "Anna", email: "anna@example.se" },
+      { type: "email", linkId: link.linkId, status },
+    );
+    const recipient = findRecipient(state, link.linkId);
+    assert.equal(recipient?.mark, undefined);
+    assert.ok(emailBound(recipient as Recipient));
+    assert.ok(unmarked(recipient as Recipient));
+    const lost = update(state, { type: "server-lost" }).state;
+    assert.deepEqual(hostedLinks(lost), []);
+  }
+});
+
+test("a failed reply without a mark leaves the plain link hosted", () => {
+  const link = createLink(ORIGIN);
+  const { state } = run(
+    initialSenderState,
+    { type: "add", link, name: "Anna", email: "anna@example.se" },
+    { type: "email", linkId: link.linkId, status: "failed" },
+  );
+  assert.ok(!emailBound(findRecipient(state, link.linkId) as Recipient));
+  assert.deepEqual(hostedLinks(update(state, { type: "server-lost" }).state), [link.linkId]);
+});
+
+test("server-lost unbinds every link the server emailed or may have emailed, and stops hosting it", () => {
+  const mark = "MMMMMMMMMMMMMMMMMMMMMM";
+  const [plain, sending, sent, limited, receiving] = Array.from({ length: 5 }, () =>
+    createLink(ORIGIN),
+  ) as [Link, Link, Link, Link, Link];
+  const email = "anna@example.se";
+  const { state } = run(
+    initialSenderState,
+    { type: "add", link: plain, name: "Plain" },
+    { type: "add", link: sending, name: "Sending", email },
+    { type: "add", link: sent, name: "Sent", email },
+    { type: "add", link: limited, name: "Limited", email },
+    { type: "add", link: receiving, name: "Receiving", email },
+    { type: "email", linkId: sent.linkId, status: "sent", mark },
+    { type: "email", linkId: limited.linkId, status: "limit" },
+    { type: "email", linkId: receiving.linkId, status: "sent", mark },
+    joined(receiving.linkId, A),
+    { type: "channel-open", linkId: receiving.linkId },
+    { type: "accepted", linkId: receiving.linkId },
+  );
+  const lost = update(state, { type: "server-lost" });
+  assert.deepEqual(lost.effects, []);
+  const unbound = lost.state.recipients.filter((r) => r.unbound).map((r) => r.linkId);
+  assert.deepEqual(unbound, [sending.linkId, sent.linkId, receiving.linkId]);
+  assert.deepEqual(hostedLinks(lost.state), [plain.linkId, limited.linkId]);
+  assert.equal(statusOf(lost.state, receiving.linkId), "receiving");
+  assert.equal(update(lost.state, { type: "server-lost" }).state, lost.state);
+
+  const late = update(lost.state, { type: "email", linkId: sending.linkId, status: "sent", mark });
+  assert.equal(late.state, lost.state);
+  const removed = run(lost.state, { type: "remove", linkId: sent.linkId }).state;
+  assert.deepEqual(hostedLinks(removed), [plain.linkId, limited.linkId]);
 });

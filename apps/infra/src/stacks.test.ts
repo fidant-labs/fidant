@@ -1,10 +1,23 @@
 import assert from "node:assert/strict";
+import { spawn, spawnSync } from "node:child_process";
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { isIP } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import { App, Stack } from "aws-cdk-lib";
 import { Match, Template } from "aws-cdk-lib/assertions";
 import { addStacks } from "./app.ts";
-import { boxAddress, hostedZoneIds, siteNames, zoneNames } from "./config.ts";
+import { boxAddress, hostedZoneIds, mailFrom, siteNames, zoneNames } from "./config.ts";
 import { DnsStack } from "./dns.ts";
 import { renderUserData } from "./user-data.ts";
 
@@ -32,8 +45,8 @@ function zoneRef(zoneName: string): { Ref: string } {
   return { Ref: id };
 }
 
-function stacksFor(currentAccount: string | undefined): Stack[] {
-  const app = new App();
+function stacksFor(currentAccount: string | undefined, context?: Record<string, string>): Stack[] {
+  const app = new App({ context });
   addStacks(app, {
     CDK_DEFAULT_ACCOUNT: currentAccount,
     FIDANT_DNS_ACCOUNT: dnsAccount,
@@ -403,6 +416,19 @@ test("the app box routes 443 by SNI to Caddy and to coturn's TLS, and copies Cad
   assert.doesNotMatch(userData, /:3478\?transport=tcp/);
 });
 
+test("the committed config signs notify.fidant.se's SES mail with three DKIM keys", () => {
+  const dkim = Object.values(committed.findResources(recordSet)).filter((r) =>
+    String(r.Properties.Name).endsWith("._domainkey.notify.fidant.se."),
+  );
+  assert.equal(dkim.length, 3);
+  for (const record of dkim) {
+    assert.equal(record.Properties.Type, "CNAME");
+    const [token] = String(record.Properties.Name).split(".");
+    assert.match(token ?? "", /^[a-z0-9]{32}$/);
+    assert.deepEqual(record.Properties.ResourceRecords, [`${token}.dkim.amazonses.com.`]);
+  }
+});
+
 test("the committed config keeps fidant.se's Proton mail records", () => {
   for (const value of [
     '^"protonmail-verification=[0-9a-f]{40}"$',
@@ -495,6 +521,46 @@ test("fidant.se gets the mail records", () => {
   });
 });
 
+test("fidant.se holds the SES records for notify with SPF and MX, and no other zone has any", () => {
+  const records = [
+    ["notify.fidant.se.", "MX", ["0 ."]],
+    ["notify.fidant.se.", "TXT", ['"v=spf1 -all"']],
+    ["bounce.notify.fidant.se.", "MX", ["10 feedback-smtp.eu-north-1.amazonses.com"]],
+    ["bounce.notify.fidant.se.", "TXT", ['"v=spf1 include:amazonses.com -all"']],
+  ] as const;
+  const all = Object.values(dns.findResources("AWS::Route53::RecordSet"));
+  for (const [Name, Type, ResourceRecords] of records) {
+    const found = all.filter((r) => r.Properties.Name === Name && r.Properties.Type === Type);
+    assert.equal(found.length, 1);
+    assert.deepEqual(found[0]?.Properties.ResourceRecords, ResourceRecords);
+    assert.deepEqual(found[0]?.Properties.HostedZoneId, zoneRef("fidant.se"));
+  }
+  assert.equal(all.filter((r) => String(r.Properties.Name).startsWith("_dmarc.notify")).length, 0);
+  for (const template of [dns, committed]) {
+    const rows = Object.values(template.findResources(recordSet));
+    const isNotify = (name: string) =>
+      name.endsWith("notify.fidant.se.") ||
+      name.startsWith("notify.") ||
+      name.startsWith("bounce.notify.") ||
+      name.includes("._domainkey.notify.");
+    for (const record of rows.filter((r) => isNotify(String(r.Properties.Name)))) {
+      assert.deepEqual(record.Properties.HostedZoneId, zoneRef("fidant.se"));
+    }
+    for (const zoneName of ["fidant.eu", "fidant.org"]) {
+      for (const record of rows.filter(
+        (r) => JSON.stringify(r.Properties.HostedZoneId) === JSON.stringify(zoneRef(zoneName)),
+      )) {
+        assert.doesNotMatch(String(record.Properties.Name), /^(notify|bounce\.notify)\./);
+      }
+    }
+  }
+  for (const record of all) {
+    if (record.Properties.Type === "TXT") {
+      assert.doesNotMatch(JSON.stringify(record.Properties.ResourceRecords), /ruf=/);
+    }
+  }
+});
+
 test("every site name points at the box over IPv4 only", () => {
   for (const name of siteNames) {
     dns.hasResourceProperties("AWS::Route53::RecordSet", {
@@ -543,4 +609,591 @@ test("the journal is the only place the box's services keep log lines", () => {
   assert.ok(!turnserver.some((line) => /^\s*(syslog|verbose)\b/i.test(line)));
 
   assert.doesNotMatch(userData, /^\s*Standard(Output|Error)=/m);
+});
+
+test("neither the app server nor Caddy, which terminates TLS, has its memory swapped", () => {
+  const userData = renderUserData();
+  for (const [path, section] of [
+    ["sigill.service", "\n[Service]\n"],
+    ["caddy.service.d/no-swap.conf", "[Service]\n"],
+  ] as const) {
+    const start = userData.indexOf(`\ncat >/etc/systemd/system/${path} <<'EOF'\n`);
+    assert.ok(start > 0, path);
+    const unit = userData.slice(start, userData.indexOf("\nEOF\n", start));
+    const service = unit.slice(unit.indexOf(section));
+    assert.ok(service.split("\n").includes("MemorySwapMax=0"), path);
+  }
+  assert.ok(
+    userData.indexOf("caddy.service.d/no-swap.conf") <
+      userData.indexOf("\nsystemctl restart caddy\n"),
+  );
+});
+
+function credentialHelper(): { helper: string; rest: string } {
+  const userData = renderUserData();
+  const start = userData.indexOf("\ncat >/usr/local/bin/sigill-credential <<'EOF'\n");
+  const end = userData.indexOf("\nEOF\n", start);
+  assert.ok(start > 0 && end > start);
+  return {
+    helper: userData.slice(userData.indexOf("\n", start + 1) + 1, end + 1),
+    rest: userData.slice(0, start) + userData.slice(end + "\nEOF".length),
+  };
+}
+
+test("the box's user data leaves mail off and installs only the helper that turns it on", () => {
+  const { helper, rest } = credentialHelper();
+  assert.doesNotMatch(rest, /mail|PUBLIC_ORIGIN/i);
+  assert.deepEqual(rest.match(/.*sigill-credential.*/g), [
+    "chmod 700 /usr/local/bin/sigill-credential",
+  ]);
+  assert.doesNotMatch(renderUserData(), /AKIA[A-Z0-9]{16}/);
+  assert.equal(mailFrom, "noreply@notify.fidant.se");
+  assert.ok(helper.includes(`'Environment="MAIL_FROM=Fidant <${mailFrom}>"'`));
+  assert.ok(helper.includes("'Environment=PUBLIC_ORIGIN=https://fidant.se'"));
+});
+
+test("sigill-credential writes the mail drop-in only with its password file, and removes it first", () => {
+  const dir = mkdtempSync(join(tmpdir(), "sigill-credential-"));
+  try {
+    const dropin = `${dir}/etc/systemd/system/sigill.service.d/mail.conf`;
+    const secret = `${dir}/etc/sigill/mail-password`;
+    const script = join(dir, "sigill-credential");
+    writeFileSync(script, credentialHelper().helper.replaceAll("/etc/", `${dir}/etc/`));
+    const log = join(dir, "log");
+    mkdirSync(join(dir, "bin"));
+    writeFileSync(join(dir, "bin", "stty"), `#!/bin/sh\necho "$*" >>'${dir}/stty-log'\n`, {
+      mode: 0o755,
+    });
+    writeFileSync(
+      join(dir, "bin", "systemctl"),
+      `#!/bin/sh\necho "$*:$([ -e '${dropin}' ] && echo D)$([ -e '${secret}' ] && echo S)" >>'${log}'\n`,
+      { mode: 0o755 },
+    );
+    const run = (action: string, input = "") => {
+      writeFileSync(log, "");
+      const { status } = spawnSync("/bin/sh", [script, "mail", action], {
+        input,
+        env: { ...process.env, PATH: `${dir}/bin:${process.env.PATH}` },
+      });
+      return { status, calls: readFileSync(log, "utf8").split("\n").filter(Boolean) };
+    };
+    const exists = (path: string) => statSync(path, { throwIfNoEntry: false }) !== undefined;
+    const password = `${"A".repeat(43)}+`;
+
+    assert.deepEqual(run("on", `AKIAIOSFODNN7EXAMPLE\n${password}\n`), {
+      status: 0,
+      calls: ["daemon-reload:DS", "try-restart sigill:DS"],
+    });
+    assert.equal(
+      readFileSync(dropin, "utf8"),
+      [
+        "[Service]",
+        "Environment=MAIL_SMTP_URL=smtps://AKIAIOSFODNN7EXAMPLE@email-smtp.eu-north-1.amazonaws.com:465",
+        `Environment="MAIL_FROM=Fidant <${mailFrom}>"`,
+        "Environment=PUBLIC_ORIGIN=https://fidant.se",
+        `LoadCredential=mail-password:${secret}`,
+        "Environment=MAIL_PASSWORD_FILE=%d/mail-password",
+        "",
+      ].join("\n"),
+    );
+    assert.equal(readFileSync(secret, "utf8"), `${password}\n`);
+    assert.equal(statSync(secret).mode & 0o777, 0o600);
+
+    assert.deepEqual(run("off"), {
+      status: 0,
+      calls: ["daemon-reload:S", "try-restart sigill:"],
+    });
+    assert.ok(!exists(dropin) && !exists(secret));
+
+    for (const input of ["someone\n", `AKIAIOSFODNN7EXAMPLE\n${"A".repeat(43)}=\n`]) {
+      assert.deepEqual(run("on", input), { status: 1, calls: [] });
+      assert.ok(!exists(dropin) && !exists(secret));
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("sigill-credential restores terminal echo when a signal ends it at the password prompt", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "sigill-credential-"));
+  try {
+    const script = join(dir, "sigill-credential");
+    writeFileSync(script, credentialHelper().helper.replaceAll("/etc/", `${dir}/etc/`));
+    const sttyLog = join(dir, "stty-log");
+    mkdirSync(join(dir, "bin"));
+    writeFileSync(join(dir, "bin", "stty"), `#!/bin/sh\necho "$*" >>'${sttyLog}'\n`, {
+      mode: 0o755,
+    });
+    const shell = statSync("/bin/dash", { throwIfNoEntry: false }) ? "/bin/dash" : "/bin/sh";
+    const child = spawn(shell, [script, "mail", "on"], {
+      env: { ...process.env, PATH: `${dir}/bin:${process.env.PATH}` },
+      stdio: ["pipe", "ignore", "ignore"],
+    });
+    const closed = new Promise((resolve) => child.on("close", resolve));
+    child.stdin.write("AKIAIOSFODNN7EXAMPLE\n");
+    for (let i = 0; i < 100 && !readIfAny(sttyLog).includes("-echo"); i++) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    child.kill("SIGINT");
+    await closed;
+    assert.deepEqual(readIfAny(sttyLog).split("\n").filter(Boolean), ["-echo", "echo"]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+function readIfAny(path: string): string {
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return "";
+  }
+}
+
+const camelPorts = [
+  { protocol: "tcp", fromPort: 80, toPort: 80, cidrs: ["0.0.0.0/0"], ipv6Cidrs: ["::/0"] },
+  { protocol: "tcp", fromPort: 443, toPort: 443, cidrs: ["0.0.0.0/0"], ipv6Cidrs: ["::/0"] },
+  { protocol: "tcp", fromPort: 22, toPort: 22, cidrListAliases: ["lightsail-connect"] },
+  { protocol: "tcp", fromPort: 3478, toPort: 3478, cidrs: ["0.0.0.0/0"], ipv6Cidrs: ["::/0"] },
+  { protocol: "udp", fromPort: 3478, toPort: 3478, cidrs: ["0.0.0.0/0"], ipv6Cidrs: ["::/0"] },
+  { protocol: "udp", fromPort: 49152, toPort: 65535, cidrs: ["0.0.0.0/0"], ipv6Cidrs: ["::/0"] },
+];
+
+function appBox(context?: Record<string, string>): Template {
+  const stack = stacksFor(pocAccount, context).find((child) => child.stackName === "FidantApp");
+  return Template.fromStack(stack as Stack);
+}
+
+function alarmsNamed(box: Template, prefix: string) {
+  return Object.values(box.findResources("AWS::CloudWatch::Alarm"))
+    .map((alarm) => alarm.Properties)
+    .filter((alarm) => String(alarm.AlarmName).startsWith(prefix));
+}
+
+function alertTopic(box: Template): { Ref: string } {
+  const subscriptions = Object.values(box.findResources("AWS::SNS::Subscription"));
+  assert.equal(subscriptions.length, 1);
+  return subscriptions[0]?.Properties.TopicArn;
+}
+
+function onlyId(box: Template, type: string): string {
+  const ids = Object.keys(box.findResources(type));
+  assert.equal(ids.length, 1, type);
+  return ids[0] ?? "";
+}
+
+test("the relay cap checks the box's traffic every 5 minutes", () => {
+  const box = appBox();
+  const [instanceId] = Object.keys(box.findResources("AWS::Lightsail::Instance"));
+  const functions = Object.entries(box.findResources("AWS::Lambda::Function"))
+    .filter(([id]) => id.startsWith("RelayCap"))
+    .map(([, fn]) => fn);
+  assert.equal(functions.length, 1);
+  const properties = functions[0]?.Properties;
+  assert.equal(properties.Runtime, "nodejs24.x");
+  assert.equal(properties.Handler, "index.handler");
+  assert.equal(properties.Timeout, 30);
+  const variables = properties.Environment.Variables;
+  assert.deepEqual(variables.BOX, { Ref: instanceId });
+  assert.equal(variables.LIMIT_BYTES, "1800000000000");
+  assert.deepEqual(JSON.parse(variables.OPEN_PORTS), camelPorts);
+  assert.deepEqual(JSON.parse(variables.CAPPED_PORTS), camelPorts.slice(0, 3));
+  box.hasResourceProperties("AWS::Events::Rule", { ScheduleExpression: "rate(5 minutes)" });
+  box.hasResourceProperties("AWS::Lambda::EventInvokeConfig", { MaximumRetryAttempts: 0 });
+});
+
+test("the relay cap may only read instance metrics, set the box's ports, and keep its state", () => {
+  const box = appBox();
+  const [instanceId] = Object.keys(box.findResources("AWS::Lightsail::Instance"));
+  const policies = Object.values(box.findResources("AWS::IAM::Policy")).filter((policy) =>
+    policy.Properties.Roles?.[0].Ref.startsWith("RelayCap"),
+  );
+  assert.equal(policies.length, 1);
+  const statements = policies[0]?.Properties.PolicyDocument.Statement;
+  assert.equal(statements.length, 3);
+  assert.deepEqual(statements[0], {
+    Action: "lightsail:GetInstanceMetricData",
+    Effect: "Allow",
+    Resource: "*",
+  });
+  assert.deepEqual(statements[1], {
+    Action: "lightsail:PutInstancePublicPorts",
+    Effect: "Allow",
+    Resource: { "Fn::GetAtt": [instanceId, "InstanceArn"] },
+  });
+  assert.deepEqual(statements[2].Action, ["ssm:GetParameter", "ssm:PutParameter"]);
+  assert.equal(statements[2].Effect, "Allow");
+  const resource = statements[2].Resource["Fn::Join"];
+  assert.match(resource[1].at(-1), /:parameter\/fidant\/relay-cap$/);
+});
+
+test("relay traffic past 80 %, the cap, and a failing cap email the alert address", () => {
+  const box = appBox();
+  box.hasResourceProperties("AWS::SNS::Subscription", {
+    Protocol: "email",
+    Endpoint: "budget-alert@fidant.se",
+  });
+  const alarms = alarmsNamed(box, "Fidant relay ");
+  assert.equal(alarms.length, 3);
+  const byName = (name: string) => alarms.find((alarm) => alarm.AlarmName === name);
+  const notify = [alertTopic(box)];
+  for (const [name, threshold] of [
+    ["Fidant relay traffic past 80 % of the monthly cap", 1_440_000_000_000],
+    ["Fidant relay stopped: monthly traffic cap reached", 1_800_000_000_000],
+    ["Fidant relay cap failing", 1],
+  ] as const) {
+    const alarm = byName(name);
+    assert.ok(alarm, name);
+    assert.equal(alarm.Threshold, threshold);
+    assert.deepEqual(alarm.AlarmActions, notify);
+    assert.deepEqual(alarm.OKActions, notify);
+    if (threshold !== 1) {
+      assert.equal(alarm.Namespace, "Fidant");
+      assert.equal(alarm.MetricName, "RelayMonthBytes");
+      assert.deepEqual(alarm.Dimensions, [{ Name: "Service", Value: "relay" }]);
+      assert.equal(alarm.Statistic, "Maximum");
+    }
+  }
+});
+
+test("the cap's Lambda code imports nothing outside its folder", () => {
+  const folder = new URL("./relay-cap/", import.meta.url);
+  const files = readdirSync(folder).filter((name) => !name.endsWith(".test.ts"));
+  assert.ok(files.includes("index.mjs"));
+  for (const file of files) {
+    const source = readFileSync(new URL(file, folder), "utf8");
+    for (const [, specifier = ""] of source.matchAll(/\bfrom\s+["']([^"']+)["']/g)) {
+      if (specifier.startsWith(".")) {
+        assert.ok(specifier.startsWith("./") && !specifier.includes(".."), `${file}: ${specifier}`);
+      } else if (!specifier.startsWith("node:")) {
+        assert.ok(
+          ["@aws-sdk/client-lightsail", "@aws-sdk/client-ssm"].includes(specifier),
+          `${file}: ${specifier}`,
+        );
+      }
+    }
+  }
+});
+
+test("the app sends mail as notify.fidant.se, with TLS required, no tracking and no suppression list", () => {
+  const box = appBox();
+  const configSet = onlyId(box, "AWS::SES::ConfigurationSet");
+  assert.deepEqual(box.findResources("AWS::SES::ConfigurationSet")[configSet]?.Properties, {
+    Name: "fidant-mail",
+    DeliveryOptions: { MaxDeliverySeconds: 900, TlsPolicy: "REQUIRE" },
+    SuppressionOptions: { SuppressedReasons: [] },
+  });
+  const identity = onlyId(box, "AWS::SES::EmailIdentity");
+  assert.deepEqual(box.findResources("AWS::SES::EmailIdentity")[identity]?.Properties, {
+    EmailIdentity: "notify.fidant.se",
+    ConfigurationSetAttributes: { ConfigurationSetName: { Ref: configSet } },
+    MailFromAttributes: { MailFromDomain: "bounce.notify.fidant.se" },
+  });
+});
+
+function feedbackTopic(box: Template): string {
+  const alerts = alertTopic(box);
+  const feedback = Object.keys(box.findResources("AWS::SNS::Topic")).filter(
+    (id) => id !== alerts.Ref,
+  );
+  assert.equal(feedback.length, 1);
+  return feedback[0] ?? "";
+}
+
+test("bounces and complaints go only to a topic nobody subscribes to", () => {
+  const box = appBox();
+  const feedback = feedbackTopic(box);
+  const destinations = Object.values(
+    box.findResources("AWS::SES::ConfigurationSetEventDestination"),
+  ).map((destination) => destination.Properties);
+  assert.deepEqual(destinations, [
+    {
+      ConfigurationSetName: { Ref: onlyId(box, "AWS::SES::ConfigurationSet") },
+      EventDestination: {
+        Enabled: true,
+        MatchingEventTypes: ["bounce", "complaint"],
+        SnsDestination: { TopicARN: { Ref: feedback } },
+      },
+    },
+  ]);
+});
+
+test("SES may publish to the feedback topic only for the configuration set and the identity", () => {
+  const box = appBox();
+  const feedback = feedbackTopic(box);
+  const source = (resource: string, type: string) => ({
+    "Fn::Join": [
+      "",
+      [
+        "arn:",
+        { Ref: "AWS::Partition" },
+        `:ses:eu-north-1:${pocAccount}:${resource}/`,
+        { Ref: onlyId(box, type) },
+      ],
+    ],
+  });
+  const policy = box.findResources("AWS::SNS::TopicPolicy")[onlyId(box, "AWS::SNS::TopicPolicy")];
+  assert.deepEqual(policy?.Properties.Topics, [{ Ref: feedback }]);
+  assert.deepEqual(
+    policy?.Properties.PolicyDocument.Statement,
+    [
+      source("configuration-set", "AWS::SES::ConfigurationSet"),
+      source("identity", "AWS::SES::EmailIdentity"),
+    ].map((sourceArn, sid) => ({
+      Sid: String(sid),
+      Action: "sns:Publish",
+      Effect: "Allow",
+      Principal: { Service: "ses.amazonaws.com" },
+      Resource: { Ref: feedback },
+      Condition: { StringEquals: { "AWS:SourceAccount": pocAccount, "AWS:SourceArn": sourceArn } },
+    })),
+  );
+});
+
+function sdkCall(value: string | { "Fn::Join": [string, (string | { Ref: string })[]] }) {
+  const text =
+    typeof value === "string"
+      ? value
+      : value["Fn::Join"][1]
+          .map((part) => (typeof part === "string" ? part : `{Ref:${part.Ref}}`))
+          .join("");
+  return JSON.parse(text);
+}
+
+test("the identity sends bounces and complaints to the feedback topic, then stops forwarding them by email", () => {
+  const box = appBox();
+  const feedback = feedbackTopic(box);
+  const identity = onlyId(box, "AWS::SES::EmailIdentity");
+  const topicPolicy = onlyId(box, "AWS::SNS::TopicPolicy");
+  const settings = Object.entries(box.findResources("Custom::AWS"));
+  assert.deepEqual(
+    settings.map(([, setting]) => {
+      assert.deepEqual(setting.Properties.Update, setting.Properties.Create);
+      assert.equal(setting.Properties.Delete, undefined);
+      assert.equal(setting.Properties.InstallLatestAwsSdk, false);
+      return sdkCall(setting.Properties.Create);
+    }),
+    [
+      ...["Bounce", "Complaint"].map((type) => ({
+        service: "SES",
+        action: "SetIdentityNotificationTopic",
+        parameters: {
+          Identity: "notify.fidant.se",
+          NotificationType: type,
+          SnsTopic: `{Ref:${feedback}}`,
+        },
+        physicalResourceId: { id: `Mail${type}Topic` },
+      })),
+      {
+        service: "SES",
+        action: "SetIdentityFeedbackForwardingEnabled",
+        parameters: { Identity: "notify.fidant.se", ForwardingEnabled: false },
+        physicalResourceId: { id: "MailForwardingOff" },
+      },
+    ],
+  );
+  const ids = settings.map(([id]) => id);
+  for (const [index, [, setting]] of settings.entries()) {
+    for (const before of [index === 0 ? identity : ids[index - 1], topicPolicy]) {
+      assert.ok(setting.DependsOn.includes(before), `${ids[index]} after ${before}`);
+    }
+  }
+});
+
+test("the function behind those settings may only set notification topics and forwarding", () => {
+  const box = appBox();
+  const functions = Object.entries(box.findResources("AWS::Lambda::Function")).filter(
+    ([id]) => !id.startsWith("RelayCap"),
+  );
+  assert.equal(functions.length, 1);
+  const [functionId, fn] = functions[0] ?? [];
+  for (const [, setting] of Object.entries(box.findResources("Custom::AWS"))) {
+    assert.deepEqual(setting.Properties.ServiceToken, { "Fn::GetAtt": [functionId, "Arn"] });
+  }
+  const role = fn?.Properties.Role["Fn::GetAtt"][0];
+  assert.deepEqual(box.findResources("AWS::IAM::Role")[role]?.Properties.ManagedPolicyArns, [
+    {
+      "Fn::Join": [
+        "",
+        [
+          "arn:",
+          { Ref: "AWS::Partition" },
+          ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+        ],
+      ],
+    },
+  ]);
+  assert.deepEqual(
+    Object.values(box.findResources("AWS::IAM::Policy"))
+      .filter((policy) => policy.Properties.Roles?.[0].Ref === role)
+      .flatMap((policy) => policy.Properties.PolicyDocument.Statement),
+    [
+      "ses:SetIdentityNotificationTopic",
+      "ses:SetIdentityNotificationTopic",
+      "ses:SetIdentityFeedbackForwardingEnabled",
+    ].map((action) => ({ Action: action, Effect: "Allow", Resource: "*" })),
+  );
+  const logGroup = fn?.Properties.LoggingConfig.LogGroup.Ref;
+  assert.equal(box.findResources("AWS::Logs::LogGroup")[logGroup]?.Properties.RetentionInDays, 30);
+});
+
+test("a first deploy with newMailIdentity leaves out the settings an unverified identity refuses", () => {
+  const full = appBox();
+  const first = appBox({ newMailIdentity: "true" });
+  first.resourceCountIs("Custom::AWS", 0);
+  assert.deepEqual(
+    Object.keys(first.findResources("AWS::Lambda::Function")).filter(
+      (id) => !id.startsWith("RelayCap"),
+    ),
+    [],
+  );
+  for (const type of [
+    "AWS::Lightsail::Instance",
+    "AWS::SNS::TopicPolicy",
+    "AWS::SES::EmailIdentity",
+    "AWS::SES::ConfigurationSet",
+    "AWS::SES::ConfigurationSetEventDestination",
+  ]) {
+    assert.deepEqual(first.findResources(type), full.findResources(type), type);
+  }
+  assert.deepEqual(first.toJSON().Outputs, full.toJSON().Outputs);
+  appBox({ newMailIdentity: "false" }).resourceCountIs("Custom::AWS", 3);
+});
+
+test("the mail user may only send through the identity, and CDK gives it no key or password", () => {
+  const box = appBox();
+  const user = onlyId(box, "AWS::IAM::User");
+  assert.deepEqual(box.findResources("AWS::IAM::User")[user]?.Properties, {
+    UserName: "fidant-mail",
+  });
+  box.resourceCountIs("AWS::IAM::AccessKey", 0);
+  const arn = (resource: string, id: string) => ({
+    "Fn::Join": [
+      "",
+      [
+        "arn:",
+        { Ref: "AWS::Partition" },
+        `:ses:eu-north-1:${pocAccount}:${resource}/`,
+        { Ref: id },
+      ],
+    ],
+  });
+  const policies = Object.values(box.findResources("AWS::IAM::Policy"))
+    .filter((policy) => policy.Properties.Users)
+    .map((policy) => [policy.Properties.Users, policy.Properties.PolicyDocument.Statement]);
+  assert.deepEqual(policies, [
+    [
+      [{ Ref: user }],
+      [
+        {
+          Action: "ses:SendRawEmail",
+          Effect: "Allow",
+          Resource: [
+            arn("identity", onlyId(box, "AWS::SES::EmailIdentity")),
+            arn("configuration-set", onlyId(box, "AWS::SES::ConfigurationSet")),
+          ],
+        },
+      ],
+    ],
+  ]);
+});
+
+test("the app box outputs only its address and the three DKIM records", () => {
+  const box = appBox();
+  const identity = onlyId(box, "AWS::SES::EmailIdentity");
+  const outputs = box.toJSON().Outputs;
+  assert.deepEqual(Object.keys(outputs).sort(), ["Dkim1", "Dkim2", "Dkim3", "PublicIp"]);
+  for (const n of [1, 2, 3]) {
+    assert.deepEqual(outputs[`Dkim${n}`].Value, {
+      "Fn::Join": [
+        "",
+        [
+          { "Fn::GetAtt": [identity, `DkimDNSTokenName${n}`] },
+          " CNAME ",
+          { "Fn::GetAtt": [identity, `DkimDNSTokenValue${n}`] },
+        ],
+      ],
+    });
+  }
+});
+
+test("SES bounce and complaint rates at AWS's review thresholds email the alert address", () => {
+  const box = appBox();
+  const notify = [alertTopic(box)];
+  assert.deepEqual(
+    alarmsNamed(box, "Fidant SES reputation").map((alarm) => [
+      alarm.AlarmName,
+      alarm.Namespace,
+      alarm.MetricName,
+      alarm.Dimensions,
+      alarm.ComparisonOperator,
+      alarm.Threshold,
+      alarm.TreatMissingData,
+      alarm.AlarmActions,
+      alarm.OKActions,
+    ]),
+    [
+      [
+        "Fidant SES reputation: bounce rate 5 % or more",
+        "AWS/SES",
+        "Reputation.BounceRate",
+        undefined,
+        "GreaterThanOrEqualToThreshold",
+        0.05,
+        "ignore",
+        notify,
+        notify,
+      ],
+      [
+        "Fidant SES reputation: complaint rate 0.1 % or more",
+        "AWS/SES",
+        "Reputation.ComplaintRate",
+        undefined,
+        "GreaterThanOrEqualToThreshold",
+        0.001,
+        "ignore",
+        notify,
+        notify,
+      ],
+    ],
+  );
+});
+
+test("the cap's Lambda code loads the way Lambda loads it: no package.json, no syntax detection", () => {
+  const folder = new URL("./relay-cap/", import.meta.url);
+  const asset = mkdtempSync(join(tmpdir(), "relay-cap-"));
+  try {
+    for (const file of readdirSync(folder).filter((name) => !name.endsWith(".test.ts"))) {
+      copyFileSync(new URL(file, folder), join(asset, file));
+    }
+    const stub = [
+      "LightsailClient",
+      "GetInstanceMetricDataCommand",
+      "PutInstancePublicPortsCommand",
+      "SSMClient",
+      "GetParameterCommand",
+      "PutParameterCommand",
+    ]
+      .map((name) => `export class ${name} {}`)
+      .join("\n");
+    for (const sdk of ["client-lightsail", "client-ssm"]) {
+      const dir = join(asset, "node_modules", "@aws-sdk", sdk);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "package.json"), '{"type":"module","exports":"./index.js"}');
+      writeFileSync(join(dir, "index.js"), stub);
+    }
+    const loaded = spawnSync(
+      process.execPath,
+      [
+        "--no-experimental-detect-module",
+        "--input-type=module",
+        "-e",
+        "const { handler } = await import('./index.mjs'); console.log(typeof handler);",
+      ],
+      { cwd: asset, encoding: "utf8" },
+    );
+    assert.equal(loaded.stdout.trim(), "function", loaded.stderr);
+  } finally {
+    rmSync(asset, { recursive: true, force: true });
+  }
 });

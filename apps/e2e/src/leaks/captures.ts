@@ -96,6 +96,24 @@ export function logSlice(log: Buffer, start = 0, { complete = false } = {}): Log
   return { lines: text === undefined ? [] : text.split("\n"), firstLine };
 }
 
+/**
+ * A saved mail as two captures, `<point> headers` (unfolded) and `<point> body`, so a finding says
+ * which part it is in: decision 0012 allows an emailed link's secret in its notice's body only.
+ * The scan decodes the body (quoted-printable, base64) and RFC 2047 words in the headers itself.
+ */
+export function mailCaptures(point: string, bytes: Buffer): Capture[] {
+  const text = bytes.toString("latin1");
+  const end = /\r?\n\r?\n/.exec(text);
+  const headers = text.slice(0, end?.index).replace(/\r?\n(?=[ \t])/g, "");
+  return [
+    { point: `${point} headers`, bytes: Buffer.from(headers, "latin1") },
+    {
+      point: `${point} body`,
+      bytes: end ? bytes.subarray(end.index + end[0].length) : Buffer.alloc(0),
+    },
+  ];
+}
+
 /** One capture per line of a log slice, at points such as `observations/run/server.stdout.log:7`. */
 export function logCaptures(file: string, slice: LogSlice): Capture[] {
   return slice.lines.map((line, index) => ({

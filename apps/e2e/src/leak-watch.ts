@@ -7,10 +7,14 @@ import {
   type LogSlice,
   logCaptures,
   logSlice,
+  mailCaptures,
   recordCaptures,
 } from "./leaks/captures.ts";
+import { allowEmailed } from "./leaks/carriers.ts";
 import {
+  type Allowed,
   buildNeedles,
+  contentSecrets,
   fileSecrets,
   keySecrets,
   minWindow,
@@ -21,6 +25,7 @@ import {
 import { exemptTest, registerSecrets } from "./leaks/registry.ts";
 import { formatLeakReport, logViolations } from "./leaks/report.ts";
 import { type Capture, type Finding, scan } from "./leaks/scan.ts";
+import { saveMail } from "./mail.ts";
 import {
   boxJournal,
   boxSyslog,
@@ -41,10 +46,24 @@ export interface Leaks {
    * Returns the file.
    */
   watch(file: CanaryFile, label?: string): CanaryFile;
-  /** Watches a key: raw bytes, or text such as a fragment secret (searched as text and bytes). */
-  watchKey(label: string, key: Uint8Array | string | CanaryKey, cls?: "K" | "S"): void;
-  /** Watches text such as a recipient name, which must not appear whole (NFC or NFD UTF-8). */
-  watchText(label: string, text: string): void;
+  /**
+   * Watches a key: raw bytes, or text such as a fragment secret (searched as text and bytes).
+   * `allowed` names where an emailed link's secret, value or token may appear (decision 0012);
+   * its SHA-256 stays allowed nowhere.
+   */
+  watchKey(
+    label: string,
+    key: Uint8Array | string | CanaryKey,
+    cls?: "K" | "S",
+    allowed?: Allowed,
+  ): void;
+  /**
+   * Watches text such as a recipient name, which must not appear whole (NFC or NFD UTF-8).
+   * `allowed` names where an emailed link's typed name or address may appear (decision 0012).
+   */
+  watchText(label: string, text: string, allowed?: Allowed): void;
+  /** Watches text as content (C), such as a shared text: its UTF-8 bytes and their SHA-256. */
+  watchContent(label: string, text: string): void;
   /** Scans everything observed so far in this test. Never throws for a leak. */
   scan(): Promise<Finding[]>;
   /**
@@ -110,17 +129,34 @@ export class LeakWatch implements Leaks {
     return file;
   }
 
-  watchKey(label: string, key: Uint8Array | string | CanaryKey, cls: "K" | "S" = "K"): void {
+  watchKey(
+    label: string,
+    key: Uint8Array | string | CanaryKey,
+    cls: "K" | "S" = "K",
+    allowed?: Allowed,
+  ): void {
     const value = typeof key === "string" || key instanceof Uint8Array ? key : key.text;
-    this.#add(keySecrets(label, value, cls));
+    this.#add(
+      keySecrets(label, value, cls).map((secret) =>
+        allowed && "bytes" in secret && !secret.label.endsWith(" sha256")
+          ? { ...secret, allowed }
+          : secret,
+      ),
+    );
   }
 
-  watchText(label: string, text: string): void {
+  watchText(label: string, text: string, allowed?: Allowed): void {
     // Shorter text would only fail later, when the needles are built for the scan or the sweep.
     if (Buffer.byteLength(text) < minWindow) {
       throw new Error(`Watched text for ${label} needs at least ${minWindow} bytes.`);
     }
-    this.#add(textSecrets("M", label, text));
+    this.#add(
+      textSecrets("M", label, text).map((secret) => (allowed ? { ...secret, allowed } : secret)),
+    );
+  }
+
+  watchContent(label: string, text: string): void {
+    this.#add(contentSecrets(label, Buffer.from(text)));
   }
 
   expectLeaks(): void {
@@ -137,15 +173,13 @@ export class LeakWatch implements Leaks {
 
   async scan(): Promise<Finding[]> {
     const { captures, limits } = await this.#observe();
-    return [...limits, ...(this.#secrets.length === 0 ? [] : scan(captures, this.#compiled()))];
+    return [...limits, ...this.#found(captures)];
   }
 
   /** The failure message for this test's findings and stdout violations, or undefined. */
   async check(): Promise<string | undefined> {
     const { captures, limits, stdout } = await this.#observe();
-    const findings = this.#expectLeaks
-      ? []
-      : [...limits, ...(this.#secrets.length === 0 ? [] : scan(captures, this.#compiled()))];
+    const findings = this.#expectLeaks ? [] : [...limits, ...this.#found(captures)];
     const violations = logViolations(point(serverStdoutLog), stdout);
     return formatLeakReport(findings, violations, process.env.SIGILL_E2E_SEED);
   }
@@ -158,6 +192,14 @@ export class LeakWatch implements Leaks {
     this.#secrets.push(...secrets);
   }
 
+  /** This test's secrets found in `captures`, except where an emailed link may carry them. */
+  #found(captures: Capture[]): Finding[] {
+    if (this.#secrets.length === 0) {
+      return [];
+    }
+    return allowEmailed(scan(captures, this.#compiled()), captures, this.#secrets);
+  }
+
   #compiled(): Needles {
     if (this.#needles?.count !== this.#secrets.length) {
       this.#needles = { count: this.#secrets.length, needles: buildNeedles(this.#secrets) };
@@ -165,7 +207,10 @@ export class LeakWatch implements Leaks {
     return this.#needles.needles;
   }
 
-  /** This test's records so far, plus what the server logged since the test began. */
+  /**
+   * This test's records so far, what the server logged since the test began, and the mail Mailpit
+   * caught, which it saves under the test's observations first.
+   */
   async #observe(): Promise<{ captures: Capture[]; limits: Finding[]; stdout: LogSlice }> {
     const captures: Capture[] = [];
     const limits: Finding[] = [];
@@ -174,6 +219,9 @@ export class LeakWatch implements Leaks {
       const records = await recorder.records();
       captures.push(...recordCaptures(file, records));
       limits.push(...bodyLimits(file, records));
+    }
+    for (const path of await saveMail(join(observationsDir, this.#test))) {
+      captures.push(...mailCaptures(point(path), await readFile(path)));
     }
     const slices = await Promise.all(
       logs.map(async (path, index) =>

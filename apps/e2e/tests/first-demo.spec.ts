@@ -1,8 +1,23 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import type { Page } from "@playwright/test";
-import { canaryFile, canaryKey, expect, test as harness, type Leaks } from "../src/fixtures.ts";
+import { maskAddress } from "@sigill/protocol";
+import {
+  breakableSender,
+  canaryFile,
+  canaryKey,
+  delivered,
+  expect,
+  test as harness,
+  type Leaks,
+  makeName,
+  type Observed,
+  recipientRow,
+} from "../src/fixtures.ts";
 import { base32Token, type CanaryFile, type SeededRandom } from "../src/leaks/canary.ts";
+import type { Allowed } from "../src/leaks/needles.ts";
+import { type Message, mailTo } from "../src/mail.ts";
+import { serverStderrLog, serverStdoutLog } from "../src/paths.ts";
 import { restartServer } from "../src/stack/server.ts";
 
 // The first demo end to end: a sender page sends one file to named recipients, each recipient on
@@ -77,13 +92,6 @@ function makeFile(leaks: Leaks, canary: SeededRandom, size: number): CanaryFile 
   return leaks.watch(canaryFile(canary.fork("file"), { size }));
 }
 
-/** A watched person's name, unique to this run. */
-function makeName(leaks: Leaks, canary: SeededRandom, first: string): string {
-  const name = `${first}-${base32Token(canary.fork(`name ${first}`), 8)}`;
-  leaks.watchText(`name ${first}`, name);
-  return name;
-}
-
 /** Opens the sender page, runs `init` in it before any page script, types the sender's name if given, and chooses the file. */
 async function openSender(
   demo: Demo,
@@ -119,12 +127,6 @@ async function addRecipient(leaks: Leaks, sender: Page, name: string): Promise<s
   leaks.watchKey(`link secret for ${name}`, secret);
   return link;
 }
-
-const recipientRow = (sender: Page, name: string) =>
-  sender.getByRole("list", { name: "Recipients" }).getByRole("listitem").filter({ hasText: name });
-
-const delivered = (sender: Page, name: string) =>
-  recipientRow(sender, name).getByText(`Delivered through ${name}'s link`);
 
 /** Opens a link as `actor`, checks the offer, downloads, and returns the bytes of the automatic download. */
 async function receive(
@@ -513,30 +515,6 @@ test("the Why? link to /how keeps a transfer alive on both pages", async ({
   await expect(delivered(sender, name)).toBeVisible();
 });
 
-/** Lets a test cut the sender's peer connections (`cut()`) and stop its data channels sending (`stalled`). */
-function breakableSender() {
-  const g = globalThis as { cut?: () => void; stalled?: boolean };
-  const peers: RTCPeerConnection[] = [];
-  const Native = globalThis.RTCPeerConnection;
-  globalThis.RTCPeerConnection = class extends Native {
-    constructor(config?: RTCConfiguration) {
-      super(config);
-      peers.push(this);
-    }
-  };
-  g.cut = () => {
-    for (const peer of peers) {
-      peer.close();
-    }
-  };
-  const send = RTCDataChannel.prototype.send;
-  RTCDataChannel.prototype.send = function (this: RTCDataChannel, ...args: unknown[]) {
-    if (!g.stalled) {
-      Reflect.apply(send, this, args);
-    }
-  } as RTCDataChannel["send"];
-}
-
 test("a lost sender says whether the file may have been saved", async ({ demo, leaks, canary }) => {
   const file = makeFile(leaks, canary, 100_001);
   const sender = await openSender(demo, file, "", breakableSender);
@@ -681,3 +659,394 @@ test.describe("through a server restart", () => {
     await expect(delivered(sender, name)).toBeVisible();
   });
 });
+
+/** A made-up address for `first`, unique to this run, at a reserved domain. */
+const addressFor = (canary: SeededRandom, first: string) =>
+  `${first.toLowerCase()}-${base32Token(canary.fork(`address ${first}`), 8).toLowerCase()}@example.com`;
+
+interface Emailed {
+  /** The link the server emailed: `/r/<linkId>#e.<mark>.<secret>`. */
+  link: string;
+  linkId: string;
+  mark: string;
+  secret: string;
+  notice: Message;
+}
+
+/**
+ * Adds `name` with the address `to` and waits for the notice. Watches the link's secret, the
+ * server's value, the address and, if given, the sender's typed name `from` where decision 0012
+ * lets them appear.
+ */
+async function addEmailed(
+  leaks: Leaks,
+  sender: Page,
+  name: string,
+  to: string,
+  from = "",
+): Promise<Emailed> {
+  await sender.getByLabel("Who is it for?").fill(name);
+  await sender.getByLabel("Their email address").fill(to);
+  await sender.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(
+    recipientRow(sender, name).getByText(`Email sent to ${maskAddress(to)}`),
+  ).toBeVisible();
+  const link = (await sender.getByLabel(`Link for ${name}`, { exact: true }).textContent()) ?? "";
+  const url = new URL(link);
+  const [, mark = "", secret = ""] = /^#e\.([\w-]{22})\.([\w-]{43})$/.exec(url.hash) ?? [];
+  await expect.poll(async () => (await mailTo(to)).length).toBe(1);
+  const [notice] = await mailTo(to);
+  if (!notice) {
+    throw new Error(`no notice to ${to}`);
+  }
+  expect(notice.Text).toContain(link);
+  const linkId = url.pathname.slice("/r/".length);
+  const mail: Allowed["mail"] = { to, notice: notice.ID };
+  leaks.watchKey(`link secret for ${name}`, secret, "K", {
+    link: linkId,
+    frames: ["sent email"],
+    mail,
+  });
+  leaks.watchKey(`value for ${name}`, mark, "K", {
+    link: linkId,
+    frames: ["received email", "sent gate", "sent send-code", "sent code"],
+    mail,
+  });
+  leaks.watchText(`address for ${name}`, to, {
+    link: linkId,
+    frames: ["sent email"],
+    mail: { to },
+  });
+  if (from) {
+    leaks.watchText(`typed name ${from}`, from, { link: linkId, frames: ["sent email"], mail });
+  }
+  return { link, linkId, mark, secret, notice };
+}
+
+/** Asks for a code on the recipient page and returns it from the one code mail to `to`. */
+async function requestCode(page: Page, to: string): Promise<string> {
+  await page.getByRole("button", { name: "Send me a code" }).click();
+  await expect(page.getByText("Code sent. Check your email.")).toBeVisible();
+  const codeMail = async () =>
+    (await mailTo(to)).filter((mail) => mail.Subject === "Your Fidant code");
+  await expect.poll(async () => (await codeMail()).length).toBe(1);
+  const code = /Your code: (\d{6})/.exec((await codeMail())[0]?.Text ?? "")?.[1];
+  if (!code) {
+    throw new Error("no code in the code mail");
+  }
+  return code;
+}
+
+async function enterCode(page: Page, code: string): Promise<void> {
+  await page.getByLabel("Code from the email").fill(code);
+  await page.getByRole("button", { name: "Continue" }).click();
+}
+
+/** Watches the token the recipient page keeps for the link, which only its frames may carry. */
+async function watchToken(leaks: Leaks, page: Page, emailed: Emailed, name: string) {
+  const token = await page.evaluate((id) => sessionStorage.getItem(`token:${id}`), emailed.linkId);
+  expect(token).toMatch(/^[\w-]{22}$/);
+  leaks.watchKey(`token for ${name}`, token ?? "", "K", {
+    link: emailed.linkId,
+    frames: ["received token", "sent join"],
+  });
+  return token ?? "";
+}
+
+/** The server never logged these. The scan cannot look for a 6-digit code, so this does. */
+async function expectNotLogged(values: string[]): Promise<void> {
+  const logs = (await Promise.all([serverStdoutLog, serverStderrLog].map((p) => readFile(p)))).join(
+    "\n",
+  );
+  for (const value of values) {
+    // A code counts only as a whole number, not as part of a longer one.
+    const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    expect(logs).not.toMatch(new RegExp(`(?<!\\d)${escaped}(?!\\d)`));
+  }
+}
+
+/** Parsed `t` messages of type `type` that `actor` sent (or received) on /signal. */
+async function messages(
+  observed: (name: string) => Observed,
+  actor: string,
+  type: string,
+  direction: "frame-sent" | "frame-received" = "frame-sent",
+): Promise<Record<string, unknown>[]> {
+  return (await observed(actor).records()).flatMap((record) => {
+    if (record.type !== direction || record.base64) {
+      return [];
+    }
+    const message = JSON.parse(record.payload) as Record<string, unknown>;
+    return message.t === type ? [message] : [];
+  });
+}
+
+/**
+ * Hosts `link` as a plain link over a socket of the page's own, which stays open, then joins it
+ * from another socket without a token. Returns the type of the server's answer to that join.
+ */
+function hostPlain(page: Page, link: string, attempt: string): Promise<string> {
+  return page.evaluate(
+    ([link, attempt]) =>
+      new Promise<string>((resolve, reject) => {
+        const url = `${location.origin.replace("https", "wss")}/signal`;
+        const host = new WebSocket(url);
+        (globalThis as { host?: WebSocket }).host = host;
+        host.addEventListener("error", () => reject(new Error("host socket error")));
+        host.addEventListener("open", () => {
+          host.send(JSON.stringify({ t: "host", links: [link], turn: false }));
+          const guest = new WebSocket(url);
+          guest.addEventListener("error", () => reject(new Error("guest socket error")));
+          guest.addEventListener("open", () =>
+            guest.send(JSON.stringify({ t: "join", link, attempt })),
+          );
+          guest.addEventListener("message", (event) => {
+            const { t } = JSON.parse(String(event.data)) as { t: string };
+            if (t !== "hello") {
+              resolve(t);
+              guest.close();
+            }
+          });
+        });
+      }),
+    [link, attempt] as const,
+  );
+}
+
+test.describe("emailed links", () => {
+  test.skip(!process.env.SIGILL_E2E_MAILPIT, "needs Mailpit");
+
+  test("a recipient enters the emailed code and gets the file", async ({
+    demo,
+    observed,
+    leaks,
+    canary,
+    baseURL,
+  }) => {
+    const file = makeFile(leaks, canary, 100_001);
+    // Watched by addEmailed, with where the email may carry it.
+    const from = `David-${base32Token(canary.fork("typed name"), 8)}`;
+    const sender = await openSender(demo, file, from);
+    const name = makeName(leaks, canary, "Anna");
+    const to = addressFor(canary, "Anna");
+    const masked = maskAddress(to);
+    const emailed = await addEmailed(leaks, sender, name, to, from);
+    expect(emailed.notice.HTML).toBe("");
+    expect(emailed.notice.Text).toContain(
+      `${from} (name typed by the sender, not verified) wants to send you a file or a secret.`,
+    );
+
+    const recipient = await demo.open("recipient");
+    await recipient.goto(emailed.link);
+    const codeStep = (page: Page) =>
+      page.getByRole("heading", { name: "Confirm your email to open this link" });
+    await expect(codeStep(recipient)).toBeVisible();
+    await expect(recipient.getByText(`We'll email a code to ${masked}.`)).toBeVisible();
+    await expect(recipient.getByText(from)).toHaveCount(0);
+    const code = await requestCode(recipient, to);
+    await expect(recipientRow(sender, name).getByText(`Code sent to ${masked}`)).toBeVisible();
+    await enterCode(recipient, String((Number(code) + 1) % 1_000_000).padStart(6, "0"));
+    await expect(recipient.getByText("That code is wrong. Try again.")).toBeVisible();
+    await enterCode(recipient, code);
+    await expect(
+      recipient.getByRole("heading", { name: `${from} wants to send you a file` }),
+    ).toBeVisible();
+    const token = await watchToken(leaks, recipient, emailed, name);
+    const verified = recipientRow(sender, name).getByText(
+      `Verified with the code sent to ${masked}`,
+    );
+    await expect(verified).toBeVisible();
+
+    // The token is this tab's: another tab gets the code step. The link without its marker
+    // joins without a token, and the server refuses it.
+    const tab = await recipient.context().newPage();
+    await tab.goto(emailed.link);
+    await expect(codeStep(tab)).toBeVisible();
+    await tab.close();
+    const stripped = await demo.open("stripped");
+    await stripped.goto(`${baseURL}/r/${emailed.linkId}#${emailed.secret}`);
+    await expect(stripped.getByText("This link no longer works")).toBeVisible();
+
+    const bytes = await download(recipient, file);
+    expect(sha256Hex(bytes)).toBe(sha256Hex(file.bytes));
+    await expect(delivered(sender, name)).toBeVisible();
+    await expect(verified).toBeVisible();
+
+    // A reload joins with the tab's token, without a new code, and the sender refuses a used link.
+    await recipient.reload();
+    await expect(recipient.getByText("This link has already been used")).toBeVisible();
+    const joins = await messages(observed, "recipient", "join");
+    expect(joins.map((join) => join.token)).toEqual([token, token]);
+    expect((await mailTo(to)).filter((mail) => mail.Subject === "Your Fidant code")).toHaveLength(
+      1,
+    );
+    await expectNotLogged([to, code, token, emailed.mark]);
+  });
+
+  test("an emailed link stops working with its sender, even if someone hosts its ID", async ({
+    demo,
+    observed,
+    leaks,
+    canary,
+  }) => {
+    const sender = await openSender(demo, makeFile(leaks, canary, 100_001));
+    const name = makeName(leaks, canary, "Anna");
+    const to = addressFor(canary, "Anna");
+    const emailed = await addEmailed(leaks, sender, name, to);
+    const recipient = await demo.open("recipient");
+    await recipient.goto(emailed.link);
+    await enterCode(recipient, await requestCode(recipient, to));
+    await expect(recipient.getByRole("button", { name: "Download" })).toBeVisible();
+    await watchToken(leaks, recipient, emailed, name);
+    await sender.close();
+    await expect(recipient.getByText("The sender's page is closed")).toBeVisible();
+
+    // The server forgot the link with the sender's socket, so a join without a token reaches
+    // whoever hosts its ID now.
+    const impostor = await demo.open("impostor");
+    await impostor.goto("/");
+    const attempt = canary.fork("attempt").bytes(16).toString("base64url");
+    expect(await hostPlain(impostor, emailed.linkId, attempt)).toBe("joined");
+
+    const joins = async (actor: string) => (await messages(observed, actor, "join")).length;
+    const joined = await joins("recipient");
+    await recipient.reload();
+    await expect(recipient.getByText("This link no longer works")).toBeVisible();
+    const fresh = await demo.open("fresh");
+    await fresh.goto(emailed.link);
+    await expect(fresh.getByText("This link no longer works")).toBeVisible();
+    expect(await joins("recipient")).toBe(joined);
+    expect(await joins("fresh")).toBe(0);
+    const kept = await recipient.evaluate(
+      (id) => sessionStorage.getItem(`token:${id}`),
+      emailed.linkId,
+    );
+    expect(kept).toBeNull();
+  });
+
+  test("the code step survives a dropped connection and ends when the link stops working", async ({
+    demo,
+    observed,
+    leaks,
+    canary,
+  }) => {
+    const sender = await openSender(demo, makeFile(leaks, canary, 10));
+    const name = makeName(leaks, canary, "Anna");
+    const to = addressFor(canary, "Anna");
+    const emailed = await addEmailed(leaks, sender, name, to);
+    const recipient = await demo.open("recipient");
+    await recipient.addInitScript(() => {
+      const sockets: WebSocket[] = [];
+      const Native = window.WebSocket;
+      window.WebSocket = class extends Native {
+        constructor(...args: ConstructorParameters<typeof Native>) {
+          super(...args);
+          sockets.push(this);
+        }
+      };
+      (window as unknown as { dropSockets: () => void }).dropSockets = () => {
+        for (const socket of sockets) {
+          socket.close();
+        }
+      };
+    });
+    await recipient.goto(emailed.link);
+    const code = await requestCode(recipient, to);
+
+    const gates = async () => (await messages(observed, "recipient", "gate")).length;
+    const gatesBefore = await gates();
+    await recipient.evaluate(() =>
+      (window as unknown as { dropSockets: () => void }).dropSockets(),
+    );
+    await expect.poll(gates).toBeGreaterThan(gatesBefore);
+    await expect(recipient.getByLabel("Code from the email")).toBeVisible();
+    await enterCode(recipient, code);
+    await expect(recipient.getByRole("button", { name: "Download" })).toBeVisible();
+
+    const late = await demo.open("late");
+    await late.goto(emailed.link);
+    await expect(late.getByRole("button", { name: "Send me a code" })).toBeVisible();
+    await sender.close();
+    await expect(recipient.getByText("The sender's page is closed")).toBeVisible();
+    await late.getByRole("button", { name: "Send me a code" }).click();
+    await expect(late.getByText("This link no longer works")).toBeVisible();
+  });
+
+  test("a reconnect stops an emailed link and hosts only the plain ones again", async ({
+    demo,
+    observed,
+    leaks,
+    canary,
+  }) => {
+    const sender = await openSender(demo, makeFile(leaks, canary, 10));
+    const plainName = makeName(leaks, canary, "Erik");
+    const plain = new URL(await addRecipient(leaks, sender, plainName)).pathname.slice(3);
+    const name = makeName(leaks, canary, "Anna");
+    const to = addressFor(canary, "Anna");
+    const emailed = await addEmailed(leaks, sender, name, to);
+    const hosted = async () => (await messages(observed, "sender", "host")).map((m) => m.links);
+    const before = (await hosted()).length;
+
+    await restartServer();
+    await expect
+      .poll(async () => (await hosted()).length, { timeout: 30_000 })
+      .toBeGreaterThan(before);
+    const links = (await hosted()).at(-1);
+    expect(links).toContain(plain);
+    expect(links).not.toContain(emailed.linkId);
+    await expect(
+      recipientRow(sender, name).getByText(
+        `The link emailed to ${maskAddress(to)} stopped working`,
+      ),
+    ).toBeVisible();
+    await expect(sender.getByRole("button", { name: `Copy link for ${name}` })).toHaveCount(0);
+    await expect(sender.getByRole("button", { name: `Copy link for ${plainName}` })).toBeVisible();
+  });
+
+  test("a text from /secret can be emailed and shows after the code", async ({
+    demo,
+    leaks,
+    canary,
+  }) => {
+    const text = `${base32Token(canary.fork("text"), 40)} åäö`;
+    leaks.watchContent("text", text);
+    const sender = await demo.open("sender");
+    await sender.goto("/secret");
+    await sender.getByLabel("Your secret").fill(text);
+    const email = sender.getByLabel("Their email address");
+    await expect(email).toHaveId("secret-recipient-email");
+    const name = makeName(leaks, canary, "Anna");
+    const to = addressFor(canary, "Anna");
+    await email.fill(to);
+    await expect(sender.locator("#secret-email-notice")).toContainText(
+      "anyone who can read that mailbox could receive the secret.",
+    );
+    const emailed = await addEmailed(leaks, sender, name, to);
+
+    const recipient = await demo.open("recipient");
+    await recipient.goto(emailed.link);
+    await enterCode(recipient, await requestCode(recipient, to));
+    await expect(
+      recipient.getByRole("heading", { name: "You've been sent a secret" }),
+    ).toBeVisible();
+    await recipient.getByRole("button", { name: "Show", exact: true }).click();
+    await expect(
+      recipient.getByRole("region", { name: "The secret", exact: true }),
+    ).toHaveJSProperty("textContent", text);
+    await expect(delivered(sender, name)).toBeVisible();
+  });
+});
+
+// The default stack runs Mailpit, so the branch without mail runs only where Mailpit is missing.
+harness(
+  "the send page offers an email field exactly when the server can send mail",
+  async ({ actor, observed }) => {
+    const { page } = await actor("sender");
+    await page.goto("/send");
+    const hello = async () => await messages(observed, "sender", "hello", "frame-received");
+    await expect.poll(async () => (await hello()).length).toBe(1);
+    const mail = (await hello())[0]?.mail;
+    expect(mail).toBe(Boolean(process.env.SIGILL_E2E_MAILPIT));
+    await expect(page.getByLabel("Their email address")).toHaveCount(mail ? 1 : 0);
+  },
+);

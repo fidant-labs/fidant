@@ -86,6 +86,50 @@ exit 1
 EOF
 chmod 755 /usr/local/bin/sigill-deploy
 
+cat >/usr/local/bin/sigill-credential <<'EOF'
+#!/bin/sh
+# A drop-in that names a missing credential file stops the app, so the two exist only together.
+set -eu
+dropin=/etc/systemd/system/sigill.service.d/mail.conf
+secret=/etc/sigill/mail-password
+case "${1-} ${2-}" in
+"mail on")
+  printf 'SMTP user name: '
+  read -r user
+  printf '%s\n' "$user" | grep -Eqx 'AKIA[A-Z2-7]{16}' || { echo 'Not an SES SMTP user name.' >&2; exit 1; }
+  trap 'stty echo' EXIT
+  trap 'exit 130' INT TERM HUP
+  stty -echo
+  printf 'SMTP password: '
+  read -r password
+  stty echo
+  echo
+  printf '%s\n' "$password" | grep -Eqx '[A-Za-z0-9+/]{44}' || { echo 'Not an SES SMTP password.' >&2; exit 1; }
+  install -d -m 700 /etc/sigill
+  (umask 077 && printf '%s\n' "$password" >"$secret")
+  mkdir -p "${dropin%/*}"
+  printf '%s\n' '[Service]' \
+    "Environment=MAIL_SMTP_URL=smtps://$user@email-smtp.eu-north-1.amazonaws.com:465" \
+    'Environment="MAIL_FROM=Fidant <@MAIL_FROM@>"' \
+    'Environment=PUBLIC_ORIGIN=https://@DOMAIN@' \
+    "LoadCredential=mail-password:$secret" \
+    'Environment=MAIL_PASSWORD_FILE=%d/mail-password' >"$dropin"
+  systemctl daemon-reload
+  ;;
+"mail off")
+  rm -f "$dropin"
+  systemctl daemon-reload
+  rm -f "$secret"
+  ;;
+*)
+  echo 'Usage: sigill-credential mail on|off' >&2
+  exit 2
+  ;;
+esac
+systemctl try-restart sigill
+EOF
+chmod 700 /usr/local/bin/sigill-credential
+
 cat >/etc/systemd/system/sigill.service <<'EOF'
 [Unit]
 Description=Sigill app server
@@ -97,6 +141,7 @@ Environment=PORT=8443
 ExecStart=/usr/local/bin/node apps/server/src/main.ts
 Restart=always
 RestartSec=2
+MemorySwapMax=0
 
 [Install]
 WantedBy=multi-user.target
@@ -169,6 +214,12 @@ http:// {
 turn.@DOMAIN@ {
 	respond 404
 }
+EOF
+
+install -d /etc/systemd/system/caddy.service.d
+cat >/etc/systemd/system/caddy.service.d/no-swap.conf <<'EOF'
+[Service]
+MemorySwapMax=0
 EOF
 
 systemctl daemon-reload

@@ -5,6 +5,8 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer, type Server } from "node:https";
 import { isIP } from "node:net";
 import { extname, join, resolve, sep } from "node:path";
+import { isLinkId } from "@sigill/protocol";
+import type { Mailer } from "./mail.ts";
 import { attachSignaling, type Logger } from "./signaling.ts";
 import { type IceConfig, iceServersFor } from "./turn.ts";
 
@@ -27,6 +29,15 @@ const securityHeaders = {
   "x-content-type-options": "nosniff",
 };
 
+const receivePath = /^\/r\/([^/]+)\/?$/;
+
+/** The build's copy of index.html whose link preview fits the path and the fetcher's language. */
+function pageFor(pathname: string, acceptLanguage = ""): string {
+  const kind = isLinkId(receivePath.exec(pathname)?.[1]) ? "receive" : "home";
+  const lang = /^sv\b/i.test(acceptLanguage) ? "sv" : "en";
+  return `index.${kind}.${lang}.html`;
+}
+
 export function serveStatic(root: string) {
   const base = resolve(root);
   const assets = join(base, "assets") + sep;
@@ -47,8 +58,9 @@ export function serveStatic(root: string) {
       res.writeHead(404, securityHeaders).end();
       return;
     }
-    if (!extname(file)) {
-      file = join(base, "index.html");
+    const page = !extname(file);
+    if (page) {
+      file = join(base, pageFor(pathname, req.headers["accept-language"]));
     }
     try {
       const body = await readFile(file);
@@ -57,6 +69,7 @@ export function serveStatic(root: string) {
         "cache-control": file.startsWith(assets)
           ? "public, max-age=31536000, immutable"
           : "no-cache",
+        ...(page && { vary: "accept-language" }),
         ...securityHeaders,
       });
       res.end(body);
@@ -104,6 +117,7 @@ export function startServer(options: {
   hosts: string[];
   ice?: IceConfig | undefined;
   log?: Logger;
+  mail?: { send: Mailer; origin: string } | undefined;
 }): Promise<Server> {
   const server = createServer(
     ensureCert(options.certDir, options.hosts),
@@ -112,6 +126,7 @@ export function startServer(options: {
   const signaling = attachSignaling(server, {
     log: options.log ?? (() => {}),
     iceServers: (turn) => iceServersFor(options.ice, Date.now(), turn),
+    mail: options.mail,
   });
   server.on("close", () => signaling.close());
   return new Promise((done, fail) => {

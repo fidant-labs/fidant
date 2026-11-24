@@ -1,6 +1,13 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
-import { bodyLimits, logCaptures, logSlice, recordCaptures } from "./leaks/captures.ts";
+import {
+  bodyLimits,
+  logCaptures,
+  logSlice,
+  mailCaptures,
+  recordCaptures,
+} from "./leaks/captures.ts";
+import { allowEmailed } from "./leaks/carriers.ts";
 import { buildNeedles } from "./leaks/needles.ts";
 import { readRegistry } from "./leaks/registry.ts";
 import { formatLeakReport, logViolations } from "./leaks/report.ts";
@@ -21,7 +28,9 @@ export async function sweepRun(registry: string, seed?: string): Promise<string 
   const { captures, limits } = await allCaptures(exempt);
   const findings = [
     ...limits,
-    ...(secrets.length === 0 ? [] : scan(captures, buildNeedles(secrets))),
+    ...(secrets.length === 0
+      ? []
+      : allowEmailed(scan(captures, buildNeedles(secrets)), captures, secrets)),
   ];
   return formatLeakReport(findings, violations, seed);
 }
@@ -62,8 +71,10 @@ async function allCaptures(
       if (!exempt.has(test)) {
         limits.push(...bodyLimits(point, records));
       }
+    } else if (entry.name.endsWith(".eml")) {
+      captures.push(...mailCaptures(point, bytes));
     } else {
-      // Nothing else is written there today; scan anything new as it is.
+      // Anything new: the whole file as it is.
       captures.push({ point, bytes });
     }
   }

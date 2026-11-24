@@ -1,31 +1,40 @@
-// One card per recipient: status, connection path, progress, link, copy and remove.
+// One card per recipient: status, email, connection path, progress, link, copy and remove.
 //
-// Only the status sentence sits in the polite live region, so screen readers
-// hear "Sending through Anna's link", "Delivered through Anna's link" and so on,
-// not every progress tick. Each status names the link, not the person, because
-// whoever opens a link may not be the person it was made for.
+// Only the status sentence and the email line sit in polite live regions, so
+// screen readers hear "Sending through Anna's link", "Email sent to a***@example.se"
+// and so on, not every progress tick. Each status names the link or the masked
+// address, not the person, because whoever opens a link may not be the person
+// it was made for.
 
-import { useEffect, useRef, useState } from "preact/hooks";
+import { maskAddress } from "@sigill/protocol";
 import { Button } from "#components/ui/button";
 import { Card, CardContent } from "#components/ui/card";
 import type { Messages } from "../i18n/en.ts";
 import { useI18n } from "../i18n/I18n.tsx";
 import { formatProgress } from "../lib/format.ts";
-import type { Recipient, RecipientStatus } from "../lib/sender-state.ts";
-import { Direct, Icon, PathLine } from "../ui.tsx";
+import {
+  type Recipient,
+  type RecipientStatus,
+  TOO_SMALL_FOR_TEXT,
+  unmarked,
+} from "../lib/sender-state.ts";
+import { Direct, Icon, PathLine, useCopyNote } from "../ui.tsx";
 
 const STATUS_COLOR: Partial<Record<RecipientStatus, string>> = {
   failed: "text-destructive",
   declined: "text-muted-foreground",
 };
 
+type StatusText = Messages["send"]["status"];
+
 type Props = {
   recipients: readonly Recipient[];
   fileSize: number;
+  statusText: StatusText;
   onRemove(linkId: string): void;
 };
 
-export function RecipientList({ recipients, fileSize, onRemove }: Props) {
+export function RecipientList({ recipients, fileSize, statusText, onRemove }: Props) {
   const { t } = useI18n();
   if (recipients.length === 0) {
     return null;
@@ -37,6 +46,7 @@ export function RecipientList({ recipients, fileSize, onRemove }: Props) {
           key={recipient.linkId}
           recipient={recipient}
           fileSize={fileSize}
+          statusText={statusText}
           onRemove={onRemove}
         />
       ))}
@@ -44,37 +54,23 @@ export function RecipientList({ recipients, fileSize, onRemove }: Props) {
   );
 }
 
-type CopyNote = keyof Messages["send"]["copyNote"];
+type RowProps = {
+  recipient: Recipient;
+  fileSize: number;
+  statusText: StatusText;
+  onRemove(linkId: string): void;
+};
 
-type RowProps = { recipient: Recipient; fileSize: number; onRemove(linkId: string): void };
-
-function RecipientRow({ recipient, fileSize, onRemove }: RowProps) {
-  const { name, url, status, bytesSent, linkId, path, noRelay } = recipient;
+function RecipientRow({ recipient, fileSize, statusText, onRemove }: RowProps) {
+  const { name, url, status, bytesSent, linkId, path, noRelay, error, email, mail, unbound } =
+    recipient;
   const { t, lang } = useI18n();
-  const [copyNote, setCopyNote] = useState<CopyNote | "">("");
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const { note, copy } = useCopyNote();
 
-  useEffect(() => () => clearTimeout(timer.current), []);
-
-  const showNote = (note: CopyNote) => {
-    clearTimeout(timer.current);
-    setCopyNote(note);
-    timer.current = setTimeout(() => setCopyNote(""), 4000);
-  };
-
-  const copy = async () => {
-    try {
-      if (!navigator.clipboard) {
-        throw new Error("no clipboard");
-      }
-      await navigator.clipboard.writeText(url);
-      showNote("copied");
-    } catch {
-      showNote("failed");
-    }
-  };
-
-  const shareable = status === "waiting" || status === "declined" || status === "failed";
+  const open = status === "waiting" || status === "declined" || status === "failed";
+  // A link the server may still email, or whose email binding died, is not to be shared.
+  const shareable = open && !unmarked(recipient) && !unbound;
+  const lost = open && unbound;
 
   return (
     <li>
@@ -87,8 +83,22 @@ function RecipientRow({ recipient, fileSize, onRemove }: RowProps) {
             {status === "delivered" && <Icon name="check" />}
             {(status === "failed" || noRelay) && <Icon name="alert" />}
             {status === "declined" && !noRelay && <Icon name="declined" />}
-            <span>{noRelay ? t.send.noRelay(name) : t.send.status[status](name)}</span>
+            <span>
+              {noRelay
+                ? t.send.noRelay(name)
+                : error === TOO_SMALL_FOR_TEXT
+                  ? t.secret.unsendable(name)
+                  : statusText[status](name)}
+            </span>
           </p>
+          {email && mail && (
+            <p
+              class={`mt-1 mb-0 text-[0.9rem] wrap-anywhere ${lost || mail === "failed" || mail === "limit" ? "text-destructive" : "text-muted-foreground"}`}
+              aria-live="polite"
+            >
+              {t.send.mail[lost ? "lost" : mail](maskAddress(email))}
+            </p>
+          )}
           {path && <PathLine path={path} />}
           {status === "receiving" && (
             <>
@@ -108,7 +118,7 @@ function RecipientRow({ recipient, fileSize, onRemove }: RowProps) {
           )}
           <div class="mt-3 flex flex-wrap items-center gap-3">
             {shareable && (
-              <Button type="button" aria-label={t.send.copyFor(name)} onClick={copy}>
+              <Button type="button" aria-label={t.send.copyFor(name)} onClick={() => copy(url)}>
                 {t.send.copy}
               </Button>
             )}
@@ -128,7 +138,7 @@ function RecipientRow({ recipient, fileSize, onRemove }: RowProps) {
               {t.send.remove}
             </Button>
             <span class="text-[0.85rem] text-muted-foreground" role="status">
-              {copyNote && t.send.copyNote[copyNote]}
+              {note && t.send.copyNote[note]}
             </span>
           </div>
           {shareable && (

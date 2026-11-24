@@ -9,9 +9,11 @@ pnpm --filter @sigill/e2e exec playwright install chromium  # once per machine
 pnpm e2e                                                    # from the repository root
 ```
 
-`pnpm e2e` builds the web client, starts coturn and the server on free ports, runs the specs in `tests/` and stops both. `pnpm check` does not run it.
+`pnpm e2e` builds the web client, starts coturn, Mailpit and the server on free ports, runs the specs in `tests/` and stops them. `pnpm check` does not run it.
 
 coturn is the TURN relay (`brew install coturn` on macOS, the `coturn` package on Linux). It listens on 127.0.0.1 only, with a secret made for the run, and the server gets `TURN_URLS` and `TURN_SECRET_FILE` so the `joined` signaling message hands each paired browser credentials for it. Without `turnserver` on PATH the stack starts without it and `joined` carries no ICE servers; with `CI` set, that fails the run instead. Global setup sets `SIGILL_E2E_TURN_URLS` only when coturn runs, so a spec that needs the relay can skip on it.
+
+Mailpit catches the server's mail (`brew install mailpit` on macOS, the release binary on Linux). Its SMTP and HTTP API listen on 127.0.0.1 only, on two free ports, and it never sends mail on. The server gets `MAIL_SMTP_URL`, `MAIL_FROM` and `PUBLIC_ORIGIN` (its own `https://localhost:<port>`), so `hello` says mail is on and emailed links point at the stack. Without `mailpit` on PATH the stack starts without mail; with `CI` set, that fails the run instead. Global setup sets `SIGILL_E2E_MAILPIT` to the API's URL only when Mailpit runs, so an email spec can skip on it. Its output (errors only) goes to `observations/run/mailpit.log`. `pnpm e2e:networks` runs no Mailpit.
 
 ## Network scenarios
 
@@ -32,7 +34,8 @@ Import `test` and `expect` from `src/fixtures.ts`, not from `@playwright/test`.
 - The default `page` and `context` are recorded as the actor `default`. For more browsers, call `actor("sender")`, `actor("recipient")` and so on. Each gets its own context and page and its own observations file. Do not call `browser.newContext()`: an unrecorded context fails the test.
 - `test.use({ remoteBrowsers: { sender: "ws://127.0.0.1:39011/" } })` opens that actor in a browser served by `playwright run-server` at the endpoint, with the project's launch options and the same recording. Start the server with `--unsafe`, or it drops the launch `args`. Downloads from a remote browser have no local `path()`; use `saveAs()` or `createReadStream()`.
 - `canary` gives random bytes from the run seed and the test's title. Fork it per canary: `canaryFile(canary.fork("file"))`, `canaryKey(canary.fork("key"))`.
-- `leaks.watch(file, label?)` registers a canary file and returns it: its bytes and their SHA-256, the tokens in its name and type, the SHA-256 of its name, and its size. `leaks.watchKey(label, key)` registers a key, as bytes or as text such as a fragment secret. `leaks.watchText(label, text)` registers other text that must not appear whole, such as a recipient name.
+- `leaks.watch(file, label?)` registers a canary file and returns it: its bytes and their SHA-256, the tokens in its name and type, the SHA-256 of its name, and its size. `leaks.watchKey(label, key)` registers a key, as bytes or as text such as a fragment secret. `leaks.watchText(label, text)` registers other text that must not appear whole, such as a recipient name. `leaks.watchContent(label, text)` registers text that is content, such as a text shared from `/secret`: any 16 bytes in a row of its UTF-8, and its SHA-256.
+- An emailed link's secret, the sender's typed name, the address, the server's value and the token may appear in a few places ([decision 0012](../../docs/decisions/0012-email-recipients.md)). Pass those places as the last argument of `watchKey` or `watchText` (`Allowed` in `src/leaks/needles.ts`): the signaling messages about the link that may carry it, such as `sent email` (the first one only) or `received token`, and the mail to the address that may carry it, either the body of the notice (by its Mailpit ID) or any part of any mail to it. A mail counts only if it is one plain-text part to that address alone: one To, no Cc or Bcc. Findings anywhere else stand, a second copy of the notice and the headers of the notice itself included.
 - After the test, the detector scans what the test observed for every secret it registered and fails the test on any finding. `leaks.scan()` returns the findings so far without failing, and `leaks.check()` returns the report the teardown would throw (undefined when clean). A test that leaks on purpose calls `leaks.expectLeaks()`. `tests/leaks.spec.ts` shows each kind of leak the detector catches.
 - Once all tests are done, a run-level sweep scans every observation against every secret of the run, so a leak that shows up in another test's traffic or a later log line still fails the run.
 
@@ -49,6 +52,7 @@ Today:
 - Browser console messages: the text and the page URL without its fragment.
 - Server stdout and stderr. Stdout must also pass a strict allowlist: one JSON object per line, with known keys and values only (`src/leaks/server-log.ts`).
 - coturn's verbose log, `observations/run/coturn.log`.
+- Every mail Mailpit caught, as two captures of its raw source: the headers, unfolded, which carry the envelope as Mailpit records it (Return-Path, Received and, for a recipient not in To or Cc, Bcc), and the body. A finding names the part, such as `observations/<test>/mail/<ID>.eml body`. Each test's check saves the mail that arrived during the test to `observations/<test>/mail/<ID>.eml`, and its teardown deletes those messages from Mailpit. Global teardown saves what is left to `observations/run/mail/`.
 - In the network scenarios only, every packet to and from coturn, `observations/run/coturn.pcap`. The `pcap` service of `networks/compose.yaml` runs tcpdump in coturn's network namespace with `NET_RAW`, so no sudo is needed (decision 0001 expected sudo on CI). The file is scanned as raw bytes, one capture per test from where it stood when the test began. It holds STUN and TURN headers, DTLS ciphertext and, for TURN over TLS, TLS ciphertext only, so it is safe as a CI artifact. `pnpm e2e` has no packet capture.
 - In the network scenarios only, the box's journal for sigill, haproxy, caddy and coturn (`observations/run/box-journal.jsonl`, the message of each `journalctl -o json --all` entry, one per line, binary ones hex-encoded) and its `/var/log/syslog` (`observations/run/box-syslog.log`), written by the `the box` test after its transfer.
 
@@ -61,11 +65,11 @@ Not wired yet. Each arrives with the first issue that needs the service:
 | DynamoDB requests, responses and snapshots   | SIG-42         |
 | BankID simulator and TSA, through the proxy  | SIG-42         |
 | File-name carriers (`src/leaks/carriers.ts`) | SIG-42, SIG-43 |
-| Object storage and mail (Mailpit)            | SIG-43         |
+| Object storage                               | SIG-43         |
 
 ## Adding an observation point
 
-Turn what the point saw into `Capture`s (`src/leaks/scan.ts`): a `point` naming where it was seen, such as `observations/run/mail.eml:3`, and the `bytes`. Add a `contentEncoding` hint if the bytes are compressed. Write the raw data under `observations/`, then add the captures to the per-test scan in `src/leak-watch.ts` and to the sweep in `src/sweep.ts`. `src/leaks/captures.ts` does this for browser records and logs.
+Turn what the point saw into `Capture`s (`src/leaks/scan.ts`): a `point` naming where it was seen, such as `observations/<test>/mail/<ID>.eml`, and the `bytes`. Add a `contentEncoding` hint if the bytes are compressed. Write the raw data under `observations/`, then add the captures to the per-test scan in `src/leak-watch.ts` and to the sweep in `src/sweep.ts`. `src/leaks/captures.ts` does this for browser records and logs.
 
 ## Reproducing a failure
 
@@ -79,4 +83,4 @@ A failure repeats the seed. Run `SIGILL_E2E_SEED=<seed> pnpm e2e` to get the sam
 
 ## Findings are public
 
-A finding prints up to 64 bytes around the match, and `observations/` is uploaded by CI. Both are public. That is acceptable only because canaries and canary keys are throwaway test values. Never watch real data, real keys or anything else secret.
+A finding prints up to 64 bytes around the match, and `observations/` is uploaded by CI. Both are public. That is acceptable only because canaries and canary keys are throwaway test values. Saved mail is uploaded too: it holds links to the local stack with throwaway keys, and made-up addresses. Never watch real data, real keys or anything else secret.

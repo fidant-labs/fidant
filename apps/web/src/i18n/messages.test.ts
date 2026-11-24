@@ -19,6 +19,12 @@ test("Swedish and English have the same keys", () => {
   assert.deepEqual(shape(sv).sort(), shape(en).sort());
 });
 
+test("every text problem overrides a file problem", () => {
+  for (const key of Object.keys(en.secret.problems)) {
+    assert.ok(key in en.receive.problems, key);
+  }
+});
+
 test("pickLanguage prefers the stored choice, then a Swedish browser", () => {
   assert.equal(pickLanguage("en", "sv-SE"), "en");
   assert.equal(pickLanguage("sv", "en-US"), "sv");
@@ -32,12 +38,12 @@ test("pickLanguage prefers the stored choice, then a Swedish browser", () => {
 
 test("server.logs lists every log field and what the server never logs", () => {
   assert.equal(
-    en.server.logs,
-    "What happened, like a link being opened, with the first 6 characters of a link ID, how many links a sender has, message sizes, why a link or connection was refused, error codes, whether each connection was direct, went through our relay or failed, and the port the server listens on. Never names, keys, file data or IP addresses.",
+    en.server.logs("file"),
+    "What happened, like a link being opened, with the first 6 characters of a link ID, how many links a sender has, message sizes, why a link, connection, email or code was refused, error codes, whether each connection was direct, went through our relay or failed, and the port the server listens on. Never names, email addresses, emailed codes, keys, file data or IP addresses.",
   );
   assert.equal(
-    sv.server.logs,
-    "Vad som hände, till exempel att en länk öppnades, med de 6 första tecknen i ett länk-ID, hur många länkar en avsändare har, meddelandens storlek, varför en länk eller anslutning nekades, felkoder, om varje anslutning gick direkt, via vårt relä eller misslyckades och porten servern lyssnar på. Aldrig namn, nycklar, filinnehåll eller IP-adresser.",
+    sv.server.logs("file"),
+    "Vad som hände, till exempel att en länk öppnades, med de 6 första tecknen i ett länk-ID, hur många länkar en avsändare har, meddelandens storlek, varför en länk, en anslutning, ett mejl eller en kod nekades, felkoder, om varje anslutning gick direkt, via vårt relä eller misslyckades och porten servern lyssnar på. Aldrig namn, e-postadresser, mejlade koder, nycklar, filinnehåll eller IP-adresser.",
   );
 });
 

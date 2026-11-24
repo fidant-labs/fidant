@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@sigill/protocol": "workspace:*",
+    "nodemailer": "10.5.0",
     "ws": "^8.23.0"
   }
 }

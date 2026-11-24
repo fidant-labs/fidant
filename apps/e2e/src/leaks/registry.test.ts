@@ -27,7 +27,12 @@ const named = (test: string, secrets: Secret[]) =>
 
 test("reads back every secret, tagged with its test, and skips exempt tests", async () => {
   const file = fileSecrets("file#1", canaryFile(random.fork("file"), { size: 150_001 }));
-  const key = keySecrets("fragment", canaryKey(random.fork("key")).text);
+  // An emailed link's secret keeps where it may appear, so the sweep allows it there too.
+  const allowed = { link: "L", frames: ["sent email"], mail: { to: "a@example.com", notice: "N" } };
+  const key = keySecrets("fragment", canaryKey(random.fork("key")).text).map((secret) => ({
+    ...secret,
+    allowed,
+  }));
   const leaky = keySecrets("deliberate", canaryKey(random.fork("leaky")).bytes);
   registerSecrets(dir, "test-a", file);
   registerSecrets(dir, "test-b", key);

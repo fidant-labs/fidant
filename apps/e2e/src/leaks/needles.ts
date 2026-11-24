@@ -14,6 +14,28 @@ export interface ByteSecret {
   window?: number;
   /** ASCII letters match in either case, as for base32 tokens. */
   caseInsensitive?: boolean;
+  /** Where it may appear, for a secret of an emailed link (`allowEmailed`). Nowhere if unset. */
+  allowed?: Allowed;
+}
+
+/**
+ * Where decision 0012 lets a secret of an emailed link appear: signaling messages about the link
+ * and mail to its address alone. `allowEmailed` drops findings there; elsewhere they stand.
+ */
+export interface Allowed {
+  /** The emailed link's ID. */
+  link: string;
+  /**
+   * The signaling messages about `link` that may carry it, as direction and type, such as
+   * `sent email`, `received token` or `sent join`. Of `sent email` only the first counts: a link
+   * is registered for email once.
+   */
+  frames: readonly string[];
+  /**
+   * Mail as one plain-text part to `to` alone (one To, no Cc or Bcc) may carry it: with `notice`
+   * (a Mailpit ID) only that message's body, without it any part of any such mail.
+   */
+  mail?: { to: string; notice?: string };
 }
 
 /** A file size N, found as a whole decimal or hex number (check (i) of 0001). */
@@ -40,6 +62,19 @@ export interface FileSecretOptions {
   chunkSize?: number;
 }
 
+/** What content must never leak: the bytes and their SHA-256 (C). */
+export function contentSecrets(label: string, bytes: Uint8Array): Secret[] {
+  const secrets: Secret[] = [];
+  if (bytes.length >= minWindow) {
+    secrets.push({ class: "C", label, bytes });
+  }
+  // SHA-256 of no bytes is a well-known constant that shows up legitimately.
+  if (bytes.length > 0) {
+    secrets.push({ class: "C", label: `${label} sha256`, bytes: sha256(bytes) });
+  }
+  return secrets;
+}
+
 /**
  * Everything a canary file must never leak: its bytes and their SHA-256 (C); the tokens in its
  * name and MIME type, the SHA-256 of its name, and its size when check (i) applies (M).
@@ -49,14 +84,7 @@ export function fileSecrets(
   file: CanaryFile,
   options: FileSecretOptions = {},
 ): Secret[] {
-  const secrets: Secret[] = [];
-  if (file.bytes.length >= minWindow) {
-    secrets.push({ class: "C", label, bytes: file.bytes });
-  }
-  // SHA-256 of no bytes is a well-known constant that shows up legitimately.
-  if (file.bytes.length > 0) {
-    secrets.push({ class: "C", label: `${label} sha256`, bytes: sha256(file.bytes) });
-  }
+  const secrets: Secret[] = contentSecrets(label, file.bytes);
   secrets.push(
     tokenSecret("M", `${label} name`, file.token),
     tokenSecret("M", `${label} type`, file.mimeToken),
