@@ -41,6 +41,7 @@ export const sv: Messages = {
     send: "Skicka en fil – Fidant",
     receive: "Ta emot en fil – Fidant",
     privacy: "Integritet – Fidant",
+    how: "Så fungerar det – Fidant",
     about: "Om Fidant – Fidant",
     terms: "Användarvillkor – Fidant",
     security: "Säkerhet – Fidant",
@@ -76,6 +77,61 @@ export const sv: Messages = {
     relayNote:
       "Om de två webbläsarna inte kan ansluta direkt går filen i stället via vårt relä, fortfarande krypterad. Reläet ser då båda IP-adresserna och ungefär hur stor filen är, men kan inte låsa upp den.",
     caveat: "Haken: eftersom inget sparas måste fliken vara öppen tills filen har kommit fram.",
+  },
+  how: {
+    title: "Så fungerar det",
+    lede: "Vad som händer med din fil, steg för steg. Kort sagt: den låses på din dator. Bara den som har länken kan låsa upp den.",
+    sections: {
+      stays: {
+        heading: "Din fil stannar på din dator",
+        body: [
+          "Du väljer en fil i webbläsaren. Den laddas inte upp någonstans.",
+          "Webbläsaren låser filen innan den lämnar din dator.",
+        ],
+      },
+      link: {
+        heading: "Du får en länk med nyckeln i",
+        body: [
+          "Du får en länk per person. Varje länk fungerar en gång. Du skickar den själv, till exempel via mejl eller chatt.",
+          "Nyckeln som låser upp filen är delen efter tecknet #. Webbläsare skickar aldrig den delen till oss. Därför ser vi aldrig nyckeln.",
+          "Alla som har länken kan öppna filen. Skicka varje länk bara till den som den är avsedd för.",
+        ],
+      },
+      open: {
+        heading: "De öppnar länken medan din sida är öppen",
+        body: [
+          "Inget sparas, så din sida måste vara öppen tills de har fått filen.",
+          "Vår server hjälper de två webbläsarna att hitta varandra. Den är som en telefonist som kopplar ett samtal. Den skickar vidare några små, låsta meddelanden som den inte kan läsa.",
+          "De ser filens namn och storlek och väljer om de vill ladda ner den.",
+        ],
+      },
+      direct: {
+        heading: "Filen går direkt till dem, låst",
+        body: [
+          "När nätverken tillåter det går filen direkt från din dator till deras. Den är låst hela vägen.",
+          "Deras webbläsare låser upp den och kontrollerar att det är exakt den fil du skickade.",
+          "Precis som i ett videosamtal kan varje enhet se den andras internetadress.",
+        ],
+      },
+      relay: {
+        heading: "Ibland går den via vårt relä",
+        body: [
+          "Vissa nätverk kan inte ansluta direkt till varandra. Det är vanligt på mobildata och på kontorsnätverk.",
+          "Då går filen via vårt relä i Stockholm i stället, fortfarande låst.",
+          "Reläet kan inte öppna filen och sparar den inte.",
+          "Det ser varje enhets internetadress och ungefär hur stor filen är.",
+        ],
+      },
+      never: {
+        heading: "Det här ser vi aldrig",
+        body: [
+          "Inte din fil. Inte filens namn. Inte nyckeln som låser upp den.",
+          "Det gäller både vår server och vårt relä.",
+        ],
+      },
+    },
+    more: "Vill du veta mer? På integritetssidan står exakt vad vår server ser och vad den loggar.",
+    moreLink: "Läs integritetssidan",
   },
   insecure: {
     title: "Sidan behöver en säker anslutning",
@@ -344,6 +400,7 @@ export const sv: Messages = {
   footer: {
     label: "Webbplats",
     tagline: "Filer krypteras i din webbläsare och kan bara läsas av mottagaren.",
+    how: "Så fungerar det",
     about: "Om Fidant",
     terms: "Villkor",
     security: "Säkerhet",
