@@ -2,8 +2,8 @@
 //
 // - FileSystemSink: where the browser has showSaveFilePicker (Chromium), the
 //   user picks the destination when they click Download and the file streams
-//   straight to disk. On failure the writable is aborted, so no partial file
-//   is committed.
+//   straight to disk. On failure the writable is aborted and the file the
+//   picker created (empty at that point) is removed where the browser can.
 // - BlobSink: everywhere else. Chunks are collected in memory and folded into
 //   one Blob as they arrive; the page starts its download at the end.
 //
@@ -82,15 +82,21 @@ export type SaveWritable = {
   close(): Promise<void>;
   abort(reason?: unknown): Promise<void>;
 };
-export type SaveFileHandle = { createWritable(): Promise<SaveWritable> };
+export type SaveFileHandle = {
+  createWritable(): Promise<SaveWritable>;
+  /** Chromium 110+. The picker creates (or empties) the file before any write, so abort removes it. */
+  remove?(): Promise<void>;
+};
 export type ShowSaveFilePicker = (options?: { suggestedName?: string }) => Promise<SaveFileHandle>;
 
 export class FileSystemSink {
   private readonly writable: SaveWritable;
+  private readonly handle: SaveFileHandle | undefined;
   private state: "open" | "closed" | "aborted" = "open";
 
-  constructor(writable: SaveWritable) {
+  constructor(writable: SaveWritable, handle?: SaveFileHandle) {
     this.writable = writable;
+    this.handle = handle;
   }
 
   async write(chunk: Uint8Array): Promise<void> {
@@ -116,6 +122,9 @@ export class FileSystemSink {
     this.state = "aborted";
     try {
       await this.writable.abort();
+    } catch {}
+    try {
+      await this.handle?.remove?.();
     } catch {}
   }
 }
@@ -147,7 +156,7 @@ export function createSink(suggestedName: string): Promise<Sink> {
   } catch (error) {
     return Promise.reject(error);
   }
-  return handle.then(async (h) => new FileSystemSink(await h.createWritable()));
+  return handle.then(async (h) => new FileSystemSink(await h.createWritable(), h));
 }
 
 /** True if `error` means the user closed the save dialog without choosing. */
