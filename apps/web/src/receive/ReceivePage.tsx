@@ -15,6 +15,9 @@
 //   lost its signaling connection), so then `host-gone` is only remembered: if
 //   the sender's tab really closed, the peer drops too (at the latest when ICE
 //   consent runs out) and the drop is reported as the sender's page closing.
+// - If the data channel hasn't opened CONNECT_TIMEOUT_MS (30 s) after the
+//   attempt starts, the attempt fails with "connect" (a peer exists) or
+//   "server" (no `joined` yet), so "Connecting…" never stays up for good.
 // - When the data channel opens, receiveFile runs the transfer. The offer
 //   screen resolves its decision with a Sink (Download) or undefined (Decline).
 //
@@ -521,7 +524,7 @@ export function ReceivePage() {
       const { offer, blob, sha256 } = view;
       body = (
         <>
-          <div class="flex items-center gap-[0.6rem] text-primary">
+          <div class="flex items-center gap-2.5 text-primary">
             <Icon name="check" class="size-8 stroke-[2.5]" />
             <h1 class="m-0">{t.receive.doneTitle}</h1>
           </div>

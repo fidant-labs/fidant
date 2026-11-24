@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { X509Certificate } from "node:crypto";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { createServer, get as httpGet, request } from "node:http";
+import { createServer, get as httpGet, type IncomingHttpHeaders, request } from "node:http";
 import { get as httpsGet } from "node:https";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -16,6 +16,8 @@ const root = join(dir, "dist");
 mkdirSync(join(root, "assets"), { recursive: true });
 writeFileSync(join(root, "index.html"), "<!doctype html><title>Sigill</title>");
 writeFileSync(join(root, "assets", "app.js"), "console.log(1)");
+writeFileSync(join(root, "assets", "x-abc.js"), "console.log(2)");
+writeFileSync(join(root, "favicon.svg"), "<svg></svg>");
 writeFileSync(join(root, "robots.txt"), "User-agent: *");
 writeFileSync(join(dir, "secret.txt"), "outside the web root");
 
@@ -27,14 +29,16 @@ before(async () => {
 });
 after(() => plain.close());
 
-function rawGet(path: string): Promise<{ status: number; body: string }> {
+function rawGet(
+  path: string,
+): Promise<{ status: number; headers: IncomingHttpHeaders; body: string }> {
   return new Promise((done, fail) => {
     httpGet({ host: "localhost", port: (plain.address() as AddressInfo).port, path }, (res) => {
       let body = "";
       res.on("data", (chunk) => {
         body += chunk;
       });
-      res.on("end", () => done({ status: res.statusCode ?? 0, body }));
+      res.on("end", () => done({ status: res.statusCode ?? 0, headers: res.headers, body }));
     }).on("error", fail);
   });
 }
@@ -63,6 +67,20 @@ test("falls back to index.html for app routes", async () => {
   const res = await fetch(`${base}/r/abc123`);
   assert.equal(res.status, 200);
   assert.match(await res.text(), /<title>Sigill<\/title>/);
+});
+
+test("caches hashed assets for a year and revalidates everything else", async () => {
+  const hashed = await rawGet("/assets/x-abc.js");
+  assert.equal(hashed.status, 200);
+  assert.equal(hashed.headers["cache-control"], "public, max-age=31536000, immutable");
+  for (const path of ["/", "/r/abc", "/assets/nope", "/favicon.svg", "/assets/..%2findex.html"]) {
+    const res = await rawGet(path);
+    assert.equal(res.status, 200, path);
+    assert.equal(res.headers["cache-control"], "no-cache", path);
+  }
+  const missing = await rawGet("/assets/missing.js");
+  assert.equal(missing.status, 404);
+  assert.equal(missing.headers["cache-control"], undefined);
 });
 
 test("refuses paths outside the web root", async () => {

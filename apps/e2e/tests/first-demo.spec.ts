@@ -314,7 +314,7 @@ test("a declined offer shows as declined, and the link can be reopened", async (
   expect(await offerHeading.evaluate((h) => h.isConnected)).toBe(false);
   await expect(
     recipientRow(sender, name).getByText(
-      `${name}'s link was opened and the file declined. The link still works.`,
+      `${name}'s link was opened and the file was declined. The link still works.`,
     ),
   ).toBeVisible();
   await expect(sender.getByRole("button", { name: `Copy link for ${name}` })).toBeVisible();
@@ -341,9 +341,38 @@ harness("a held Enter on Remove removes only one recipient", async ({ actor, lea
   await expect(recipientRow(sender, anna)).toHaveCount(0);
   await expect(sender.getByRole("button", { name: `Copy link for ${erik}` })).toBeVisible();
 
-  await sender.keyboard.press("Enter");
+  await sender.keyboard.down("Enter");
   await expect(recipientRow(sender, erik)).toHaveCount(0);
   await expect(sender.getByLabel("Who is it for?")).toBeFocused();
+  await sender.keyboard.down("Enter"); // the repeat lands on the empty name field
+  await sender.keyboard.up("Enter");
+  await expect(sender.getByText("Enter a name.")).toHaveCount(0);
+});
+
+harness("a recipient gives up connecting after 30 seconds", async ({ actor, leaks, canary }) => {
+  const demo: Demo = { open: async (name) => (await actor(name)).page };
+  const sender = await openSender(demo, makeFile(leaks, canary, 10));
+  const anna = makeName(leaks, canary, "Anna");
+  const link = await addRecipient(leaks, sender, anna);
+
+  const recipient = await demo.open("recipient");
+  // The sender's offer never lands, so the data channel never opens.
+  await recipient.addInitScript(() => {
+    RTCPeerConnection.prototype.setRemoteDescription = () => new Promise(() => {});
+  });
+  await recipient.clock.install();
+  await recipient.goto(link);
+  await expect(recipient.getByRole("heading", { name: "Connecting to the sender…" })).toBeVisible();
+  // The server tells the sender only after it sent `joined`, so the recipient's peer exists by now.
+  await expect(
+    recipientRow(sender, anna).getByText(`Connecting through ${anna}'s link…`),
+  ).toBeVisible();
+
+  await recipient.clock.fastForward(29_000);
+  await expect(recipient.getByRole("heading", { name: "Connecting to the sender…" })).toBeVisible();
+  await recipient.clock.fastForward(1_000);
+  await expect(recipient.getByText("Couldn't connect to the sender's computer")).toBeVisible();
+  await expect(recipient.getByRole("button", { name: "Try again" })).toBeVisible();
 });
 
 test("the sender's name must fit with the file name, and stray drops are ignored", async ({
@@ -484,10 +513,10 @@ test("a lost sender says whether the file may have been saved", async ({ demo, l
   await expect(erik.getByText("The connection to the sender was lost")).toBeVisible();
   await expect(erik.getByText("The file may not have been saved.")).toBeVisible();
 
-  // Mid-download, the sender's page closes. The server says so at once, but the page waits for
-  // the peer connection to drop, which Chromium notices only when ICE consent expires (about 15 s).
+  // Mid-download, the sender's page closes. Its pagehide closes the peers, so the drop arrives
+  // at once instead of when ICE consent expires (about 15 s).
   const bo = await join("Bo", true);
   await sender.close();
-  await expect(bo.getByText("The sender's page is closed")).toBeVisible({ timeout: 30_000 });
+  await expect(bo.getByText("The sender's page is closed")).toBeVisible({ timeout: 3_000 });
   await expect(bo.getByText("The file may not have been saved.")).toBeVisible();
 });
