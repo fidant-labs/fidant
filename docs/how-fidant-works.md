@@ -137,7 +137,7 @@ An observer learns a file's size only roughly, plus the chunk size, which follow
 `/secret` sends a typed or pasted text instead of a file, over the transfer above unchanged: the same keys, frames, checks, RECEIPT and one-time links. The server, the relay and the signaling messages are the same as for a file.
 
 - The sender's browser turns the text into an in-memory file named `secret.txt` of type `application/x-fidant-text`. The name and type travel inside the encrypted META, like any file's.
-- A text is at most 10,000 UTF-16 code units (`MAX_TEXT_LENGTH`), so at most 30,000 bytes of UTF-8. The field's `maxlength` stops typing at the limit, and `textFile` refuses a longer text set any other way.
+- A text is at most 10,000 UTF-16 code units (`MAX_TEXT_LENGTH`), so at most 30,000 bytes of UTF-8. The field has no `maxlength`, so a longer paste stays whole. While it is over the limit, the field is marked invalid and shows its length against the limit (for example "12,000 of 10,000 characters"), `textFile` refuses it, and no link can be added, so a text is never sent cut.
 - The field has `spellcheck=false`, `translate=no`, `writingsuggestions=false`, and `autocomplete`, `autocorrect` and `autocapitalize` set to `off`, which tell the browser to keep its spelling, autocomplete, writing suggestions and translation features off the text.
 - The recipient's page treats an offer as a text only when its type is exactly `application/x-fidant-text` and its size is at most 32 KiB (`isTextOffer`, `MAX_TEXT_BYTES`). Anything else is offered as a file.
 - A text offer shows "<sender's name> sent you a text" with Show and Decline, and no name, size or type. Show always collects the text in memory (`BlobSink`): never a save dialog, never a download.
