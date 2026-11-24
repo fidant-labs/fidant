@@ -92,16 +92,17 @@ function makeFile(leaks: Leaks, canary: SeededRandom, size: number): CanaryFile 
   return leaks.watch(canaryFile(canary.fork("file"), { size }));
 }
 
-/** Opens the sender page, runs `init` in it before any page script, types the sender's name if given, and chooses the file. */
-async function openSender(
+/** Opens the sender page, runs `init(arg)` in it before any page script, types the sender's name if given, and chooses the file. */
+async function openSender<A>(
   demo: Demo,
   file: CanaryFile,
   from = "",
-  init?: () => void,
+  init?: (arg: A) => void,
+  arg?: A,
 ): Promise<Page> {
   const page = await demo.open("sender");
   if (init) {
-    await page.addInitScript(init);
+    await page.addInitScript(init as (arg: unknown) => void, arg);
   }
   await page.goto("/send");
   if (from) {
@@ -557,6 +558,127 @@ test("a lost sender says whether the file may have been saved", async ({ demo, l
   await sender.close();
   await expect(bo.getByText("The sender's page is closed")).toBeVisible({ timeout: 3_000 });
   await expect(bo.getByText("The file may not have been saved.")).toBeVisible();
+});
+
+type Tamper = "flip" | "drop-last" | "reorder" | "repeat" | "other";
+
+/**
+ * Runs in the sender page through addInitScript, so it may use nothing from this module. Alters
+ * the frames the sender's data channels send, as a hostile path would deliver them. The server
+ * and a TURN relay only see DTLS records, which they can't alter into well-formed frames, so
+ * tampering below the app's AES-GCM layer, in the sender, stands in for a broken or hostile
+ * transport. It reads only the plaintext header: byte 1 is the kind (see apps/web/src/lib/frames.ts).
+ * `other` sends, on each later channel, the frame the first channel sent at the same index:
+ * another transfer's ciphertext under this link. It keeps INIT, so the substitute is the ciphertext.
+ */
+function tamperSender(mode: Tamper) {
+  const INIT = 0;
+  const CHUNK = 2;
+  const END = 3;
+  const send = RTCDataChannel.prototype.send;
+  const sent = new Map<RTCDataChannel, Uint8Array[]>();
+  let held: Uint8Array | undefined;
+  let chunks = 0;
+  RTCDataChannel.prototype.send = function (this: RTCDataChannel, data: Uint8Array) {
+    const out = (frame: Uint8Array) => Reflect.apply(send, this, [frame]);
+    let frame: Uint8Array = data.slice();
+    const kind = frame[1];
+    if (mode === "other") {
+      const own = sent.get(this) ?? [];
+      sent.set(this, own);
+      const first = sent.values().next().value ?? own;
+      if (own !== first && kind !== INIT) {
+        frame = first[own.length] ?? frame;
+      }
+      own.push(frame);
+      return out(frame);
+    }
+    if (kind !== CHUNK) {
+      if (kind === END && mode === "drop-last") {
+        held = undefined;
+      }
+      return out(frame);
+    }
+    chunks++;
+    if (mode === "flip" && chunks === 1) {
+      frame[10] = (frame[10] as number) ^ 1; // the first ciphertext byte, after the 10-byte header
+    } else if (mode === "drop-last") {
+      if (held) {
+        out(held);
+      }
+      held = frame;
+      return;
+    } else if (mode === "reorder" && chunks === 1) {
+      held = frame;
+      return;
+    } else if (mode === "repeat" && chunks === 1) {
+      out(frame);
+    }
+    out(frame);
+    if (mode === "reorder" && chunks === 2 && held) {
+      out(held);
+    }
+  } as RTCDataChannel["send"];
+}
+
+/** Counts `page`'s downloads; the returned check expects the invalid-data problem, no download and no delivery to `name`. */
+function expectRefusal(page: Page) {
+  let downloads = 0;
+  page.on("download", () => downloads++);
+  return async (sender: Page, name: string) => {
+    await expect(page.getByText("Something went wrong with the transfer")).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(page.getByText(/so nothing was saved\.$/)).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Download complete" })).toHaveCount(0);
+    await expect(page.getByText("this is exactly the file that was sent")).toHaveCount(0);
+    expect(downloads, "downloads").toBe(0);
+    await expect(delivered(sender, name)).toHaveCount(0);
+  };
+}
+
+test.describe("a hostile path", () => {
+  for (const mode of ["flip", "drop-last", "reorder", "repeat"] as const) {
+    test(`a recipient refuses data channel frames that are tampered: ${mode}`, async ({
+      demo,
+      leaks,
+      canary,
+    }) => {
+      // Three 48 KiB chunks, so there is a first, a middle and a last one.
+      const file = makeFile(leaks, canary, 100_001);
+      const sender = await openSender(demo, file, "", tamperSender, mode);
+      const name = makeName(leaks, canary, "Anna");
+      const link = await addRecipient(leaks, sender, name);
+      const recipient = await demo.open("recipient");
+      const refused = expectRefusal(recipient);
+      await recipient.goto(link);
+      await recipient.getByRole("button", { name: "Download" }).click();
+      await refused(sender, name);
+    });
+  }
+
+  test("a recipient refuses another transfer's frames on its link", async ({
+    demo,
+    leaks,
+    canary,
+  }) => {
+    const file = makeFile(leaks, canary, 100_001);
+    const sender = await openSender(demo, file, "", tamperSender, "other");
+    const anna = makeName(leaks, canary, "Anna");
+    const erik = makeName(leaks, canary, "Erik");
+    const annaLink = await addRecipient(leaks, sender, anna);
+    const erikLink = await addRecipient(leaks, sender, erik);
+
+    const first = await receive(demo, "recipient-1", annaLink, file, "100 KB");
+    expect(sha256Hex(first.bytes)).toBe(sha256Hex(file.bytes));
+    await expect(delivered(sender, anna)).toBeVisible();
+
+    const second = await demo.open("recipient-2");
+    const refused = expectRefusal(second);
+    await second.goto(erikLink);
+    await refused(sender, erik);
+    await expect(second.getByRole("button", { name: "Download" })).toHaveCount(0);
+  });
 });
 
 test.describe("through a server restart", () => {
