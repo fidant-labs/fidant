@@ -16,7 +16,8 @@
     "format": "biome check --write .",
     "typecheck": "pnpm -r --if-present run typecheck",
     "test": "pnpm -r --if-present run test",
-    "prepare": "lefthook install"
+    "prepare": "lefthook install",
+    "lighthouse": "pnpm --filter @sigill/web build && pnpm --filter @sigill/web lighthouse"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.8",
