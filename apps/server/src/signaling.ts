@@ -151,7 +151,7 @@ export function attachSignaling(
     heartbeatMs?: number;
     limits?: Partial<typeof LIMITS>;
     /** Minted once per pairing, so TURN credentials are fresh. Never logged. */
-    iceServers?: () => IceServer[];
+    iceServers?: (turn: boolean) => IceServer[];
   },
 ): { close(): void } {
   const { log, iceServers = () => [] } = options;
@@ -326,7 +326,13 @@ export function attachSignaling(
     // The guest's ack goes first, so its peer exists before the host's offer can arrive on the
     // same ordered socket.
     const turn = peers.get(hostSocket)?.turn ?? false;
-    const joined: ServerMessage = { t: "joined", link, attempt, iceServers: iceServers(), turn };
+    const joined: ServerMessage = {
+      t: "joined",
+      link,
+      attempt,
+      iceServers: iceServers(turn),
+      turn,
+    };
     send(socket, joined);
     send(hostSocket, joined);
   }

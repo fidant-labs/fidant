@@ -17,9 +17,13 @@ import { WebSocket as WsClient } from "ws";
 import { attachSignaling, clientAddress, HEARTBEAT_MS } from "./signaling.ts";
 
 const logLines: { event: string; fields: LogFields | undefined }[] = [];
+const RELAY = { urls: ["turn:relay.example:3478"], username: "1700000000", credential: "hmac" };
 const server = createServer((_req, res) => res.writeHead(404).end());
 const signaling = attachSignaling(server, {
   log: (event, fields) => logLines.push({ event, fields }),
+  iceServers: (turn) => (turn ? [RELAY] : []),
+  // Every test's sockets stay open until after(), and all come from one address.
+  limits: { socketsPerAddress: 1000 },
 });
 let port = 0;
 const clients: Client[] = [];
@@ -123,7 +127,7 @@ async function joinAs(
   const guest = await connect();
   const attempt = randomBytes(16).toString("base64url");
   guest.send({ t: "join", link, attempt });
-  const joined = { t: "joined", link, attempt, iceServers: [], turn };
+  const joined = { t: "joined", link, attempt, iceServers: turn ? [RELAY] : [], turn };
   assert.deepEqual(await guest.next(), joined);
   assert.deepEqual(await host.next(), joined);
   return Object.assign(guest, { attempt });
@@ -158,7 +162,7 @@ test("refuses a second concurrent guest as busy and frees the link when the firs
   // A refused guest may try again once the link is free.
   const attempt = linkId();
   second.send({ t: "join", link, attempt });
-  const joined = { t: "joined", link, attempt, iceServers: [], turn: true };
+  const joined = { t: "joined", link, attempt, iceServers: [RELAY], turn: true };
   assert.deepEqual(await second.next(), joined);
   assert.deepEqual(await host.next(), joined);
 });
@@ -243,6 +247,15 @@ test("echoes the host's relay choice at each join and keeps the guest bound when
   await joinAs(fresh, host, false);
   guest.send({ t: "relay", link: bound, data: "Ym91bmQ" });
   assert.deepEqual(await host.next(), { t: "relay", link: bound, data: "Ym91bmQ" });
+});
+
+test("leaves TURN out of joined when the host refuses it", async () => {
+  const link = linkId();
+  const host = await connect();
+  host.send({ t: "host", links: [link], turn: false });
+  host.send({ t: "relay", link: linkId(), data: "sync" });
+  assert.deepEqual(await host.next(), { t: "error", code: "not-on-link" });
+  await joinAs(link, host, false);
 });
 
 test("tells the guest when the host drops its link from the list", async () => {

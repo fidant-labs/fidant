@@ -101,9 +101,12 @@ export type ClientMessage = HostMessage | JoinMessage | RelayMessage | RefuseMes
 
 /**
  * A STUN or TURN server for RTCPeerConnection. For TURN, `username` and `credential` are
- * short-lived credentials the server minted; the shared secret behind them never leaves it.
+ * short-lived credentials the server minted; the shared secret behind them never leaves it. An
+ * entry without them lists only `stun:` URLs.
  */
-export type IceServer = { urls: string[]; username: string; credential: string };
+export type IceServer =
+  | { urls: string[] }
+  | { urls: string[]; username: string; credential: string };
 
 /**
  * Pairs a recipient with the sender on a link: sent to the recipient first (its join ack), then
@@ -186,14 +189,17 @@ function parseIceServer(value: unknown): IceServer | undefined {
     return undefined;
   }
   const fields = value as Fields;
-  if (!hasKeys(fields, ["urls", "username", "credential"])) {
-    return undefined;
-  }
   const { urls, username, credential } = fields;
   if (!Array.isArray(urls) || urls.length === 0 || urls.length > MAX_ICE_URLS) {
     return undefined;
   }
   if (!urls.every((url) => isIceString(url) && ICE_URL_PATTERN.test(url))) {
+    return undefined;
+  }
+  if (hasKeys(fields, ["urls"])) {
+    return urls.every((url) => url.startsWith("stun:")) ? { urls: [...urls] } : undefined;
+  }
+  if (!hasKeys(fields, ["urls", "username", "credential"])) {
     return undefined;
   }
   if (!isIceString(username) || !isIceString(credential)) {

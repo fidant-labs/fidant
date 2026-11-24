@@ -298,6 +298,17 @@ test("accepts the maximum number and size of ICE servers", () => {
   assert.deepEqual(parseIceServers(servers), servers);
 });
 
+test("accepts a STUN-only server without credentials", () => {
+  const stun = [{ urls: ["stun:a", "stun:[2001:db8::1]:3478"] }];
+  assert.deepEqual(parseIceServers(stun), stun);
+  assert.deepEqual(
+    parseServerMessage(
+      JSON.stringify({ t: "joined", link, attempt, iceServers: stun, turn: false }),
+    ),
+    { t: "joined", link, attempt, iceServers: stun, turn: false },
+  );
+});
+
 test("rejects malformed or oversized ICE servers", () => {
   const bad: unknown[] = [
     null,
@@ -319,6 +330,11 @@ test("rejects malformed or oversized ICE servers", () => {
     [{ ...turn, credential: {} }],
     [{ urls: turn.urls, username: turn.username }],
     [{ ...turn, secret: "x" }],
+    [{ urls: ["turn:a"] }],
+    [{ urls: ["turns:a"] }],
+    [{ urls: ["stun:a", "turn:b"] }],
+    [{ urls: [] }],
+    [{ urls: ["stun:a"], username: "u" }],
   ];
   for (const iceServers of bad) {
     assert.equal(parseIceServers(iceServers), undefined, JSON.stringify(iceServers));
