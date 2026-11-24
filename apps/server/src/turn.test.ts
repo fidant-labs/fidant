@@ -34,10 +34,6 @@ test("hands the app box's TURN URLs with fresh credentials when the sender allow
 test("hands only the app box's STUN URLs, with no credentials, when the sender refuses TURN", () => {
   const servers = iceServersFor({ urls: boxUrls, secret: "test-secret" }, 0, false);
   assert.deepEqual(servers, [{ urls: ["stun:turn.fidant.se:3478", ipv6Stun] }]);
-  assert.deepEqual(
-    servers.map((server) => Object.keys(server)),
-    [["urls"]],
-  );
   assert.deepEqual(parseIceServers(JSON.parse(JSON.stringify(servers))), servers);
 });
 

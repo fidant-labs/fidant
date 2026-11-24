@@ -512,7 +512,7 @@ export const en = {
       ],
       [
         "The sender's relay choice",
-        "Whether the sender allows our relay, so we only let recipients use it when they do. We forget it within a minute after the sender's page closes, and never write it to our logs.",
+        "Whether the sender allows our relay, so we only give recipients access to it when they do. We forget it within a minute after the sender's page closes, and never write it to our logs.",
       ],
     ] as ReadonlyArray<readonly [string, string]>,
     keepHeading: "What we keep",

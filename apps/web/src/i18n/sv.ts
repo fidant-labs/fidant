@@ -500,7 +500,7 @@ export const sv: Messages = {
       ],
       [
         "Avsändarens val om reläet",
-        "Om avsändaren tillåter vårt relä, så att vi bara låter mottagare använda det när avsändaren gör det. Vi glömmer det inom en minut efter att avsändarens sida har stängts, och skriver aldrig in det i våra loggar.",
+        "Om avsändaren tillåter vårt relä, så att vi bara ger mottagare tillgång till det när avsändaren gör det. Vi glömmer det inom en minut efter att avsändarens sida har stängts, och skriver aldrig in det i våra loggar.",
       ],
     ],
     keepHeading: "Vad vi sparar",
