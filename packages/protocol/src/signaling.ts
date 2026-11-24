@@ -2,7 +2,7 @@
 //
 // The server only ever sees link IDs, whether the sender allows our TURN relay,
 // and opaque base64url blobs, except in `email`, which carries the secret of a
-// link the server emails for the sender (decision 0010). SDP and ICE candidates
+// link the server emails for the sender (decision 0012). SDP and ICE candidates
 // are encrypted in the browser before they are relayed, and no other message
 // carries a key.
 
