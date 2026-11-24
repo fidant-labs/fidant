@@ -270,6 +270,23 @@ test("the app box runs coturn after the site is up, with a secret that stays on 
   ]);
 });
 
+test("the app box stops its boot rather than fall back to Ubuntu's Caddy 2.6", () => {
+  const stack = stacksFor(pocAccount).find((child) => child.stackName === "FidantApp");
+  const [instance] = Object.values(
+    Template.fromStack(stack as Stack).findResources("AWS::Lightsail::Instance"),
+  );
+  const lines = String(instance?.Properties.UserData).split("\n");
+  const curls = lines.filter((line) => line.startsWith("curl "));
+  assert.equal(curls.length, 3);
+  for (const line of curls) {
+    assert.match(line, /^curl --retry 5 --retry-all-errors -fsSL/);
+  }
+  assert.deepEqual(
+    lines.filter((line) => / update$/.test(line)),
+    ["apt-get -o DPkg::Lock::Timeout=600 -o APT::Update::Error-Mode=any update"],
+  );
+});
+
 test("the app box routes 443 by SNI to Caddy and to coturn's TLS, and copies Caddy's relay certificate", () => {
   const stack = stacksFor(pocAccount).find((child) => child.stackName === "FidantApp");
   const [instance] = Object.values(

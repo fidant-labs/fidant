@@ -23,19 +23,20 @@ swapon /swapfile
 echo '/swapfile none swap sw 0 0' >>/etc/fstab
 
 # Caddy from its own apt repository: Ubuntu's 2.6 can't read the PROXY protocol (decision 0009).
+# Error-Mode=any stops the boot if that repository can't be read, instead of installing 2.6.
 install -d -m 755 /etc/apt/keyrings
-curl -fsSL -o /etc/apt/keyrings/caddy-stable.asc https://dl.cloudsmith.io/public/caddy/stable/gpg.key
+curl --retry 5 --retry-all-errors -fsSL -o /etc/apt/keyrings/caddy-stable.asc https://dl.cloudsmith.io/public/caddy/stable/gpg.key
 echo 'deb [signed-by=/etc/apt/keyrings/caddy-stable.asc] https://dl.cloudsmith.io/public/caddy/stable/deb/debian any-version main' >/etc/apt/sources.list.d/caddy-stable.list
 
 export DEBIAN_FRONTEND=noninteractive
-apt-get -o DPkg::Lock::Timeout=600 update
+apt-get -o DPkg::Lock::Timeout=600 -o APT::Update::Error-Mode=any update
 apt-get -o DPkg::Lock::Timeout=600 install -y caddy git libatomic1 xz-utils
 
 cd /tmp
 dist=https://nodejs.org/dist/latest-v@NODE_MAJOR@.x
-curl -fsSLO "$dist/SHASUMS256.txt"
+curl --retry 5 --retry-all-errors -fsSLO "$dist/SHASUMS256.txt"
 tarball=$(awk '/linux-x64\.tar\.xz$/ {print $2}' SHASUMS256.txt)
-curl -fsSLO "$dist/$tarball"
+curl --retry 5 --retry-all-errors -fsSLO "$dist/$tarball"
 grep " $tarball\$" SHASUMS256.txt | sha256sum -c -
 tar --no-same-owner -xJf "$tarball" -C /usr/local --strip-components=1
 npm install -g pnpm@@PNPM_VERSION@
