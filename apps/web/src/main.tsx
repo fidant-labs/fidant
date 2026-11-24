@@ -1,5 +1,6 @@
 import { render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
+import { HowPage } from "./how/HowPage.tsx";
 import { I18nProvider, useI18n } from "./i18n/I18n.tsx";
 import { InfoPage } from "./info/InfoPage.tsx";
 import { LandingPage } from "./landing/LandingPage.tsx";
@@ -23,7 +24,7 @@ function InsecurePage() {
   );
 }
 
-const NAMED: ReadonlyArray<Route> = ["privacy", "send", "about", "terms", "security"];
+const NAMED: ReadonlyArray<Route> = ["privacy", "how", "send", "about", "terms", "security"];
 
 function routeOf(path: string): Route {
   const named = NAMED.find((name) => new RegExp(`^/${name}/?$`).test(path));
@@ -55,20 +56,28 @@ function App() {
     document.title = t.tabTitles[route];
   }, [route, t]);
 
-  // A page change replaces or hides the link that had focus, so focus moves to the new page's
-  // heading (also on back and forward). The first render keeps the browser's own focus.
+  // A page change hides the focused link, so focus moves to the new page's or section's heading.
   const firstRoute = useRef(true);
   useEffect(() => {
+    // Only /how has anchors; elsewhere the fragment can be a decryption key, so it is never read.
+    const named =
+      routeOf(location.pathname) === "how" && location.hash
+        ? document.getElementById(location.hash.slice(1))
+        : null;
+    const target = named?.closest<HTMLElement>("main:not([hidden] *) section") ?? null;
+    target?.scrollIntoView();
     if (firstRoute.current) {
       firstRoute.current = false;
       return;
     }
-    const heading = document.querySelector<HTMLElement>("main:not([hidden] *) h1");
+    const heading =
+      target?.querySelector<HTMLElement>("h2") ??
+      document.querySelector<HTMLElement>("main:not([hidden] *) h1");
     if (!heading) {
       return;
     }
     heading.tabIndex = -1;
-    heading.focus();
+    heading.focus({ preventScroll: target !== null });
   }, [route]);
 
   const secure = hasSecureCrypto();
@@ -82,6 +91,7 @@ function App() {
         {route === "landing" && <LandingPage />}
         {/* The privacy page uses no crypto, so it opens even without a secure connection. */}
         {route === "privacy" && <PrivacyPage />}
+        {route === "how" && <HowPage />}
         {(route === "about" || route === "terms" || route === "security") && (
           <InfoPage page={route} />
         )}
