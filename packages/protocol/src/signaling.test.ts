@@ -26,13 +26,14 @@ function linkIds(count: number): string[] {
 }
 
 test("parses valid client messages", () => {
-  assert.deepEqual(parseClientMessage(JSON.stringify({ t: "host", links: [link, other] })), {
-    t: "host",
-    links: [link, other],
-  });
-  assert.deepEqual(parseClientMessage(JSON.stringify({ t: "host", links: [] })), {
+  assert.deepEqual(
+    parseClientMessage(JSON.stringify({ t: "host", links: [link, other], turn: true })),
+    { t: "host", links: [link, other], turn: true },
+  );
+  assert.deepEqual(parseClientMessage(JSON.stringify({ t: "host", links: [], turn: false })), {
     t: "host",
     links: [],
+    turn: false,
   });
   assert.deepEqual(parseClientMessage(JSON.stringify({ t: "join", link, attempt })), {
     t: "join",
@@ -63,7 +64,11 @@ test("parses valid client messages", () => {
 
 test("accepts the maximum number of links and relay data size", () => {
   const links = linkIds(MAX_LINKS);
-  assert.deepEqual(parseClientMessage(JSON.stringify({ t: "host", links })), { t: "host", links });
+  assert.deepEqual(parseClientMessage(JSON.stringify({ t: "host", links, turn: true })), {
+    t: "host",
+    links,
+    turn: true,
+  });
   const data = "A".repeat(MAX_RELAY_DATA);
   assert.deepEqual(parseClientMessage(JSON.stringify({ t: "relay", link, data })), {
     t: "relay",
@@ -74,12 +79,14 @@ test("accepts the maximum number of links and relay data size", () => {
 
 test("parses valid server messages", () => {
   assert.deepEqual(
-    parseServerMessage(JSON.stringify({ t: "joined", link, attempt, iceServers: [] })),
-    { t: "joined", link, attempt, iceServers: [] },
+    parseServerMessage(JSON.stringify({ t: "joined", link, attempt, iceServers: [], turn: false })),
+    { t: "joined", link, attempt, iceServers: [], turn: false },
   );
   assert.deepEqual(
-    parseServerMessage(JSON.stringify({ t: "joined", link, attempt, iceServers: [turn] })),
-    { t: "joined", link, attempt, iceServers: [turn] },
+    parseServerMessage(
+      JSON.stringify({ t: "joined", link, attempt, iceServers: [turn], turn: true }),
+    ),
+    { t: "joined", link, attempt, iceServers: [turn], turn: true },
   );
   assert.deepEqual(parseServerMessage(JSON.stringify({ t: "left", link })), { t: "left", link });
   assert.deepEqual(parseServerMessage(JSON.stringify({ t: "relay", link, data: "xyz" })), {
@@ -154,13 +161,20 @@ test("rejects bad link IDs and attempt IDs", () => {
       parseClientMessage(JSON.stringify({ t: "path", link: value, path: "relay" })),
       undefined,
     );
-    assert.equal(parseClientMessage(JSON.stringify({ t: "host", links: [value] })), undefined);
     assert.equal(
-      parseServerMessage(JSON.stringify({ t: "joined", link: value, attempt, iceServers: [] })),
+      parseClientMessage(JSON.stringify({ t: "host", links: [value], turn: true })),
       undefined,
     );
     assert.equal(
-      parseServerMessage(JSON.stringify({ t: "joined", link, attempt: value, iceServers: [] })),
+      parseServerMessage(
+        JSON.stringify({ t: "joined", link: value, attempt, iceServers: [], turn: true }),
+      ),
+      undefined,
+    );
+    assert.equal(
+      parseServerMessage(
+        JSON.stringify({ t: "joined", link, attempt: value, iceServers: [], turn: true }),
+      ),
       undefined,
     );
   }
@@ -174,11 +188,24 @@ test("rejects oversized or malformed relay data", () => {
 });
 
 test("rejects too many, duplicate or non-array links", () => {
-  const tooMany = linkIds(MAX_LINKS + 1);
-  assert.equal(parseClientMessage(JSON.stringify({ t: "host", links: tooMany })), undefined);
-  assert.equal(parseClientMessage(JSON.stringify({ t: "host", links: [link, link] })), undefined);
-  assert.equal(parseClientMessage(JSON.stringify({ t: "host", links: link })), undefined);
-  assert.equal(parseClientMessage(JSON.stringify({ t: "host", links: { 0: link } })), undefined);
+  for (const links of [linkIds(MAX_LINKS + 1), [link, link], link, { 0: link }]) {
+    assert.equal(parseClientMessage(JSON.stringify({ t: "host", links, turn: true })), undefined);
+  }
+});
+
+test("carries the relay choice in host and joined only as a boolean", () => {
+  for (const value of ["false", "true", 0, 1, null, {}]) {
+    assert.equal(
+      parseClientMessage(JSON.stringify({ t: "host", links: [link], turn: value })),
+      undefined,
+    );
+    assert.equal(
+      parseServerMessage(
+        JSON.stringify({ t: "joined", link, attempt, iceServers: [], turn: value }),
+      ),
+      undefined,
+    );
+  }
 });
 
 test("rejects unknown refuse reasons, connection paths and error codes", () => {
@@ -200,7 +227,7 @@ test("rejects unknown refuse reasons, connection paths and error codes", () => {
 test("rejects extra fields", () => {
   const extra = { name: "report.pdf" };
   const client = [
-    { t: "host", links: [link], ...extra },
+    { t: "host", links: [link], turn: true, ...extra },
     { t: "join", link, attempt, ...extra },
     { t: "relay", link, data: "x", ...extra },
     { t: "refuse", link, attempt, reason: "used", ...extra },
@@ -210,7 +237,7 @@ test("rejects extra fields", () => {
     assert.equal(parseClientMessage(JSON.stringify(message)), undefined, message.t);
   }
   const server = [
-    { t: "joined", link, attempt, iceServers: [], ...extra },
+    { t: "joined", link, attempt, iceServers: [], turn: true, ...extra },
     { t: "left", link, ...extra },
     { t: "relay", link, data: "x", ...extra },
     { t: "refused", reason: "busy", ...extra },
@@ -225,6 +252,8 @@ test("rejects extra fields", () => {
 test("rejects missing fields", () => {
   const client = [
     { t: "host" },
+    { t: "host", turn: true },
+    { t: "host", links: [link] },
     { t: "join" },
     { t: "join", link },
     { t: "join", attempt },
@@ -244,6 +273,8 @@ test("rejects missing fields", () => {
     { t: "joined" },
     { t: "joined", link },
     { t: "joined", link, attempt },
+    { t: "joined", link, attempt, iceServers: [] },
+    { t: "joined", link, attempt, turn: true },
     { t: "left" },
     { t: "relay", link },
     { t: "refused" },
@@ -267,6 +298,17 @@ test("accepts the maximum number and size of ICE servers", () => {
   assert.deepEqual(parseIceServers(servers), servers);
 });
 
+test("accepts a STUN-only server without credentials", () => {
+  const stun = [{ urls: ["stun:a", "stun:[2001:db8::1]:3478"] }];
+  assert.deepEqual(parseIceServers(stun), stun);
+  assert.deepEqual(
+    parseServerMessage(
+      JSON.stringify({ t: "joined", link, attempt, iceServers: stun, turn: false }),
+    ),
+    { t: "joined", link, attempt, iceServers: stun, turn: false },
+  );
+});
+
 test("rejects malformed or oversized ICE servers", () => {
   const bad: unknown[] = [
     null,
@@ -288,11 +330,16 @@ test("rejects malformed or oversized ICE servers", () => {
     [{ ...turn, credential: {} }],
     [{ urls: turn.urls, username: turn.username }],
     [{ ...turn, secret: "x" }],
+    [{ urls: ["turn:a"] }],
+    [{ urls: ["turns:a"] }],
+    [{ urls: ["stun:a", "turn:b"] }],
+    [{ urls: [] }],
+    [{ urls: ["stun:a"], username: "u" }],
   ];
   for (const iceServers of bad) {
     assert.equal(parseIceServers(iceServers), undefined, JSON.stringify(iceServers));
     assert.equal(
-      parseServerMessage(JSON.stringify({ t: "joined", link, attempt, iceServers })),
+      parseServerMessage(JSON.stringify({ t: "joined", link, attempt, iceServers, turn: true })),
       undefined,
     );
   }

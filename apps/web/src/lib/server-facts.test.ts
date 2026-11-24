@@ -21,22 +21,29 @@ test("passedOn says nothing yet, then counts with singular and plural", () => {
   );
 });
 
-test("senderHolds follows links, connections and the server connection", () => {
-  assert.equal(senderHolds({ online: true, links: 0, connected: 0 }), "No links yet.");
+test("senderHolds follows links, connections, the relay choice and the server connection", () => {
   assert.equal(
-    senderHolds({ online: true, links: 1, connected: 0 }),
-    "The ID of your link, never the part that unlocks the file.",
+    senderHolds({ online: true, links: 0, connected: 0, relay: true }),
+    "No links yet. Your choice to allow our relay.",
   );
   assert.equal(
-    senderHolds({ online: true, links: 3, connected: 1 }),
-    "The IDs of your 3 links, never the part that unlocks the file. 1 recipient connected right now.",
+    senderHolds({ online: true, links: 0, connected: 0, relay: false }),
+    "No links yet. Your choice not to allow our relay.",
   );
   assert.equal(
-    senderHolds({ online: true, links: 3, connected: 2 }),
-    "The IDs of your 3 links, never the part that unlocks the file. 2 recipients connected right now.",
+    senderHolds({ online: true, links: 1, connected: 0, relay: true }),
+    "The ID of your link, never the part that unlocks the file. Your choice to allow our relay.",
   );
   assert.equal(
-    senderHolds({ online: false, links: 3, connected: 1 }),
+    senderHolds({ online: true, links: 3, connected: 1, relay: false }),
+    "The IDs of your 3 links, never the part that unlocks the file. Your choice not to allow our relay. 1 recipient connected right now.",
+  );
+  assert.equal(
+    senderHolds({ online: true, links: 3, connected: 2, relay: true }),
+    "The IDs of your 3 links, never the part that unlocks the file. Your choice to allow our relay. 2 recipients connected right now.",
+  );
+  assert.equal(
+    senderHolds({ online: false, links: 3, connected: 1, relay: false }),
     "Nothing once it notices the connection has closed. That takes up to a minute if the network dropped.",
   );
 });
@@ -78,11 +85,15 @@ test("the Swedish server text counts and picks singular or plural", () => {
     "14 uppkopplingsmeddelanden (9,2 KB), alla krypterade så att servern inte kan läsa dem.",
   );
   assert.equal(
-    sv.server.senderHolds({ online: true, links: 1, connected: 1 }),
-    "ID:t för din länk, aldrig den del som låser upp filen. 1 mottagare är ansluten just nu.",
+    sv.server.senderHolds({ online: true, links: 0, connected: 0, relay: false }),
+    "Inga länkar ännu. Ditt val att inte tillåta vårt relä.",
   );
   assert.equal(
-    sv.server.senderHolds({ online: true, links: 3, connected: 2 }),
-    "ID:na för dina 3 länkar, aldrig den del som låser upp filen. 2 mottagare är anslutna just nu.",
+    sv.server.senderHolds({ online: true, links: 1, connected: 1, relay: true }),
+    "ID:t för din länk, aldrig den del som låser upp filen. Ditt val att tillåta vårt relä. 1 mottagare är ansluten just nu.",
+  );
+  assert.equal(
+    sv.server.senderHolds({ online: true, links: 3, connected: 2, relay: false }),
+    "ID:na för dina 3 länkar, aldrig den del som låser upp filen. Ditt val att inte tillåta vårt relä. 2 mottagare är anslutna just nu.",
   );
 });
