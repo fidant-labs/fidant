@@ -1,12 +1,13 @@
 import { render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { I18nProvider, useI18n } from "./i18n/I18n.tsx";
+import { InfoPage } from "./info/InfoPage.tsx";
 import { LandingPage } from "./landing/LandingPage.tsx";
 import { PrivacyPage } from "./privacy/PrivacyPage.tsx";
 import { ReceivePage } from "./receive/ReceivePage.tsx";
 import { SendPage } from "./send/SendPage.tsx";
 import { applyTheme, initialTheme } from "./theme.ts";
-import { Header, Page, Problem, type Route } from "./ui.tsx";
+import { Footer, Header, Page, Problem, type Route } from "./ui.tsx";
 
 /** Encryption needs Web Crypto, which browsers only offer on HTTPS or localhost. */
 function hasSecureCrypto(): boolean {
@@ -22,12 +23,12 @@ function InsecurePage() {
   );
 }
 
+const NAMED: ReadonlyArray<Route> = ["privacy", "send", "about", "terms", "security"];
+
 function routeOf(path: string): Route {
-  if (/^\/privacy\/?$/.test(path)) {
-    return "privacy";
-  }
-  if (/^\/send\/?$/.test(path)) {
-    return "send";
+  const named = NAMED.find((name) => new RegExp(`^/${name}/?$`).test(path));
+  if (named) {
+    return named;
   }
   if (path.startsWith("/r/")) {
     return "receive";
@@ -70,23 +71,29 @@ function App() {
     kept.current.add(route);
   }
   return (
-    <>
+    <div class="flex min-h-dvh flex-col">
       <Header current={route} />
-      {route === "landing" && <LandingPage />}
-      {/* The privacy page uses no crypto, so it opens even without a secure connection. */}
-      {route === "privacy" && <PrivacyPage />}
-      {!secure && (route === "send" || route === "receive") && <InsecurePage />}
-      {secure && kept.current.has("receive") && (
-        <div id="receive" hidden={route !== "receive"}>
-          <ReceivePage />
-        </div>
-      )}
-      {secure && kept.current.has("send") && (
-        <div hidden={route !== "send"}>
-          <SendPage />
-        </div>
-      )}
-    </>
+      <div class="flex-1">
+        {route === "landing" && <LandingPage />}
+        {/* The privacy page uses no crypto, so it opens even without a secure connection. */}
+        {route === "privacy" && <PrivacyPage />}
+        {(route === "about" || route === "terms" || route === "security") && (
+          <InfoPage page={route} />
+        )}
+        {!secure && (route === "send" || route === "receive") && <InsecurePage />}
+        {secure && kept.current.has("receive") && (
+          <div id="receive" hidden={route !== "receive"}>
+            <ReceivePage />
+          </div>
+        )}
+        {secure && kept.current.has("send") && (
+          <div hidden={route !== "send"}>
+            <SendPage />
+          </div>
+        )}
+      </div>
+      <Footer />
+    </div>
   );
 }
 

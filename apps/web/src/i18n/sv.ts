@@ -2,7 +2,7 @@
 
 import type { LogFields } from "@sigill/protocol";
 import type { Tie } from "../lib/server-facts.ts";
-import type { Messages } from "./en.ts";
+import type { Messages, Sections } from "./en.ts";
 
 export const sv: Messages = {
   product: "Fidant",
@@ -15,42 +15,26 @@ export const sv: Messages = {
     privacy: "Integritet",
   },
   landing: {
-    eyebrow: "Privat filöverföring",
-    title: ["Skicka filer som bara ", "mottagaren", " kan öppna"],
-    lede: "Fidant krypterar filen i din webbläsare och skickar den direkt till den du väljer. Ingen uppladdning, inget konto och inget sparas på någon server.",
+    title: "Skicka en fil som bara mottagaren kan öppna.",
+    lede: "Fidant krypterar filen i din webbläsare och lämnar den direkt till den du väljer. Den laddas aldrig upp, och ingen på vägen, inte heller vi, kan läsa den.",
     cta: "Skicka en fil",
-    how: "Så fungerar det",
-    noAccount: "Inget konto behövs",
-    featuresHeading: "Varför Fidant",
-    features: [
-      [
-        "Krypterad innan den lämnar dig",
-        "Filen låses i din egen webbläsare. Nyckeln följer med länken du delar, aldrig via våra servrar.",
-      ],
-      [
-        "Direkt till mottagaren",
-        "Filen går direkt från din dator till deras. Den laddas aldrig upp och sparas inte i molnet.",
-      ],
-      [
-        "Inget blir kvar",
-        "Inget sparas på någon server. När överföringen är klar finns filen bara hos dig och hos mottagaren.",
-      ],
-    ],
-    stepsHeading: "Tre steg",
+    how: "Läs hur det fungerar",
+    noAccount: "Inget konto. Inget sparas.",
+    linkHeading: "Hela knepet sitter i länken",
+    linkId: "Länk-ID. Vår server ser det, bara för att koppla ihop de två webbläsarna.",
+    linkKey: "Nyckel. Webbläsare skickar aldrig det som står efter # till någon server.",
+    stepsHeading: "Så går det till",
     steps: [
-      ["Välj en fil", "Släpp den på sidan. Den stannar på din dator."],
+      ["Välj en fil", "Den stannar på din dator. Inget laddas upp."],
       ["Lägg till vem den är till", "Varje person får en egen länk som fungerar en gång."],
-      ["Dela länken", "När de öppnar den kommer filen krypterad, direkt från dig."],
-    ],
-    closingTitle: "Redo att skicka något privat?",
-    closingBody: "Låt fliken vara öppen tills filen har kommit fram.",
-    art: {
-      you: "Du",
-      them: "Anna",
-      file: "avtal.pdf",
-      encrypted: "Krypterad",
-      received: "Mottagen",
-    },
+      [
+        "Dela länken",
+        "När de öppnar den går filen direkt från din webbläsare till deras, krypterad hela vägen.",
+      ],
+    ] as ReadonlyArray<readonly [string, string]>,
+    neverHeading: "Vi får aldrig",
+    seesHeading: "Vi ser bara",
+    caveat: "Haken: eftersom inget sparas måste fliken vara öppen tills filen har kommit fram.",
   },
   insecure: {
     title: "Sidan behöver en säker anslutning",
@@ -279,6 +263,106 @@ export const sv: Messages = {
         port: "porten servern lyssnar på",
       } satisfies Record<keyof LogFields, string>),
     )}. Aldrig namn, nycklar, filinnehåll eller IP-adresser.`,
+  },
+  footer: {
+    label: "Webbplats",
+    tagline: "Filer krypteras i din webbläsare och skickas direkt till mottagaren.",
+    about: "Om Fidant",
+    terms: "Villkor",
+    security: "Säkerhet",
+    source: "Källkod",
+    license: "Öppen källkod, MIT-licens",
+  },
+  about: {
+    title: "Om Fidant",
+    lede: "Fidant är ett sätt att skicka en fil till någon utan att behöva lita på någon på vägen, inte heller på oss.",
+    sections: [
+      {
+        heading: "Vem som driver det",
+        body: [
+          "Fidant är ett projekt med öppen källkod och har inget företag bakom sig ännu. Det är ett konceptbevis, inte en kommersiell tjänst.",
+          "Det finns inga annonser, inga konton och ingen spårning.",
+        ],
+      },
+      {
+        heading: "Kontrollera själv",
+        body: [
+          "All kod som kör den här webbplatsen är öppen under MIT-licensen. Allt som står på integritets- och säkerhetssidorna går att kontrollera mot den, och du kan köra en egen kopia.",
+        ],
+        link: ["Koden på GitHub", "https://github.com/sigill-labs/sigill"],
+      },
+      {
+        heading: "Kontakt",
+        body: [
+          "Frågor, fel och idéer hör hemma i projektets ärendelista. Ärenden är offentliga, så skriv aldrig filer, länkar eller personuppgifter där. Följ säkerhetssidan om du vill rapportera ett säkerhetsproblem.",
+        ],
+        link: ["Skapa ett ärende", "https://github.com/sigill-labs/sigill/issues"],
+      },
+    ] as Sections,
+  },
+  terms: {
+    title: "Användarvillkor",
+    lede: "Kort sagt: Fidant är gratis, levereras i befintligt skick och du ansvarar för det du skickar.",
+    sections: [
+      {
+        heading: "I befintligt skick",
+        body: [
+          "Fidant är ett konceptbevis som erbjuds gratis och utan garantier. Tjänsten kan vara otillgänglig, ändras eller läggas ner när som helst. Lita inte på den som enda sätt att få fram en viktig fil.",
+        ],
+      },
+      {
+        heading: "Dina filer är dina",
+        body: [
+          "Filerna går direkt mellan webbläsare och vi har dem aldrig, så vi kan inte läsa, återskapa, radera eller granska dem åt dig. Skicka bara filer som du har rätt att dela, och bara till dem du vill dela dem med.",
+          "Använd inte Fidant till något olagligt.",
+        ],
+      },
+      {
+        heading: "Länkar",
+        body: [
+          "Den som har en länk kan öppna filen den leder till. Varje länk fungerar en gång, och bara medan avsändarens sida är öppen.",
+        ],
+      },
+      {
+        heading: "Ändringar",
+        body: ["Villkoren kan ändras. Varje ändring syns i projektets offentliga historik."],
+        link: ["Historiken för texten", "https://github.com/sigill-labs/sigill/commits/main"],
+      },
+    ] as Sections,
+  },
+  security: {
+    title: "Säkerhet",
+    lede: "Hur din fil skyddas, vad Fidant inte skyddar mot och hur du berättar för oss om ett problem.",
+    sections: [
+      {
+        heading: "Så skyddas filen",
+        body: [
+          "Din webbläsare krypterar filen med AES-256-GCM innan den lämnar din dator. Nyckeln finns i den del av länken som står efter #, och den skickar webbläsare aldrig till någon server.",
+          "Filen går direkt mellan de två webbläsarna. Vår server skickar bara vidare några små meddelanden för att koppla upp, och de är krypterade så att servern inte kan läsa dem.",
+          "Mottagarens webbläsare kontrollerar filens SHA-256-kontrollsumma, så en fil som ändrats eller skadats på vägen sparas inte.",
+        ],
+      },
+      {
+        heading: "Det här skyddar den inte mot",
+        body: [
+          "Den som får tag på en länk kan öppna filen. Skicka varje länk bara till den den är till, på ett sätt du litar på.",
+          "Avsändarens namn skrivs av avsändaren och kontrolleras inte.",
+          "De två webbläsarna ser varandras IP-adress, precis som i ett videosamtal.",
+          "En dator som redan är kapad kan läsa filen innan den krypteras eller efter att den låsts upp.",
+          "Fidant har ännu inte granskats av någon oberoende part.",
+        ],
+      },
+      {
+        heading: "Rapportera en sårbarhet",
+        body: [
+          "Rapportera säkerhetsproblem privat via GitHub, inte i ett offentligt ärende. Vi svarar där.",
+        ],
+        link: [
+          "Rapportera privat på GitHub",
+          "https://github.com/sigill-labs/sigill/security/advisories/new",
+        ],
+      },
+    ] as Sections,
   },
   privacy: {
     title: "Integritet",
