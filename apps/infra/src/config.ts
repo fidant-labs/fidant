@@ -37,8 +37,17 @@ export const mail: Mail = {
         "protonmail3.domainkey.dhkoy2kpqzgitcjo5lp2rla56inbsysez2ptt23kic7qovs46e27q.domains.proton.ch.",
     },
   ],
-  dmarc: "v=DMARC1; p=quarantine",
+  dmarc: "v=DMARC1; p=reject",
 };
 
 // Copied by hand from the PublicIp output of FidantApp, which deploys to another account.
 export const boxAddress = "16.192.25.20";
+
+// Copied by hand from `aws route53 list-hosted-zones --profile fidant-dns`; FidantDnssec signs these.
+export const hostedZoneIds: Record<string, string> = {
+  "fidant.se": "Z09335241R9IEYU9VDLYT",
+  "fidant.eu": "Z09323213U4PW8PVU0GWR",
+  "fidant.org": "Z09257402SNQGKKFL536D",
+};
+
+export const alertEmail = "budget-alert@fidant.se";

@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import {
+  type Browser,
   type BrowserContext,
   type BrowserContextOptions,
   test as base,
@@ -43,6 +44,11 @@ interface Fixtures {
    * the test, for a test that checks the blocker itself. They are still aborted and recorded.
    */
   allowBlocked: boolean;
+  /**
+   * Set with `test.use({ remoteBrowsers: { sender: "ws://…" } })` to open those actors in a
+   * browser served by `playwright run-server` at that endpoint, with the project's launch options.
+   */
+  remoteBrowsers: Record<string, string>;
   /** Registers this test's secrets. Its teardown fails the test if any of them leaked. */
   leaks: Leaks;
   /**
@@ -58,6 +64,7 @@ interface Fixtures {
 
 export const test = base.extend<Fixtures>({
   allowBlocked: [false, { option: true }],
+  remoteBrowsers: [{}, { option: true }],
 
   // `_recorders` depends on this, so this is set up first and torn down last: the scan runs once
   // every context has closed and `_recorders` has completed and written the records.
@@ -208,8 +215,12 @@ export const test = base.extend<Fixtures>({
     await use({ ...contextOptions, ...Object.fromEntries(set) });
   },
 
-  actor: async ({ browser, _actorContextOptions, _recorders }, use) => {
+  actor: async (
+    { browser, playwright, launchOptions, remoteBrowsers, _actorContextOptions, _recorders },
+    use,
+  ) => {
     const opened: BrowserContext[] = [];
+    const remotes: Browser[] = [];
     await use(async (name) => {
       assertActorName(name);
       if (name === "default") {
@@ -218,7 +229,16 @@ export const test = base.extend<Fixtures>({
       if (_recorders.has(name)) {
         throw new Error(`The actor "${name}" already exists.`);
       }
-      const context = await browser.newContext(_actorContextOptions);
+      const ws = remoteBrowsers[name];
+      let target = browser;
+      if (ws) {
+        // run-server drops launch args unless started with --unsafe.
+        target = await playwright.chromium.connect(ws, {
+          headers: { "x-playwright-launch-options": JSON.stringify(launchOptions) },
+        });
+        remotes.push(target);
+      }
+      const context = await target.newContext(_actorContextOptions);
       opened.push(context);
       await record(_recorders, name, context);
       return { context, page: await context.newPage() };
@@ -226,6 +246,9 @@ export const test = base.extend<Fixtures>({
     // `_recorders` writes the records once these have closed.
     for (const context of opened) {
       await context.close();
+    }
+    for (const remote of remotes) {
+      await remote.close();
     }
   },
 

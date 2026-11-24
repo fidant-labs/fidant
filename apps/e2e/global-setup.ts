@@ -5,9 +5,14 @@ import { join } from "node:path";
 import { formatSeed, runSeed } from "./src/leaks/canary.ts";
 import { repoRoot, resetObservations } from "./src/paths.ts";
 import { startStack } from "./src/stack/index.ts";
+import { assertDocker, dockerNetworks, dockerServer } from "./src/stack/networks.ts";
 import { sweepRun } from "./src/sweep.ts";
 
 export default async function globalSetup(): Promise<() => Promise<void>> {
+  const networks = Boolean(process.env.SIGILL_E2E_NETWORKS);
+  if (networks) {
+    assertDocker();
+  }
   if (!existsSync(join(repoRoot, "apps", "web", "dist", "index.html"))) {
     throw new Error("The web client is not built. Run `pnpm e2e` from the repository root.");
   }
@@ -26,7 +31,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
 
   let stack: Awaited<ReturnType<typeof startStack>>;
   try {
-    stack = await startStack();
+    stack = await startStack(networks ? [dockerNetworks, dockerServer] : undefined);
   } catch (error) {
     removeRegistry();
     throw error;

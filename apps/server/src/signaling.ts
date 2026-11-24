@@ -1,10 +1,11 @@
 // Relays signaling messages between a sender's browser (the host) and its
 // recipients' browsers (guests) over the /signal WebSocket.
 //
-// The server only learns link IDs and opaque base64url blobs, except from `email`
-// (decision 0008). It knows which link IDs are hosted and binds at most one guest
-// to each, but it keeps no record of used links: the sender decides that and
-// refuses with `refuse`. Relay payloads are never inspected or logged.
+// The server only learns link IDs, whether the sender allows our TURN relay,
+// and opaque base64url blobs, except from `email` (decision 0009). It knows
+// which link IDs are hosted and binds at most one guest to each, but it keeps
+// no record of used links: the sender decides that and refuses with `refuse`.
+// Relay payloads are never inspected or logged.
 
 import { createHmac, randomBytes } from "node:crypto";
 import type { Server as HttpServer, IncomingMessage } from "node:http";
@@ -57,6 +58,8 @@ type Peer = {
   role: "none" | "host" | "guest";
   /** Links this socket hosts. */
   hosted: Set<string>;
+  /** Whether this host allows TURN for its next pairings, from its latest `host`. Never logged. */
+  turn: boolean;
   /** The link this socket is bound to as a guest. */
   joined: string | undefined;
   /** The attempt ID the guest joined with. Never logged. */
@@ -166,7 +169,7 @@ export function attachSignaling(
     heartbeatMs?: number;
     limits?: Partial<typeof LIMITS>;
     /** Minted once per pairing, so TURN credentials are fresh. Never logged. */
-    iceServers?: () => IceServer[];
+    iceServers?: (turn: boolean) => IceServer[];
     /** Sends notices that link to `${origin}/r/<link>#<secret>`. Without it, no mail goes out. */
     mail?: { send: Mailer; origin: string } | undefined;
   },
@@ -221,6 +224,7 @@ export function attachSignaling(
     const peer: Peer = {
       role: "none",
       hosted: new Set(),
+      turn: false,
       joined: undefined,
       attempt: undefined,
       alive: true,
@@ -262,7 +266,7 @@ export function attachSignaling(
   function handle(socket: WebSocket, peer: Peer, message: ClientMessage): void {
     switch (message.t) {
       case "host":
-        host(socket, peer, message.links);
+        host(socket, peer, message.links, message.turn);
         return;
       case "join":
         join(socket, peer, message.link, message.attempt);
@@ -287,7 +291,7 @@ export function attachSignaling(
     send(socket, { t: "error", code });
   }
 
-  function host(socket: WebSocket, peer: Peer, links: string[]): void {
+  function host(socket: WebSocket, peer: Peer, links: string[], turn: boolean): void {
     if (peer.role === "guest") {
       error(socket, "wrong-role");
       return;
@@ -297,6 +301,7 @@ export function attachSignaling(
       return;
     }
     peer.role = "host";
+    peer.turn = turn;
     const next = new Set(links);
     for (const link of peer.hosted) {
       if (!next.has(link)) {
@@ -351,7 +356,14 @@ export function attachSignaling(
     log("joined", { link: short(link) });
     // The guest's ack goes first, so its peer exists before the host's offer can arrive on the
     // same ordered socket.
-    const joined: ServerMessage = { t: "joined", link, attempt, iceServers: iceServers() };
+    const turn = peers.get(hostSocket)?.turn ?? false;
+    const joined: ServerMessage = {
+      t: "joined",
+      link,
+      attempt,
+      iceServers: iceServers(turn),
+      turn,
+    };
     send(socket, joined);
     send(hostSocket, joined);
   }

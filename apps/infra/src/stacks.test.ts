@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { App, Stack } from "aws-cdk-lib";
 import { Match, Template } from "aws-cdk-lib/assertions";
 import { addStacks } from "./app.ts";
-import { boxAddress, siteNames } from "./config.ts";
+import { boxAddress, hostedZoneIds, siteNames, zoneNames } from "./config.ts";
 import { DnsStack } from "./dns.ts";
 
 const account = "111111111111";
@@ -41,15 +41,23 @@ function stacksFor(currentAccount: string | undefined): Stack[] {
   return app.node.children.filter((child) => child instanceof Stack);
 }
 
-test("the fidant-dns account gets the protected DNS stack and the CI stack", () => {
+test("the fidant-dns account gets the protected DNS and DNSSEC stacks and the CI stack", () => {
   const stacks = stacksFor(dnsAccount);
   assert.deepEqual(
     stacks.map((stack) => [stack.stackName, stack.region, stack.terminationProtection]),
     [
       ["FidantDns", "eu-north-1", true],
       ["FidantCi", "eu-north-1", false],
+      ["FidantDnssec", "us-east-1", true],
     ],
   );
+});
+
+test("the committed config names the hosted zone that FidantDnssec signs for every zone", () => {
+  assert.deepEqual(Object.keys(hostedZoneIds), zoneNames);
+  for (const id of Object.values(hostedZoneIds)) {
+    assert.match(id, /^Z[0-9A-Z]{10,32}$/);
+  }
 });
 
 test("the fidant-poc account gets the CI and app box stacks, in eu-north-1", () => {
@@ -281,7 +289,7 @@ test("the committed config keeps fidant.se's Proton mail records", () => {
   committed.hasResourceProperties(recordSet, {
     Name: "_dmarc.fidant.se.",
     Type: "TXT",
-    ResourceRecords: [Match.stringLikeRegexp('^"v=DMARC1; p=(quarantine|reject)[;"]')],
+    ResourceRecords: [Match.stringLikeRegexp('^"v=DMARC1; p=reject[;"]')],
   });
 });
 
@@ -306,6 +314,23 @@ test("fidant.eu and fidant.org declare that they send no mail", () => {
       ResourceRecords: ['"v=DMARC1; p=reject"'],
     });
   }
+});
+
+test("only Caddy's two certificate authorities may issue for any name, and no wildcards", () => {
+  for (const zoneName of ["fidant.se", "fidant.eu", "fidant.org"]) {
+    dns.hasResourceProperties("AWS::Route53::RecordSet", {
+      HostedZoneId: zoneRef(zoneName),
+      Name: `${zoneName}.`,
+      Type: "CAA",
+      ResourceRecords: ['0 issue "letsencrypt.org"', '0 issue "sectigo.com"', '0 issuewild ";"'],
+    });
+  }
+  assert.equal(
+    Object.values(dns.findResources("AWS::Route53::RecordSet")).filter(
+      (record) => record.Properties.Type === "CAA",
+    ).length,
+    3,
+  );
 });
 
 test("fidant.se gets the mail records", () => {

@@ -126,10 +126,19 @@ async function rawSocket(port: number): Promise<{ socket: WsClient; next(): Prom
   return { socket, next };
 }
 
-for (const turn of [false, true]) {
-  test(`hands ${turn ? "fresh TURN" : "no"} ICE servers to both ends in joined`, async () => {
+const iceCases = [
+  { turn: false, allow: true, name: "no" },
+  { turn: true, allow: true, name: "fresh TURN" },
+  { turn: true, allow: false, name: "only STUN" },
+];
+for (const { turn, allow, name } of iceCases) {
+  test(`hands ${name} ICE servers to both ends in joined`, async () => {
     const secret = "test-secret-do-not-leak";
-    const urls = ["turn:127.0.0.1:3478?transport=udp", "turns:127.0.0.1:5349"];
+    const urls = [
+      "turn:127.0.0.1:3478?transport=udp",
+      "turns:127.0.0.1:5349",
+      "stun:127.0.0.1:3478",
+    ];
     const logs: string[] = [];
     const server = await startServer({
       port: 0,
@@ -145,7 +154,7 @@ for (const turn of [false, true]) {
     try {
       const link = "AAAAAAAAAAAAAAAAAAAAAA";
       const attempt = "ZZZZZZZZZZZZZZZZZZZZZZ";
-      host.socket.send(JSON.stringify({ t: "host", links: [link] }));
+      host.socket.send(JSON.stringify({ t: "host", links: [link], turn: allow }));
       // A round trip on the host's socket proves the link is registered.
       host.socket.send(JSON.stringify({ t: "relay", link: attempt, data: "x" }));
       await host.next();
@@ -156,18 +165,24 @@ for (const turn of [false, true]) {
         assert.ok(message?.t === "joined", frame);
         assert.equal(message.link, link);
         assert.equal(message.attempt, attempt);
+        assert.equal(message.turn, allow);
         if (!turn) {
           assert.deepEqual(message.iceServers, []);
           continue;
         }
+        if (!allow) {
+          assert.deepEqual(message.iceServers, [{ urls: ["stun:127.0.0.1:3478"] }]);
+          continue;
+        }
         assert.equal(message.iceServers.length, 1);
         const [ice] = message.iceServers;
-        assert.deepEqual(ice?.urls, urls);
-        const expiry = Number(ice?.username) - Date.now() / 1000;
+        assert.ok(ice && "username" in ice, frame);
+        assert.deepEqual(ice.urls, urls);
+        const expiry = Number(ice.username) - Date.now() / 1000;
         assert.ok(expiry > 5 * 60 - 60 && expiry <= 5 * 60, String(expiry));
-        assert.match(ice?.credential ?? "", /^[A-Za-z0-9+/]{27}=$/);
+        assert.match(ice.credential, /^[A-Za-z0-9+/]{27}=$/);
         for (const line of logs) {
-          assert.ok(!line.includes(secret) && !line.includes(ice?.credential ?? ""), line);
+          assert.ok(!line.includes(secret) && !line.includes(ice.credential), line);
         }
       }
     } finally {
