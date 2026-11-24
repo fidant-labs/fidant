@@ -59,12 +59,12 @@ function App() {
   // A page change hides the focused link, so focus moves to the new page's or section's heading.
   const firstRoute = useRef(true);
   useEffect(() => {
-    // On a receive link the fragment is the decryption key, so it is never read there.
+    // Only /how has anchors; elsewhere the fragment can be a decryption key, so it is never read.
     const named =
-      routeOf(location.pathname) === "receive"
-        ? null
-        : document.getElementById(location.hash.slice(1));
-    const target = named?.closest("main:not([hidden] *)") ? named : null;
+      routeOf(location.pathname) === "how" && location.hash
+        ? document.getElementById(location.hash.slice(1))
+        : null;
+    const target = named?.closest<HTMLElement>("main:not([hidden] *) section") ?? null;
     target?.scrollIntoView();
     if (firstRoute.current) {
       firstRoute.current = false;
