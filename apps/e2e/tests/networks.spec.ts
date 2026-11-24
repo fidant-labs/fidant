@@ -30,7 +30,7 @@ interface Scenario {
    * The selected candidate pair as `local/remote` for the sender, then the recipient, such as
    * `srflx/srflx srflx/srflx`. A remote candidate is prflx when the peer's check arrives before
    * its candidate does over signaling, so rows accept prflx wherever the remote side is direct.
-   * A local relay candidate carries its transport to the TURN server, such as `relay+tcp`.
+   * A local relay candidate carries its transport to the TURN server, such as `relay+tls`.
    * `none`: the row pauses coturn, so the browsers cannot connect at all.
    */
   path: RegExp | "none";
@@ -67,15 +67,14 @@ const scenarios: Scenario[] = [
     sender: "a1",
     recipient: "b1",
     routerB: "udp-blocked",
-    path: / relay\+tcp\/\S+$/,
+    path: / relay\+tls\/\S+$/,
   },
   {
     title: "only TCP 443",
     sender: "a1",
     recipient: "b1",
     routerB: "tcp-443",
-    path: /relay/,
-    todo: "TURN over TLS on 443: SIG-93",
+    path: / relay\+tls\/\S+$/,
   },
   {
     title: "relay down",

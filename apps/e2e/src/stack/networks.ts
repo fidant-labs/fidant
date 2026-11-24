@@ -1,7 +1,7 @@
 import { execFile, execFileSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes, X509Certificate } from "node:crypto";
 import { readFileSync, rmSync } from "node:fs";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
@@ -18,6 +18,8 @@ const serverName = "sigill-e2e-server";
 /** The server's address on the public network, where the browsers reach it. */
 export const serverIp = "198.51.100.10";
 export const turnIp = "198.51.100.20";
+/** coturn's name for TURN over TLS. Browsers resolve it to turnIp (playwright.config.ts). */
+export const turnHost = "turn.sigill.test";
 // node:26-bookworm, not slim: the server's certificate step shells out to openssl.
 const serverImage =
   "node:26.13.1-bookworm@sha256:0a7c0471c10988ef5ab64718fa58bf8d5be578b4d20cf42b10b5fa6ccda39ae1";
@@ -106,7 +108,20 @@ async function startNetworks(): Promise<RunningService> {
   // Production's peer denials stay, 10/8 among them: the public network has no route to the private
   // sites, and without the denial coturn closed allocations right after Chrome checked a private
   // peer through them ("reason: general"), and relayed rows failed at random.
-  const config = coturnConfig({ ip: turnIp, port: 3478, secret, stateDir: "/tmp" });
+  // A self-signed certificate for TURN over TLS on 443, made per run. Chrome checks it, so the
+  // browsers trust its public key alone (SIGILL_E2E_TURN_SPKI, read by playwright.config.ts).
+  await run("openssl", [
+    ...["req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1", "-nodes"],
+    ...["-days", "1", "-subj", `/CN=${turnHost}`],
+    ...["-addext", `subjectAltName=DNS:${turnHost},IP:${turnIp}`],
+    ...["-keyout", join(dir, "turn.key"), "-out", join(dir, "turn.crt")],
+  ]);
+  const spki = new X509Certificate(await readFile(join(dir, "turn.crt"))).publicKey.export({
+    type: "spki",
+    format: "der",
+  });
+  const tls = { port: 443, cert: "/etc/sigill/turn.crt", pkey: "/etc/sigill/turn.key" };
+  const config = coturnConfig({ ip: turnIp, port: 3478, secret, stateDir: "/tmp", tls });
   await writeFile(join(dir, "turnserver.conf"), config, { mode: 0o600 });
 
   const playwright = join(e2eDir, "node_modules", "@playwright", "test", "package.json");
@@ -118,6 +133,8 @@ async function startNetworks(): Promise<RunningService> {
     SIGILL_E2E_COTURN_DIR: dir,
     SIGILL_E2E_UID: String(process.getuid?.() ?? 1000),
     SIGILL_E2E_GID: String(process.getgid?.() ?? 1000),
+    // Workers start after global setup and inherit it, like SIGILL_E2E_BASE_URL.
+    SIGILL_E2E_TURN_SPKI: createHash("sha256").update(spki).digest("base64"),
   });
 
   const cleanUp = () => {
@@ -152,7 +169,8 @@ async function startNetworks(): Promise<RunningService> {
       TURN_URLS: [
         `stun:${turnIp}:3478`,
         `turn:${turnIp}:3478?transport=udp`,
-        `turn:${turnIp}:3478?transport=tcp`,
+        // By name, as in production, so Chrome sends SNI.
+        `turns:${turnHost}:443?transport=tcp`,
       ].join(","),
       TURN_SECRET_FILE: secretFile,
     },
