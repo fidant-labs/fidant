@@ -83,6 +83,7 @@ export function PrivacyPage() {
             why,
           ])}
         />
+        <p class="mt-4">{p.logRetention}</p>
       </section>
     </Page>
   );

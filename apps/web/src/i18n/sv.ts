@@ -478,5 +478,6 @@ export const sv: Messages = {
     keepHeading: "Vad vi sparar",
     keep: "Vi har inga konton, ingen databas, inga cookies och ingen spårning. Förutom loggraderna nedan sparas ingenting när avsändarens sida har stängts, inom högst en minut.",
     logFields,
+    logRetention: "Loggraderna raderas efter 30 dagar.",
   },
 };
