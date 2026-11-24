@@ -7,19 +7,21 @@
 // no record of used links: the sender decides that and refuses with `refuse`.
 // Relay payloads are never inspected or logged.
 
-import { createHmac, randomBytes } from "node:crypto";
+import { createHmac, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import type { Server as HttpServer, IncomingMessage } from "node:http";
 import type { Server as HttpsServer } from "node:https";
 import { isIP } from "node:net";
 import type { Duplex } from "node:stream";
 import {
   type ClientMessage,
+  type CodeResult,
   type ConnectionPath,
   type EmailMessage,
   type ErrorCode,
   type IceServer,
   type LogEvent,
   type LogFields,
+  maskAddress,
   parseClientMessage,
   type RefuseReason,
   type ServerMessage,
@@ -33,7 +35,7 @@ export const SIGNAL_PATH = "/signal";
 
 export const HEARTBEAT_MS = 30_000;
 
-/** Caps on open sockets, incoming messages, bytes queued to a socket and notices emailed. Tests lower them through the `limits` option. */
+/** Caps on open sockets, incoming messages, bytes queued to a socket, and notices and codes emailed. Tests lower them through the `limits` option. */
 const LIMITS = {
   sockets: 1000,
   socketsPerAddress: 32,
@@ -47,7 +49,15 @@ const LIMITS = {
   noticesPerSocket: 20,
   noticesPerClient: 50,
   noticesPerRecipient: 5,
+  /** Codes one emailed link may send while hosted, and codes per hour to one destination address. */
+  codesPerLink: 5,
+  codesPerRecipient: 10,
 };
+
+/** How long a code works, the least time between two codes for one link, and wrong tries per code. */
+const CODE_MS = 10 * 60 * 1000;
+const CODE_GAP_MS = 30 * 1000;
+const CODE_TRIES = 5;
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -74,7 +84,16 @@ type Peer = {
 };
 
 /** What the server keeps about an emailed link while it is hosted: never its secret or the sender's name. */
-type Emailed = { to: string; lang: EmailMessage["lang"] };
+type Emailed = {
+  to: string;
+  lang: EmailMessage["lang"];
+  /** When this link's codes went out. */
+  codeTimes: number[];
+  /** The latest code, until it is right, expires or runs out of tries. Never logged. */
+  code: { value: string; expires: number; tries: number } | undefined;
+  /** Tokens for right codes, each good for any join of this link while it is hosted. Never logged. */
+  tokens: Set<string>;
+};
 
 function recent(times: number[], now: number): number[] {
   return times.filter((time) => now - time < HOUR_MS);
@@ -183,7 +202,9 @@ export function attachSignaling(
   /** Open sockets per client address. */
   const perAddress = new Map<string, number>();
   const emailed = new Map<string, Emailed>();
-  /** Notice times per HMAC of a destination or client address, so neither address is kept. */
+  /** Hosted links that take no more `email`: they had theirs, whatever came of it, or a guest. */
+  const noEmail = new Set<string>();
+  /** Notice and code times per HMAC of a destination or client address, so no address is kept. */
   const noticeTimes = new Map<string, number[]>();
   const noticeKey = randomBytes(32);
   const hmac = (name: string) => createHmac("sha256", noticeKey).update(name).digest("base64url");
@@ -269,7 +290,7 @@ export function attachSignaling(
         host(socket, peer, message.links, message.turn);
         return;
       case "join":
-        join(socket, peer, message.link, message.attempt);
+        join(socket, peer, message.link, message.attempt, message.token);
         return;
       case "relay":
         relay(socket, peer, message.link, message.data);
@@ -282,6 +303,15 @@ export function attachSignaling(
         return;
       case "email":
         void email(socket, peer, message);
+        return;
+      case "gate":
+        gate(socket, peer, message.link);
+        return;
+      case "send-code":
+        void sendCode(socket, peer, message.link);
+        return;
+      case "code":
+        checkCode(socket, peer, message.link, message.code);
         return;
     }
   }
@@ -315,10 +345,11 @@ export function attachSignaling(
     log("host", { links: next.size });
   }
 
-  /** Stops hosting a link, forgets its email binding and tells its guest, if any, that the host is gone. */
+  /** Stops hosting a link, drops its email state and tells its guest, if any, that the host is gone. */
   function unhost(link: string): void {
     hosts.delete(link);
     emailed.delete(link);
+    noEmail.delete(link);
     const guest = guests.get(link);
     if (!guest) {
       return;
@@ -333,7 +364,13 @@ export function attachSignaling(
     send(guest, { t: "host-gone" });
   }
 
-  function join(socket: WebSocket, peer: Peer, link: string, attempt: string): void {
+  function join(
+    socket: WebSocket,
+    peer: Peer,
+    link: string,
+    attempt: string,
+    token: string | undefined,
+  ): void {
     if (peer.role === "host") {
       error(socket, "wrong-role");
       return;
@@ -343,6 +380,13 @@ export function attachSignaling(
       return;
     }
     peer.role = "guest";
+    // Only hosted links are email-bound, so an unknown link is refused as unknown below.
+    const state = emailed.get(link);
+    if (state && (token === undefined || !state.tokens.has(token))) {
+      log("refused", { link: short(link), reason: "unverified" });
+      send(socket, { t: "gate", link, to: maskAddress(state.to) });
+      return;
+    }
     const hostSocket = hosts.get(link);
     if (!hostSocket || guests.has(link)) {
       const reason: RefuseReason = hostSocket ? "busy" : "unknown";
@@ -351,6 +395,7 @@ export function attachSignaling(
       return;
     }
     guests.set(link, socket);
+    noEmail.add(link);
     peer.joined = link;
     peer.attempt = attempt;
     log("joined", { link: short(link) });
@@ -444,10 +489,11 @@ export function attachSignaling(
       );
       send(socket, { t: "email", link, status });
     };
-    if (!mail || emailed.has(link)) {
+    if (!mail || noEmail.has(link)) {
       reply("failed");
       return;
     }
+    noEmail.add(link);
     const now = Date.now();
     const toKey = hmac(`to:${to.toLowerCase()}`);
     const clientKey = hmac(`ip:${peer.address}`);
@@ -465,7 +511,7 @@ export function attachSignaling(
     peer.notices.push(now);
     noticeTimes.set(toKey, [...toTimes, now]);
     noticeTimes.set(clientKey, [...clientTimes, now]);
-    const state: Emailed = { to, lang };
+    const state: Emailed = { to, lang, codeTimes: [], code: undefined, tokens: new Set() };
     emailed.set(link, state);
     let sent = true;
     try {
@@ -482,6 +528,104 @@ export function attachSignaling(
       emailed.delete(link);
     }
     reply(sent ? "sent" : "failed");
+  }
+
+  /** Sets a socket's role to guest, or answers `wrong-role` and returns false if it hosts. */
+  function asGuest(socket: WebSocket, peer: Peer): boolean {
+    if (peer.role === "host") {
+      error(socket, "wrong-role");
+      return false;
+    }
+    peer.role = "guest";
+    return true;
+  }
+
+  function answerCode(socket: WebSocket, link: string, result: CodeResult): void {
+    log("code", result === "sent" ? { link: short(link) } : { link: short(link), reason: result });
+    send(socket, { t: "code", link, result });
+  }
+
+  /** Tells a recipient where a link's code goes, or "" for a link that needs none or is unknown. */
+  function gate(socket: WebSocket, peer: Peer, link: string): void {
+    if (!asGuest(socket, peer)) {
+      return;
+    }
+    const state = emailed.get(link);
+    send(socket, { t: "gate", link, to: state ? maskAddress(state.to) : "" });
+  }
+
+  /** Emails a fresh code for an emailed link to its address, replacing any earlier code. */
+  async function sendCode(socket: WebSocket, peer: Peer, link: string): Promise<void> {
+    if (!asGuest(socket, peer)) {
+      return;
+    }
+    const state = emailed.get(link);
+    if (!mail || !state) {
+      answerCode(socket, link, "failed");
+      return;
+    }
+    const now = Date.now();
+    const last = state.codeTimes.at(-1);
+    const toKey = hmac(`code:${state.to.toLowerCase()}`);
+    const toTimes = recent(noticeTimes.get(toKey) ?? [], now);
+    if (state.codeTimes.length >= limits.codesPerLink) {
+      answerCode(socket, link, "limit");
+      return;
+    }
+    if (
+      (last !== undefined && now - last < CODE_GAP_MS) ||
+      toTimes.length >= limits.codesPerRecipient
+    ) {
+      answerCode(socket, link, "wait");
+      return;
+    }
+    state.codeTimes.push(now);
+    noticeTimes.set(toKey, [...toTimes, now]);
+    const value = String(randomInt(1_000_000)).padStart(6, "0");
+    state.code = { value, expires: now + CODE_MS, tries: 0 };
+    let sent = true;
+    try {
+      await mail.send({ to: state.to, lang: state.lang, code: value });
+    } catch {
+      // The error may quote the address or the code, so none of it is kept.
+      sent = false;
+    }
+    answerCode(socket, link, sent ? "sent" : "failed");
+    const hostSocket = hosts.get(link);
+    if (sent && hostSocket && emailed.get(link) === state) {
+      send(hostSocket, { t: "email", link, status: "verifying" });
+    }
+  }
+
+  /** Checks a recipient's code; a right one gets a token for this link's joins. */
+  function checkCode(socket: WebSocket, peer: Peer, link: string, code: string): void {
+    if (!asGuest(socket, peer)) {
+      return;
+    }
+    const state = emailed.get(link);
+    const current = state?.code;
+    if (!state || !current || Date.now() >= current.expires) {
+      answerCode(socket, link, "expired");
+      return;
+    }
+    // Both are six ASCII digits: the parser checks the guess, randomInt made the code.
+    if (!timingSafeEqual(Buffer.from(code), Buffer.from(current.value))) {
+      current.tries += 1;
+      if (current.tries >= CODE_TRIES) {
+        state.code = undefined;
+      }
+      answerCode(socket, link, current.tries >= CODE_TRIES ? "tries" : "wrong");
+      return;
+    }
+    state.code = undefined;
+    const token = randomBytes(16).toString("base64url");
+    state.tokens.add(token);
+    log("verified", { link: short(link) });
+    send(socket, { t: "token", link, token });
+    const hostSocket = hosts.get(link);
+    if (hostSocket) {
+      send(hostSocket, { t: "email", link, status: "verified" });
+    }
   }
 
   function disconnect(socket: WebSocket, peer: Peer): void {
