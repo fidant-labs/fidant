@@ -132,3 +132,34 @@ systemctl daemon-reload
 systemctl enable sigill
 systemctl enable --now sigill-deploy.timer
 systemctl restart caddy
+
+install -d -m 700 /etc/sigill
+(umask 077 && openssl rand -hex 32 >/etc/sigill/turn-secret)
+private_ip=$(ip -4 -o addr show scope global | awk '{ sub("/.*", "", $4); print $4; exit }')
+printf '%s\n' "$private_ip" | grep -Eqx '([0-9]{1,3}\.){3}[0-9]{1,3}'
+systemctl mask coturn
+apt-get -o DPkg::Lock::Timeout=600 install -y coturn
+install -m 640 -g turnserver /dev/null /etc/turnserver.conf
+cat >>/etc/turnserver.conf <<'EOF'
+@TURNSERVER_CONF@
+EOF
+{ printf 'external-ip=@BOX_ADDRESS@/%s\nstatic-auth-secret=' "$private_ip"; cat /etc/sigill/turn-secret; } >>/etc/turnserver.conf
+systemctl unmask coturn
+systemctl enable --now coturn
+
+turn_urls="stun:turn.@DOMAIN@:3478,turn:turn.@DOMAIN@:3478?transport=udp,turn:turn.@DOMAIN@:3478?transport=tcp"
+ipv6=$(ip -6 -o addr show scope global | awk '{ sub("/.*", "", $4); print $4; exit }')
+if printf '%s\n' "$ipv6" | grep -Eqx '[0-9a-f]{0,4}(:[0-9a-f]{0,4}){2,7}'; then
+  turn_urls="$turn_urls,stun:[$ipv6]:3478"
+fi
+if systemctl is-active --quiet coturn; then
+  install -d /etc/systemd/system/sigill.service.d
+  cat >/etc/systemd/system/sigill.service.d/turn.conf <<EOF
+[Service]
+Environment=TURN_URLS=$turn_urls
+LoadCredential=turn-secret:/etc/sigill/turn-secret
+Environment=TURN_SECRET_FILE=%d/turn-secret
+EOF
+  systemctl daemon-reload
+  systemctl try-restart sigill
+fi
