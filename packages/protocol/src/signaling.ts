@@ -31,8 +31,8 @@ const ICE_URL_PATTERN = /^(turn|turns|stun):/;
 const ADDRESS_PATTERN =
   /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
 
-/** A link's secret: 32 random bytes as base64url, without padding. */
-const SECRET_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+/** A link's secret: 32 random bytes as base64url, without padding, so its last 2 bits are zero. */
+const SECRET_PATTERN = /^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/;
 
 const CODE_PATTERN = /^[0-9]{6}$/;
 

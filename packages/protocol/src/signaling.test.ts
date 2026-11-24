@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomBytes } from "node:crypto";
 import { test } from "node:test";
 import {
   CODE_RESULTS,
@@ -520,6 +521,18 @@ test("rejects a secret that is not 43 base64url characters, and a link URL inste
   const url = `https://fidant.se/r/${link}#${secret}`;
   assert.equal(client({ t: "email", link, to, url, from: "Anna", lang: "sv" }), undefined);
   assert.equal(client({ ...email, url }), undefined);
+});
+
+test("accepts only the one base64url form of a 32-byte secret", () => {
+  for (const last of "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_") {
+    const value = `${secret.slice(1)}${last}`;
+    const canonical = Buffer.from(value, "base64url").toString("base64url") === value;
+    assert.equal(client({ ...email, secret: value }) !== undefined, canonical, value);
+  }
+  for (let i = 0; i < 20; i += 1) {
+    const value = randomBytes(32).toString("base64url");
+    assert.deepEqual(client({ ...email, secret: value }), { ...email, secret: value });
+  }
 });
 
 test("rejects bad sender names and languages in an email message", () => {
