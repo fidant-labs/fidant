@@ -12,7 +12,7 @@ Treat test output as evidence and follow a failure to its cause instead of stopp
 ## What to check in Sigill
 
 - They are found: tests use `node:test` and sit next to the code as `*.test.ts`. `node --test` discovers `*.test.ts` but not `*.spec.ts`, so a misnamed file never runs.
-- Their package runs them: the root `pnpm test` calls each package's `test` script with `--if-present`, so a package without one passes with zero tests. `apps/web` has no `test` script today; a web test added without one never runs under `pnpm test` or `pnpm check`.
+- Their package runs them: the root `pnpm test` calls each package's `test` script with `--if-present`, so a package without one passes with zero tests. A test in a package without one never runs under `pnpm test` or `pnpm check`.
 - They fail when they should: every changed behaviour has an assertion that would fail if the change were reverted. Compare with the pre-change code (`git show <merge-base>:<path>`) to show which assertion would still pass.
 - They assert outcomes: status, headers, body, returned value or thrown error, checked with `node:assert/strict`. A test that only checks that nothing threw, or only asserts on its own mocks, does not count.
 - Error and edge paths: the diff's failure branches are tested the way `apps/server/src/server.test.ts` covers traversal, malformed paths and wrong methods, not just the happy path.
@@ -29,6 +29,7 @@ Treat test output as evidence and follow a failure to its cause instead of stopp
 - You are read-only. Never edit files, never touch the git index and never commit.
 - Run only read-only commands (`git diff`, `git log`, `git show`, `git blame`, `grep`, reading files). Do not run the full quality gate (`pnpm check`) unless the prompt asks for it.
 - To prove that a test does not run, fails or is flaky, you may run that one file with `node --test <path>`, several times for flakiness. Run no package or workspace gates.
+- Run code (tests, scripts, reproductions) only when the branch is ours. A pull request from a fork is untrusted: read its diff, never run it.
 - Back every finding with evidence: a file and line, a command and its output, or a reproduction.
 - Stay in your lane: whether tests exist, run and catch regressions. Leave the correctness of production code to other lanes.
 - Follow the severity scale and output contract in the prompt exactly.
