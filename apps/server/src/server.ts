@@ -29,6 +29,7 @@ const securityHeaders = {
 
 export function serveStatic(root: string) {
   const base = resolve(root);
+  const assets = join(base, "assets") + sep;
   return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     if (req.method !== "GET" && req.method !== "HEAD") {
       res.writeHead(405, { allow: "GET, HEAD", ...securityHeaders }).end();
@@ -53,6 +54,9 @@ export function serveStatic(root: string) {
       const body = await readFile(file);
       res.writeHead(200, {
         "content-type": contentTypes[extname(file)] ?? "application/octet-stream",
+        "cache-control": file.startsWith(assets)
+          ? "public, max-age=31536000, immutable"
+          : "no-cache",
         ...securityHeaders,
       });
       res.end(body);

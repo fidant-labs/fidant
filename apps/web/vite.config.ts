@@ -1,8 +1,38 @@
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
 
+const latinGeist = /^assets\/geist-latin-wght-normal-[\w-]+\.woff2$/;
+
 export default defineConfig({
-  plugins: [tailwindcss()],
+  plugins: [
+    tailwindcss(),
+    {
+      name: "preload-geist",
+      apply: "build",
+      transformIndexHtml(_html, ctx) {
+        const fonts = Object.keys(ctx.bundle ?? {}).filter((key) => latinGeist.test(key));
+        if (fonts.length !== 1) {
+          throw new Error(
+            `preload-geist: expected one bundle file matching ${latinGeist}, found ${fonts.length}`,
+          );
+        }
+        return [
+          {
+            tag: "link",
+            attrs: {
+              rel: "preload",
+              as: "font",
+              type: "font/woff2",
+              // Without crossorigin the preload misses the CSS font fetch and downloads twice.
+              crossorigin: true,
+              href: `/${fonts[0]}`,
+            },
+            injectTo: "head-prepend",
+          },
+        ];
+      },
+    },
+  ],
   resolve: {
     alias: [
       { find: /^react$/, replacement: "preact/compat" },
