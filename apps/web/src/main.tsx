@@ -56,20 +56,28 @@ function App() {
     document.title = t.tabTitles[route];
   }, [route, t]);
 
-  // A page change replaces or hides the link that had focus, so focus moves to the new page's
-  // heading (also on back and forward). The first render keeps the browser's own focus.
+  // A page change hides the focused link, so focus moves to the new page's or section's heading.
   const firstRoute = useRef(true);
   useEffect(() => {
+    // On a receive link the fragment is the decryption key, so it is never read there.
+    const named =
+      routeOf(location.pathname) === "receive"
+        ? null
+        : document.getElementById(location.hash.slice(1));
+    const target = named?.closest("main:not([hidden] *)") ? named : null;
+    target?.scrollIntoView();
     if (firstRoute.current) {
       firstRoute.current = false;
       return;
     }
-    const heading = document.querySelector<HTMLElement>("main:not([hidden] *) h1");
+    const heading =
+      target?.querySelector<HTMLElement>("h2") ??
+      document.querySelector<HTMLElement>("main:not([hidden] *) h1");
     if (!heading) {
       return;
     }
     heading.tabIndex = -1;
-    heading.focus();
+    heading.focus({ preventScroll: target !== null });
   }, [route]);
 
   const secure = hasSecureCrypto();

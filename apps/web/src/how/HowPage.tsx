@@ -17,7 +17,7 @@ export function HowPage() {
             key={id}
             id={id}
             aria-labelledby={`${id}-heading`}
-            class="mt-12 border-t border-border pt-12"
+            class="mt-12 scroll-mt-20 border-t border-border pt-12"
           >
             <h2 id={`${id}-heading`} class={`${display} m-0 mb-4 text-[1.75rem] sm:text-[2.1rem]`}>
               {heading}
