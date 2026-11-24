@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   copyFileSync,
   mkdirSync,
@@ -184,6 +185,20 @@ test("the app box is open only on 80, 443 and the relay's ports, and on 22 only 
   const topLevel = String(instance?.Properties.UserData).split("<<'EOF'")[0] ?? "";
   assert.match(topLevel, /^#!\/bin\/sh\n.*\nset -eux\n/);
   assert.doesNotMatch(topLevel, /pipefail|\[\[/);
+});
+
+test("the committed app box keeps its instance name, so a deploy does not replace it", () => {
+  const box = appBox();
+  const instance = box.findResources("AWS::Lightsail::Instance")[
+    onlyId(box, "AWS::Lightsail::Instance")
+  ]?.Properties;
+  const hash = createHash("sha256").update(instance?.UserData).digest("hex");
+  assert.equal(instance?.InstanceName, `fidant-app-${hash.slice(0, 8)}`);
+  assert.equal(
+    instance?.InstanceName,
+    "fidant-app-0460a729",
+    "a new instance name replaces the box; change this only on purpose",
+  );
 });
 
 test("the app box keeps log lines for at most 30 days, before any service starts logging", () => {
