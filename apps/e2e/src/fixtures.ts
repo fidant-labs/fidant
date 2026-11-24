@@ -287,6 +287,7 @@ export const delivered = (sender: Page, name: string) =>
   recipientRow(sender, name).getByText(`Delivered through ${name}'s link`);
 
 /** Lets a test cut the sender's peer connections (`cut()`) and stop its data channels sending (`stalled`). */
+// Serialized into the page by addInitScript, so it must not use anything from this module.
 export function breakableSender() {
   const g = globalThis as { cut?: () => void; stalled?: boolean };
   const peers: RTCPeerConnection[] = [];

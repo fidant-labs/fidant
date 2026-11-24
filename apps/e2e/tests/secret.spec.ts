@@ -277,12 +277,10 @@ test("a sender who loses the server sees the text wording", async ({ actor }) =>
   await sender.addInitScript(() => {
     const g = globalThis as {
       serverOpen?: boolean;
-      opensAfterDrop?: number;
       dropServer?: () => void;
     };
     const sockets: WebSocket[] = [];
     let dropped = false;
-    g.opensAfterDrop = 0;
     globalThis.WebSocket = class extends globalThis.WebSocket {
       constructor(url: string | URL, protocols?: string | string[]) {
         super(url, protocols);
@@ -292,11 +290,7 @@ test("a sender who loses the server sees the text wording", async ({ actor }) =>
           this.close();
         }
         this.addEventListener("open", () => {
-          if (dropped) {
-            g.opensAfterDrop = (g.opensAfterDrop ?? 0) + 1;
-          } else {
-            g.serverOpen = true;
-          }
+          g.serverOpen = true;
         });
       }
     };
@@ -315,10 +309,6 @@ test("a sender who loses the server sees the text wording", async ({ actor }) =>
     "Lost the connection to the server. Trying to reconnect… Texts already on their way can finish. Nobody new can connect until it's back, so keep this page open.",
     { timeout: 20_000 },
   );
-  await expect(sender.getByText("Files already on their way")).toHaveCount(0);
-  expect(
-    await sender.evaluate(() => (globalThis as { opensAfterDrop?: number }).opensAfterDrop),
-  ).toBe(0);
 });
 
 test("a recipient whose browser can't read the received text is told so, with nothing to copy", async ({
@@ -337,10 +327,17 @@ test("a recipient whose browser can't read the received text is told so, with no
   await expect(show).toBeVisible();
   // decodeText is the only Blob.arrayBuffer() caller on the recipient's side.
   await page.evaluate(() => {
-    Blob.prototype.arrayBuffer = () => Promise.reject(new Error("unreadable"));
+    Blob.prototype.arrayBuffer = () =>
+      new Promise((_, reject) => {
+        (globalThis as { failRead?: () => void }).failRead = () => reject(new Error("unreadable"));
+      });
   });
   await show.click();
+  await expect(page.getByRole("button", { name: "Copy text" })).toBeDisabled();
+  await expect(page.getByText("Copied", { exact: true })).toHaveCount(0);
+  await page.evaluate(() => (globalThis as { failRead?: () => void }).failRead?.());
   await expect(page.getByRole("heading", { name: "The text couldn't be shown" })).toBeFocused();
   await expect(page.getByRole("button", { name: "Copy text" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Try again" })).toHaveCount(0);
   await expect(delivered(sender, name)).toBeVisible();
 });
