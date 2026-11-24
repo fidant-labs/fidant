@@ -486,7 +486,7 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
           )}
           {lostServer && (
             <Alert variant="destructive" className="my-4">
-              <AlertDescription>{t.send.lostServer}</AlertDescription>
+              <AlertDescription>{text ? t.secret.lostServer : t.send.lostServer}</AlertDescription>
             </Alert>
           )}
 
@@ -501,6 +501,7 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
                 spellcheck={false}
                 translate={false}
                 autocomplete="off"
+                writingsuggestions="false"
                 // camelCase so Preact sets the attribute; the autocorrect property is a boolean in WebKit and Firefox.
                 autoCorrect="off"
                 autocapitalize="off"

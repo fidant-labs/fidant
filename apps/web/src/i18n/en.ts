@@ -334,6 +334,37 @@ export const en = {
     lede: "Paste a password, an API key or any short text. It goes from this browser to the people you choose, encrypted the whole way, and is never uploaded or stored.",
     label: "Your text",
     hint: (max: number) => `Up to ${max.toLocaleString("en-US")} characters.`,
+    lostServer:
+      "Lost the connection to the server. Trying to reconnect… Texts already on their way can finish. Nobody new can connect until it's back, so keep this page open.",
+    // Only the problems after an offer whose file wording would be wrong; the rest come from receive.problems.
+    problems: {
+      offline: {
+        title: "The sender's page is closed",
+        body: "The text comes straight from their browser, so it has to stay open. Ask them for a new link.",
+      },
+      offlineReceiving: {
+        title: "The sender's page is closed",
+        body: "The text comes straight from their browser, so it has to stay open. The text wasn't shown. Ask them for a new link.",
+      },
+      lost: {
+        title: "The connection to the sender was lost",
+        body: "The text wasn't shown.",
+      },
+      lostReceiving: {
+        title: "The connection to the sender was lost",
+        body: "The text wasn't shown. Try again to make sure you get it.",
+      },
+      checksum: {
+        title: "The text didn't arrive intact",
+        body: "It was changed or damaged on the way, so it was not shown. Try again, and tell the sender if it keeps happening.",
+        detail: "The SHA-256 checksum of the received text did not match the sender's.",
+      },
+      invalid: {
+        title: "Something went wrong with the transfer",
+        body: "The sender's browser sent data we couldn't read, so nothing was shown.",
+        detail: "A frame from the sender failed to decrypt or broke the transfer format.",
+      },
+    },
     back: "Back to the text",
     first: "Write or paste the text first.",
     locked: "Remove everyone to change your name or text.",
@@ -622,10 +653,10 @@ export const en = {
         body: [
           "The Share a secret page sends a typed or pasted text the same way as a file: the same keys, frames, checks and one-time links. Nothing is stored, so the sender's page must stay open until each recipient has the text.",
           "The sender's browser turns the text into a file that exists only in memory, with a fixed name and a type that marks it as a text. Like any file's, the name and type travel only inside the encrypted META. A text can have up to 10,000 characters, which is at most 30,000 bytes.",
-          "The text box tells the browser to turn off spell checking, autocorrect, automatic capitals, autocomplete and translation for it.",
+          "The text box tells the browser to turn off spell checking, autocorrect, automatic capitals, autocomplete, writing suggestions and translation for it. The box that shows a received text has autocomplete and writing suggestions off too.",
           "The recipient's browser treats an offer as a text only if it has exactly that type and is at most 32 KiB. Anything else is offered as a file. For a text, the recipient sees the sender's typed name but not the size, and chooses Show or Decline. After Decline the link still works.",
           "Show keeps the text in the browser's memory, never in a save dialog or a download. Only once the checks against END pass is the text decoded and shown: as plain text in a read-only box with spell checking and translation off, never as part of the page's HTML. The Copy text button puts it on the clipboard.",
-          "Our server and relay handle a text like any file. When the Share a secret page is loaded from our server, by typing its address, reloading or following a link, our server can see that someone opened it, but not whether or what they share. Page visits aren't logged.",
+          "Our server and relay handle a text like any file. When the Share a secret page is loaded from our server, by typing its address, reloading or following a link, our server can see that someone opened it. The page then opens a signaling connection like every sender page, and moving to it inside the app opens one too. The server never gets the text or its length, and a connection doesn't say which page opened it, but after a full load the server can tie the connection that follows from the same address to the visit and infer that this visitor shares a text and with how many links. Page visits aren't logged.",
         ],
       },
       {

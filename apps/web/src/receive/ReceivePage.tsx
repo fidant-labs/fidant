@@ -76,16 +76,18 @@ type CopyNote = keyof Messages["secret"]["copyNote"];
 /** Which problem to show. Text comes from the dictionary at render time, so a language switch re-renders it. */
 type ProblemKey = keyof Messages["receive"]["problems"];
 
+type ProblemText = { title: string; body: string; detail?: string };
+
 type Offer = FileOffer & { text: boolean };
 
 type View =
   | { s: "connecting" }
-  | { s: "refused"; problem: ProblemKey }
+  | { s: "refused"; problem: ProblemKey; text?: boolean }
   | { s: "offer"; offer: Offer }
   | { s: "receiving"; offer: Offer; bytes: number }
   | { s: "done"; offer: Offer; blob: Blob | undefined; sha256: string }
   | { s: "declined"; text: boolean }
-  | { s: "failed"; problem: ProblemKey };
+  | { s: "failed"; problem: ProblemKey; text?: boolean };
 
 type Attempt = {
   abort: AbortController;
@@ -95,6 +97,8 @@ type Attempt = {
   channelOpen: boolean;
   /** Set once a signal from the sender arrived, so the sender took this join. */
   heardSender: boolean;
+  /** Set once the offer turned out to be a text, so later problems use text wording. */
+  text: boolean;
   /** Set once the recipient accepted and the file started arriving. */
   receiving: boolean;
   /** The server said the sender is gone while the file was arriving. */
@@ -119,6 +123,12 @@ const MAX_REJOINS = 4;
 
 export function ReceivePage() {
   const { t, lang } = useI18n();
+  const problemFor = (view: { problem: ProblemKey; text?: boolean }): ProblemText => {
+    const problems: Record<ProblemKey, ProblemText> = view.text
+      ? { ...t.receive.problems, ...t.secret.problems }
+      : t.receive.problems;
+    return problems[view.problem];
+  };
   const link = useMemo(() => parseRecipientLocation(location), []);
   const [view, setView] = useState<View>({ s: "connecting" });
   const [picking, setPicking] = useState(false);
@@ -163,6 +173,7 @@ export function ReceivePage() {
       signaling,
       channelOpen: false,
       heardSender: false,
+      text: false,
       receiving: false,
       hostGone: false,
       relayRefused: false,
@@ -182,7 +193,11 @@ export function ReceivePage() {
         return;
       }
       release(attempt, linger);
-      setView(next);
+      setView(
+        attempt.text && (next.s === "refused" || next.s === "failed")
+          ? { ...next, text: true }
+          : next,
+      );
     };
     // The peer dropped, or never connected (ICE failed). If the sender's tab
     // closed, `host-gone` arrives within moments of the drop, before or after
@@ -379,6 +394,7 @@ export function ReceivePage() {
               text: isTextOffer(received),
             };
             offered = offer;
+            attempt.text = offer.text;
             attempt.decide = (sink) => {
               attempt.decide = undefined;
               if (sink) {
@@ -529,7 +545,7 @@ export function ReceivePage() {
       body = <h1>{t.receive.connecting}</h1>;
       break;
     case "refused":
-      body = <Problem {...t.receive.problems[view.problem]} />;
+      body = <Problem {...problemFor(view)} />;
       break;
     case "offer": {
       const { offer } = view;
@@ -643,8 +659,7 @@ export function ReceivePage() {
       );
       break;
     case "failed": {
-      const problem: { title: string; body: string; detail?: string } =
-        t.receive.problems[view.problem];
+      const problem = problemFor(view);
       body = (
         <>
           <Problem {...problem} />
@@ -722,6 +737,8 @@ function ShownText({ blob }: { blob: Blob }) {
         aria-label={t.secret.textLabel}
         spellcheck={false}
         translate={false}
+        autocomplete="off"
+        writingsuggestions="false"
       />
       <div class="flex flex-wrap items-center gap-3">
         <Button type="button" onClick={copy}>

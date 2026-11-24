@@ -334,6 +334,37 @@ export const sv: Messages = {
     lede: "Klistra in ett lösenord, en API-nyckel eller annan kort text. Den går från den här webbläsaren till dem du väljer, krypterad hela vägen, och laddas aldrig upp eller sparas.",
     label: "Din text",
     hint: (max: number) => `Högst ${max.toLocaleString("sv")} tecken.`,
+    lostServer:
+      "Anslutningen till servern bröts. Försöker ansluta igen… Texter som redan är på väg kan komma fram. Ingen ny kan ansluta förrän den är tillbaka, så håll sidan öppen.",
+    problems: {
+      offline: {
+        title: "Avsändarens sida är stängd",
+        body: "Texten kommer direkt från avsändarens webbläsare, så sidan måste vara öppen. Be om en ny länk.",
+      },
+      offlineReceiving: {
+        title: "Avsändarens sida är stängd",
+        body: "Texten kommer direkt från avsändarens webbläsare, så sidan måste vara öppen. Texten visades inte. Be om en ny länk.",
+      },
+      lost: {
+        title: "Anslutningen till avsändaren bröts",
+        body: "Texten visades inte.",
+      },
+      lostReceiving: {
+        title: "Anslutningen till avsändaren bröts",
+        body: "Texten visades inte. Försök igen för att vara säker på att du får den.",
+      },
+      checksum: {
+        title: "Texten kom inte fram oskadd",
+        body: "Den ändrades eller skadades på vägen, så den visades inte. Försök igen, och säg till avsändaren om det fortsätter att hända.",
+        detail: "SHA-256-kontrollsumman för den mottagna texten stämde inte med avsändarens.",
+      },
+      invalid: {
+        title: "Något gick fel med överföringen",
+        body: "Avsändarens webbläsare skickade data som vi inte kunde läsa, så ingenting visades.",
+        detail:
+          "En del av överföringen från avsändaren gick inte att dekryptera eller följde inte överföringsformatet.",
+      },
+    },
     back: "Tillbaka till texten",
     first: "Skriv eller klistra in texten först.",
     locked: "Ta bort alla mottagare för att ändra ditt namn eller din text.",
@@ -612,10 +643,10 @@ export const sv: Messages = {
         body: [
           "Sidan Dela en hemlighet skickar en text som du skriver eller klistrar in på samma sätt som en fil: samma nycklar, ramar, kontroller och engångslänkar. Ingenting sparas, så avsändarens sida måste vara öppen tills varje mottagare har fått texten.",
           "Avsändarens webbläsare gör om texten till en fil som bara finns i minnet, med ett fast namn och en typ som visar att det är en text. Precis som för en fil finns namnet och typen bara i den krypterade META. En text kan ha upp till 10 000 tecken, vilket är högst 30 000 byte.",
-          "Textrutan säger åt webbläsaren att stänga av stavningskontroll, autokorrigering, automatisk stor bokstav, autofyll och översättning för den.",
+          "Textrutan säger åt webbläsaren att stänga av stavningskontroll, autokorrigering, automatisk stor bokstav, autofyll, skrivförslag och översättning för den. Rutan som visar en mottagen text har också autofyll och skrivförslag avstängda.",
           "Mottagarens webbläsare behandlar ett erbjudande som en text bara om det har exakt den typen och är högst 32 KiB. Allt annat erbjuds som en fil. För en text ser mottagaren namnet som avsändaren skrev men inte storleken, och väljer Visa eller Tacka nej. Efter Tacka nej fungerar länken fortfarande.",
           "Visa håller texten i webbläsarens minne, aldrig i en sparadialog eller en nedladdning. Först när kontrollerna mot END stämmer avkodas texten och visas: som ren text i en skrivskyddad ruta med stavningskontroll och översättning avstängda, aldrig som en del av sidans HTML. Knappen Kopiera text lägger den i urklippet.",
-          "Vår server och vårt relä hanterar en text som vilken fil som helst. När sidan Dela en hemlighet laddas från vår server, genom att någon skriver adressen, laddar om sidan eller följer en länk, kan vår server se att någon har öppnat den, men varken om något delas eller vad som delas. Sidvisningar loggas inte.",
+          "Vår server och vårt relä hanterar en text som vilken fil som helst. När sidan Dela en hemlighet laddas från vår server, genom att någon skriver adressen, laddar om sidan eller följer en länk, kan vår server se att någon har öppnat den. Sidan öppnar sedan en signaleringsanslutning som varje avsändarsida gör, och när man går till den inne i appen öppnas också en. Servern får aldrig texten eller dess längd, och en anslutning säger inte vilken sida som öppnade den, men efter en full laddning kan servern koppla anslutningen som följer från samma adress till besöket och dra slutsatsen att den som besöker sidan delar en text och med hur många länkar. Sidvisningar loggas inte.",
         ],
       },
       {

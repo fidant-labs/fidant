@@ -20,6 +20,7 @@ function makeName(leaks: Leaks, canary: SeededRandom, first: string): string {
 /** Fills the text and the sender's name on /secret, adds a recipient and returns their link, with its secret watched. */
 async function share(leaks: Leaks, sender: Page, text: string, from: string, name: string) {
   await sender.getByLabel("Your text").fill(text);
+  await expect(sender.getByLabel("Your text")).toHaveAttribute("writingsuggestions", "false");
   if (from) {
     await sender.locator("#secret-from").fill(from);
   }
@@ -107,6 +108,8 @@ test("a text goes from /secret to the recipient, who shows and copies it", async
   await expect(shown).toHaveValue(text);
   await expect(shown).toHaveJSProperty("spellcheck", false);
   await expect(shown).toHaveJSProperty("translate", false);
+  await expect(shown).toHaveAttribute("autocomplete", "off");
+  await expect(shown).toHaveAttribute("writingsuggestions", "false");
   await expect(shown).toHaveJSProperty("readOnly", true);
   await expect(page.locator("body")).not.toContainText("secret.txt");
 
@@ -152,4 +155,23 @@ test("declining a text keeps the link working", async ({ actor, leaks, canary })
   await page.getByRole("button", { name: "Show", exact: true }).click();
   await expect(page.getByRole("textbox", { name: "The text" })).toHaveValue(text);
   await expect(delivered(sender, name)).toBeVisible();
+});
+
+test("a recipient sees the text wording when the sender closes the page during the offer", async ({
+  actor,
+  leaks,
+  canary,
+}) => {
+  const text = makeText(leaks, canary);
+  const name = makeName(leaks, canary, "Greta");
+  const { page: sender } = await actor("sender");
+  await sender.goto("/secret");
+  const link = await share(leaks, sender, text, "", name);
+
+  const { page } = await openRecipient(actor, link);
+  await expect(page.getByRole("button", { name: "Show", exact: true })).toBeVisible();
+  await sender.close();
+  await expect(page.getByText("The sender's page is closed")).toBeVisible();
+  await expect(page.getByText("The text comes straight from their browser")).toBeVisible();
+  await expect(page.getByText("The file comes straight from their browser")).toHaveCount(0);
 });
