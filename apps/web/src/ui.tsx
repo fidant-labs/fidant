@@ -219,9 +219,9 @@ function Choice<T extends string>({
   );
 }
 
-/** The header shows the theme menu from the sm breakpoint up, the footer below it. */
 type ThemeProps = { theme: Theme; onTheme(next: Theme): void };
 
+/** The header shows this menu from the sm breakpoint up, the footer below it. */
 function ThemeMenu({ theme, onTheme }: ThemeProps) {
   const { t } = useI18n();
   return (
