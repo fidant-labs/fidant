@@ -208,7 +208,7 @@ server → sender    email {link, status, mark}              sent or failed, wit
 - The secret and the typed name exist on the server only in that send attempt, until it ends. They are never stored or logged.
 - The reply to the sender carries the value, never the secret: `sent`, or `failed` if the attempt failed or timed out. A failed notice leaves the link email-bound, because a timed-out notice may still arrive. To send again, the sender removes the recipient and adds them again, which makes a new link.
 - The sender's card offers no link until the reply arrives. With a value, the page builds the same marked link from its own secret and shows and copies only that. After a refusal without a value, it offers the plain link.
-- The notice is plain text, from `MAIL_FROM` to that one address, with no Reply-To. Its subject names neither the sender nor the file. Its body has the typed name marked as not verified ("Someone" when it is empty) and the link, and says "a file or a text" for both. No email names the file, gives its size or type, or says whether the link carries a file or a text.
+- The notice is plain text, from `MAIL_FROM` to that one address, with no Reply-To. Its subject names neither the sender nor the file. Its body has the typed name marked as not verified ("Someone" when it is empty) and the link, and says "a file or a secret" for both. No email names the file, gives its size or type, or says whether the link carries a file or a text.
 
 ### Opening an emailed link
 

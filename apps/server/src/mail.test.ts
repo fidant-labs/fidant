@@ -28,11 +28,11 @@ test("the notice says someone when the sender typed no name", () => {
   for (const from of ["", "  "]) {
     assert.match(
       compose({ to, lang: "en", url, from }).text,
-      /^Someone wants to send you a file or a text\./,
+      /^Someone wants to send you a file or a secret\./,
     );
     assert.match(
       compose({ to, lang: "sv", url, from }).text,
-      /^Någon vill skicka en fil eller en text till dig\./,
+      /^Någon vill skicka en fil eller en hemlighet till dig\./,
     );
   }
 });

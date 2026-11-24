@@ -866,7 +866,7 @@ test.describe("emailed links", () => {
     const emailed = await addEmailed(leaks, sender, name, to, from);
     expect(emailed.notice.HTML).toBe("");
     expect(emailed.notice.Text).toContain(
-      `${from} (name typed by the sender, not verified) wants to send you a file or a text.`,
+      `${from} (name typed by the sender, not verified) wants to send you a file or a secret.`,
     );
 
     const recipient = await demo.open("recipient");

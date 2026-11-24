@@ -15,8 +15,8 @@ const TEXT = {
   en: {
     noticeSubject: "A link for you on Fidant",
     named: (name: string) =>
-      `${name} (name typed by the sender, not verified) wants to send you a file or a text.`,
-    someone: "Someone wants to send you a file or a text.",
+      `${name} (name typed by the sender, not verified) wants to send you a file or a secret.`,
+    someone: "Someone wants to send you a file or a secret.",
     open: "Open this link to get it:",
     noticeEnd: [
       "What they send is not stored anywhere. The link works only while the sender's page is open.",
@@ -32,8 +32,8 @@ const TEXT = {
   sv: {
     noticeSubject: "En länk till dig på Fidant",
     named: (name: string) =>
-      `${name} (namn som avsändaren skrivit in, inte verifierat) vill skicka en fil eller en text till dig.`,
-    someone: "Någon vill skicka en fil eller en text till dig.",
+      `${name} (namn som avsändaren skrivit in, inte verifierat) vill skicka en fil eller en hemlighet till dig.`,
+    someone: "Någon vill skicka en fil eller en hemlighet till dig.",
     open: "Öppna länken för att hämta den:",
     noticeEnd: [
       "Det som skickas sparas inte någonstans. Länken fungerar bara medan avsändarens sida är öppen.",
