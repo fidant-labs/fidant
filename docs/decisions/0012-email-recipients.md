@@ -1,4 +1,4 @@
-# 0010: Email recipients
+# 0012: Email recipients
 
 - Status: Accepted
 - Date: 2026-11-24
