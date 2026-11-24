@@ -135,6 +135,10 @@ for (const transport of ["udp", "tcp"] as const) {
       await expect(
         page.getByText("So the file goes through our relay in Stockholm."),
       ).toBeVisible();
+      await expect(page.getByRole("link", { name: /More about how it works/ })).toHaveAttribute(
+        "href",
+        "/how#relay",
+      );
       // The only ICE servers the page was given are the local coturn's.
       const urls = await peerList(page, "iceUrls");
       expect(urls?.length).toBeGreaterThan(0);
