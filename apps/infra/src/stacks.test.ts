@@ -368,6 +368,28 @@ test("fidant.se gets the mail records", () => {
   });
 });
 
+test("fidant.se verifies and sends SES mail for notify with SPF and MX, and no other zone does", () => {
+  const records = [
+    ["notify.fidant.se.", "MX", ["0 ."]],
+    ["notify.fidant.se.", "TXT", ['"v=spf1 -all"']],
+    ["bounce.notify.fidant.se.", "MX", ["10 feedback-smtp.eu-north-1.amazonses.com"]],
+    ["bounce.notify.fidant.se.", "TXT", ['"v=spf1 include:amazonses.com -all"']],
+  ] as const;
+  const all = Object.values(dns.findResources("AWS::Route53::RecordSet"));
+  for (const [Name, Type, ResourceRecords] of records) {
+    const found = all.filter((r) => r.Properties.Name === Name && r.Properties.Type === Type);
+    assert.equal(found.length, 1);
+    assert.deepEqual(found[0]?.Properties.ResourceRecords, ResourceRecords);
+    assert.deepEqual(found[0]?.Properties.HostedZoneId, zoneRef("fidant.se"));
+  }
+  assert.equal(all.filter((r) => String(r.Properties.Name).startsWith("_dmarc.notify")).length, 0);
+  for (const record of all) {
+    if (record.Properties.Type === "TXT") {
+      assert.doesNotMatch(JSON.stringify(record.Properties.ResourceRecords), /ruf=/);
+    }
+  }
+});
+
 test("every site name points at the box over IPv4 only", () => {
   for (const name of siteNames) {
     dns.hasResourceProperties("AWS::Route53::RecordSet", {

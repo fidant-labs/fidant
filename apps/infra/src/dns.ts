@@ -1,7 +1,7 @@
 import { CfnOutput, Fn, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
 import * as route53 from "aws-cdk-lib/aws-route53";
 import type { Construct } from "constructs";
-import { type Mail, primaryDomain, zoneNames } from "./config.ts";
+import { type Mail, mailDomain, mailRegion, primaryDomain, zoneNames } from "./config.ts";
 
 export type DnsStackProps = StackProps & {
   mail: Mail;
@@ -27,6 +27,31 @@ function addMail(zone: route53.IHostedZone, mail: Mail): void {
   }
 }
 
+function addSesRecords(zone: route53.IHostedZone): void {
+  const bounce = `bounce.${mailDomain}`;
+  const name = (domain: string) => domain.slice(0, -`.${primaryDomain}`.length);
+  new route53.MxRecord(zone, "NotifyMx", {
+    zone,
+    recordName: name(mailDomain),
+    values: [{ priority: 0, hostName: "." }],
+  });
+  new route53.TxtRecord(zone, "NotifySpf", {
+    zone,
+    recordName: name(mailDomain),
+    values: ["v=spf1 -all"],
+  });
+  new route53.MxRecord(zone, "BounceMx", {
+    zone,
+    recordName: name(bounce),
+    values: [{ priority: 10, hostName: `feedback-smtp.${mailRegion}.amazonses.com` }],
+  });
+  new route53.TxtRecord(zone, "BounceSpf", {
+    zone,
+    recordName: name(bounce),
+    values: ["v=spf1 include:amazonses.com -all"],
+  });
+}
+
 function addNoMail(zone: route53.IHostedZone): void {
   new route53.MxRecord(zone, "NullMx", { zone, values: [{ priority: 0, hostName: "." }] });
   new route53.TxtRecord(zone, "Spf", { zone, values: ["v=spf1 -all"] });
@@ -50,6 +75,7 @@ export class DnsStack extends Stack {
 
       if (zoneName === primaryDomain) {
         addMail(zone, props.mail);
+        addSesRecords(zone);
       } else {
         addNoMail(zone);
       }
