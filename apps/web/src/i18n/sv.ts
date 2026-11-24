@@ -372,35 +372,35 @@ export const sv: Messages = {
     },
   },
   secret: {
-    lede: "Klistra in ett lösenord, en API-nyckel eller annan kort text. Den går från den här webbläsaren till dem du väljer, krypterad hela vägen, och laddas aldrig upp eller sparas.",
-    label: "Din text",
+    lede: "Klistra in ett lösenord, en API-nyckel eller en annan kort hemlighet. Den går från den här webbläsaren till dem du väljer, krypterad hela vägen, och laddas aldrig upp eller sparas.",
+    label: "Din hemlighet",
     hint: (max: number) => `Högst ${max.toLocaleString("sv")} tecken.`,
     count: (length: number, max: number) =>
       `${length.toLocaleString("sv")} av ${max.toLocaleString("sv")} tecken.`,
-    tooLong: "Korta texten för att kunna dela den.",
+    tooLong: "Korta hemligheten för att kunna dela den.",
     lostServer:
-      "Anslutningen till servern bröts. Försöker ansluta igen… Texter som redan är på väg kan komma fram. Ingen ny kan ansluta förrän den är tillbaka, så håll sidan öppen.",
+      "Anslutningen till servern bröts. Försöker ansluta igen… Hemligheter som redan är på väg kan komma fram. Ingen ny kan ansluta förrän den är tillbaka, så håll sidan öppen.",
     problems: {
       offline: {
         title: "Avsändarens sida är stängd",
-        body: "Texten kommer direkt från avsändarens webbläsare, så sidan måste vara öppen. Be om en ny länk.",
+        body: "Hemligheten kommer direkt från avsändarens webbläsare, så sidan måste vara öppen. Be om en ny länk.",
       },
       offlineReceiving: {
         title: "Avsändarens sida är stängd",
-        body: "Texten kommer direkt från avsändarens webbläsare, så sidan måste vara öppen. Texten visades inte. Be om en ny länk.",
+        body: "Hemligheten kommer direkt från avsändarens webbläsare, så sidan måste vara öppen. Hemligheten visades inte. Be om en ny länk.",
       },
       lost: {
         title: "Anslutningen till avsändaren bröts",
-        body: "Texten visades inte.",
+        body: "Hemligheten visades inte.",
       },
       lostReceiving: {
         title: "Anslutningen till avsändaren bröts",
-        body: "Texten visades inte. Försök igen för att vara säker på att du får den.",
+        body: "Hemligheten visades inte. Försök igen för att vara säker på att du får den.",
       },
       checksum: {
-        title: "Texten kom inte fram oskadd",
+        title: "Hemligheten kom inte fram oskadd",
         body: "Den ändrades eller skadades på vägen, så den visades inte. Försök igen, och säg till avsändaren om det fortsätter att hända.",
-        detail: "SHA-256-kontrollsumman för den mottagna texten stämde inte med avsändarens.",
+        detail: "SHA-256-kontrollsumman för den mottagna hemligheten stämde inte med avsändarens.",
       },
       invalid: {
         title: "Något gick fel med överföringen",
@@ -409,32 +409,32 @@ export const sv: Messages = {
           "En del av överföringen från avsändaren gick inte att dekryptera eller följde inte överföringsformatet.",
       },
     },
-    back: "Tillbaka till texten",
-    first: "Skriv eller klistra in texten först.",
-    locked: "Ta bort alla mottagare för att ändra ditt namn eller din text.",
-    keepOpen: "Ha fliken öppen tills alla har fått texten. Den skickas härifrån.",
+    back: "Tillbaka till hemligheten",
+    first: "Skriv eller klistra in hemligheten först.",
+    locked: "Ta bort alla mottagare för att ändra ditt namn eller din hemlighet.",
+    keepOpen: "Ha fliken öppen tills alla har fått hemligheten. Den skickas härifrån.",
     emailNotice:
-      "Fidant mejlar länken åt dig, så vår server ser länkens nyckel en gång. Nyckeln sparas inte och loggas inte. Länken, nyckeln också, ligger kvar i mottagarens inkorg, så alla som kan läsa den inkorgen skulle kunna ta emot texten.",
+      "Fidant mejlar länken åt dig, så vår server ser länkens nyckel en gång. Nyckeln sparas inte och loggas inte. Länken, nyckeln också, ligger kvar i mottagarens inkorg, så alla som kan läsa den inkorgen skulle kunna ta emot hemligheten.",
     status: {
       declined: (name: string) =>
-        `Länken till ${name} öppnades och texten avböjdes. Länken fungerar fortfarande.`,
+        `Länken till ${name} öppnades och hemligheten avböjdes. Länken fungerar fortfarande.`,
       failed: (name: string) =>
-        `Texten kom inte fram oskadd via länken till ${name}. Länken kan öppnas igen för att försöka på nytt.`,
+        `Hemligheten kom inte fram oskadd via länken till ${name}. Länken kan öppnas igen för att försöka på nytt.`,
     },
     offerTitle: (from: string) =>
-      from ? `${from} har skickat en text till dig` : "Du har fått en text",
+      from ? `${from} har skickat en hemlighet till dig` : "Du har fått en hemlighet",
     show: "Visa",
-    receivingTitle: "Öppnar texten…",
-    doneTitle: "Här är texten",
-    textLabel: "Texten",
+    receivingTitle: "Öppnar hemligheten…",
+    doneTitle: "Här är hemligheten",
+    textLabel: "Hemligheten",
     notSaved: "Den sparas inte någonstans. Kopiera den innan du stänger fliken.",
-    copy: "Kopiera text",
+    copy: "Kopiera hemligheten",
     copyNote: {
       copied: "Kopierad",
-      failed: "Det gick inte att kopiera. Markera texten och kopiera den själv.",
+      failed: "Det gick inte att kopiera. Markera hemligheten och kopiera den själv.",
     },
-    declinedTitle: "Du tackade nej till texten",
-    showAgain: "Visa texten igen",
+    declinedTitle: "Du tackade nej till hemligheten",
+    showAgain: "Visa hemligheten igen",
   },
   server: {
     heading: "Vad vår server har just nu",
@@ -685,7 +685,7 @@ export const sv: Messages = {
       {
         heading: "Två lager kryptering",
         body: [
-          "WebRTC krypterar anslutningen mellan webbläsarna med DTLS. Fidant litar inte bara på det: varje ram efter INIT krypteras också med AES-256-GCM under filnyckeln, som bara de två webbläsarna har. För en länk som vi mejlar har vår server haft hemligheten som filnyckeln tas fram ur.",
+          "WebRTC krypterar anslutningen mellan webbläsarna med DTLS. Fidant litar inte bara på det: varje ram efter INIT krypteras också med AES-256-GCM under filnyckeln, som bara de två webbläsarna har. För en länk som vi mejlar har vår server haft länkens hemlighet, som filnyckeln tas fram ur.",
           "Varje ram börjar med ett huvud på 10 byte med version, typ och löpnummer. Huvudet autentiseras tillsammans med ramen, och nonce byggs av riktningen och löpnumret, så de två riktningarna delar aldrig nonce. En webbläsare tar bara emot nästa löpnummer, så en ram som tappas, kastas om, upprepas eller ändras stoppar överföringen.",
         ],
       },
@@ -714,18 +714,18 @@ export const sv: Messages = {
         body: [
           "Den som kan se den krypterade trafiken, till exempel nätverken på vägen eller vårt relä, ser hur stora ramarna är. Därför avrundas storleken uppåt med metoden Padmé, som lägger till högst 12 %, och sedan till hela delar. Alla ramar med fildata är lika stora, och utfyllnaden är nollor som mottagaren kontrollerar.",
           "Den exakta storleken finns bara i de krypterade META och END. META är alltid lika stor, så inte heller filnamnets längd syns.",
-          "En delad text är högst 32 KiB, och varje text fylls ut till exakt en del, så länge förbindelsen tillåter tillräckligt stora meddelanden. Med alla webbläsare vi testade i november 2026 (Chromium, Firefox och WebKit) är den delen 48 KiB. Så varje text ser likadan ut på nätet, oavsett längd, och likadan som vilken fil som helst på upp till 48 KiB.",
+          "En delad hemlighet är högst 32 KiB, och varje delad hemlighet fylls ut till exakt en del, så länge förbindelsen tillåter tillräckligt stora meddelanden. Med alla webbläsare vi testade i november 2026 (Chromium, Firefox och WebKit) är den delen 48 KiB. Så varje delad hemlighet ser likadan ut på nätet, oavsett längd, och likadan som vilken fil som helst på upp till 48 KiB.",
         ],
       },
       {
-        heading: "Att dela en text",
+        heading: "Att dela en hemlighet",
         body: [
-          "Sidan Dela en hemlighet skickar en text som du skriver eller klistrar in på samma sätt som en fil: samma nycklar, ramar, kontroller och engångslänkar. Ingenting sparas, så avsändarens sida måste vara öppen tills varje mottagare har fått texten.",
-          "Avsändarens webbläsare gör om texten till en fil som bara finns i minnet, med ett fast namn och en typ som visar att det är en text. Precis som för en fil finns namnet och typen bara i den krypterade META. En text kan ha upp till 10 000 tecken, vilket är högst 30 000 byte.",
+          "Sidan Dela en hemlighet skickar en hemlighet som du skriver eller klistrar in på samma sätt som en fil: samma nycklar, ramar, kontroller och engångslänkar. Ingenting sparas, så avsändarens sida måste vara öppen tills varje mottagare har fått den delade hemligheten.",
+          "Avsändarens webbläsare gör om den delade hemligheten till en fil som bara finns i minnet, med ett fast namn och en typ som visar att det är en delad hemlighet. Precis som för en fil finns namnet och typen bara i den krypterade META. En delad hemlighet kan ha upp till 10 000 tecken, vilket är högst 30 000 byte.",
           "Textrutan säger åt webbläsaren att stänga av stavningskontroll, autokorrigering, automatisk stor bokstav, autofyll, skrivförslag och översättning för den.",
-          "Mottagarens webbläsare behandlar ett erbjudande som en text bara om det har exakt den typen och är högst 32 KiB. Allt annat erbjuds som en fil. För en text ser mottagaren namnet som avsändaren skrev men inte storleken, och väljer Visa eller Tacka nej. Efter Tacka nej fungerar länken fortfarande.",
-          "Visa håller texten i webbläsarens minne, aldrig i en sparadialog eller en nedladdning. Först när kontrollerna mot END stämmer avkodas texten och visas, som ren text med översättning avstängd. Sidan lägger in den som text och tolkar den aldrig som HTML. Den ligger inte i ett formulärfält, vars innehåll en webbläsare kan spara med sessionen. Knappen Kopiera text lägger den i urklippet.",
-          "Vår server och vårt relä hanterar en text som vilken fil som helst. När sidan Dela en hemlighet laddas från vår server, genom att någon skriver adressen, laddar om sidan eller följer en länk, kan vår server se att någon har öppnat den. Sidan öppnar sedan en signaleringsanslutning som varje avsändarsida gör, och när man går till den inne i appen öppnas också en. Servern får aldrig texten eller dess längd, och en anslutning säger inte vilken sida som öppnade den, men efter en full laddning kan servern koppla anslutningen som följer från samma adress till besöket och dra slutsatsen att den som besöker sidan delar en text och med hur många länkar. Sidvisningar loggas inte.",
+          "Mottagarens webbläsare behandlar ett erbjudande som en delad hemlighet bara om det har exakt den typen och är högst 32 KiB. Allt annat erbjuds som en fil. För en delad hemlighet ser mottagaren namnet som avsändaren skrev men inte storleken, och väljer Visa eller Tacka nej. Efter Tacka nej fungerar länken fortfarande.",
+          "Visa håller den delade hemligheten i webbläsarens minne, aldrig i en sparadialog eller en nedladdning. Först när kontrollerna mot END stämmer avkodas den och visas, som ren text med översättning avstängd. Sidan lägger in den som text och tolkar den aldrig som HTML. Den ligger inte i ett formulärfält, vars innehåll en webbläsare kan spara med sessionen. Knappen Kopiera hemligheten lägger den i urklippet.",
+          "Vår server och vårt relä hanterar en delad hemlighet som vilken fil som helst. När sidan Dela en hemlighet laddas från vår server, genom att någon skriver adressen, laddar om sidan eller följer en länk, kan vår server se att någon har öppnat den. Sidan öppnar sedan en signaleringsanslutning som varje avsändarsida gör, och när man går till den inne i appen öppnas också en. Servern får aldrig den delade hemligheten eller dess längd, och en anslutning säger inte vilken sida som öppnade den, men efter en full laddning kan servern koppla anslutningen som följer från samma adress till besöket och dra slutsatsen att den som besöker sidan delar en hemlighet och med hur många länkar. Sidvisningar loggas inte.",
         ],
       },
       {
@@ -756,19 +756,19 @@ export const sv: Messages = {
       {
         heading: "Mejlade länkar",
         body: [
-          "Den som skickar en fil eller en text kan ange en mottagares e-postadress. Avsändarens sida skickar då ett meddelande till vår server med länk-ID:t, adressen, länkens hemlighet, namnet avsändaren skrev och sidans språk. Det är det enda fallet där en länks hemlighet lämnar webbläsaren.",
-          "Vår server väljer ett slumpmässigt värde och mejlar mottagaren länken med värdet framför hemligheten: https://fidant.se/r/<länk-ID>#e.<värde>.<hemlighet>. Den gör ett försök, med en tidsgräns, och försöker aldrig igen. Den har hemligheten och avsändarens namn bara tills försöket är över, och sparar eller loggar dem aldrig. Mejlet är ren text. Det visar namnet avsändaren skrev, markerat som inte verifierat, och säger ingenting om filen eller texten, inte ens vilket det är.",
+          "Den som skickar en fil eller delar en hemlighet kan ange en mottagares e-postadress. Avsändarens sida skickar då ett meddelande till vår server med länk-ID:t, adressen, länkens hemlighet, namnet avsändaren skrev och sidans språk. Det är det enda fallet där en länks hemlighet lämnar webbläsaren.",
+          "Vår server väljer ett slumpmässigt värde och mejlar mottagaren länken med värdet framför länkens hemlighet: https://fidant.se/r/<länk-ID>#e.<värde>.<hemlighet>. Den gör ett försök, med en tidsgräns, och försöker aldrig igen. Den har länkens hemlighet och avsändarens namn bara tills försöket är över, och sparar eller loggar dem aldrig. Mejlet är ren text. Det visar namnet avsändaren skrev, markerat som inte verifierat, och säger ingenting om vad som skickas, inte ens om det är en fil eller en delad hemlighet.",
           "Innan mottagarens sida ansluter skickar den värdet till vår server. Bara om det stämmer visar servern en maskerad adress, till exempel a***@example.se, och mejlar en sexsiffrig kod dit när mottagaren ber om den. En kod gäller i 10 minuter, och efter 5 felaktiga försök slutar den gälla. Rätt kod ger en slumpmässig token som bara den webbläsarfliken har, och servern kopplar inte ihop någon med en mejlad länk utan en sådan. Den som bara har länk-ID:t, eller en mejlad länk som har slutat fungera, kan inte se adressen, inte få oss att skicka koder och inte ansluta.",
           "Vår server har adressen, värdet, koderna och tokens i minnet medan avsändarens sida har länken. När avsändaren tar bort mottagaren, stänger sidan eller tappar anslutningen till vår server, eller när servern startas om, försvinner allt det och den mejlade länken slutar fungera. För att begränsa missbruk räknar servern mejl i en timme under en förvrängd form av varje adress (en HMAC med en slumpmässig nyckel), aldrig under själva adressen: högst 20 mejl i timmen från en anslutning, 50 från en IP-adress och 5 till en e-postadress, och högst 5 koder per länk, med 30 sekunders mellanrum, och 10 i timmen till en adress.",
-          "Haken: nyckeln står i mejlet. Vår server har haft den, vår e-posttjänst och den som läser mejlet på vägen kan se den, och den ligger kvar i mottagarens inkorg. Koden hindrar att en vidarebefordrad länk eller en e-postskanner tar emot filen eller texten, men inte den som kan läsa inkorgen. Och eftersom vår server har haft nyckeln skulle den kunna ställa sig mellan de två webbläsarna för den länken. Kontrollord som båda skärmarna visar, som är planerade, ska göra det möjligt att upptäcka det. Vill du undvika allt det här, lämna e-postadressen tom och skicka länken själv.",
+          "Haken: nyckeln står i mejlet. Vår server har haft den, vår e-posttjänst och den som läser mejlet på vägen kan se den, och den ligger kvar i mottagarens inkorg. Koden hindrar att en vidarebefordrad länk eller en e-postskanner tar emot filen eller den delade hemligheten, men inte den som kan läsa inkorgen. Och eftersom vår server har haft nyckeln skulle den kunna ställa sig mellan de två webbläsarna för den länken. Kontrollord som båda skärmarna visar, som är planerade, ska göra det möjligt att upptäcka det. Vill du undvika allt det här, lämna e-postadressen tom och skicka länken själv.",
         ],
       },
       {
         heading: "Vad vår server och vårt relä ser och sparar",
         body: [
-          "Vår server ser varje sidas IP-adress och webbläsaruppgifter, länk-ID:na, avsändarens val om reläet, vilken väg avsändaren rapporterar för varje försök (direkt, STUN, relä eller misslyckad), om en länk redan har använts, när varje sida ansluter och kopplar ner samt de krypterade meddelandena för uppkopplingen och deras storlek. Den ser aldrig filen, dess namn, typ eller exakta storlek, och inte heller en delad text eller dess längd. Den ser aldrig hemligheten eller nycklarna och kan inte läsa meddelandena, utom för en länk som vi mejlar: då får den länkens hemlighet en gång för att skriva mejlet, tillsammans med mottagarens e-postadress och namnet avsändaren skrev. Den har det den vet bara i minnet och glömmer en sida inom en minut efter att den kopplat ner. Undantagen är en mejlad länks adress, koder och tokens, som finns kvar tills avsändarens sida släpper länken, och antalet mejl, som finns kvar en timme.",
+          "Vår server ser varje sidas IP-adress och webbläsaruppgifter, länk-ID:na, avsändarens val om reläet, vilken väg avsändaren rapporterar för varje försök (direkt, STUN, relä eller misslyckad), om en länk redan har använts, när varje sida ansluter och kopplar ner samt de krypterade meddelandena för uppkopplingen och deras storlek. Den ser aldrig filen, dess namn, typ eller exakta storlek, och inte heller en delad hemlighet eller dess längd. Den ser aldrig en länks hemlighet eller nycklarna och kan inte läsa meddelandena, utom för en länk som vi mejlar: då får den länkens hemlighet en gång för att skriva mejlet, tillsammans med mottagarens e-postadress och namnet avsändaren skrev. Den har det den vet bara i minnet och glömmer en sida inom en minut efter att den kopplat ner. Undantagen är en mejlad länks adress, koder och tokens, som finns kvar tills avsändarens sida släpper länken, och antalet mejl, som finns kvar en timme.",
           "Dess loggrader har en fast lista med fält, till exempel de 6 första tecknen i ett länk-ID och om en förbindelse gick direkt. Aldrig namn, e-postadresser, koder, nycklar, filinnehåll eller IP-adresser. De raderas efter 30 dagar.",
-          "Vårt relä ser båda IP-adresserna och den krypterade trafiken, alltså filens storlek bara ungefär och ingenting av en texts längd. Det för ingen logg. Bara för att rätta ett fel eller stoppa missbruk slår vi på en, med tider för anslutningar, IP-adresser och datamängder, i högst 7 dagar.",
+          "Vårt relä ser båda IP-adresserna och den krypterade trafiken, alltså filens storlek bara ungefär och ingenting av en delad hemlighets längd. Det för ingen logg. Bara för att rätta ett fel eller stoppa missbruk slår vi på en, med tider för anslutningar, IP-adresser och datamängder, i högst 7 dagar.",
         ],
         link: ["Alla loggfält, på integritetssidan", "/privacy"],
       },
@@ -783,13 +783,13 @@ export const sv: Messages = {
       {
         heading: "Det här skyddar den inte mot",
         body: [
-          "Länken är nyckeln. Den som får tag på en länk kan öppna filen eller texten tills länken har använts. En länk som vi mejlar kräver också en kod som skickas till samma adress, så den som kan läsa den inkorgen kan öppna den. Skicka varje länk bara till den den är till, på ett sätt du litar på.",
+          "Länken är nyckeln. Den som får tag på en länk kan öppna filen eller den delade hemligheten bakom den tills länken har använts. En länk som vi mejlar kräver också en kod som skickas till samma adress, så den som kan läsa den inkorgen kan öppna den. Skicka varje länk bara till den den är till, på ett sätt du litar på.",
           "För en länk som vi mejlar har vår server, vår e-posttjänst och mottagarens inkorg nyckeln, och tills det finns kontrollord skulle vår server kunna ställa sig mellan de två webbläsarna.",
           "Din webbläsare kör den kod vår server skickar. En server som skickade annan kod skulle kunna läsa filer. Koden är offentlig, men webbläsare kan ännu inte kontrollera att det de fick stämmer med den.",
           "Avsändarens namn skrivs av avsändaren och kontrolleras inte.",
           "Den andra webbläsaren ser din IP-adress. Nätverken på vägen, och vårt relä när det används, ser båda IP-adresserna, när överföringen sker och ungefär hur stor filen är. Vår server ser båda IP-adresserna, vilken mottagare som ansluter till vilken avsändare och när, och hur många mottagare en avsändare har, och för en länk som vi mejlar mottagarens e-postadress. Så den får veta vem som skickar till vem, men inte vad, om den inte ställer sig mitt i en länk som vi har mejlat.",
           "Skadlig kod på någon av datorerna kan läsa filen innan den krypteras eller efter att den dekrypterats.",
-          "När mottagaren kopierar en text hamnar den i enhetens urklipp, där urklippshistorik, synkning av urklippet till andra enheter och andra appar kan läsa den. När en text väl har visats kan Fidant inte nå den: den går varken att ta tillbaka eller radera.",
+          "När mottagaren kopierar en delad hemlighet hamnar den i enhetens urklipp, där urklippshistorik, synkning av urklippet till andra enheter och andra appar kan läsa den. När en delad hemlighet väl har visats kan Fidant inte nå den: den går varken att ta tillbaka eller radera.",
           "Fidant har ännu inte granskats av någon oberoende part.",
         ],
       },
@@ -808,7 +808,7 @@ export const sv: Messages = {
   },
   privacy: {
     title: "Integritet",
-    lede: "Din fil går från din webbläsare till webbläsaren hos den du skickar till, direkt när era nätverk tillåter det och annars via vårt relä. Den låses innan den lämnar din dator, och bara den som har länken kan låsa upp den. Vi får aldrig filen, dess namn eller en text som du delar från sidan Dela en hemlighet, och aldrig nyckeln om du inte ber oss mejla länken.",
+    lede: "Din fil går från din webbläsare till webbläsaren hos den du skickar till, direkt när era nätverk tillåter det och annars via vårt relä. Den låses innan den lämnar din dator, och bara den som har länken kan låsa upp den. Vi får aldrig filen, dess namn eller en hemlighet som du delar, och aldrig nyckeln om du inte ber oss mejla länken.",
     howHeading: "Så går det till att skicka",
     steps: [
       [
@@ -847,12 +847,12 @@ export const sv: Messages = {
     never: [
       ["Din fil", "Varken innehållet, filnamnet, storleken eller filtypen."],
       [
-        "Din text",
-        "Varken texten du delar från sidan Dela en hemlighet eller dess längd: varje text fylls ut till samma storlek innan den lämnar din webbläsare.",
+        "Din hemlighet",
+        "Varken hemligheten du delar från sidan Dela en hemlighet eller dess längd: varje delad hemlighet fylls ut till samma storlek innan den lämnar din webbläsare.",
       ],
       [
         "Nyckeln, om vi inte mejlar länken åt dig",
-        "Den del av länken som låser upp filen eller texten når aldrig oss, om du inte ber oss mejla länken. Då använder vår server den en gång för att skriva mejlet, och sparar eller loggar den inte.",
+        "Den del av länken som låser upp filen eller den delade hemligheten når aldrig oss, om du inte ber oss mejla länken. Då använder vår server den en gång för att skriva mejlet, och sparar eller loggar den inte.",
       ],
       [
         "Mottagarnas namn",

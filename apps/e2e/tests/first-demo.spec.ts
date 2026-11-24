@@ -1045,26 +1045,27 @@ test.describe("emailed links", () => {
     leaks.watchContent("text", text);
     const sender = await demo.open("sender");
     await sender.goto("/secret");
-    await sender.getByLabel("Your text").fill(text);
+    await sender.getByLabel("Your secret").fill(text);
     const email = sender.getByLabel("Their email address");
     await expect(email).toHaveId("secret-recipient-email");
     const name = makeName(leaks, canary, "Anna");
     const to = addressFor(canary, "Anna");
     await email.fill(to);
     await expect(sender.locator("#secret-email-notice")).toContainText(
-      "anyone who can read that mailbox could receive the text.",
+      "anyone who can read that mailbox could receive the secret.",
     );
     const emailed = await addEmailed(leaks, sender, name, to);
 
     const recipient = await demo.open("recipient");
     await recipient.goto(emailed.link);
     await enterCode(recipient, await requestCode(recipient, to));
-    await expect(recipient.getByRole("heading", { name: "You've been sent a text" })).toBeVisible();
+    await expect(
+      recipient.getByRole("heading", { name: "You've been sent a secret" }),
+    ).toBeVisible();
     await recipient.getByRole("button", { name: "Show", exact: true }).click();
-    await expect(recipient.getByRole("region", { name: "The text", exact: true })).toHaveJSProperty(
-      "textContent",
-      text,
-    );
+    await expect(
+      recipient.getByRole("region", { name: "The secret", exact: true }),
+    ).toHaveJSProperty("textContent", text);
     await expect(delivered(sender, name)).toBeVisible();
   });
 });
