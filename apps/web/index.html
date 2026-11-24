@@ -4,15 +4,16 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
-    <!-- Same text as footer.tagline in src/i18n/en.ts; I18n.tsx swaps it per language. -->
+    <!-- Same text as footer.tagline in src/i18n/en.ts. The build replaces it in each page copy (src/i18n/preview.ts). -->
     <meta name="description" content="Files encrypted in your browser, readable only by the recipient." />
     <title>Fidant</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="stylesheet" href="/src/styles.css" />
   </head>
   <body>
     <noscript>
-      <main class="mx-auto grid max-w-2xl gap-4 px-6 py-10">
+      <main lang="en" class="mx-auto grid max-w-2xl gap-4 px-6 py-10">
         <h1 class="m-0 text-3xl font-semibold">Send a file only the recipient can open.</h1>
         <p class="m-0">Fidant encrypts the file in your browser before it goes to the person you choose. It is never stored, and nobody in between, us included, can read it.</p>
         <h2 class="m-0 text-xl font-semibold">What happens</h2>
