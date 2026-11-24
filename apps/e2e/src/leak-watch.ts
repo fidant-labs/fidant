@@ -11,6 +11,7 @@ import {
 } from "./leaks/captures.ts";
 import {
   buildNeedles,
+  contentSecrets,
   fileSecrets,
   keySecrets,
   minWindow,
@@ -45,6 +46,8 @@ export interface Leaks {
   watchKey(label: string, key: Uint8Array | string | CanaryKey, cls?: "K" | "S"): void;
   /** Watches text such as a recipient name, which must not appear whole (NFC or NFD UTF-8). */
   watchText(label: string, text: string): void;
+  /** Watches text as content (C), such as a shared text: its UTF-8 bytes and their SHA-256. */
+  watchContent(label: string, text: string): void;
   /** Scans everything observed so far in this test. Never throws for a leak. */
   scan(): Promise<Finding[]>;
   /**
@@ -121,6 +124,10 @@ export class LeakWatch implements Leaks {
       throw new Error(`Watched text for ${label} needs at least ${minWindow} bytes.`);
     }
     this.#add(textSecrets("M", label, text));
+  }
+
+  watchContent(label: string, text: string): void {
+    this.#add(contentSecrets(label, Buffer.from(text)));
   }
 
   expectLeaks(): void {
