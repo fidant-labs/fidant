@@ -204,9 +204,20 @@ export function Header({ current }: { current: Route }) {
           aria-current={current === "landing" ? "page" : undefined}
           class="flex items-center gap-2 rounded-md text-[1.05rem] font-bold tracking-tight no-underline"
         >
-          <span class="inline-flex size-8 items-center justify-center rounded-md bg-foreground text-background">
-            <Icon name="lock" class="size-4" />
-          </span>
+          {/* The mark: a shepherd's crook, upright and bent over what it looks after. Same drawing as public/favicon.svg. */}
+          <svg
+            class="size-8 flex-none rounded-md bg-foreground text-background"
+            viewBox="0 0 32 32"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="3"
+            stroke-linecap="round"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <path d="M11.25 24.25V12.75a5 5 0 0 1 10 0v.5" />
+            <circle cx="21.25" cy="19.75" r="2.5" fill="currentColor" stroke="none" />
+          </svg>
           <span class="max-sm:sr-only">{t.product}</span>
         </Link>
         <nav aria-label={t.menu.label}>
