@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   CODE_RESULTS,
   EMAIL_STATUSES,
+  emailedFragment,
   isAddress,
   isLinkId,
   MAX_ADDRESS,
@@ -15,6 +16,7 @@ import {
   MAX_RELAY_DATA,
   maskAddress,
   parseClientMessage,
+  parseEmailedFragment,
   parseIceServers,
   parseServerMessage,
 } from "./signaling.ts";
@@ -23,6 +25,7 @@ const link = "AAAAAAAAAAAAAAAAAAAAAA";
 const other = "abcdefghijklmnopqrstu-";
 const attempt = "ZZZZZZZZZZZZZZZZZZZZZZ";
 const token = "TTTTTTTTTTTTTTTTTTTTTT";
+const mark = "MMMMMMMMMMMMMMMMMMMMMM";
 const secret = "A".repeat(43);
 const to = "anna@example.se";
 const email = { t: "email", link, to, secret, from: "Anna", lang: "sv" };
@@ -256,6 +259,9 @@ test("rejects extra fields", () => {
     { t: "gate", link, ...extra },
     { t: "send-code", link, ...extra },
     { t: "code", link, code: "123456", ...extra },
+    { t: "gate", link, mark, ...extra },
+    { t: "send-code", link, mark, ...extra },
+    { t: "code", link, code: "123456", mark, ...extra },
   ];
   for (const message of client) {
     assert.equal(parseClientMessage(JSON.stringify(message)), undefined, message.t);
@@ -269,6 +275,7 @@ test("rejects extra fields", () => {
     { t: "error", code: "bad-message", ...extra },
     { t: "hello", mail: true, ...extra },
     { t: "email", link, status: "sent", ...extra },
+    { t: "email", link, status: "sent", mark, ...extra },
     { t: "gate", link, to: "", ...extra },
     { t: "code", link, result: "sent", ...extra },
     { t: "token", link, token, ...extra },
@@ -301,6 +308,9 @@ test("rejects missing fields", () => {
     { t: "send-code" },
     { t: "code", link },
     { t: "code", code: "123456" },
+    { t: "gate", mark },
+    { t: "send-code", mark },
+    { t: "code", link, mark },
   ];
   for (const message of client) {
     assert.equal(parseClientMessage(JSON.stringify(message)), undefined, JSON.stringify(message));
@@ -398,13 +408,15 @@ test("parses valid emailed-link client messages", () => {
   }
   const mixed = { ...email, secret: "az09_-AZ".repeat(6).slice(0, 43) };
   assert.deepEqual(client(mixed), mixed);
-  assert.deepEqual(client({ t: "gate", link }), { t: "gate", link });
-  assert.deepEqual(client({ t: "send-code", link }), { t: "send-code", link });
-  assert.deepEqual(client({ t: "code", link, code: "012345" }), {
-    t: "code",
-    link,
-    code: "012345",
-  });
+  for (const marked of [{}, { mark }]) {
+    for (const message of [
+      { t: "gate", link, ...marked },
+      { t: "send-code", link, ...marked },
+      { t: "code", link, code: "012345", ...marked },
+    ]) {
+      assert.deepEqual(client(message), message);
+    }
+  }
   assert.deepEqual(client({ t: "join", link, attempt, token }), {
     t: "join",
     link,
@@ -419,6 +431,12 @@ test("parses valid emailed-link server messages", () => {
   }
   for (const status of EMAIL_STATUSES) {
     assert.deepEqual(server({ t: "email", link, status }), { t: "email", link, status });
+    assert.deepEqual(server({ t: "email", link, status, mark }), {
+      t: "email",
+      link,
+      status,
+      mark,
+    });
   }
   for (const masked of ["", "a***@example.se"]) {
     assert.deepEqual(server({ t: "gate", link, to: masked }), { t: "gate", link, to: masked });
@@ -584,6 +602,48 @@ test("treats a present but invalid join token as invalid, not as absent", () => 
   ]) {
     assert.equal(client({ t: "join", link, attempt, token: value }), undefined, String(value));
     assert.equal(server({ t: "token", link, token: value }), undefined, String(value));
+  }
+});
+
+test("treats a present but invalid mark as invalid, not as absent", () => {
+  for (const value of [
+    "",
+    "short",
+    `${mark}M`,
+    mark.slice(1),
+    "MMMMMMMMMMMMMMMMMMMMM=",
+    42,
+    null,
+  ]) {
+    for (const message of [
+      { t: "gate", link, mark: value },
+      { t: "send-code", link, mark: value },
+      { t: "code", link, code: "123456", mark: value },
+    ]) {
+      assert.equal(client(message), undefined, `${message.t} ${value}`);
+    }
+    assert.equal(
+      server({ t: "email", link, status: "sent", mark: value }),
+      undefined,
+      String(value),
+    );
+  }
+});
+
+test("reads back the mark and the secret of an emailed link's fragment", () => {
+  const secret = randomBytes(32).toString("base64url");
+  assert.equal(emailedFragment(mark, secret), `e.${mark}.${secret}`);
+  assert.deepEqual(parseEmailedFragment(emailedFragment(mark, secret)), { mark, secret });
+  for (const fragment of [
+    secret,
+    `e.${secret}`,
+    `e.${mark}`,
+    `e.${mark.slice(1)}.${secret}`,
+    `e..${secret}`,
+    `E.${mark}.${secret}`,
+    `${mark}.${secret}`,
+  ]) {
+    assert.equal(parseEmailedFragment(fragment), undefined, fragment);
   }
 });
 

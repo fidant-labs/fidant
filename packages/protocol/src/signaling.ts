@@ -25,7 +25,7 @@ export const MAX_ADDRESS = 254;
 /** Longest sender name META and `email` accept, in UTF-16 code units like `maxLength`. */
 export const MAX_FROM_LENGTH = 100;
 
-/** Starts the fragment of the link Fidant emails, before the secret, so the recipient page knows it. */
+/** Starts the fragment of the link Fidant emails, `e.<mark>.<secret>`, so the recipient page knows it. */
 export const EMAILED_LINK_MARKER = "e.";
 
 const ICE_URL_PATTERN = /^(turn|turns|stun):/;
@@ -78,7 +78,6 @@ export const ERROR_CODES = [
   "already-hosted",
   "already-joined",
   "not-on-link",
-  "emailed",
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 
@@ -151,12 +150,15 @@ export type EmailMessage = {
   from: string;
   lang: (typeof LANGS)[number];
 };
-/** A recipient asks whether a link needs an emailed code. */
-export type GateMessage = { t: "gate"; link: string };
+/**
+ * A recipient asks whether a link needs an emailed code. `mark` is the value from the emailed
+ * link's fragment, which the server picked when it emailed the link; it is never logged.
+ */
+export type GateMessage = { t: "gate"; link: string; mark?: string };
 /** A recipient asks for a code by email. */
-export type SendCodeMessage = { t: "send-code"; link: string };
+export type SendCodeMessage = { t: "send-code"; link: string; mark?: string };
 /** A recipient enters the code it got by email. */
-export type CodeMessage = { t: "code"; link: string; code: string };
+export type CodeMessage = { t: "code"; link: string; code: string; mark?: string };
 
 export type ClientMessage =
   | HostMessage
@@ -201,8 +203,11 @@ export type ErrorMessage = { t: "error"; code: ErrorCode };
 
 /** The first message on every socket: whether this server can email links. */
 export type HelloMessage = { t: "hello"; mail: boolean };
-/** Tells the sender what became of a link it asked the server to email. */
-export type EmailStatusMessage = { t: "email"; link: string; status: EmailStatus };
+/**
+ * Tells the sender what became of a link it asked the server to email. Once the server took the
+ * request, `mark` is the value it put in the emailed link's fragment; it is never logged.
+ */
+export type EmailStatusMessage = { t: "email"; link: string; status: EmailStatus; mark?: string };
 /** Tells a recipient where a link's code goes: a masked address, or "" if it needs no code. */
 export type GateAnswerMessage = { t: "gate"; link: string; to: string };
 /** Answers a recipient's `send-code` or `code`. */
@@ -246,6 +251,33 @@ function hasKeys(value: Fields, keys: readonly string[]): boolean {
 
 export function isLinkId(value: unknown): value is string {
   return typeof value === "string" && LINK_ID_PATTERN.test(value);
+}
+
+/** The fragment, without `#`, of the link Fidant emails. `mark` is the server's value for it. */
+export function emailedFragment(mark: string, secret: string): string {
+  return `${EMAILED_LINK_MARKER}${mark}.${secret}`;
+}
+
+/** Reads the mark from a fragment `emailedFragment` made. The caller checks the secret. */
+export function parseEmailedFragment(
+  fragment: string,
+): { mark: string; secret: string } | undefined {
+  if (!fragment.startsWith(EMAILED_LINK_MARKER)) {
+    return undefined;
+  }
+  const rest = fragment.slice(EMAILED_LINK_MARKER.length);
+  const dot = rest.indexOf(".");
+  const mark = rest.slice(0, dot);
+  return dot >= 0 && isLinkId(mark) ? { mark, secret: rest.slice(dot + 1) } : undefined;
+}
+
+/** A message's optional `mark`: `{}` without one, undefined if it is malformed or `keys` do not match. */
+function markOf(value: Fields, keys: readonly string[]): { mark?: string } | undefined {
+  const { mark } = value;
+  if (mark === undefined) {
+    return hasKeys(value, keys) ? {} : undefined;
+  }
+  return hasKeys(value, [...keys, "mark"]) && isLinkId(mark) ? { mark } : undefined;
 }
 
 /** Whether `value` is a valid email address by the HTML spec, at most MAX_ADDRESS long. */
@@ -441,23 +473,23 @@ export function parseClientMessage(raw: string): ClientMessage | undefined {
       return { t: "email", link, to, secret, from, lang };
     }
     case "gate":
-      if (!hasKeys(value, ["t", "link"]) || !isLinkId(value.link)) {
+    case "send-code": {
+      const mark = markOf(value, ["t", "link"]);
+      if (!mark || !isLinkId(value.link)) {
         return undefined;
       }
-      return { t: "gate", link: value.link };
-    case "send-code":
-      if (!hasKeys(value, ["t", "link"]) || !isLinkId(value.link)) {
-        return undefined;
-      }
-      return { t: "send-code", link: value.link };
-    case "code":
-      if (!hasKeys(value, ["t", "link", "code"]) || !isLinkId(value.link)) {
+      return { t: value.t, link: value.link, ...mark };
+    }
+    case "code": {
+      const mark = markOf(value, ["t", "link", "code"]);
+      if (!mark || !isLinkId(value.link)) {
         return undefined;
       }
       if (typeof value.code !== "string" || !CODE_PATTERN.test(value.code)) {
         return undefined;
       }
-      return { t: "code", link: value.link, code: value.code };
+      return { t: "code", link: value.link, code: value.code, ...mark };
+    }
     default:
       return undefined;
   }
@@ -516,14 +548,13 @@ export function parseServerMessage(raw: string): ServerMessage | undefined {
         return undefined;
       }
       return { t: "hello", mail: value.mail };
-    case "email":
-      if (!hasKeys(value, ["t", "link", "status"])) {
+    case "email": {
+      const mark = markOf(value, ["t", "link", "status"]);
+      if (!mark || !isLinkId(value.link) || !isEmailStatus(value.status)) {
         return undefined;
       }
-      if (!isLinkId(value.link) || !isEmailStatus(value.status)) {
-        return undefined;
-      }
-      return { t: "email", link: value.link, status: value.status };
+      return { t: "email", link: value.link, status: value.status, ...mark };
+    }
     case "gate":
       if (!hasKeys(value, ["t", "link", "to"]) || !isLinkId(value.link)) {
         return undefined;

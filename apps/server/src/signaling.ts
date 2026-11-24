@@ -5,7 +5,6 @@
 // and opaque base64url blobs, except from `email` (decision 0010). It knows
 // which link IDs are hosted and binds at most one guest to each, but it keeps
 // no record of used links: the sender decides that and refuses with `refuse`.
-// Only the IDs of emailed links stay, for a day after they are unhosted.
 // Relay payloads are never inspected or logged.
 
 import { createHmac, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
@@ -17,9 +16,9 @@ import {
   type ClientMessage,
   type CodeResult,
   type ConnectionPath,
-  EMAILED_LINK_MARKER,
   type EmailMessage,
   type ErrorCode,
+  emailedFragment,
   type IceServer,
   type LogEvent,
   type LogFields,
@@ -62,8 +61,6 @@ const CODE_GAP_MS = 30 * 1000;
 const CODE_TRIES = 5;
 
 const HOUR_MS = 60 * 60 * 1000;
-/** How long nobody may host an emailed link again after it is unhosted. */
-const EMAILED_LINK_MS = 24 * HOUR_MS;
 
 /** WebSocket close code for a protocol violation. */
 const POLICY_VIOLATION = 1008;
@@ -91,6 +88,8 @@ type Peer = {
 type Emailed = {
   to: string;
   lang: EmailMessage["lang"];
+  /** The value in the emailed link's fragment, picked for this registration. Never logged. */
+  mark: string;
   /** When this link's codes went out. */
   codeTimes: number[];
   /** The latest code, until it is right, expires or runs out of tries. Never logged. */
@@ -193,7 +192,7 @@ export function attachSignaling(
     limits?: Partial<typeof LIMITS>;
     /** Minted once per pairing, so TURN credentials are fresh. Never logged. */
     iceServers?: (turn: boolean) => IceServer[];
-    /** Sends notices that link to `${origin}/r/<link>#<marker><secret>`. Without it, no mail goes out. */
+    /** Sends notices that link to `${origin}/r/<link>#e.<mark>.<secret>`. Without it, no mail goes out. */
     mail?: { send: Mailer; origin: string } | undefined;
   },
 ): { close(): void } {
@@ -208,8 +207,6 @@ export function attachSignaling(
   const emailed = new Map<string, Emailed>();
   /** Hosted links that take no more `email`: they had theirs, whatever came of it, or a guest. */
   const noEmail = new Set<string>();
-  /** Unhosted emailed links, each with when it may be hosted again. */
-  const emailedUntil = new Map<string, number>();
   /** Notice and code times per HMAC of a destination or client address, so no address is kept. */
   const noticeTimes = new Map<string, number[]>();
   const noticeKey = randomBytes(32);
@@ -311,13 +308,13 @@ export function attachSignaling(
         void email(socket, peer, message);
         return;
       case "gate":
-        gate(socket, peer, message.link);
+        gate(socket, peer, message.link, message.mark);
         return;
       case "send-code":
-        void sendCode(socket, peer, message.link);
+        void sendCode(socket, peer, message.link, message.mark);
         return;
       case "code":
-        checkCode(socket, peer, message.link, message.code);
+        checkCode(socket, peer, message.link, message.code, message.mark);
         return;
     }
   }
@@ -334,10 +331,6 @@ export function attachSignaling(
     }
     if (links.some((link) => hosts.has(link) && hosts.get(link) !== socket)) {
       error(socket, "already-hosted");
-      return;
-    }
-    if (links.some((link) => (emailedUntil.get(link) ?? 0) > Date.now())) {
-      error(socket, "emailed");
       return;
     }
     peer.role = "host";
@@ -357,9 +350,6 @@ export function attachSignaling(
 
   /** Stops hosting a link, drops its email state and tells its guest, if any, that the host is gone. */
   function unhost(link: string): void {
-    if (emailed.has(link)) {
-      emailedUntil.set(link, Date.now() + EMAILED_LINK_MS);
-    }
     hosts.delete(link);
     emailed.delete(link);
     noEmail.delete(link);
@@ -393,11 +383,11 @@ export function attachSignaling(
       return;
     }
     peer.role = "guest";
-    // Only hosted links are email-bound, so an unknown link is refused as unknown below.
+    // An email-bound link takes only a token its binding issued; any other link takes none.
     const state = emailed.get(link);
-    if (state && (token === undefined || !state.tokens.has(token))) {
+    if (state ? token === undefined || !state.tokens.has(token) : token !== undefined) {
       log("refused", { link: short(link), reason: "unverified" });
-      send(socket, { t: "gate", link, to: maskAddress(state.to) });
+      send(socket, { t: "gate", link, to: "" });
       return;
     }
     const hostSocket = hosts.get(link);
@@ -495,12 +485,12 @@ export function attachSignaling(
       error(socket, "not-on-link");
       return;
     }
-    const reply = (status: "sent" | "failed" | "limit") => {
+    const reply = (status: "sent" | "failed" | "limit", mark?: string) => {
       log(
         "email",
         status === "sent" ? { link: short(link) } : { link: short(link), reason: status },
       );
-      send(socket, { t: "email", link, status });
+      send(socket, mark ? { t: "email", link, status, mark } : { t: "email", link, status });
     };
     if (!mail || noEmail.has(link)) {
       reply("failed");
@@ -524,11 +514,12 @@ export function attachSignaling(
     peer.notices.push(now);
     noticeTimes.set(toKey, [...toTimes, now]);
     noticeTimes.set(clientKey, [...clientTimes, now]);
-    const state: Emailed = { to, lang, codeTimes: [], code: undefined, tokens: new Set() };
+    const mark = randomBytes(16).toString("base64url");
+    const state: Emailed = { to, lang, mark, codeTimes: [], code: undefined, tokens: new Set() };
     emailed.set(link, state);
     let sent = true;
     try {
-      const url = `${mail.origin}/r/${link}#${EMAILED_LINK_MARKER}${secret}`;
+      const url = `${mail.origin}/r/${link}#${emailedFragment(mark, secret)}`;
       await mail.send({ to, lang, from, url });
     } catch {
       // The error may quote the address, so none of it is kept.
@@ -538,7 +529,7 @@ export function attachSignaling(
     if (emailed.get(link) !== state) {
       return;
     }
-    reply(sent ? "sent" : "failed");
+    reply(sent ? "sent" : "failed", mark);
   }
 
   /** Sets a socket's role to guest, or answers `wrong-role` and returns false if it hosts. */
@@ -556,21 +547,32 @@ export function attachSignaling(
     send(socket, { t: "code", link, result });
   }
 
-  /** Tells a recipient where a link's code goes, or "" for a link that needs none or is unknown. */
-  function gate(socket: WebSocket, peer: Peer, link: string): void {
+  /** A link's email binding, if `mark` is the one its notice carried; otherwise it acts as plain. */
+  function binding(link: string, mark: string | undefined): Emailed | undefined {
+    const state = emailed.get(link);
+    return state !== undefined && state.mark === mark ? state : undefined;
+  }
+
+  /** Tells a recipient where a link's code goes, or "" unless `mark` matches the link's binding. */
+  function gate(socket: WebSocket, peer: Peer, link: string, mark: string | undefined): void {
     if (!asGuest(socket, peer)) {
       return;
     }
-    const state = emailed.get(link);
+    const state = binding(link, mark);
     send(socket, { t: "gate", link, to: state ? maskAddress(state.to) : "" });
   }
 
   /** Emails a fresh code for an emailed link to its address, replacing any earlier code. */
-  async function sendCode(socket: WebSocket, peer: Peer, link: string): Promise<void> {
+  async function sendCode(
+    socket: WebSocket,
+    peer: Peer,
+    link: string,
+    mark: string | undefined,
+  ): Promise<void> {
     if (!asGuest(socket, peer)) {
       return;
     }
-    const state = emailed.get(link);
+    const state = binding(link, mark);
     if (!mail || !state) {
       answerCode(socket, link, "failed");
       return;
@@ -609,11 +611,17 @@ export function attachSignaling(
   }
 
   /** Checks a recipient's code; a right one gets a token for this link's joins. */
-  function checkCode(socket: WebSocket, peer: Peer, link: string, code: string): void {
+  function checkCode(
+    socket: WebSocket,
+    peer: Peer,
+    link: string,
+    code: string,
+    mark: string | undefined,
+  ): void {
     if (!asGuest(socket, peer)) {
       return;
     }
-    const state = emailed.get(link);
+    const state = binding(link, mark);
     const current = state?.code;
     if (!state || !current || Date.now() >= current.expires) {
       answerCode(socket, link, "expired");
@@ -675,11 +683,6 @@ export function attachSignaling(
         noticeTimes.set(key, kept);
       } else {
         noticeTimes.delete(key);
-      }
-    }
-    for (const [link, until] of emailedUntil) {
-      if (until <= now) {
-        emailedUntil.delete(link);
       }
     }
     for (const [socket, peer] of peers) {
