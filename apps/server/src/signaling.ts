@@ -2,7 +2,7 @@
 // recipients' browsers (guests) over the /signal WebSocket.
 //
 // The server only learns link IDs, whether the sender allows our TURN relay,
-// and opaque base64url blobs, except from `email` (decision 0009). It knows
+// and opaque base64url blobs, except from `email` (decision 0010). It knows
 // which link IDs are hosted and binds at most one guest to each, but it keeps
 // no record of used links: the sender decides that and refuses with `refuse`.
 // Only the IDs of emailed links stay, for a day after they are unhosted.

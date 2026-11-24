@@ -30,7 +30,7 @@
 // gets link IDs, attempt IDs, opaque sealed signals, refusal reasons,
 // connection paths and the relay choice, except that an emailed link's one
 // `email` message carries its address, its secret and the sender's typed
-// name (decision 0009). Recipient names never leave this tab.
+// name (decision 0010). Recipient names never leave this tab.
 
 import {
   type ConnectionPath,
