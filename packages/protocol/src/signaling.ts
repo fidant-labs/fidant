@@ -78,6 +78,7 @@ export const ERROR_CODES = [
   "already-hosted",
   "already-joined",
   "not-on-link",
+  "emailed",
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 

@@ -5,6 +5,7 @@
 // and opaque base64url blobs, except from `email` (decision 0009). It knows
 // which link IDs are hosted and binds at most one guest to each, but it keeps
 // no record of used links: the sender decides that and refuses with `refuse`.
+// Only the IDs of emailed links stay, for a day after they are unhosted.
 // Relay payloads are never inspected or logged.
 
 import { createHmac, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
@@ -16,6 +17,7 @@ import {
   type ClientMessage,
   type CodeResult,
   type ConnectionPath,
+  EMAILED_LINK_MARKER,
   type EmailMessage,
   type ErrorCode,
   type IceServer,
@@ -60,6 +62,8 @@ const CODE_GAP_MS = 30 * 1000;
 const CODE_TRIES = 5;
 
 const HOUR_MS = 60 * 60 * 1000;
+/** How long nobody may host an emailed link again after it is unhosted. */
+const EMAILED_LINK_MS = 24 * HOUR_MS;
 
 /** WebSocket close code for a protocol violation. */
 const POLICY_VIOLATION = 1008;
@@ -189,7 +193,7 @@ export function attachSignaling(
     limits?: Partial<typeof LIMITS>;
     /** Minted once per pairing, so TURN credentials are fresh. Never logged. */
     iceServers?: (turn: boolean) => IceServer[];
-    /** Sends notices that link to `${origin}/r/<link>#<secret>`. Without it, no mail goes out. */
+    /** Sends notices that link to `${origin}/r/<link>#<marker><secret>`. Without it, no mail goes out. */
     mail?: { send: Mailer; origin: string } | undefined;
   },
 ): { close(): void } {
@@ -204,6 +208,8 @@ export function attachSignaling(
   const emailed = new Map<string, Emailed>();
   /** Hosted links that take no more `email`: they had theirs, whatever came of it, or a guest. */
   const noEmail = new Set<string>();
+  /** Unhosted emailed links, each with when it may be hosted again. */
+  const emailedUntil = new Map<string, number>();
   /** Notice and code times per HMAC of a destination or client address, so no address is kept. */
   const noticeTimes = new Map<string, number[]>();
   const noticeKey = randomBytes(32);
@@ -330,6 +336,10 @@ export function attachSignaling(
       error(socket, "already-hosted");
       return;
     }
+    if (links.some((link) => (emailedUntil.get(link) ?? 0) > Date.now())) {
+      error(socket, "emailed");
+      return;
+    }
     peer.role = "host";
     peer.turn = turn;
     const next = new Set(links);
@@ -347,6 +357,9 @@ export function attachSignaling(
 
   /** Stops hosting a link, drops its email state and tells its guest, if any, that the host is gone. */
   function unhost(link: string): void {
+    if (emailed.has(link)) {
+      emailedUntil.set(link, Date.now() + EMAILED_LINK_MS);
+    }
     hosts.delete(link);
     emailed.delete(link);
     noEmail.delete(link);
@@ -515,7 +528,8 @@ export function attachSignaling(
     emailed.set(link, state);
     let sent = true;
     try {
-      await mail.send({ to, lang, from, url: `${mail.origin}/r/${link}#${secret}` });
+      const url = `${mail.origin}/r/${link}#${EMAILED_LINK_MARKER}${secret}`;
+      await mail.send({ to, lang, from, url });
     } catch {
       // The error may quote the address, so none of it is kept.
       sent = false;
@@ -661,6 +675,11 @@ export function attachSignaling(
         noticeTimes.set(key, kept);
       } else {
         noticeTimes.delete(key);
+      }
+    }
+    for (const [link, until] of emailedUntil) {
+      if (until <= now) {
+        emailedUntil.delete(link);
       }
     }
     for (const [socket, peer] of peers) {

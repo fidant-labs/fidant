@@ -6,6 +6,7 @@ import { after, before, test } from "node:test";
 import {
   CODE_RESULTS,
   CONNECTION_PATHS,
+  EMAILED_LINK_MARKER,
   ERROR_CODES,
   type LogFields,
   MAX_RELAY_DATA,
@@ -694,6 +695,7 @@ const SECRET = randomBytes(32).toString("base64url");
 const HOUR_MS = 60 * 60 * 1000;
 const CODE_GAP_MS = 30 * 1000;
 const CODE_MS = 10 * 60 * 1000;
+const EMAILED_LINK_MS = 24 * HOUR_MS;
 
 /** A signaling server on 127.0.0.1 that records each mail before `send` and keeps its log lines. */
 async function mailServer(
@@ -806,6 +808,9 @@ test("answers failed to an email when the server cannot send mail", async () => 
   const host = await hostFor(link);
   host.send(emailMessage(link));
   assert.deepEqual(await host.next(), { t: "email", link, status: "failed" });
+  host.send({ t: "host", links: [], turn: true });
+  await heardNothing(host);
+  await hostFor(link);
 });
 
 test("emails a hosted link's notice once and tells the host it was sent", async (t) => {
@@ -815,7 +820,12 @@ test("emails a hosted link's notice once and tells the host it was sent", async 
   host.send(emailMessage(link, { from: "" }));
   assert.deepEqual(await host.next(), { t: "email", link, status: "sent" });
   assert.deepEqual(mails, [
-    { to: "anna@example.se", lang: "sv", from: "", url: `${ORIGIN}/r/${link}#${SECRET}` },
+    {
+      to: "anna@example.se",
+      lang: "sv",
+      from: "",
+      url: `${ORIGIN}/r/${link}#${EMAILED_LINK_MARKER}${SECRET}`,
+    },
   ]);
 });
 
@@ -841,7 +851,7 @@ test("builds the emailed link from the configured origin, never the request's Ho
   ]);
   assert.deepEqual(
     mails.map((mail) => ("url" in mail ? mail.url : "")),
-    [`${ORIGIN}/r/${link}#${SECRET}`],
+    [`${ORIGIN}/r/${link}#${EMAILED_LINK_MARKER}${SECRET}`],
   );
 });
 
@@ -939,7 +949,7 @@ test("refuses an email for a link that had a guest", async (t) => {
   assert.deepEqual(mails, []);
 });
 
-test("keeps a link's binding when the host re-sends its set and drops it when unhosted", async (t) => {
+test("keeps a link's binding when the host re-sends its set and refuses it once unhosted", async (t) => {
   const { url, mails } = await mailServer(t);
   const link = linkId();
   const other = linkId();
@@ -950,9 +960,11 @@ test("keeps a link's binding when the host re-sends its set and drops it when un
   host.send(emailMessage(link, { to: "bob@example.se" }));
   assert.deepEqual(await host.next(), { t: "email", link, status: "failed" });
   host.send({ t: "host", links: [other], turn: true });
-  host.send({ t: "host", links: [other, link], turn: true });
+  host.send({ t: "host", links: [link], turn: true });
+  assert.deepEqual(await host.next(), { t: "error", code: "emailed" });
   host.send(emailMessage(link, { to: "bob@example.se" }));
-  assert.deepEqual(await host.next(), { t: "email", link, status: "sent" });
+  assert.deepEqual(await host.next(), { t: "error", code: "not-on-link" });
+  await emailLink(host, other, { to: "bob@example.se" });
   assert.deepEqual(
     mails.map((mail) => mail.to),
     ["anna@example.se", "bob@example.se"],
@@ -967,17 +979,15 @@ test("refuses a host message that carries an address", async (t) => {
   assert.equal(await host.closed, 1008);
 });
 
-test("forgets a link's binding when its host closes while the mail is still out", async (t) => {
-  let calls = 0;
+test("forgets a link's binding when its host closes while the mail is out, and refuses its ID to other hosts", async (t) => {
   let failFirst: (error: Error) => void = () => {};
-  const { url, mails } = await mailServer(t, () => {
-    calls += 1;
-    return calls === 1
-      ? new Promise<void>((_, fail) => {
-          failFirst = fail;
-        })
-      : Promise.resolve();
-  });
+  const { url, mails } = await mailServer(
+    t,
+    () =>
+      new Promise<void>((_, fail) => {
+        failFirst = fail;
+      }),
+  );
   const link = linkId();
   const first = await mailHost(url, link);
   first.send(emailMessage(link));
@@ -988,14 +998,60 @@ test("forgets a link's binding when its host closes while the mail is still out"
     await new Promise((done) => setTimeout(done, 5));
   }
 
-  const second = await mailHost(url, link);
-  second.send(emailMessage(link, { to: "bob@example.se" }));
-  assert.deepEqual(await second.next(), { t: "email", link, status: "sent" });
-  // The first send failing late must not unbind the second host's link.
+  const second = await connect(url, true);
+  second.send({ t: "host", links: [linkId(), link], turn: true });
+  assert.deepEqual(await second.next(), { t: "error", code: "emailed" });
   failFirst(new Error("mail not sent"));
-  second.send(emailMessage(link));
-  assert.deepEqual(await second.next(), { t: "email", link, status: "failed" });
-  assert.equal(mails.length, 2);
+  await heardNothing(second);
+  assert.equal(mails.length, 1);
+});
+
+test("refuses an emailed link to every host for a day after it is unhosted, however long it was hosted", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"] });
+  const { url, mails } = await mailServer(t, async () => {}, { heartbeatMs: 20 });
+  const sleep = () => new Promise((done) => setTimeout(done, 50));
+  const link = linkId();
+  const first = await mailHost(url, link);
+  await emailLink(first, link);
+  t.mock.timers.tick(EMAILED_LINK_MS + 1);
+  await sleep();
+  first.send({ t: "host", links: [], turn: true });
+  await heardNothing(first);
+  const second = await connect(url, true);
+  for (const host of [first, second]) {
+    host.send({ t: "host", links: [link], turn: true });
+    assert.deepEqual(await host.next(), { t: "error", code: "emailed" });
+  }
+  t.mock.timers.tick(EMAILED_LINK_MS - 1);
+  await sleep();
+  second.send({ t: "host", links: [link], turn: true });
+  assert.deepEqual(await second.next(), { t: "error", code: "emailed" });
+  t.mock.timers.tick(1);
+  await sleep();
+  second.send({ t: "host", links: [link], turn: true });
+  await emailLink(second, link, { to: "bob@example.se" });
+  assert.deepEqual(
+    mails.map((mail) => mail.to),
+    ["anna@example.se", "bob@example.se"],
+  );
+});
+
+test("lets another socket host a link at once when it never became email-bound", async (t) => {
+  const { url, mails } = await mailServer(t, async () => {}, {
+    limits: { noticesPerRecipient: 1 },
+  });
+  const [sent, capped, guested, plain] = [linkId(), linkId(), linkId(), linkId()];
+  const host = await mailHost(url, sent, capped, guested, plain);
+  await emailLink(host, sent);
+  host.send(emailMessage(capped));
+  assert.deepEqual(await host.next(), { t: "email", link: capped, status: "limit" });
+  await mailJoin(await connect(url, true), host, guested);
+  host.send(emailMessage(guested, { to: "bob@example.se" }));
+  assert.deepEqual(await host.next(), { t: "email", link: guested, status: "failed" });
+  host.send({ t: "host", links: [sent], turn: true });
+  await heardNothing(host);
+  await heardNothing(await mailHost(url, capped, guested, plain));
+  assert.equal(mails.length, 1);
 });
 
 test("caps one socket at 20 notices an hour", async (t) => {
@@ -1290,10 +1346,12 @@ test("forgets an emailed link's codes and tokens when it is unhosted", async (t)
   t.mock.timers.tick(CODE_GAP_MS);
   const code = await codeFor(guest, host, link, mails);
   host.send({ t: "host", links: [], turn: true });
-  host.send({ t: "host", links: [link], turn: true });
-  await emailLink(host, link);
+  await heardNothing(host);
   guest.send({ t: "code", link, code });
   assert.deepEqual(await guest.next(), { t: "code", link, result: "expired" });
+  t.mock.timers.tick(EMAILED_LINK_MS);
+  host.send({ t: "host", links: [link], turn: true });
+  await emailLink(host, link);
   guest.send({ t: "join", link, attempt: linkId(), token });
   assert.deepEqual(await guest.next(), { t: "gate", link, to: "a***@example.se" });
 });
