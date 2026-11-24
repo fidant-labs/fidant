@@ -36,6 +36,8 @@ jobs:
         include:
           - stack: FidantDns
             account: FIDANT_DNS_ACCOUNT
+          - stack: FidantDnssec
+            account: FIDANT_DNS_ACCOUNT
           - stack: FidantApp
             account: FIDANT_POC_ACCOUNT
     steps:
