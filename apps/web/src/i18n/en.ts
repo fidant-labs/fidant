@@ -174,7 +174,7 @@ export const en = {
     localhost:
       "This page is open on localhost, so the links won't work on other computers. Open the network address the server printed instead.",
     lostServer:
-      "Lost the connection to the server. Files already on their way can finish, but nobody new can connect. Reload the page to start again.",
+      "Lost the connection to the server. Trying to reconnect… Files already on their way can finish. Nobody new can connect until it's back, so keep this page open.",
     fromLabel: "Your name",
     optional: "(optional)",
     fromHint: "Shown to the people you send to.",
