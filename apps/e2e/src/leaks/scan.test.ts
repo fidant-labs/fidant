@@ -33,6 +33,20 @@ test("finds content in raw bytes", () => {
   assert.deepEqual(found(Buffer.concat([junk, part, junk])), ["C file#1 @ raw"]);
 });
 
+test("finds content and a key's text inside binary packets, as in a pcap", () => {
+  const packet = (payload: Buffer) => Buffer.concat([random.bytes(44), payload]);
+  const pcap = Buffer.concat([
+    packet(junk.subarray(0, 300)),
+    packet(file.bytes.subarray(7000, 7100)),
+    packet(Buffer.from(key.text)),
+  ]);
+  assert.deepEqual(found(pcap), [
+    "C file#1 @ raw",
+    "K fragment text @ raw",
+    "K fragment @ base64@0",
+  ]);
+});
+
 test("finds a key in hex of either case", () => {
   assert.deepEqual(found(`id=${key.bytes.toString("hex")}`), ["K fragment @ hex@0"]);
   assert.deepEqual(found(`ID=${key.bytes.toString("hex").toUpperCase()}`), ["K fragment @ hex@0"]);
