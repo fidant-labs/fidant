@@ -36,19 +36,21 @@ const signals = async (seen: Observed, type: "frame-sent" | "frame-received", t:
   });
 
 /** A list the page's peer connections kept (see `watchPeers`). */
-const peerList = (page: Page, key: "iceUrls" | "peerStates") =>
+const peerList = (page: Page, key: "iceUrls" | "peerStates" | "relayPaths") =>
   page.evaluate((k) => (globalThis as Record<string, unknown>)[k] as string[] | undefined, key);
 
 /**
- * Init script: keeps every peer connection's ICE URLs and states. With a `relay` transport it
- * allows only relay candidates, from the TURN URLs for that transport.
+ * Init script: keeps every peer connection's ICE URLs and states, and, once it connects, the type
+ * and relay protocol of its selected local candidate (`relay/udp`, `host/` and so on). With a
+ * `relay` transport it allows only relay candidates, from the TURN URLs for that transport.
  */
 function watchPeers(relay: Transport | null) {
   delete (globalThis as { showSaveFilePicker?: unknown }).showSaveFilePicker;
   const Native = globalThis.RTCPeerConnection;
   const urls: string[] = [];
   const states: string[] = [];
-  Object.assign(globalThis, { iceUrls: urls, peerStates: states });
+  const paths: string[] = [];
+  Object.assign(globalThis, { iceUrls: urls, peerStates: states, relayPaths: paths });
   globalThis.RTCPeerConnection = class extends Native {
     constructor(config: RTCConfiguration = {}) {
       for (const server of config.iceServers ?? []) {
@@ -62,7 +64,17 @@ function watchPeers(relay: Transport | null) {
         .filter((server) => server.urls.length > 0);
       super(relay ? { ...config, iceServers, iceTransportPolicy: "relay" } : config);
       states.push(this.connectionState);
-      this.addEventListener("connectionstatechange", () => states.push(this.connectionState));
+      this.addEventListener("connectionstatechange", async () => {
+        states.push(this.connectionState);
+        if (this.connectionState !== "connected") {
+          return;
+        }
+        const reports = [...(await this.getStats()).values()];
+        const pairId = reports.find((r) => r.type === "transport")?.selectedCandidatePairId;
+        const pair = reports.find((r) => r.id === pairId);
+        const local = reports.find((r) => r.id === pair?.localCandidateId);
+        paths.push(`${local?.candidateType}/${local?.relayProtocol ?? ""}`);
+      });
     }
   };
 }
@@ -74,7 +86,7 @@ function watchPeers(relay: Transport | null) {
 async function relayOnly(
   open: (name: string) => Promise<Actor>,
   name: string,
-  transport: Transport = "udp",
+  transport: Transport,
 ): Promise<Page> {
   const { context, page } = await open(name);
   await context.addInitScript(watchPeers, transport);
@@ -133,6 +145,11 @@ for (const transport of ["udp", "tcp"] as const) {
       expect(new Set(urls)).toEqual(new Set(process.env.SIGILL_E2E_TURN_URLS?.split(",")));
     }
 
+    // Every connection went through a relay candidate reached over the transport under test.
+    for (const page of [sender, recipient]) {
+      await expect.poll(() => peerList(page, "relayPaths")).toEqual([`relay/${transport}`]);
+    }
+
     // The sender reports the path, so the server logs it, about a second after the channel opens.
     await expect.poll(() => logged(stdoutStart, '{"event":"path","path":"relay"}')).toBe(true);
     // coturn allocated relay addresses for the browsers.
@@ -170,7 +187,7 @@ test("a sender who refuses the relay: no credentials, no bytes, plain words on b
     (await signals(observed("sender"), "frame-sent", "host")).at(-1)?.turn;
   await expect.poll(hostTurn).toBe(false);
 
-  const recipient = await relayOnly(actor, "recipient");
+  const recipient = await relayOnly(actor, "recipient", "udp");
   await recipient.goto(link);
   await expect(
     recipient.getByRole("heading", { name: "Couldn't connect directly to the sender" }),
