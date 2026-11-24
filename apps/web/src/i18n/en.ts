@@ -330,6 +330,8 @@ export const en = {
     offerTitle: (from: string) =>
       from ? `${from} wants to send you a file` : "You've been sent a file",
     unverified: "Name typed by the sender, not verified.",
+    memoryWarning:
+      "This browser keeps the whole file in memory until you save it, which can slow down or crash the tab. Chrome or Edge saves straight to disk.",
     download: "Download",
     decline: "Decline",
     offerCaption: (from: string) =>

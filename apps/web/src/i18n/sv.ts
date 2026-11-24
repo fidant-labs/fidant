@@ -312,6 +312,8 @@ export const sv: Messages = {
     offerTitle: (from: string) =>
       from ? `${from} vill skicka en fil till dig` : "Du har fått en fil",
     unverified: "Namnet är skrivet av avsändaren och inte verifierat.",
+    memoryWarning:
+      "Den här webbläsaren håller hela filen i minnet tills du sparar den, vilket kan göra fliken långsam eller få den att krascha. Chrome eller Edge sparar direkt till disk.",
     download: "Ladda ner",
     decline: "Tacka nej",
     offerCaption: (from: string) =>
