@@ -51,3 +51,6 @@ export const hostedZoneIds: Record<string, string> = {
 };
 
 export const alertEmail = "budget-alert@fidant.se";
+
+export const relayCapBytes = 1_800_000_000_000;
+export const relayWarnBytes = 1_440_000_000_000;

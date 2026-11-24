@@ -45,6 +45,7 @@ export const en = {
     about: "About – Fidant",
     terms: "Terms of use – Fidant",
     security: "Security – Fidant",
+    technical: "Technical description – Fidant",
   },
   menu: {
     language: "Language",
@@ -133,6 +134,7 @@ export const en = {
     },
     more: "Want the details? The privacy page says exactly what our server sees and what it logs.",
     moreLink: "Read the privacy page",
+    techLink: "Read the technical description",
   },
   insecure: {
     title: "This page needs a secure connection",
@@ -565,6 +567,7 @@ export const en = {
           "The file goes directly between the two browsers. If a network blocks that, it passes through our relay instead, still encrypted. Our server only passes on a few small setup messages, which are encrypted so it can't read them, except for a link it emailed, whose key it had.",
           "The recipient's browser checks the file's SHA-256 checksum, so a file that was changed or damaged on the way is not saved.",
         ],
+        link: ["The technical description", "/technical"],
       },
       {
         heading: "What it doesn't protect against",
@@ -585,6 +588,145 @@ export const en = {
         link: [
           "Report privately on GitHub",
           "https://github.com/sigill-labs/sigill/security/advisories/new",
+        ],
+      },
+    ] as Sections,
+  },
+  // A reader's version of docs/how-fidant-works.md, the source of truth. Change both together.
+  technical: {
+    title: "Technical description",
+    lede: "How Fidant works under the hood, for readers who want to check it: the keys, the encryption, how the file travels, what our servers see and what Fidant doesn't protect against. The How it works page tells the same story without the technical terms.",
+    sections: [
+      {
+        heading: "The parts",
+        body: [
+          "Fidant has three parts. The web app runs in the sender's and the recipient's browsers and does all the encryption. Our server, in Stockholm, serves the web app and passes setup messages between the two browsers over a WebSocket. Our relay, on the same machine, tells browsers their public address (STUN) and carries encrypted traffic when two browsers can't reach each other directly (TURN).",
+          "There are no accounts, no database and no file storage. The server holds what it knows only in memory.",
+          "All of it is open source, so every statement on this page can be checked against the code.",
+        ],
+        link: ["The code on GitHub", "https://github.com/sigill-labs/sigill"],
+      },
+      {
+        heading: "The link",
+        body: [
+          "For each recipient, the sender's browser creates a link of the form https://fidant.se/r/<link ID>#<secret>. The link ID is 16 random bytes and the secret 32 random bytes, both from the browser's cryptographic random number generator.",
+          "The link ID only names the link: our server uses it to pair the sender with the recipient. The secret is in the fragment, the part after #, which browsers don't send to servers, and the site tells browsers not to send the page address on to other sites either. The app never sends the secret anywhere. It only derives keys from it.",
+          "Every recipient gets their own link ID and secret, so one recipient's link says nothing about another's.",
+        ],
+      },
+      {
+        heading: "Keys",
+        body: [
+          "Two keys are derived from the secret with HKDF-SHA-256. Both are AES-256-GCM keys that the browser marks as non-extractable: the page can use them, but can't read them out.",
+          "The signal key encrypts the setup messages. Its salt is the link ID.",
+          "The file key encrypts every frame between the browsers except the first, INIT, which carries only the random transfer ID. Its salt is a random transfer ID that the sender picks again for every attempt, so a retried transfer never reuses a key and nonce pair.",
+        ],
+      },
+      {
+        heading: "Connecting the two browsers",
+        body: [
+          "The sender's page opens a WebSocket to our server and registers its link IDs. When the recipient opens their link, their page joins with the link ID and a random attempt ID, new for each page load and each retry. The server pairs at most one recipient page with a link at a time and tells both sides.",
+          "The browsers then set up a WebRTC connection. The offer, the answer and the network candidates are encrypted with the signal key before they reach our server. Each message is bound to its link, attempt and direction, so the server can't read or change them, can't send a message back to the side that sent it, can't move it to another link and can't replay it into another attempt. Replaying old messages can at most make one attempt fail, which dropping them would do anyway.",
+          "This matters beyond privacy: the setup messages carry the fingerprints of WebRTC's own DTLS encryption. Because the server can't change them, it can't put itself between the two browsers.",
+          "If the connection to our server drops, both pages try to reconnect by themselves. The sender's page registers its links again, and a recipient who was still connecting tries again a few times before giving up. A transfer that has already started doesn't need our server and carries on.",
+        ],
+      },
+      {
+        heading: "Two layers of encryption",
+        body: [
+          "WebRTC encrypts the connection between the browsers with DTLS. Fidant doesn't rely on that alone: every frame after INIT is also encrypted with AES-256-GCM under the file key, which only the two browsers have.",
+          "Each frame starts with a 10-byte header with its version, kind and sequence number. The header is authenticated with the frame, and the nonce is built from the direction and the sequence number, so the two directions never share a nonce. A browser accepts only the next sequence number, so a dropped, reordered, repeated or altered frame stops the transfer.",
+        ],
+      },
+      {
+        heading: "The transfer, frame by frame",
+        body: [
+          "When the sender chooses the file, their browser computes its SHA-256 checksum.",
+          "INIT: the sender sends the transfer ID. It is the only frame not encrypted. Changing it changes the file key, so the next frame fails to decrypt.",
+          "META: the file name, size and type and the sender's typed name, encrypted. The recipient sees them and chooses.",
+          "ACCEPT or DECLINE: the recipient's answer, encrypted. ACCEPT also proves that the recipient has the key. No file data is sent before it.",
+          "CHUNK: the file in frames of equal size, up to 48 KiB each.",
+          "END: the file's exact size and the checksum computed when it was chosen.",
+          "RECEIPT: the checksum the recipient computed from what arrived. The sender counts the file as delivered only when it matches.",
+        ],
+      },
+      {
+        heading: "Checking the file",
+        body: [
+          "The recipient's browser hashes the file as it arrives, and checks the size, the number of chunks, the padding and the checksum against END. Only when everything matches is the file kept. Any other ending, such as a frame that fails to decrypt or a connection that closes early, throws away what was written.",
+          "Chrome and Edge can write the file straight to a place on the disk the recipient chooses. Other browsers collect it in memory and start the download at the end. The download is always marked as plain binary data, whatever type the sender claims, so a file can't run as a web page on Fidant's site.",
+          "Names with control characters or the Unicode characters that override or isolate text direction are refused, so a name ending in .exe can't be made to look like one ending in .pdf.",
+        ],
+      },
+      {
+        heading: "Hiding the exact size",
+        body: [
+          "Anyone who can see the encrypted traffic, such as the networks on the way or our relay, sees how big the frames are. So the size is rounded up with the Padmé scheme, which adds at most 12 %, and then to whole chunks. Every chunk frame has the same size, and the padding is zeros that the recipient checks.",
+          "The exact size travels only inside the encrypted META and END. META always has the same size, so the length of the file name doesn't show either.",
+        ],
+      },
+      {
+        heading: "How the file travels",
+        body: [
+          "WebRTC tries the direct routes first: over the local network, or through each side's public address, which the browser learns from our STUN service. The file then goes straight between the browsers. The sender's page shows which route each connection took.",
+          "If no direct route works, which is common on mobile data and office networks, the traffic goes through our TURN relay in Stockholm. The relay forwards encrypted packets. It can't decrypt them and doesn't store them.",
+          "To use the relay a browser needs credentials, which our server creates for each pairing and gives only to the two paired pages. They expire after 5 minutes. Browsers can reach the relay over UDP or TCP, but it forwards only over UDP. It refuses to forward to other machines on private or internal networks (with one accepted exception: the relay's own box, see decision 0007), and limits how many relayed connections run at once.",
+          "On every route, each browser sees the other's IP address, like on a video call.",
+        ],
+      },
+      {
+        heading: "Refusing the relay",
+        body: [
+          "The sender can untick \"Allow our relay if a direct connection isn't possible\". Our server then gives that send no relay credentials, only the STUN address, so an unmodified browser can't use the relay. As a backstop, if the sender's browser still sees a relayed connection, it ends it. File data only flows after the recipient accepts, so in practice that happens before any of it has passed.",
+          "The limit: a modified recipient can still send its side through our relay with credentials from another pairing, or through any public relay. That recipient has the key anyway. The choice decides which infrastructure carries the encrypted traffic, not who can read the file.",
+        ],
+      },
+      {
+        heading: "Several recipients and one-time links",
+        body: [
+          "One send can go to up to 256 people. Each has their own link, key, connection and transfer.",
+          "A link counts as used only once the recipient's RECEIPT matches. After that it is refused. A link that is already open in one tab is refused in another.",
+          "Until then the link can be opened again: after a decline, a dropped connection or a failed check. Every new attempt has a new transfer ID and so a new file key.",
+          "Nothing is stored, so a link works only while the sender's page is open. When it closes, our server forgets its links within a minute.",
+        ],
+      },
+      {
+        heading: "What our server and relay see and keep",
+        body: [
+          "Our server sees each page's IP address and browser details, the link IDs, the sender's relay choice, the connection path the sender reports for each attempt (direct, STUN, relay or failed), whether a link was already used, when each side connects and disconnects, and the encrypted setup messages and their sizes. It never sees the file, its name, its type or its exact size, the secret or the keys, and it can't read the setup messages. It keeps what it knows in memory only, and forgets a page within a minute after it disconnects.",
+          "Its log lines use a fixed list of fields, such as the first 6 characters of a link ID and whether a connection was direct. Never names, keys, file data or IP addresses. They are deleted after 30 days.",
+          "Our relay sees both IP addresses and the encrypted traffic, so the file's size only roughly. It keeps no log. Only to fix a fault or stop abuse do we turn one on, with connection times, IP addresses and data volumes, for at most 7 days.",
+        ],
+        link: ["Every log field, on the privacy page", "/privacy"],
+      },
+      {
+        heading: "The site itself",
+        body: [
+          "The site is served only over HTTPS, and browsers are told never to use plain HTTP for it. Sending and receiving refuse to run without a secure connection.",
+          "A Content Security Policy lets the pages load code, styles, fonts and connections only from our own site, and stops other sites from showing them in a frame. There are no cookies, no third-party scripts and no trackers.",
+          "The setup WebSocket refuses connections opened from other sites, and limits protect the server from overload: connections in total and per address, messages per connection, links per sender and the size of each setup message.",
+        ],
+      },
+      {
+        heading: "What it doesn't protect against",
+        body: [
+          "The link is the key. Anyone who gets a link can open its file until it has been used. Send each link only to the person it is for, over a channel you trust.",
+          "Your browser runs the code our server sends it. A server that sent different code could read files. The code is public, but browsers can't yet check that what they got matches it.",
+          "The sender's name is typed by the sender and not verified.",
+          "The other browser sees your IP address. The networks on the way, and our relay when it is used, see both IP addresses, when the transfer happens and roughly how big the file is. Our server sees both IP addresses, which recipient connects to which sender and when, and how many recipients a sender has. So it learns who sends to whom, though not what.",
+          "Malware on either computer can read the file before it is encrypted or after it is decrypted.",
+          "Fidant has not been independently audited yet.",
+        ],
+      },
+      {
+        heading: "Planned: verified transfers",
+        body: [
+          "Not built yet. The plan: the recipient signs a receipt with BankID before they can open the file, and the receipt names the file. The file key is split, and our server releases its half only after the receipt is signed. Events go into an audit log that makes tampering visible, anchored with trusted timestamps.",
+          "When it ships, this page will describe it.",
+        ],
+        link: [
+          "The design records on GitHub",
+          "https://github.com/sigill-labs/sigill/tree/main/docs/decisions",
         ],
       },
     ] as Sections,
