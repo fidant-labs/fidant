@@ -54,6 +54,16 @@ export class DnsStack extends Stack {
         addNoMail(zone);
       }
 
+      // Caddy falls back to ZeroSSL, whose certificates are issued by Sectigo.
+      new route53.CaaRecord(zone, "Caa", {
+        zone,
+        values: [
+          { flag: 0, tag: route53.CaaTag.ISSUE, value: "letsencrypt.org" },
+          { flag: 0, tag: route53.CaaTag.ISSUE, value: "sectigo.com" },
+          { flag: 0, tag: route53.CaaTag.ISSUEWILD, value: ";" },
+        ],
+      });
+
       const target = route53.RecordTarget.fromIpAddresses(props.boxAddress);
       const recordNames = [zoneName, `www.${zoneName}`];
       if (zoneName === primaryDomain) {

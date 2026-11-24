@@ -46,7 +46,10 @@ async function allCaptures(
     const path = join(entry.parentPath, entry.name);
     const point = relative(e2eDir, path);
     const bytes = await readFile(path);
-    if (entry.parentPath === runDir) {
+    if (entry.name.endsWith(".pcap")) {
+      // Binary packets, not lines: one capture.
+      captures.push({ point, bytes });
+    } else if (entry.parentPath === runDir) {
       captures.push(...logCaptures(point, completeLog(bytes)));
     } else if (entry.name.endsWith(".jsonl")) {
       const records = bytes

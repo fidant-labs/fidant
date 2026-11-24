@@ -95,6 +95,7 @@ test("each page has its own tab title", async ({ page }) => {
     ["/", "Fidant: private file transfer"],
     ["/send", "Send a file – Fidant"],
     ["/privacy", "Privacy – Fidant"],
+    ["/how", "How it works – Fidant"],
     ["/r/unknown", "Receive a file – Fidant"],
   ] as const) {
     await page.goto(path);
