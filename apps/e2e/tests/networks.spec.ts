@@ -3,6 +3,8 @@ import { readFile, writeFile } from "node:fs/promises";
 import { buffer } from "node:stream/consumers";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { Page } from "@playwright/test";
+// ponytail: relative import, not a workspace dependency on the server, for one small function.
+import { turnCredentials } from "../../server/src/turn.ts";
 import { canaryFile, canaryKey, expect, type Leaks, type Observed, test } from "../src/fixtures.ts";
 import { readPeerConnections, recordPeerConnections, selectedPair } from "../src/ice.ts";
 import { checkServerLog, serverLogAllowlist } from "../src/leaks/server-log.ts";
@@ -12,8 +14,10 @@ import {
   boxOrigin,
   clientAddresses,
   inBox,
+  inRelay,
   pauseRelay,
   type RouterMode,
+  relayIp,
   remoteBrowsers,
   resumeRelay,
   routerMode,
@@ -483,5 +487,79 @@ test.describe("the box", () => {
         agent,
       ).toEqual([]);
     }
+  });
+});
+
+/** The types of the candidates a page gathers with `server`, and the codes of its candidate errors. */
+function gather(page: Page, server: RTCIceServer): Promise<{ types: string[]; errors: number[] }> {
+  return page.evaluate(async (iceServer) => {
+    const pc = new RTCPeerConnection({ iceServers: [iceServer] });
+    const types: string[] = [];
+    const errors: number[] = [];
+    pc.addEventListener("icecandidate", ({ candidate }) => {
+      if (candidate?.type) {
+        types.push(candidate.type);
+      }
+    });
+    pc.addEventListener("icecandidateerror", (event) => errors.push(event.errorCode));
+    const complete = new Promise<void>((resolve) => {
+      pc.addEventListener("icegatheringstatechange", () => {
+        if (pc.iceGatheringState === "complete") {
+          resolve();
+        }
+      });
+    });
+    pc.createDataChannel("probe");
+    await pc.setLocalDescription();
+    await complete;
+    pc.close();
+    return { types, errors };
+  }, server);
+}
+
+// The standalone relay (networks/relay), set up by apps/infra/relay/install.sh as on a new server.
+test.describe("the relay box", () => {
+  test.use({ remoteBrowsers: { sender: remoteBrowsers.a1, recipient: remoteBrowsers.b1 } });
+  test.beforeAll(() => routerMode("router-b", "cone"));
+
+  test("comes up from install.sh with its key and firewall", async () => {
+    expect(await inRelay("systemctl", "is-active", "coturn")).toBe("active\n");
+    expect(
+      await inRelay(
+        "stat",
+        "-c",
+        "%a %U:%G",
+        "/etc/fidant-relay/relay.key",
+        "/etc/turnserver.conf",
+      ),
+    ).toBe("600 root:root\n640 root:turnserver\n");
+    expect(
+      await inRelay(
+        ..."openssl pkey -pubin -in /etc/fidant-relay/relay.pub -noout -text".split(" "),
+      ),
+    ).toMatch(/Public-Key: \(3072 bit\)/);
+    const ufw = await inRelay("ufw", "status");
+    expect(ufw).toMatch(/^Status: active/);
+    for (const rule of ["22/tcp", "80/tcp", "443/tcp", "3478/tcp", "3478/udp", "49152:65535/udp"]) {
+      expect(ufw).toContain(rule);
+    }
+    expect(await inRelay("ss", "-lnu")).toMatch(/:3478\b/);
+  });
+
+  // Until SIG-153 hands it a secret, the relay answers STUN and refuses every allocation.
+  test("refuses relaying before it has a secret", async ({ actor }) => {
+    const server = {
+      // By address: Chrome resolves names through --host-resolver-rules for TCP only.
+      urls: [`stun:${relayIp}:3478`, `turn:${relayIp}:3478?transport=udp`],
+      ...turnCredentials(randomBytes(32).toString("hex"), Date.now()),
+    };
+    for (const name of ["sender", "recipient"]) {
+      const { page } = await actor(name);
+      const { types, errors } = await gather(page, server);
+      expect(types, name).toContain("srflx");
+      expect(types, name).not.toContain("relay");
+      expect(errors, name).toContain(401);
+    }
+    expect(await inRelay("systemctl", "show", "-p", "NRestarts", "--value", "coturn")).toBe("0\n");
   });
 });

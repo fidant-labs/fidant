@@ -24,6 +24,9 @@ export const turnHost = "turn.sigill.test";
 /** The POC box container, which the browsers reach as fidant.se and turn.fidant.se. */
 export const boxIp = "198.51.100.30";
 export const boxOrigin = "https://fidant.se";
+/** The relay box container, set up by apps/infra/relay/install.sh. */
+export const relayIp = "198.51.100.40";
+export const relayHost = "sto.relay.sigill.test";
 // node:26-bookworm, not slim: the server's certificate step shells out to openssl.
 // box/Dockerfile copies its node binary.
 export const serverImage =
@@ -89,6 +92,12 @@ export async function inBox(...command: string[]): Promise<string> {
   return stdout;
 }
 
+/** Runs a command in the relay box container and returns its stdout. */
+export async function inRelay(...command: string[]): Promise<string> {
+  const { stdout } = await run("docker", [...compose, "exec", "-T", "relay", ...command]);
+  return stdout;
+}
+
 /** Every address of the browsers' network namespaces and their routers, as the box may see them. */
 export async function clientAddresses(): Promise<string[]> {
   const { stdout: ids } = await run("docker", [
@@ -128,9 +137,9 @@ function down(): void {
 }
 
 /**
- * The routers, browser containers, coturn and the box of networks/compose.yaml. It hands the
- * server TURN_URLS for coturn at 198.51.100.20, with a secret made for this run, which the box
- * shares.
+ * The routers, browser containers, coturn, the box and the relay box of networks/compose.yaml.
+ * It hands the server TURN_URLS for coturn at 198.51.100.20, with a secret made for this run,
+ * which the box shares.
  */
 export const dockerNetworks: Service = { name: "networks", start: startNetworks };
 
@@ -148,8 +157,11 @@ async function startNetworks(): Promise<RunningService> {
   await run("openssl", [
     ...["req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1", "-nodes"],
     ...["-days", "1", "-subj", `/CN=${turnHost}`],
-    // turn.fidant.se too: the box's coturn serves the same pair, so one public key covers both.
-    ...["-addext", `subjectAltName=DNS:${turnHost},DNS:turn.fidant.se,IP:${turnIp}`],
+    // turn.fidant.se and the relay box too: they serve the same pair, so one public key covers all.
+    ...[
+      "-addext",
+      `subjectAltName=DNS:${turnHost},DNS:turn.fidant.se,DNS:${relayHost},IP:${turnIp}`,
+    ],
     ...["-keyout", join(dir, "turn.key"), "-out", join(dir, "turn.crt")],
   ]);
   const spki = new X509Certificate(await readFile(join(dir, "turn.crt"))).publicKey.export({
@@ -173,6 +185,15 @@ async function startNetworks(): Promise<RunningService> {
     });
     await writeFile(target, file.content, { mode: file.mode });
   }
+  // The relay's install.sh inputs, and the run's TLS pair in place of a Let's Encrypt one.
+  const relayDir = await mkdtemp(join(tmpdir(), "sigill-e2e-relay-"));
+  await writeFile(
+    join(relayDir, "env"),
+    `RELAY_ID=sto\nRELAY_NAME=${relayHost}\nAPP_URL=${boxOrigin}\n`,
+  );
+  await mkdir(join(relayDir, "tls"));
+  await writeFile(join(relayDir, "tls", "turn.crt"), turnCert.cert);
+  await writeFile(join(relayDir, "tls", "turn.key"), turnCert.key, { mode: 0o600 });
 
   const playwright = join(e2eDir, "node_modules", "@playwright", "test", "package.json");
   // Every compose command needs these, including `exec` from the test workers, which inherit them.
@@ -182,6 +203,7 @@ async function startNetworks(): Promise<RunningService> {
     SIGILL_E2E_RUN_DIR: runDir,
     SIGILL_E2E_COTURN_DIR: dir,
     SIGILL_E2E_BOX_DIR: boxDir,
+    SIGILL_E2E_RELAY_DIR: relayDir,
     SIGILL_E2E_UID: String(process.getuid?.() ?? 1000),
     SIGILL_E2E_GID: String(process.getgid?.() ?? 1000),
     // Workers start after global setup and inherit it, like SIGILL_E2E_BASE_URL.
@@ -194,6 +216,7 @@ async function startNetworks(): Promise<RunningService> {
     } finally {
       rmSync(dir, { recursive: true, force: true });
       rmSync(boxDir, { recursive: true, force: true });
+      rmSync(relayDir, { recursive: true, force: true });
     }
   };
   // Backstop for a run that ends without global teardown.
