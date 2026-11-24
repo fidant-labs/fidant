@@ -207,10 +207,19 @@ test("the app box runs coturn after the site is up, with a secret that stays on 
   const lines = userData.split("\n");
   assert.ok(Buffer.byteLength(userData) < 16 * 1024);
 
-  for (const line of ["realm=turn.fidant.se", "use-auth-secret", "log-file=/dev/null"]) {
+  for (const line of [
+    "realm=turn.fidant.se",
+    "use-auth-secret",
+    "log-file=/dev/null",
+    "tls-listening-port=5349",
+    "cert=/etc/coturn/turn.crt",
+    "pkey=/etc/coturn/turn.key",
+    "no-dtls",
+  ]) {
     assert.ok(lines.includes(line), line);
   }
-  assert.ok(userData.includes(`external-ip=${boxAddress}/`));
+  assert.ok(!lines.includes("no-tls"));
+  assert.ok(userData.includes(`external-ip=${boxAddress}/%s\\nrelay-ip=%s\\n`));
   const denied = lines.filter((line) => line.startsWith("denied-peer-ip="));
   assert.deepEqual(denied, [
     "denied-peer-ip=0.0.0.0-0.255.255.255",
@@ -268,12 +277,143 @@ test("the app box runs coturn after the site is up, with a secret that stays on 
   assert.doesNotMatch(userData.slice(0, caddy), /coturn|turn-secret/);
 
   assert.deepEqual(userData.match(/static-auth-secret=.*/g), [
-    'static-auth-secret=\' "$private_ip"; cat /etc/sigill/turn-secret; } >>/etc/turnserver.conf',
+    'static-auth-secret=\' "$private_ip" "$private_ip"; cat /etc/sigill/turn-secret; } >>/etc/turnserver.conf',
   ]);
   assert.doesNotMatch(userData, /\$\(openssl/);
   assert.deepEqual(userData.match(/.*rand -hex.*/g), [
     "(umask 077 && openssl rand -hex 32 >/etc/sigill/turn-secret)",
   ]);
+});
+
+test("the app box stops its boot rather than fall back to Ubuntu's Caddy 2.6", () => {
+  const stack = stacksFor(pocAccount).find((child) => child.stackName === "FidantApp");
+  const [instance] = Object.values(
+    Template.fromStack(stack as Stack).findResources("AWS::Lightsail::Instance"),
+  );
+  const lines = String(instance?.Properties.UserData).split("\n");
+  const curls = lines.filter((line) => line.startsWith("curl "));
+  assert.equal(curls.length, 3);
+  for (const line of curls) {
+    assert.match(line, /^curl --retry 5 --retry-all-errors -fsSL/);
+  }
+  assert.deepEqual(
+    lines.filter((line) => / update$/.test(line)),
+    ["apt-get -o DPkg::Lock::Timeout=600 -o APT::Update::Error-Mode=any update"],
+  );
+});
+
+test("the app box routes 443 by SNI to Caddy and to coturn's TLS, and copies Caddy's relay certificate", () => {
+  const stack = stacksFor(pocAccount).find((child) => child.stackName === "FidantApp");
+  const [instance] = Object.values(
+    Template.fromStack(stack as Stack).findResources("AWS::Lightsail::Instance"),
+  );
+  const userData = String(instance?.Properties.UserData);
+
+  assert.ok(
+    userData.includes(
+      "\tadmin off\n\thttps_port 8444\n\tauto_https disable_redirects\n\tservers :8444 {\n\t\tlistener_wrappers {\n\t\t\tproxy_protocol {\n\t\t\t\tallow 127.0.0.1/32\n\t\t\t}\n\t\t\ttls\n\t\t}\n\t\tprotocols h1 h2\n\t}\n",
+    ),
+  );
+  assert.match(
+    userData,
+    /\treverse_proxy https:\/\/127\.0\.0\.1:8443 \{\n(?:\t\t#.*\n)*\t\theader_up Host \{host\}\n/,
+  );
+  assert.ok(userData.includes("\nhttp:// {\n\tredir https://{host}{uri} permanent\n}\n"));
+  assert.ok(userData.includes("\nturn.fidant.se {\n\trespond 404\n}\n"));
+  assert.ok(userData.includes("[signed-by=/etc/apt/keyrings/caddy-stable.asc]"));
+
+  const haproxyStart = userData.indexOf("\ncat >/etc/haproxy/haproxy.cfg <<'EOF'\n");
+  const haproxy = userData.slice(haproxyStart, userData.indexOf("\nEOF\n", haproxyStart));
+  assert.doesNotMatch(haproxy, /^\s*log\b/m);
+  assert.match(
+    haproxy,
+    /^global\n(?:\t#.*\n)?\tuser haproxy\n\tgroup haproxy\n\tchroot \/var\/lib\/haproxy\n/m,
+  );
+  assert.deepEqual(haproxy.match(/^\t(bind|use_backend|default_backend|server) .*/gm), [
+    "\tbind :::443 v4v6",
+    "\tuse_backend coturn if { req.ssl_sni -i turn.fidant.se } !{ req.ssl_alpn acme-tls/1 }",
+    "\tdefault_backend caddy",
+    "\tserver coturn 127.0.0.1:5349",
+    "\tserver caddy 127.0.0.1:8444 send-proxy-v2",
+  ]);
+  // Only the relay keeps an idle connection for an hour. One IPv4 address, or one IPv6 /64 as in
+  // decision 0006, holds at most 128 connections.
+  assert.deepEqual(haproxy.match(/^\t(timeout|stick-table|tcp-request connection) .*/gm), [
+    "\ttimeout connect 5s",
+    "\ttimeout client 2m",
+    "\ttimeout server 2m",
+    "\ttimeout client-fin 30s",
+    "\ttimeout server-fin 30s",
+    "\tstick-table type ipv6 size 100k expire 2m store conn_cur",
+    "\ttcp-request connection track-sc0 src,ipmask(32,64)",
+    "\ttcp-request connection reject if { sc0_conn_cur gt 128 }",
+    "\ttimeout tunnel 1h",
+  ]);
+  assert.match(haproxy, /^backend coturn\n(?:\t#.*\n)*\ttimeout tunnel 1h\n/m);
+
+  const caddy = userData.indexOf("\nsystemctl restart caddy\n");
+  const order = [
+    caddy,
+    haproxyStart,
+    userData.indexOf("\nsystemctl restart haproxy\n"),
+    userData.indexOf("\nsystemctl enable --now coturn\n"),
+    userData.indexOf("\nsystemctl enable --now sigill-turn-cert.timer\n"),
+    userData.indexOf("\nif systemctl is-active --quiet coturn; then\n"),
+  ];
+  assert.ok(
+    order.every((index) => index > 0),
+    order.join(),
+  );
+  assert.deepEqual(
+    order,
+    order.toSorted((a, b) => a - b),
+  );
+
+  assert.ok(userData.includes("\nOnActiveSec=1min\nOnUnitInactiveSec=5min\n"));
+  const syncStart = userData.indexOf("\ncat >/usr/local/sbin/sigill-turn-cert <<'EOF'\n");
+  const sync = userData.slice(syncStart, userData.indexOf("\nEOF\n", syncStart));
+  assert.match(sync, /^set -eu$/m);
+  assert.doesNotMatch(sync, /set -[a-z]*x/);
+  const syncLines = sync.split("\n");
+  const at = (line: string): number => {
+    const index = syncLines.indexOf(line);
+    assert.ok(index > 0, line);
+    return index;
+  };
+  // Both new files are in place before either replaces the old pair, and they are read with the
+  // caddy user's rights, never through a link.
+  const steps = [
+    "crt=$(ls -t /var/lib/caddy/.local/share/caddy/certificates/*/$name/$name.crt 2>/dev/null | head -n 1)",
+    'if [ -n "$crt" ] && ! cmp -s "$crt" /etc/coturn/turn.crt; then',
+    '  if [ -L "$crt" ] || [ -L "$key" ]; then',
+    "  install -o turnserver -g turnserver -m 600 /dev/null /etc/coturn/turn.key.new",
+    '  runuser -u caddy -- cat "$key" >/etc/coturn/turn.key.new',
+    "  install -m 644 /dev/null /etc/coturn/turn.crt.new",
+    '  runuser -u caddy -- cat "$crt" >/etc/coturn/turn.crt.new',
+    "  openssl pkey -pubout -in /etc/coturn/turn.key.new >/etc/coturn/turn.pub.new",
+    "  if ! openssl x509 -pubkey -noout -in /etc/coturn/turn.crt.new | cmp -s - /etc/coturn/turn.pub.new; then",
+    "  mv /etc/coturn/turn.key.new /etc/coturn/turn.key",
+    "  mv /etc/coturn/turn.crt.new /etc/coturn/turn.crt",
+    "  if systemctl is-active --quiet coturn; then",
+    "      systemctl kill -s USR2 coturn",
+    "      systemctl restart coturn",
+    "if [ -e /etc/coturn/turn.crt ] && ! openssl x509 -checkend 1209600 -noout -in /etc/coturn/turn.crt >/dev/null; then",
+  ].map(at);
+  assert.deepEqual(
+    steps,
+    steps.toSorted((a, b) => a - b),
+  );
+  assert.equal(
+    at("  mv /etc/coturn/turn.crt.new /etc/coturn/turn.crt") -
+      at("  mv /etc/coturn/turn.key.new /etc/coturn/turn.key"),
+    1,
+  );
+
+  assert.match(
+    userData,
+    /^turn_urls="stun:turn\.fidant\.se:3478,turn:turn\.fidant\.se:3478\?transport=udp,turns:turn\.fidant\.se:443\?transport=tcp"$/m,
+  );
+  assert.doesNotMatch(userData, /:3478\?transport=tcp/);
 });
 
 test("the committed config signs notify.fidant.se's SES mail with three DKIM keys", () => {

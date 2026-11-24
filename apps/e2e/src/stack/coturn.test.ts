@@ -10,6 +10,7 @@ const production = configLines(
 );
 const options = { port: 40000, secret: "s", stateDir: "/tmp/x" };
 const differences = ["listening-port", "realm", "log-file"];
+const tlsKeys = ["tls-listening-port", "cert", "pkey"];
 
 test("configLines trims, and drops blank lines and comments, indented ones too", () => {
   assert.deepEqual(configLines("a=1\n\n  # note\n  b = 2  \n\t\nverbose\n"), [
@@ -31,7 +32,7 @@ for (const ip of ["127.0.0.1", "198.51.100.20"]) {
     const loopbackDenials = ["denied-peer-ip=127.0.0.0-127.255.255.255", "denied-peer-ip=::1"];
     for (const line of production) {
       const expected = !(
-        differences.includes(keyOf(line)) ||
+        [...differences, ...tlsKeys].includes(keyOf(line)) ||
         (ip === "127.0.0.1" && loopbackDenials.includes(line))
       );
       assert.equal(lines.includes(line), expected, line);
@@ -40,6 +41,8 @@ for (const ip of ["127.0.0.1", "198.51.100.20"]) {
       assert.equal(lines.filter((line) => keyOf(line) === key).length, 1, key);
     }
     assert.equal(lines.includes("allow-loopback-peers"), ip === "127.0.0.1");
+    assert.ok(lines.includes("no-tls"));
+    assert.ok(lines.every((line) => !tlsKeys.includes(keyOf(line))));
   });
 
   test(`the ${ip} config adds what a test run needs`, () => {
@@ -59,3 +62,13 @@ for (const ip of ["127.0.0.1", "198.51.100.20"]) {
     }
   });
 }
+
+test("the TLS option replaces production's TLS listener and certificate", () => {
+  const tls = { port: 443, cert: "/etc/sigill/turn.crt", pkey: "/etc/sigill/turn.key" };
+  const lines = coturnConfig({ ip: "198.51.100.20", ...options, tls }).split("\n");
+  assert.ok(!lines.includes("no-tls"));
+  assert.deepEqual(
+    lines.filter((line) => tlsKeys.includes(keyOf(line))),
+    ["tls-listening-port=443", "cert=/etc/sigill/turn.crt", "pkey=/etc/sigill/turn.key"],
+  );
+});

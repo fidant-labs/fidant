@@ -1,7 +1,7 @@
 import { execFile, execFileSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes, X509Certificate } from "node:crypto";
 import { readFileSync, rmSync } from "node:fs";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
@@ -19,6 +19,8 @@ const serverName = "sigill-e2e-server";
 /** The server's address on the public network, where the browsers reach it. */
 export const serverIp = "198.51.100.10";
 export const turnIp = "198.51.100.20";
+/** coturn's name for TURN over TLS. Browsers resolve it to turnIp (playwright.config.ts). */
+export const turnHost = "turn.sigill.test";
 /** The POC box container, which the browsers reach as fidant.se and turn.fidant.se. */
 export const boxIp = "198.51.100.30";
 export const boxOrigin = "https://fidant.se";
@@ -141,10 +143,28 @@ async function startNetworks(): Promise<RunningService> {
   // Production's peer denials stay, 10/8 among them: the public network has no route to the private
   // sites, and without the denial coturn closed allocations right after Chrome checked a private
   // peer through them ("reason: general"), and relayed rows failed at random.
-  const config = coturnConfig({ ip: turnIp, port: 3478, secret, stateDir: "/tmp" });
+  // A self-signed certificate for TURN over TLS on 443, made per run. Chrome checks it, so the
+  // browsers trust its public key alone (SIGILL_E2E_TURN_SPKI, read by playwright.config.ts).
+  await run("openssl", [
+    ...["req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1", "-nodes"],
+    ...["-days", "1", "-subj", `/CN=${turnHost}`],
+    // turn.fidant.se too: the box's coturn serves the same pair, so one public key covers both.
+    ...["-addext", `subjectAltName=DNS:${turnHost},DNS:turn.fidant.se,IP:${turnIp}`],
+    ...["-keyout", join(dir, "turn.key"), "-out", join(dir, "turn.crt")],
+  ]);
+  const spki = new X509Certificate(await readFile(join(dir, "turn.crt"))).publicKey.export({
+    type: "spki",
+    format: "der",
+  });
+  const tls = { port: 443, cert: "/etc/sigill/turn.crt", pkey: "/etc/sigill/turn.key" };
+  const config = coturnConfig({ ip: turnIp, port: 3478, secret, stateDir: "/tmp", tls });
   await writeFile(join(dir, "turnserver.conf"), config, { mode: 0o600 });
   const boxDir = await mkdtemp(join(tmpdir(), "sigill-e2e-box-"));
-  for (const [path, file] of boxFiles({ secret })) {
+  const turnCert = {
+    cert: await readFile(join(dir, "turn.crt"), "utf8"),
+    key: await readFile(join(dir, "turn.key"), "utf8"),
+  };
+  for (const [path, file] of boxFiles({ ip: boxIp, secret, turnCert })) {
     const target = join(boxDir, path);
     // The user data makes /etc/sigill with mode 700; the other directories are the default 755.
     await mkdir(dirname(target), {
@@ -164,6 +184,8 @@ async function startNetworks(): Promise<RunningService> {
     SIGILL_E2E_BOX_DIR: boxDir,
     SIGILL_E2E_UID: String(process.getuid?.() ?? 1000),
     SIGILL_E2E_GID: String(process.getgid?.() ?? 1000),
+    // Workers start after global setup and inherit it, like SIGILL_E2E_BASE_URL.
+    SIGILL_E2E_TURN_SPKI: createHash("sha256").update(spki).digest("base64"),
   });
 
   const cleanUp = () => {
@@ -201,7 +223,8 @@ async function startNetworks(): Promise<RunningService> {
       TURN_URLS: [
         `stun:${turnIp}:3478`,
         `turn:${turnIp}:3478?transport=udp`,
-        `turn:${turnIp}:3478?transport=tcp`,
+        // By name, as in production, so Chrome sends SNI.
+        `turns:${turnHost}:443?transport=tcp`,
       ].join(","),
       TURN_SECRET_FILE: secretFile,
     },
@@ -236,6 +259,10 @@ export const dockerServer: Service = {
           serverIp,
           "--user",
           user,
+          // On 443, the one port the tcp-443 router mode lets out. Namespaced, so the server can
+          // bind it without root.
+          "--sysctl",
+          "net.ipv4.ip_unprivileged_port_start=0",
           "-v",
           `${repo}:${repo}:ro`,
           "-v",
@@ -245,7 +272,7 @@ export const dockerServer: Service = {
           "-w",
           repo,
           "-e",
-          "PORT",
+          "PORT=443",
           "-e",
           "CERT_DIR",
           "-e",

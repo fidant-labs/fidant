@@ -35,12 +35,10 @@ interface Scenario {
    * The selected candidate pair as `local/remote` for the sender, then the recipient, such as
    * `srflx/srflx srflx/srflx`. A remote candidate is prflx when the peer's check arrives before
    * its candidate does over signaling, so rows accept prflx wherever the remote side is direct.
-   * A local relay candidate carries its transport to the TURN server, such as `relay+tcp`.
+   * A local relay candidate carries its transport to the TURN server, such as `relay+tls`.
    * `none`: the row pauses coturn, so the browsers cannot connect at all.
    */
   path: RegExp | "none";
-  /** Set while the row is not implemented yet: why it is skipped. */
-  todo?: string;
   /** Send a larger file and check that both sides report progress honestly along the way. */
   progress?: true;
 }
@@ -72,15 +70,14 @@ const scenarios: Scenario[] = [
     sender: "a1",
     recipient: "b1",
     routerB: "udp-blocked",
-    path: / relay\+tcp\/\S+$/,
+    path: / relay\+tls\/\S+$/,
   },
   {
     title: "only TCP 443",
     sender: "a1",
     recipient: "b1",
     routerB: "tcp-443",
-    path: /relay/,
-    todo: "TURN over TLS on 443: SIG-93",
+    path: / relay\+tls\/\S+$/,
   },
   {
     title: "relay down",
@@ -203,7 +200,6 @@ test("the leak scan sees what reaches coturn", async ({ leaks, canary }) => {
 
 for (const row of scenarios) {
   test.describe(row.title, () => {
-    test.fixme(Boolean(row.todo), row.todo);
     test.use({
       remoteBrowsers: {
         sender: remoteBrowsers[row.sender],
@@ -386,10 +382,12 @@ test.describe("the box", () => {
     await expect(recipient.page.getByText(verifiedText)).toBeVisible({ timeout: 60_000 });
     const download = await downloading;
     expect(sha256Hex(await buffer(await download.createReadStream()))).toBe(sha256Hex(file.bytes));
-    // Relayed by the box's coturn: the box's server hands out only turn.fidant.se.
+    // Relayed by the box's coturn over TLS on 443, through HAProxy, as in production. The box
+    // hands out only turn.fidant.se, and Chrome resolves that name through --host-resolver-rules
+    // for TCP only: its UDP STUN and TURN lookups fail here.
     await expect
       .poll(async () => `${await pathOf(sender.page)} ${await pathOf(recipient.page)}`)
-      .toMatch(/relay/);
+      .toMatch(/relay\+tls\//);
     await watchIcePasswords(leaks, "sender", sender.page);
     await watchIcePasswords(leaks, "recipient", recipient.page);
     await expectSignaling(observed, baseURL);
@@ -411,7 +409,9 @@ test.describe("the box", () => {
     await expect
       .poll(async () => {
         journal = await inBox(
-          ..."journalctl -o json --all --no-pager -u sigill -u caddy -u coturn".split(" "),
+          ..."journalctl -o json --all --no-pager -u sigill -u haproxy -u caddy -u coturn".split(
+            " ",
+          ),
         );
         // The decoded messages as plain lines, which is what the leak scanner reads; JSON
         // escapes and decimal byte arrays would hide a canary from it. Kept on every attempt.
@@ -443,7 +443,8 @@ test.describe("the box", () => {
       })
       .toBe(true);
 
-    const services = /\s(node|caddy|turnserver|coturn)(\[\d+\])?:|(sigill|caddy|coturn)\.service/;
+    const services =
+      /\s(node|haproxy|caddy|turnserver|coturn)(\[\d+\])?:|(sigill|haproxy|caddy|coturn)\.service/;
     expect(syslog.split("\n").filter((line) => services.test(line))).toEqual([]);
 
     const { files, settings } = winningJournald(

@@ -22,15 +22,21 @@ mkswap /swapfile
 swapon /swapfile
 echo '/swapfile none swap sw 0 0' >>/etc/fstab
 
+# Caddy from its own apt repository: Ubuntu's 2.6 can't read the PROXY protocol (decision 0010).
+# Error-Mode=any stops the boot if that repository can't be read, instead of installing 2.6.
+install -d -m 755 /etc/apt/keyrings
+curl --retry 5 --retry-all-errors -fsSL -o /etc/apt/keyrings/caddy-stable.asc https://dl.cloudsmith.io/public/caddy/stable/gpg.key
+echo 'deb [signed-by=/etc/apt/keyrings/caddy-stable.asc] https://dl.cloudsmith.io/public/caddy/stable/deb/debian any-version main' >/etc/apt/sources.list.d/caddy-stable.list
+
 export DEBIAN_FRONTEND=noninteractive
-apt-get -o DPkg::Lock::Timeout=600 update
+apt-get -o DPkg::Lock::Timeout=600 -o APT::Update::Error-Mode=any update
 apt-get -o DPkg::Lock::Timeout=600 install -y caddy git libatomic1 xz-utils
 
 cd /tmp
 dist=https://nodejs.org/dist/latest-v@NODE_MAJOR@.x
-curl -fsSLO "$dist/SHASUMS256.txt"
+curl --retry 5 --retry-all-errors -fsSLO "$dist/SHASUMS256.txt"
 tarball=$(awk '/linux-x64\.tar\.xz$/ {print $2}' SHASUMS256.txt)
-curl -fsSLO "$dist/$tarball"
+curl --retry 5 --retry-all-errors -fsSLO "$dist/$tarball"
 grep " $tarball\$" SHASUMS256.txt | sha256sum -c -
 tar --no-same-owner -xJf "$tarball" -C /usr/local --strip-components=1
 npm install -g pnpm@@PNPM_VERSION@
@@ -163,8 +169,19 @@ EOF
 cat >/etc/caddy/Caddyfile <<'EOF'
 {
 	admin off
+	https_port 8444
+	auto_https disable_redirects
+	servers :8444 {
+		listener_wrappers {
+			proxy_protocol {
+				allow 127.0.0.1/32
+			}
+			tls
+		}
+		protocols h1 h2
+	}
 	log default {
-		exclude http.log.error
+		exclude http.log.error tls
 	}
 }
 
@@ -176,6 +193,9 @@ cat >/etc/caddy/Caddyfile <<'EOF'
 	import hsts
 	encode zstd gzip
 	reverse_proxy https://127.0.0.1:8443 {
+		# Caddy 2.10+ sends an HTTPS upstream its own address as Host; the app's /signal origin
+		# check needs the site's.
+		header_up Host {host}
 		transport http {
 			tls_insecure_skip_verify
 		}
@@ -185,6 +205,14 @@ cat >/etc/caddy/Caddyfile <<'EOF'
 @REDIRECT_NAMES@ {
 	import hsts
 	redir https://@DOMAIN@{uri} permanent
+}
+
+http:// {
+	redir https://{host}{uri} permanent
+}
+
+turn.@DOMAIN@ {
+	respond 404
 }
 EOF
 
@@ -199,6 +227,50 @@ systemctl enable sigill
 systemctl enable --now sigill-deploy.timer
 systemctl restart caddy
 
+# HAProxy holds 443 and routes by SNI without decrypting (decision 0010). No log line: it logs nothing.
+systemctl mask haproxy
+apt-get -o DPkg::Lock::Timeout=600 install -y haproxy
+cat >/etc/haproxy/haproxy.cfg <<'EOF'
+global
+	# Bind 443 as root, then parse every untrusted ClientHello unprivileged, like Ubuntu's own config.
+	user haproxy
+	group haproxy
+	chroot /var/lib/haproxy
+	maxconn 4096
+
+defaults
+	mode tcp
+	timeout connect 5s
+	# Idle limit for the site. The app pings each /signal WebSocket every 30 s.
+	timeout client 2m
+	timeout server 2m
+	timeout client-fin 30s
+	timeout server-fin 30s
+
+frontend tls
+	bind :::443 v4v6
+	# One IPv4 address, or one IPv6 /64 as in decision 0006, holds at most 128 connections: the
+	# app's 32 sockets per address with their pages and relay connections, behind one NAT.
+	stick-table type ipv6 size 100k expire 2m store conn_cur
+	tcp-request connection track-sc0 src,ipmask(32,64)
+	tcp-request connection reject if { sc0_conn_cur gt 128 }
+	tcp-request inspect-delay 5s
+	tcp-request content accept if { req.ssl_hello_type 1 }
+	use_backend coturn if { req.ssl_sni -i turn.@DOMAIN@ } !{ req.ssl_alpn acme-tls/1 }
+	default_backend caddy
+
+backend coturn
+	# A relayed transfer can sit idle for a while: keep it for an hour once routed.
+	timeout tunnel 1h
+	server coturn 127.0.0.1:5349
+
+backend caddy
+	server caddy 127.0.0.1:8444 send-proxy-v2
+EOF
+systemctl unmask haproxy
+systemctl enable haproxy
+systemctl restart haproxy
+
 install -d -m 700 /etc/sigill
 (umask 077 && openssl rand -hex 32 >/etc/sigill/turn-secret)
 private_ip=$(ip -4 -o addr show scope global | awk '{ sub("/.*", "", $4); print $4; exit }')
@@ -209,7 +281,9 @@ install -m 640 -g turnserver /dev/null /etc/turnserver.conf
 cat >>/etc/turnserver.conf <<'EOF'
 @TURNSERVER_CONF@
 EOF
-{ printf 'external-ip=@BOX_ADDRESS@/%s\nstatic-auth-secret=' "$private_ip"; cat /etc/sigill/turn-secret; } >>/etc/turnserver.conf
+# relay-ip: coturn otherwise relays from the address a client came in on, and HAProxy's TLS
+# clients come in on 127.0.0.1 (decision 0010).
+{ printf 'external-ip=@BOX_ADDRESS@/%s\nrelay-ip=%s\nstatic-auth-secret=' "$private_ip" "$private_ip"; cat /etc/sigill/turn-secret; } >>/etc/turnserver.conf
 install -d /etc/systemd/system/coturn.service.d
 cat >/etc/systemd/system/coturn.service.d/online.conf <<'EOF'
 [Unit]
@@ -219,7 +293,76 @@ EOF
 systemctl unmask coturn
 systemctl enable --now coturn
 
-turn_urls="stun:turn.@DOMAIN@:3478,turn:turn.@DOMAIN@:3478?transport=udp,turn:turn.@DOMAIN@:3478?transport=tcp"
+# Copies Caddy's certificate for turn.@DOMAIN@ to coturn when it changes, and fails while the copy
+# expires within 14 days, so it shows in systemctl --failed. No set -x: it handles a key.
+cat >/usr/local/sbin/sigill-turn-cert <<'EOF'
+#!/bin/sh
+set -eu
+name=turn.@DOMAIN@
+crt=$(ls -t /var/lib/caddy/.local/share/caddy/certificates/*/$name/$name.crt 2>/dev/null | head -n 1)
+key=${crt%.crt}.key
+if [ -n "$crt" ] && ! cmp -s "$crt" /etc/coturn/turn.crt; then
+  # The caddy user owns these files: refuse links, and read them with its rights only.
+  if [ -L "$crt" ] || [ -L "$key" ]; then
+    echo "refused: a symbolic link in Caddy's certificate directory" >&2
+    exit 1
+  fi
+  had_cert=no
+  if [ -e /etc/coturn/turn.crt ]; then
+    had_cert=yes
+  fi
+  install -d /etc/coturn
+  install -o turnserver -g turnserver -m 600 /dev/null /etc/coturn/turn.key.new
+  runuser -u caddy -- cat "$key" >/etc/coturn/turn.key.new
+  install -m 644 /dev/null /etc/coturn/turn.crt.new
+  runuser -u caddy -- cat "$crt" >/etc/coturn/turn.crt.new
+  # A renewal between the two reads could pair a new certificate with the old key, and the cmp above
+  # would never copy again. Refuse such a pair; the next run reads both files afresh.
+  openssl pkey -pubout -in /etc/coturn/turn.key.new >/etc/coturn/turn.pub.new
+  if ! openssl x509 -pubkey -noout -in /etc/coturn/turn.crt.new | cmp -s - /etc/coturn/turn.pub.new; then
+    rm -f /etc/coturn/turn.key.new /etc/coturn/turn.crt.new /etc/coturn/turn.pub.new
+    echo "refused: Caddy's certificate and key for $name don't match" >&2
+    exit 1
+  fi
+  rm -f /etc/coturn/turn.pub.new
+  mv /etc/coturn/turn.key.new /etc/coturn/turn.key
+  mv /etc/coturn/turn.crt.new /etc/coturn/turn.crt
+  # USR2 reloads the pair and keeps relayed transfers. A coturn that started without one opens its
+  # TLS listener only on restart. A stopped coturn reads the pair when it starts.
+  if systemctl is-active --quiet coturn; then
+    if [ "$had_cert" = yes ]; then
+      systemctl kill -s USR2 coturn
+    else
+      systemctl restart coturn
+    fi
+  fi
+fi
+if [ -e /etc/coturn/turn.crt ] && ! openssl x509 -checkend 1209600 -noout -in /etc/coturn/turn.crt >/dev/null; then
+  echo "/etc/coturn/turn.crt expires within 14 days" >&2
+  exit 1
+fi
+EOF
+chmod 755 /usr/local/sbin/sigill-turn-cert
+cat >/etc/systemd/system/sigill-turn-cert.service <<'EOF'
+[Unit]
+Description=Copy the relay's certificate from Caddy to coturn
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/sigill-turn-cert
+EOF
+cat >/etc/systemd/system/sigill-turn-cert.timer <<'EOF'
+[Timer]
+OnActiveSec=1min
+OnUnitInactiveSec=5min
+
+[Install]
+WantedBy=timers.target
+EOF
+systemctl daemon-reload
+systemctl enable --now sigill-turn-cert.timer
+
+turn_urls="stun:turn.@DOMAIN@:3478,turn:turn.@DOMAIN@:3478?transport=udp,turns:turn.@DOMAIN@:443?transport=tcp"
 ipv6=$(ip -6 -o addr show scope global | awk '{ sub("/.*", "", $4); print $4; exit }')
 if printf '%s\n' "$ipv6" | grep -Eqx '[0-9a-f]{0,4}(:[0-9a-f]{0,4}){2,7}'; then
   turn_urls="$turn_urls,stun:[$ipv6]:3478"
