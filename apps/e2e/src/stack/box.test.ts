@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { renderUserData } from "../../../infra/src/user-data.ts";
 import { boxFiles, heredocs, winningJournald } from "./box.ts";
+import { serverImage } from "./networks.ts";
 
 test("heredocs reads quoted and unquoted, writing and appending blocks", () => {
   const script = [
@@ -93,4 +95,19 @@ test("winningJournald takes the last value read and lists the files", () => {
       ["ForwardToSyslog", "no"],
     ]),
   );
+});
+
+test("the box image has the Lightsail blueprint's Ubuntu and the server container's node", () => {
+  const dockerfile = readFileSync(
+    new URL("../../networks/box/Dockerfile", import.meta.url),
+    "utf8",
+  );
+  const infra = readFileSync(new URL("../../../infra/src/box.ts", import.meta.url), "utf8");
+  const blueprint = /blueprintId: "ubuntu_(\d+)_(\d+)"/.exec(infra);
+  assert.ok(blueprint, "apps/infra/src/box.ts has no Ubuntu blueprintId");
+  assert.match(
+    dockerfile,
+    new RegExp(`^FROM ubuntu:${blueprint[1]}\\.${blueprint[2]}@sha256:`, "m"),
+  );
+  assert.ok(dockerfile.includes(`\nCOPY --from=${serverImage} /usr/local/bin/node `));
 });
