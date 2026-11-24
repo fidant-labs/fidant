@@ -41,28 +41,7 @@ async function startCoturn(): Promise<RunningService> {
   const config = join(dir, "turnserver.conf");
   await writeFile(secretFile, secret, { mode: 0o600 });
   // In a config file rather than flags, so the secret does not show in `ps`.
-  const options = [
-    `listening-ip=${host}`,
-    `relay-ip=${host}`,
-    `listening-port=${port}`,
-    "use-auth-secret",
-    `static-auth-secret=${secret}`,
-    "realm=sigill.local",
-    // New coturn has DTLS and the CLI off already and warns about these two, but older packages
-    // such as Ubuntu's need them, or the CLI listens on a fixed port.
-    "no-tls",
-    "no-dtls",
-    "no-cli",
-    // Every peer in the local stack is on loopback.
-    "allow-loopback-peers",
-    `pidfile=${join(dir, "turnserver.pid")}`,
-    `userdb=${join(dir, "turndb")}`,
-    `log-file=${coturnLog}`,
-    "simple-log",
-    "no-stdout-log",
-    "verbose",
-  ];
-  await writeFile(config, `${options.join("\n")}\n`, { mode: 0o600 });
+  await writeFile(config, coturnConfig({ ip: host, port, secret, stateDir: dir }), { mode: 0o600 });
 
   const child = spawn("turnserver", ["-c", config], { cwd: dir, stdio: "ignore" });
   const closed = new Promise<void>((resolve) => child.once("close", () => resolve()));
@@ -104,6 +83,41 @@ async function startCoturn(): Promise<RunningService> {
     env: { TURN_URLS: urls.join(","), TURN_SECRET_FILE: secretFile },
     stop,
   };
+}
+
+/**
+ * turnserver.conf for coturn listening and relaying on `ip`. Its pid file and user database go
+ * in `stateDir`, and it logs verbosely to observations/run/coturn.log.
+ */
+export function coturnConfig(options: {
+  ip: string;
+  port: number;
+  secret: string;
+  stateDir: string;
+}): string {
+  const { ip, port, secret, stateDir } = options;
+  const lines = [
+    `listening-ip=${ip}`,
+    `relay-ip=${ip}`,
+    `listening-port=${port}`,
+    "use-auth-secret",
+    `static-auth-secret=${secret}`,
+    "realm=sigill.local",
+    // New coturn has DTLS and the CLI off already and warns about these two, but older packages
+    // such as Ubuntu's need them, or the CLI listens on a fixed port.
+    "no-tls",
+    "no-dtls",
+    "no-cli",
+    // On loopback, every peer of the local stack is on loopback too.
+    ...(ip === host ? ["allow-loopback-peers"] : []),
+    `pidfile=${join(stateDir, "turnserver.pid")}`,
+    `userdb=${join(stateDir, "turndb")}`,
+    `log-file=${coturnLog}`,
+    "simple-log",
+    "no-stdout-log",
+    "verbose",
+  ];
+  return `${lines.join("\n")}\n`;
 }
 
 /** A port that was free a moment ago. ponytail: racy, but nothing else picks ports here. */
