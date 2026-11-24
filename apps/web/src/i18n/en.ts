@@ -483,7 +483,7 @@ export const en = {
     license: "Open source, MIT license",
   },
   preview: {
-    title: "Fidant: private file transfer",
+    title: "Private file transfer with Fidant",
     receiveTitle: "Sent to you with Fidant",
     receiveDescription:
       "Open the link to receive it. It's encrypted the whole way, and the link works only while the sender's page is open.",
