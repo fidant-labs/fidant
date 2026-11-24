@@ -1,7 +1,7 @@
 import type { ComponentChildren } from "preact";
 import { ICONS } from "../ui.tsx";
 
-const run = "group-data-seen/art:[animation-play-state:running]";
+const run = "group-data-seen/art:[animation-play-state:running] print:animate-none";
 const animate = {
   arrive: `motion-safe:animate-art-arrive ${run}`,
   draw: `motion-safe:animate-art-draw ${run}`,
