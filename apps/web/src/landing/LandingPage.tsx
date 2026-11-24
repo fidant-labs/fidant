@@ -1,6 +1,7 @@
 // The front page: what Fidant does, in plain words, and the way in to sending.
 // Every claim here must stay true of what the code does today (see PrivacyPage).
 
+import { cn } from "cn";
 import { buttonVariants } from "#components/ui/button";
 import { useI18n } from "../i18n/I18n.tsx";
 import { display, Icon, Link } from "../ui.tsx";
@@ -65,12 +66,12 @@ export function LandingPage() {
       <h1 class={`${display} max-w-3xl text-[2.6rem] leading-[1.05] sm:text-[4rem]`}>{l.title}</h1>
       <p class="mt-6 max-w-2xl text-[1.15rem] text-muted-foreground">{l.lede}</p>
       <div class="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3">
-        <Link href="/send" class={`${buttonVariants({ size: "lg" })} h-12 gap-2 px-6 text-base`}>
+        <Link href="/send" class={cn(buttonVariants({ size: "lg" }), "h-12 gap-2 px-6 text-base")}>
           {l.cta} <Icon name="arrow" class="size-4" />
         </Link>
         <Link
           href="/secret"
-          class={`${buttonVariants({ variant: "outline", size: "lg" })} h-12 px-6 text-base`}
+          class={cn(buttonVariants({ variant: "outline", size: "lg" }), "h-12 px-6 text-base")}
         >
           {t.menu.secret}
         </Link>
