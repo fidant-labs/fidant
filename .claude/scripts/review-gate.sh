@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
+# The id of the branch's diff against its base. Known limit: patch-id ignores the line numbers in
+# hunk headers, so moving an added line elsewhere in the same file after the mark keeps the id.
 diff_id() {
   local base
   base=$(git rev-parse --abbrev-ref origin/HEAD 2>/dev/null) || base=origin/main
-  # -U0 keeps the id stable when merging the base branch only shifts context lines
-  git diff --no-ext-diff --no-textconv -U0 "$(git merge-base "$base" HEAD)" HEAD | git patch-id --verbatim | cut -d' ' -f1
+  # -U0 keeps the id stable when merging the base branch only shifts context lines.
+  # --no-color and --no-relative override user config that would change the output.
+  git diff --no-ext-diff --no-textconv --no-color --no-relative -U0 "$(git merge-base "$base" HEAD)" HEAD \
+    | git patch-id --verbatim | cut -d' ' -f1
 }
 
 marker() { echo "$(git rev-parse --git-dir)/deep-review-clean"; }
@@ -23,23 +27,29 @@ if [ "${1:-}" = mark ]; then
   exit 0
 fi
 
-input=$(cat)
-cmd=$(jq -r '.tool_input.command // ""' <<<"$input")
-pr_create=$'(^|[;&|({`\n])[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*|then|do|else|time|command|env|timeout[[:space:]]+[0-9.]+[smhd]?)[[:space:]]+)*gh[[:space:]]+pr[[:space:]]+create'
-[[ $cmd =~ $pr_create ]] || exit 0
-before_pr=${cmd%%"${BASH_REMATCH[0]}"*}
-cd "$(jq -r '.cwd // "."' <<<"$input")" 2>/dev/null || exit 0
+if ! command -v jq >/dev/null; then
+  input=$(cat)
+  [[ $input == *"pr create"* ]] || exit 0
+  echo "Blocked: the review gate needs jq to read the command. Install jq and retry." >&2
+  exit 2
+fi
+
+source "$(dirname "${BASH_SOURCE[0]}")/command.sh"
+read_input
+runs "${GH_PR}create" || exit 0
 
 # The hook cwd is the session shell's, so honour the last `cd` the command runs before creating the PR.
-target=$(grep -oE "(^|[;&|(])[[:space:]]*cd[[:space:]]+(\"[^\"]+\"|'[^']+'|[^[:space:];&|)]+)" <<<"$before_pr" \
-  | tail -1 | sed -E "s/^.*cd[[:space:]]+//; s/^[\"']//; s/[\"']\$//")
-if [ -n "$target" ]; then
-  case "$target" in *'$'*)
-    echo "Blocked: cannot resolve the cd target $target before gh pr create; cd into the worktree by literal path." >&2
-    exit 2 ;;
-  esac
-  target="${target/#\~/$HOME}"
-  cd "$target" 2>/dev/null || true
+if ! enter_target; then
+  echo "Blocked: cannot resolve the cd target $unresolved before gh pr create; cd into the worktree by literal path." >&2
+  exit 2
+fi
+
+head=$(flag --head -H)
+head=${head##*:}
+branch=$(git branch --show-current)
+if [ -n "$head" ] && [ "$head" != "$branch" ]; then
+  echo "Blocked: --head $head is not the checked-out branch ($branch), so the gate cannot check its diff. cd into the worktree of $head and retry." >&2
+  exit 2
 fi
 
 id=$(diff_id)

@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
-input=$(cat)
-cmd=$(jq -r '.tool_input.command // ""' <<<"$input")
-[[ $cmd =~ (git[[:space:]]+push|gh[[:space:]]+pr[[:space:]]+create) ]] || exit 0
-cd "$(jq -r '.cwd // "."' <<<"$input")" 2>/dev/null || exit 0
+command -v jq >/dev/null || exit 0
+source "$(dirname "${BASH_SOURCE[0]}")/command.sh"
+read_input
+runs "$GIT_PUSH" || runs "${GH_PR}create" || exit 0
+enter_target || exit 0
 
 base=$(git rev-parse --abbrev-ref origin/HEAD 2>/dev/null) || base=origin/main
 git fetch -q origin "${base#origin/}" 2>/dev/null
