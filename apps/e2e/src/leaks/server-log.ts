@@ -1,6 +1,7 @@
 import {
   CONNECTION_PATHS,
   ERROR_CODES,
+  type LogFields,
   REFUSE_REASONS,
   UPGRADE_REJECT_REASONS,
 } from "@sigill/protocol";
@@ -74,7 +75,19 @@ export const serverLogAllowlist: LogAllowlist = {
 const excerptLength = 120;
 const linkPattern = /^[A-Za-z0-9_-]{6}$/;
 const counts = ["links", "bytes", "port"] as const;
-const allowedKeys = new Set(["event", "link", "reason", "code", "path", ...counts]);
+// Keyed like the /privacy page's field list, so a new LogFields key fails the typecheck here too.
+const allowedKeys = new Set(
+  Object.keys({
+    event: true,
+    link: true,
+    links: true,
+    bytes: true,
+    reason: true,
+    code: true,
+    port: true,
+    path: true,
+  } satisfies Record<"event" | keyof LogFields, true>),
+);
 
 /**
  * Checks server stdout line by line: each non-empty line is one JSON object with only the

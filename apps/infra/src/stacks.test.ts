@@ -6,6 +6,7 @@ import { Match, Template } from "aws-cdk-lib/assertions";
 import { addStacks } from "./app.ts";
 import { boxAddress, hostedZoneIds, siteNames, zoneNames } from "./config.ts";
 import { DnsStack } from "./dns.ts";
+import { renderUserData } from "./user-data.ts";
 
 const account = "111111111111";
 const dnsAccount = "222222222222";
@@ -160,6 +161,7 @@ test("the app box is open only on 80, 443 and the relay's ports, and on 22 only 
   box.hasResourceProperties("AWS::Lightsail::StaticIp", { AttachedTo: { Ref: instanceId } });
   box.hasResource("AWS::Lightsail::StaticIp", { DeletionPolicy: "Retain" });
   assert.match(instance?.Properties.InstanceName, /^fidant-app-[0-9a-f]{8}$/);
+  assert.equal(instance?.Properties.UserData, renderUserData());
   assert.match(instance?.Properties.UserData, /^fidant\.se \{$/m);
   assert.match(
     instance?.Properties.UserData,
@@ -508,4 +510,33 @@ test("only fidant.se gets the relay name, pointing at the box over IPv4", () => 
     relay.map(({ Properties: p }) => [p.HostedZoneId, p.Name, p.Type, p.ResourceRecords]),
     [[zoneRef("fidant.se"), "turn.fidant.se.", "A", ["192.0.2.10"]]],
   );
+});
+
+test("the journal is the only place the box's services keep log lines", () => {
+  const stack = stacksFor(pocAccount).find((child) => child.stackName === "FidantApp");
+  const [instance] = Object.values(
+    Template.fromStack(stack as Stack).findResources("AWS::Lightsail::Instance"),
+  );
+  const userData = String(instance?.Properties.UserData);
+  const heredoc = (path: string): string[] => {
+    const start = userData.indexOf(`\ncat >${path} <<'EOF'\n`);
+    assert.ok(start > 0, path);
+    const body = userData.slice(userData.indexOf("\n", start + 1) + 1);
+    return body.slice(0, body.indexOf("\nEOF\n")).split("\n");
+  };
+
+  const caddyfile = heredoc("/etc/caddy/Caddyfile");
+  assert.deepEqual(
+    caddyfile.filter((line) => /^\s*log\b/.test(line)),
+    ["\tlog default {"],
+  );
+  assert.ok(!caddyfile.some((line) => /^\s*output\b/.test(line)));
+
+  const turnserver = heredoc(">/etc/turnserver.conf");
+  for (const line of ["log-file=/dev/null", "no-stdout-log"]) {
+    assert.ok(turnserver.includes(line), line);
+  }
+  assert.ok(!turnserver.some((line) => /^\s*(syslog|verbose)\b/i.test(line)));
+
+  assert.doesNotMatch(userData, /^\s*Standard(Output|Error)=/m);
 });

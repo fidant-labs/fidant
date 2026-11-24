@@ -1,11 +1,12 @@
 import { execFile, execFileSync } from "node:child_process";
 import { createHash, randomBytes, X509Certificate } from "node:crypto";
 import { readFileSync, rmSync } from "node:fs";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { e2eDir, repoRoot, runDir } from "../paths.ts";
+import { boxFiles } from "./box.ts";
 import { coturnConfig } from "./coturn.ts";
 import { startServer } from "./server.ts";
 import type { RunningService, Service } from "./service.ts";
@@ -20,8 +21,12 @@ export const serverIp = "198.51.100.10";
 export const turnIp = "198.51.100.20";
 /** coturn's name for TURN over TLS. Browsers resolve it to turnIp (playwright.config.ts). */
 export const turnHost = "turn.sigill.test";
+/** The POC box container, which the browsers reach as fidant.se and turn.fidant.se. */
+export const boxIp = "198.51.100.30";
+export const boxOrigin = "https://fidant.se";
 // node:26-bookworm, not slim: the server's certificate step shells out to openssl.
-const serverImage =
+// box/Dockerfile copies its node binary.
+export const serverImage =
   "node:26.13.1-bookworm@sha256:0a7c0471c10988ef5ab64718fa58bf8d5be578b4d20cf42b10b5fa6ccda39ae1";
 const repo = repoRoot.replace(/\/$/, "");
 
@@ -76,6 +81,35 @@ export async function sendToRelay(payload: Uint8Array): Promise<void> {
   await sending;
 }
 
+/** Runs a command in the box container and returns its stdout. */
+export async function inBox(...command: string[]): Promise<string> {
+  const { stdout } = await run("docker", [...compose, "exec", "-T", "box", ...command], {
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  return stdout;
+}
+
+/** Every address of the browsers' network namespaces and their routers, as the box may see them. */
+export async function clientAddresses(): Promise<string[]> {
+  const { stdout: ids } = await run("docker", [
+    ...compose,
+    "ps",
+    "-q",
+    "net-a1",
+    "net-a2",
+    "net-b1",
+    "router-a",
+    "router-b",
+  ]);
+  const { stdout } = await run("docker", [
+    "inspect",
+    "-f",
+    "{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}",
+    ...ids.split("\n").filter(Boolean),
+  ]);
+  return stdout.split(/\s+/).filter(Boolean);
+}
+
 /** Fails at once with a clear message when Docker or Compose v2 is missing or not running. */
 export function assertDocker(): void {
   try {
@@ -94,8 +128,9 @@ function down(): void {
 }
 
 /**
- * The routers, browser containers and coturn of networks/compose.yaml. It hands the server
- * TURN_URLS for coturn at 198.51.100.20, with a secret made for this run.
+ * The routers, browser containers, coturn and the box of networks/compose.yaml. It hands the
+ * server TURN_URLS for coturn at 198.51.100.20, with a secret made for this run, which the box
+ * shares.
  */
 export const dockerNetworks: Service = { name: "networks", start: startNetworks };
 
@@ -123,6 +158,16 @@ async function startNetworks(): Promise<RunningService> {
   const tls = { port: 443, cert: "/etc/sigill/turn.crt", pkey: "/etc/sigill/turn.key" };
   const config = coturnConfig({ ip: turnIp, port: 3478, secret, stateDir: "/tmp", tls });
   await writeFile(join(dir, "turnserver.conf"), config, { mode: 0o600 });
+  const boxDir = await mkdtemp(join(tmpdir(), "sigill-e2e-box-"));
+  for (const [path, file] of boxFiles({ secret })) {
+    const target = join(boxDir, path);
+    // The user data makes /etc/sigill with mode 700; the other directories are the default 755.
+    await mkdir(dirname(target), {
+      recursive: true,
+      mode: path.startsWith("/etc/sigill/") ? 0o700 : 0o755,
+    });
+    await writeFile(target, file.content, { mode: file.mode });
+  }
 
   const playwright = join(e2eDir, "node_modules", "@playwright", "test", "package.json");
   // Every compose command needs these, including `exec` from the test workers, which inherit them.
@@ -131,6 +176,7 @@ async function startNetworks(): Promise<RunningService> {
     SIGILL_E2E_REPO: repo,
     SIGILL_E2E_RUN_DIR: runDir,
     SIGILL_E2E_COTURN_DIR: dir,
+    SIGILL_E2E_BOX_DIR: boxDir,
     SIGILL_E2E_UID: String(process.getuid?.() ?? 1000),
     SIGILL_E2E_GID: String(process.getgid?.() ?? 1000),
     // Workers start after global setup and inherit it, like SIGILL_E2E_BASE_URL.
@@ -142,6 +188,7 @@ async function startNetworks(): Promise<RunningService> {
       down();
     } finally {
       rmSync(dir, { recursive: true, force: true });
+      rmSync(boxDir, { recursive: true, force: true });
     }
   };
   // Backstop for a run that ends without global teardown.
@@ -165,6 +212,8 @@ async function startNetworks(): Promise<RunningService> {
   }
   return {
     name: "networks",
+    // Not the stack's server, which is serverImage's container; only an origin the browser may reach.
+    url: boxOrigin,
     env: {
       TURN_URLS: [
         `stun:${turnIp}:3478`,
