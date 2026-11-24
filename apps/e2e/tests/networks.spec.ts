@@ -20,6 +20,7 @@ interface Scenario {
    * The selected candidate pair as `local/remote` for the sender, then the recipient, such as
    * `srflx/srflx srflx/srflx`. A remote candidate is prflx when the peer's check arrives before
    * its candidate does over signaling, so rows accept prflx wherever the remote side is direct.
+   * A local relay candidate carries its transport to the TURN server, such as `relay+tcp`.
    */
   path: RegExp;
   /** Set while the row is not implemented yet: why it is skipped. */
@@ -47,15 +48,13 @@ const scenarios: Scenario[] = [
     recipient: "b1",
     routerB: "symmetric",
     path: /relay/,
-    todo: "symmetric NAT row arrives with the router modes for symmetric NAT and blocked UDP",
   },
   {
     title: "UDP blocked",
     sender: "a1",
     recipient: "b1",
     routerB: "udp-blocked",
-    path: /relay/,
-    todo: "UDP-blocked row arrives with the router modes for symmetric NAT and blocked UDP",
+    path: / relay\+tcp\/\S+$/,
   },
   {
     title: "only TCP 443",
@@ -89,7 +88,11 @@ const sha256Hex = (data: Uint8Array) => createHash("sha256").update(data).digest
 async function pathOf(page: Page): Promise<string> {
   const pairs = (await readPeerConnections(page)).map((pc) => selectedPair(pc.stats));
   const pair = pairs.findLast((p) => p?.local && p.remote);
-  return pair ? `${pair.local}/${pair.remote}` : "none";
+  if (!pair) {
+    return "none";
+  }
+  const transport = pair.relayProtocol ? `+${pair.relayProtocol}` : "";
+  return `${pair.local}${transport}/${pair.remote}`;
 }
 
 /** Watches the ICE password of every peer connection the page made. */

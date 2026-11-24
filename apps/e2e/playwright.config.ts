@@ -1,5 +1,5 @@
 import { defineConfig } from "@playwright/test";
-import { remoteBrowsers, serverIp } from "./src/stack/networks.ts";
+import { remoteBrowsers, serverIp, turnIp } from "./src/stack/networks.ts";
 
 // `pnpm e2e:networks` runs only tests/networks.spec.ts, in browsers inside Docker networks.
 const networks = Boolean(process.env.SIGILL_E2E_NETWORKS);
@@ -35,8 +35,11 @@ export default defineConfig({
         launchOptions: {
           args: [
             // Resolve every host except the server's to nothing, so a stray request cannot reach the
-            // internet. The rule catches IP literals too.
-            `--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE ${networks ? serverIp : "localhost"}`,
+            // internet. The rule catches IP literals too, and TURN over TCP goes through the resolver,
+            // so the Docker networks also exclude the TURN server.
+            networks
+              ? `--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE ${serverIp}, EXCLUDE ${turnIp}`
+              : "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost",
             // Expose real host candidates in WebRTC instead of mDNS names.
             "--disable-features=WebRtcHideLocalIpsWithMdns",
           ],

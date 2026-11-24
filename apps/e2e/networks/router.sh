@@ -1,6 +1,6 @@
 #!/bin/sh
 # NAT router between a site network (10.89.x.0/24) and the public network (198.51.100.0/24).
-# Usage: router.sh init | cone | symmetric
+# Usage: router.sh init | cone | symmetric | udp-blocked | tcp-443
 set -eu
 
 # Docker does not keep eth0/eth1 in a stable order, so find each side by its subnet.
@@ -48,8 +48,21 @@ case "${1:-}" in
     iptables -t nat -A POSTROUTING -o "$wan" -j MASQUERADE --random-fully
     iptables -A FORWARD -i "$lan" -o "$wan" -j ACCEPT
     ;;
+  udp-blocked)
+    reset
+    # A cone NAT that drops all UDP from the site, so only TCP (TURN over TCP) gets out.
+    iptables -t nat -A POSTROUTING -o "$wan" -j MASQUERADE
+    iptables -I FORWARD -i "$lan" -p udp -j DROP
+    iptables -A FORWARD -i "$lan" -o "$wan" -j ACCEPT
+    ;;
+  tcp-443)
+    reset
+    # A strict firewall: only TCP to port 443 gets out.
+    iptables -t nat -A POSTROUTING -o "$wan" -j MASQUERADE
+    iptables -A FORWARD -i "$lan" -o "$wan" -p tcp --dport 443 -j ACCEPT
+    ;;
   *)
-    echo "usage: router.sh init|cone|symmetric" >&2
+    echo "usage: router.sh init|cone|symmetric|udp-blocked|tcp-443" >&2
     exit 2
     ;;
 esac

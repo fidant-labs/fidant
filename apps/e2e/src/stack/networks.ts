@@ -17,7 +17,7 @@ const compose = ["compose", "-f", join(e2eDir, "networks", "compose.yaml")];
 const serverName = "sigill-e2e-server";
 /** The server's address on the public network, where the browsers reach it. */
 export const serverIp = "198.51.100.10";
-const turnIp = "198.51.100.20";
+export const turnIp = "198.51.100.20";
 // node:26-bookworm, not slim: the server's certificate step shells out to openssl.
 const serverImage =
   "node:26.13.1-bookworm@sha256:0a7c0471c10988ef5ab64718fa58bf8d5be578b4d20cf42b10b5fa6ccda39ae1";
@@ -66,7 +66,10 @@ async function startNetworks(): Promise<RunningService> {
   const secretFile = join(dir, "secret");
   await writeFile(secretFile, secret, { mode: 0o600 });
   // The config dir is mounted read-only, so coturn keeps its state in the container's /tmp.
-  const config = coturnConfig({ ip: turnIp, port: 3478, secret, stateDir: "/tmp" });
+  // Like production (apps/infra/box/turnserver.conf), deny the private site ranges as peers.
+  // The public network has no route to them. Without this, coturn closed allocations right after
+  // Chrome checked a private peer through them ("reason: general"), and relayed rows failed at random.
+  const config = `${coturnConfig({ ip: turnIp, port: 3478, secret, stateDir: "/tmp" })}denied-peer-ip=10.0.0.0-10.255.255.255\n`;
   await writeFile(join(dir, "turnserver.conf"), config, { mode: 0o600 });
 
   const playwright = join(e2eDir, "node_modules", "@playwright", "test", "package.json");
