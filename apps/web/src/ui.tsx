@@ -1,5 +1,6 @@
 // Pieces shared by the pages.
 
+import type { ConnectionPath } from "@sigill/protocol";
 import type { AnchorHTMLAttributes, ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
 import { DropdownMenu } from "radix-ui";
@@ -12,7 +13,7 @@ import { formatBytes } from "./lib/format.ts";
 import type { Relayed } from "./lib/server-facts.ts";
 import { applyTheme, initialTheme, type Theme } from "./theme.ts";
 
-const ICONS = {
+export const ICONS = {
   computer: (
     <>
       <rect x="4" y="4.5" width="16" height="11" rx="1.5" />
@@ -55,6 +56,32 @@ const ICONS = {
       <path d="M8 12h8" />
     </>
   ),
+  server: (
+    <>
+      <rect x="3" y="3.5" width="18" height="7" rx="1.5" />
+      <rect x="3" y="13.5" width="18" height="7" rx="1.5" />
+      <path d="M7 7h.01M7 17h.01" />
+    </>
+  ),
+  cloud: <path d="M7 18h10.5a3.5 3.5 0 0 0 .4-6.98A5.5 5.5 0 0 0 7.2 10.6 3.75 3.75 0 0 0 7 18z" />,
+  key: (
+    <>
+      <circle cx="6.5" cy="12" r="4" />
+      <path d="M10.5 12H21v3.5M17.5 12v2.5" />
+    </>
+  ),
+  tag: (
+    <>
+      <path d="M3 7.5A1.5 1.5 0 0 1 4.5 6H15l6 6-6 6H4.5A1.5 1.5 0 0 1 3 16.5z" />
+      <path d="M16 12h.01" />
+    </>
+  ),
+  eye: (
+    <>
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+      <circle cx="12" cy="12" r="3" />
+    </>
+  ),
 };
 
 type IconName = keyof typeof ICONS;
@@ -82,7 +109,17 @@ export function Icon({ name, class: cls }: { name: IconName; class?: string }) {
 
 export const lede = "mt-2 mb-6 text-[1.05rem] text-muted-foreground";
 
-export type Route = "landing" | "send" | "privacy" | "receive" | "about" | "terms" | "security";
+export const display = "font-display font-normal tracking-tight";
+
+export type Route =
+  | "landing"
+  | "send"
+  | "privacy"
+  | "how"
+  | "receive"
+  | "about"
+  | "terms"
+  | "security";
 
 /** Changes the page without reloading it, so a transfer held in memory survives. */
 export function navigate(href: string) {
@@ -258,7 +295,10 @@ export function Header({ current }: { current: Route }) {
   );
 }
 
-const FOOTER_LINKS: ReadonlyArray<readonly ["privacy" | "about" | "terms" | "security", string]> = [
+const FOOTER_LINKS: ReadonlyArray<
+  readonly ["how" | "privacy" | "about" | "terms" | "security", string]
+> = [
+  ["how", "/how"],
   ["about", "/about"],
   ["privacy", "/privacy"],
   ["terms", "/terms"],
@@ -389,6 +429,21 @@ export function TechDetails({
     <details class="mt-8 text-[0.9rem] [&_code]:text-[0.85rem]">
       <summary class="cursor-pointer text-muted-foreground">{t.common.techDetails}</summary>
       <Facts rows={rows} />
+    </details>
+  );
+}
+
+/** How a connection runs, with a "Why?" that explains it. The summary holds the label too, so it makes sense on its own. */
+export function PathLine({ path }: { path: Exclude<ConnectionPath, "failed"> }) {
+  const { t } = useI18n();
+  const { label, explain } = t.connection[path === "relay" ? "relay" : "direct"];
+  return (
+    <details class="mt-2 text-[0.9rem]">
+      <summary class="cursor-pointer">
+        <span class="font-medium">{label}</span>{" "}
+        <span class="text-muted-foreground underline underline-offset-4">{t.connection.why}</span>
+      </summary>
+      <p class="mt-1 mb-0 text-muted-foreground">{explain}</p>
     </details>
   );
 }

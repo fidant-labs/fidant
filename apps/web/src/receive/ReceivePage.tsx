@@ -31,6 +31,7 @@
 // The secret stays in this tab (it is never stripped from the address bar in
 // this demo). The file name and size are shown, never logged or sent anywhere.
 
+import type { ConnectionPath } from "@sigill/protocol";
 import { cn } from "cn";
 import { type ComponentChildren, Fragment, type VNode } from "preact";
 import { useEffect, useMemo, useReducer, useRef, useState } from "preact/hooks";
@@ -48,7 +49,16 @@ import { peerLostProblem } from "../lib/receive-problem.ts";
 import { addRelay, NO_RELAYS, type Tie } from "../lib/server-facts.ts";
 import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
 import { createSink, isPickerCancel, type Sink } from "../lib/sink.ts";
-import { Direct, FileCard, Icon, Page, Problem, ServerPanel, TechDetails } from "../ui.tsx";
+import {
+  Direct,
+  FileCard,
+  Icon,
+  Page,
+  PathLine,
+  Problem,
+  ServerPanel,
+  TechDetails,
+} from "../ui.tsx";
 
 const caption = "text-[0.9rem] text-muted-foreground";
 
@@ -76,6 +86,8 @@ type Attempt = {
   receiving: boolean;
   /** The server said the sender is gone while the file was arriving. */
   hostGone: boolean;
+  /** The sender refused our relay for this attempt, as the server's `joined` said. */
+  relayRefused: boolean;
   /** Set once the attempt reached its final view. Later events are ignored. */
   ended: boolean;
   /** Resolves the offer: a Sink to accept, undefined to decline. */
@@ -99,6 +111,7 @@ export function ReceivePage() {
   const [reachedServer, setReachedServer] = useState(false);
   const [tie, setTie] = useState<Tie>("closed");
   const [viaRelay, setViaRelay] = useState(false);
+  const [path, setPath] = useState<Exclude<ConnectionPath, "failed"> | undefined>(undefined);
   const attemptRef = useRef<Attempt | undefined>(undefined);
 
   /** Closes everything an attempt holds. `linger` keeps the peer up for a moment. */
@@ -137,16 +150,21 @@ export function ReceivePage() {
       heardSender: false,
       receiving: false,
       hostGone: false,
+      relayRefused: false,
       ended: false,
       timers: [],
     };
     attemptRef.current = attempt;
     setPicking(false);
+    setPath(undefined);
     setView({ s: "connecting" });
 
     const current = () => attemptRef.current === attempt && !attempt.ended;
     const lostMessage = () => peerLostProblem(attempt);
     const offlineMessage = () => (attempt.receiving ? "offlineReceiving" : "offline");
+    // Before the channel opens, a refused relay is the likely reason the browsers never connected.
+    const unopened = (problem: ProblemKey): ProblemKey =>
+      attempt.relayRefused && !attempt.channelOpen ? "noRelay" : problem;
     const finish = (next: View, linger = false) => {
       if (!current()) {
         return;
@@ -167,14 +185,17 @@ export function ReceivePage() {
       }
       attempt.abort.abort(new Error("connection lost"));
       attempt.timers.push(
-        setTimeout(() => finish({ s: "failed", problem: lostMessage() }), HOST_GONE_GRACE_MS),
+        setTimeout(
+          () => finish({ s: "failed", problem: unopened(lostMessage()) }),
+          HOST_GONE_GRACE_MS,
+        ),
       );
     };
     // Without it, a sender whose signals never arrive leaves "Connecting…" up for good.
     attempt.timers.push(
       setTimeout(() => {
         if (!attempt.channelOpen) {
-          finish({ s: "failed", problem: attempt.peer ? "connect" : "server" });
+          finish({ s: "failed", problem: attempt.peer ? unopened("connect") : "server" });
         }
       }, CONNECT_TIMEOUT_MS),
     );
@@ -204,6 +225,7 @@ export function ReceivePage() {
             break;
           }
           setTie("paired");
+          attempt.relayRefused = !message.turn;
           try {
             attempt.peer = createRecipientPeer({
               signaling,
@@ -212,9 +234,13 @@ export function ReceivePage() {
               signalKey,
               iceServers: message.iceServers,
               onOpen: (channel, info) => {
-                // A short transfer can end before the path resolves; it still went through the relay.
-                void info.path.then((path) => {
-                  if (path === "relay" && attemptRef.current === attempt) {
+                // A short transfer can end before the path resolves, so this checks the attempt, not current().
+                void info.path.then((resolved) => {
+                  if (attemptRef.current !== attempt) {
+                    return;
+                  }
+                  setPath(resolved);
+                  if (resolved === "relay") {
                     setViaRelay(true);
                   }
                 });
@@ -235,7 +261,7 @@ export function ReceivePage() {
           // on this attempt (its peer failed or never connected), not that the
           // link is in use or used: the sender only signals a join it took.
           if (attempt.heardSender) {
-            finish({ s: "failed", problem: lostMessage() });
+            finish({ s: "failed", problem: unopened(lostMessage()) });
           } else {
             finish({ s: "refused", problem: message.reason });
           }
@@ -460,6 +486,7 @@ export function ReceivePage() {
           </div>
           <Direct from={offer.from || t.common.sender} to={t.common.you} state="ready" />
           <p class={caption}>{t.receive.offerCaption(offer.from)}</p>
+          {path && <PathLine path={path} />}
           <OfferDetails offer={offer} />
         </>
       );
@@ -484,6 +511,7 @@ export function ReceivePage() {
           </div>
           <Direct from={t.common.sender} to={t.common.you} state="active" />
           <p class={caption}>{t.receive.receivingCaption}</p>
+          {path && <PathLine path={path} />}
         </>
       );
       break;
@@ -508,6 +536,7 @@ export function ReceivePage() {
           )}
           <Direct from={t.common.sender} to={t.common.you} state="done" />
           <p class={caption}>{t.receive.doneCaption}</p>
+          {path && <PathLine path={path} />}
           <OfferDetails offer={offer} sha256={sha256} />
         </>
       );

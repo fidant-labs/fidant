@@ -41,6 +41,7 @@ export const en = {
     send: "Send a file – Fidant",
     receive: "Receive a file – Fidant",
     privacy: "Privacy – Fidant",
+    how: "How it works – Fidant",
     about: "About – Fidant",
     terms: "Terms of use – Fidant",
     security: "Security – Fidant",
@@ -77,6 +78,61 @@ export const en = {
       "If the two browsers can't connect directly, the file passes through our relay instead, still encrypted. The relay then sees both IP addresses and roughly how big the file is, and can't unlock it.",
     caveat: "The catch: since nothing is stored, keep your tab open until the file has arrived.",
   },
+  how: {
+    title: "How it works",
+    lede: "What happens to your file, step by step. In short: it is locked on your computer, and only someone with the link can unlock it.",
+    sections: {
+      stays: {
+        heading: "Your file stays on your computer",
+        body: [
+          "You choose a file in your browser. It is not uploaded anywhere.",
+          "Your browser locks it before it leaves your computer.",
+        ],
+      },
+      link: {
+        heading: "You get a link with the key inside",
+        body: [
+          "You get one link for each person. Each link works once. You send it yourself, for example by email or chat.",
+          "The key that unlocks the file is the part after the # sign. Browsers never send that part to us, so we never see the key.",
+          "Anyone with the link can open the file. Send each link only to the person it is for.",
+        ],
+      },
+      open: {
+        heading: "They open the link while your page is open",
+        body: [
+          "Nothing is stored, so your page must stay open until they have the file.",
+          "Our server helps the two browsers find each other, like an operator connecting a phone call. It passes on a few small locked messages that it can't read.",
+          "They see the file's name and size and choose whether to download it.",
+        ],
+      },
+      direct: {
+        heading: "The file goes straight to them, locked",
+        body: [
+          "When the networks allow it, the file goes straight from your computer to theirs. It stays locked the whole way.",
+          "Their browser unlocks it and checks that it is exactly the file you sent.",
+          "Like on a video call, each device can see the other's internet address.",
+        ],
+      },
+      relay: {
+        heading: "Sometimes it goes through our relay",
+        body: [
+          "Some networks can't connect directly to each other. This is common on mobile data and office networks.",
+          "Then the file goes through our relay in Stockholm instead, still locked.",
+          "The relay can't open the file, and it doesn't keep it.",
+          "It sees the internet address of each device and roughly how big the file is.",
+        ],
+      },
+      never: {
+        heading: "What we never see",
+        body: [
+          "Not your file. Not its name. Not the key that unlocks it.",
+          "That goes for our server and our relay.",
+        ],
+      },
+    },
+    more: "Want the details? The privacy page says exactly what our server sees and what it logs.",
+    moreLink: "Read the privacy page",
+  },
   insecure: {
     title: "This page needs a secure connection",
     body: "Files are encrypted in your browser, which only works over a secure connection. Open this page with an address that starts with https://.",
@@ -88,6 +144,19 @@ export const en = {
     typeMissing: "Not given",
     you: "You",
     sender: "Sender",
+  },
+  connection: {
+    why: "Why?",
+    direct: {
+      label: "Direct connection",
+      explain:
+        "The file goes straight between the two devices. Each side can see the other's internet address, like on a video call.",
+    },
+    relay: {
+      label: "Through our relay",
+      explain:
+        "The two networks couldn't connect directly, which is common on mobile data and office Wi-Fi. So the file goes through our relay in Stockholm. It stays locked the whole way, and the relay can't open it or keep it. The relay sees both devices' internet addresses and roughly how big the file is.",
+    },
   },
   format: {
     bytes: (n: number) => (n === 1 ? "1 byte" : `${n.toLocaleString("en-US")} bytes`),
@@ -107,6 +176,7 @@ export const en = {
     fromLabel: "Your name",
     optional: "(optional)",
     fromHint: "Shown to the people you send to.",
+    allowRelay: "Allow our relay if a direct connection isn't possible",
     fromError: {
       unsafe: "Your name contains characters that can't be sent. Remove them and try again.",
       tooLong:
@@ -147,6 +217,8 @@ export const en = {
       failed: (name: string) =>
         `The file didn't arrive intact through ${name}'s link. The link can be opened again to retry.`,
     },
+    noRelay: (name: string) =>
+      `${name}'s link was opened but couldn't connect directly. Allowing our relay may let it connect when they try again.`,
     progressFor: (name: string) => `Progress for ${name}`,
     copy: "Copy link",
     copyFor: (name: string) => `Copy link for ${name}`,
@@ -242,6 +314,10 @@ export const en = {
         title: "Couldn't connect to the sender's computer",
         body: "Your two computers couldn't reach each other.",
       },
+      noRelay: {
+        title: "Couldn't connect directly to the sender",
+        body: "The sender doesn't allow our relay, and your networks couldn't connect directly. Another network may work, for example your phone's mobile data.",
+      },
       server: {
         title: "Couldn't reach the server",
         body: "The server connects you to the sender. Check your internet connection.",
@@ -263,26 +339,33 @@ export const en = {
       online,
       links,
       connected,
+      relay,
     }: {
       online: boolean;
       links: number;
       connected: number;
+      /** Whether the sender allows our TURN relay. */
+      relay: boolean;
     }) => {
       if (!online) {
         return "Nothing once it notices the connection has closed. That takes up to a minute if the network dropped.";
       }
+      const choice = relay
+        ? "Your choice to allow our relay."
+        : "Your choice not to allow our relay.";
       if (links === 0) {
-        return "No links yet.";
+        return `No links yet. ${choice}`;
       }
       const ids =
         links === 1
           ? "The ID of your link, never the part that unlocks the file."
           : `The IDs of your ${links} links, never the part that unlocks the file.`;
+      const held = `${ids} ${choice}`;
       if (connected === 0) {
-        return ids;
+        return held;
       }
       const who = connected === 1 ? "1 recipient" : `${connected} recipients`;
-      return `${ids} ${who} connected right now.`;
+      return `${held} ${who} connected right now.`;
     },
     recipientHolds: (tie: Tie) =>
       ({
@@ -327,6 +410,7 @@ export const en = {
   footer: {
     label: "Site",
     tagline: "Files encrypted in your browser, readable only by the recipient.",
+    how: "How it works",
     about: "About",
     terms: "Terms",
     security: "Security",
@@ -426,7 +510,7 @@ export const en = {
   },
   privacy: {
     title: "Privacy",
-    lede: "Your file goes straight from your browser to the browser of the person you send it to. It's locked before it leaves your computer, and only the person with the link can unlock it. We never get the file, its name or the key.",
+    lede: "Your file goes from your browser to the browser of the person you send it to, directly when your networks allow it and otherwise through our relay. It's locked before it leaves your computer, and only the person with the link can unlock it. We never get the file, its name or the key.",
     howHeading: "How sending works",
     // [bold, rest]: the bold part opens each step.
     steps: [
@@ -444,8 +528,8 @@ export const en = {
       ],
       ["They see the file name and size and choose to download it, or decline.", ""],
       [
-        "The file goes directly from your computer to theirs, locked the whole way.",
-        "Their browser unlocks it and checks that it is exactly the file you sent.",
+        "The file goes from your computer to theirs, locked the whole way.",
+        "It goes directly when your networks allow it, otherwise through our relay. Their browser unlocks it and checks that it is exactly the file you sent.",
       ],
     ] as ReadonlyArray<readonly [string, string]>,
     keepOpen:
@@ -482,6 +566,10 @@ export const en = {
       [
         "Setup messages",
         "A few small, locked messages that help the two browsers connect. We pass them on without being able to read them, and don't keep them.",
+      ],
+      [
+        "The sender's relay choice",
+        "Whether the sender allows our relay, so we only give recipients access to it when they do. We forget it within a minute after the sender's page closes, and never write it to our logs.",
       ],
     ] as ReadonlyArray<readonly [string, string]>,
     keepHeading: "What we keep",

@@ -195,6 +195,12 @@ test("delivers a file to two recipients with a verified checksum", async ({
   for (const name of names) {
     await expect(delivered(sender, name)).toBeVisible();
   }
+  const cards = names.map((name) => recipientRow(sender, name));
+  for (const scope of [...cards, ...received.map(({ page }) => page)]) {
+    await expect(scope.getByText("Direct connection", { exact: true })).toBeVisible();
+    await scope.getByText("Why?", { exact: true }).click();
+    await expect(scope.getByText("The file goes straight between the two devices.")).toBeVisible();
+  }
 
   const panel = sender.getByRole("region", { name: "What our server has right now" });
   await expect(panel).toContainText("None. The file goes directly between browsers.");

@@ -22,7 +22,21 @@ export function turnCredentials(
   return { username, credential };
 }
 
-/** The ICE servers for one pairing: none without TURN, else TURN with fresh credentials. */
-export function iceServersFor(ice: IceConfig | undefined, nowMs: number): IceServer[] {
-  return ice ? [{ urls: ice.urls, ...turnCredentials(ice.secret, nowMs) }] : [];
+/**
+ * The ICE servers for one pairing: none without TURN, TURN with fresh credentials if the sender
+ * allows it, else only the STUN URLs, with no credential minted.
+ */
+export function iceServersFor(
+  ice: IceConfig | undefined,
+  nowMs: number,
+  turn: boolean,
+): IceServer[] {
+  if (!ice) {
+    return [];
+  }
+  if (turn) {
+    return [{ urls: ice.urls, ...turnCredentials(ice.secret, nowMs) }];
+  }
+  const stun = ice.urls.filter((url) => url.startsWith("stun:"));
+  return stun.length > 0 ? [{ urls: stun }] : [];
 }

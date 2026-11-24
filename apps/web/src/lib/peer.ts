@@ -4,8 +4,8 @@
 // Message flow for one link:
 //
 //   recipient → server   join {link, attempt}
-//   server → recipient   joined {link, attempt, iceServers}   (recipient: createRecipientPeer)
-//   server → sender      joined {link, attempt, iceServers}   (sender: createSenderPeer)
+//   server → recipient   joined {link, attempt, iceServers, turn}   (recipient: createRecipientPeer)
+//   server → sender      joined {link, attempt, iceServers, turn}   (sender: createSenderPeer)
 //   sender → recipient   relay seal_s({kind:"offer", sdp})
 //   recipient → sender   relay seal_r({kind:"answer", sdp})
 //   both directions      relay seal({kind:"ice", candidate})   (trickle; null = end)

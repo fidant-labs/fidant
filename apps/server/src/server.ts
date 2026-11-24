@@ -107,7 +107,7 @@ export function startServer(options: {
   );
   const signaling = attachSignaling(server, {
     log: options.log ?? (() => {}),
-    iceServers: () => iceServersFor(options.ice, Date.now()),
+    iceServers: (turn) => iceServersFor(options.ice, Date.now(), turn),
   });
   server.on("close", () => signaling.close());
   return new Promise((done, fail) => {
