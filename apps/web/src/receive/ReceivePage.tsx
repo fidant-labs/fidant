@@ -262,7 +262,7 @@ export function ReceivePage() {
           } else {
             finish(
               message.reason === "drop"
-                ? { s: "failed", problem: lostMessage() }
+                ? { s: "failed", problem: unopened(lostMessage()) }
                 : { s: "refused", problem: message.reason },
             );
           }
