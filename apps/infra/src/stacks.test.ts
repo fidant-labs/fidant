@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   mkdirSync,
   mkdtempSync,
@@ -417,13 +417,22 @@ test("the journal is the only place the box's services keep log lines", () => {
   assert.doesNotMatch(userData, /^\s*Standard(Output|Error)=/m);
 });
 
-test("the app server's memory never goes to swap", () => {
+test("neither the app server nor Caddy, which terminates TLS, has its memory swapped", () => {
   const userData = renderUserData();
-  const unit = userData.slice(
-    userData.indexOf("\ncat >/etc/systemd/system/sigill.service <<'EOF'\n"),
+  for (const [path, section] of [
+    ["sigill.service", "\n[Service]\n"],
+    ["caddy.service.d/no-swap.conf", "[Service]\n"],
+  ] as const) {
+    const start = userData.indexOf(`\ncat >/etc/systemd/system/${path} <<'EOF'\n`);
+    assert.ok(start > 0, path);
+    const unit = userData.slice(start, userData.indexOf("\nEOF\n", start));
+    const service = unit.slice(unit.indexOf(section));
+    assert.ok(service.split("\n").includes("MemorySwapMax=0"), path);
+  }
+  assert.ok(
+    userData.indexOf("caddy.service.d/no-swap.conf") <
+      userData.indexOf("\nsystemctl restart caddy\n"),
   );
-  const service = unit.slice(unit.indexOf("\n[Service]\n"), unit.indexOf("\n[Install]\n"));
-  assert.ok(service.split("\n").includes("MemorySwapMax=0"));
 });
 
 function credentialHelper(): { helper: string; rest: string } {
@@ -458,7 +467,9 @@ test("sigill-credential writes the mail drop-in only with its password file, and
     writeFileSync(script, credentialHelper().helper.replaceAll("/etc/", `${dir}/etc/`));
     const log = join(dir, "log");
     mkdirSync(join(dir, "bin"));
-    writeFileSync(join(dir, "bin", "stty"), "#!/bin/sh\n", { mode: 0o755 });
+    writeFileSync(join(dir, "bin", "stty"), `#!/bin/sh\necho "$*" >>'${dir}/stty-log'\n`, {
+      mode: 0o755,
+    });
     writeFileSync(
       join(dir, "bin", "systemctl"),
       `#!/bin/sh\necho "$*:$([ -e '${dropin}' ] && echo D)$([ -e '${secret}' ] && echo S)" >>'${log}'\n`,
@@ -508,6 +519,42 @@ test("sigill-credential writes the mail drop-in only with its password file, and
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("sigill-credential restores terminal echo when a signal ends it at the password prompt", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "sigill-credential-"));
+  try {
+    const script = join(dir, "sigill-credential");
+    writeFileSync(script, credentialHelper().helper.replaceAll("/etc/", `${dir}/etc/`));
+    const sttyLog = join(dir, "stty-log");
+    mkdirSync(join(dir, "bin"));
+    writeFileSync(join(dir, "bin", "stty"), `#!/bin/sh\necho "$*" >>'${sttyLog}'\n`, {
+      mode: 0o755,
+    });
+    const shell = statSync("/bin/dash", { throwIfNoEntry: false }) ? "/bin/dash" : "/bin/sh";
+    const child = spawn(shell, [script, "mail", "on"], {
+      env: { ...process.env, PATH: `${dir}/bin:${process.env.PATH}` },
+      stdio: ["pipe", "ignore", "ignore"],
+    });
+    const closed = new Promise((resolve) => child.on("close", resolve));
+    child.stdin.write("AKIAIOSFODNN7EXAMPLE\n");
+    for (let i = 0; i < 100 && !readIfAny(sttyLog).includes("-echo"); i++) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    child.kill("SIGINT");
+    await closed;
+    assert.deepEqual(readIfAny(sttyLog).split("\n").filter(Boolean), ["-echo", "echo"]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+function readIfAny(path: string): string {
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return "";
+  }
+}
 
 const camelPorts = [
   { protocol: "tcp", fromPort: 80, toPort: 80, cidrs: ["0.0.0.0/0"], ipv6Cidrs: ["::/0"] },

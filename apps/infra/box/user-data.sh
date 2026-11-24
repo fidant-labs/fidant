@@ -92,6 +92,7 @@ case "${1-} ${2-}" in
   read -r user
   printf '%s\n' "$user" | grep -Eqx 'AKIA[A-Z2-7]{16}' || { echo 'Not an SES SMTP user name.' >&2; exit 1; }
   trap 'stty echo' EXIT
+  trap 'exit 130' INT TERM HUP
   stty -echo
   printf 'SMTP password: '
   read -r password
@@ -185,6 +186,12 @@ cat >/etc/caddy/Caddyfile <<'EOF'
 	import hsts
 	redir https://@DOMAIN@{uri} permanent
 }
+EOF
+
+install -d /etc/systemd/system/caddy.service.d
+cat >/etc/systemd/system/caddy.service.d/no-swap.conf <<'EOF'
+[Service]
+MemorySwapMax=0
 EOF
 
 systemctl daemon-reload
