@@ -1,12 +1,17 @@
-import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { createHash, randomBytes } from "node:crypto";
+import { readFile, writeFile } from "node:fs/promises";
 import { buffer } from "node:stream/consumers";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { Page } from "@playwright/test";
 import { canaryFile, canaryKey, expect, type Leaks, type Observed, test } from "../src/fixtures.ts";
 import { readPeerConnections, recordPeerConnections, selectedPair } from "../src/ice.ts";
-import { serverStdoutLog } from "../src/paths.ts";
+import { checkServerLog, serverLogAllowlist } from "../src/leaks/server-log.ts";
+import { boxJournal, boxSyslog, serverStdoutLog } from "../src/paths.ts";
+import { winningJournald } from "../src/stack/box.ts";
 import {
+  boxOrigin,
+  clientAddresses,
+  inBox,
   pauseRelay,
   type RouterMode,
   remoteBrowsers,
@@ -317,3 +322,165 @@ for (const row of scenarios) {
     });
   });
 }
+
+/**
+ * One `journalctl -o json --all` entry. MESSAGE is a byte array when it is not valid UTF-8 text;
+ * without --all it would also be null when over 4096 bytes.
+ */
+interface JournalEntry {
+  MESSAGE?: string | number[] | null;
+  _SYSTEMD_UNIT?: string;
+}
+
+/** A missing MESSAGE throws, so a line the checks cannot read fails the test instead of passing them. */
+const messageOf = (entry: JournalEntry) => {
+  if (typeof entry.MESSAGE === "string") {
+    return entry.MESSAGE;
+  }
+  if (Array.isArray(entry.MESSAGE)) {
+    return Buffer.from(entry.MESSAGE).toString("utf8");
+  }
+  throw new Error(`journal entry without MESSAGE: ${JSON.stringify(entry).slice(0, 200)}`);
+};
+
+/** Matches the address on its own, so 198.51.100.2 does not match 198.51.100.20. */
+const addressPattern = (ip: string) => new RegExp(`(?<![\\d.])${ip.replaceAll(".", "\\.")}(?!\\d)`);
+
+// The POC box (networks/box): what its journal and /var/log/syslog hold after one relayed
+// transfer. /privacy promises the journal is the only log store and keeps lines 29 days.
+test.describe("the box", () => {
+  test.use({
+    baseURL: boxOrigin,
+    remoteBrowsers: { sender: remoteBrowsers.a1, recipient: remoteBrowsers.b1 },
+  });
+
+  test("logs a relayed transfer only to its journal, within the allowlist", async ({
+    actor,
+    observed,
+    leaks,
+    canary,
+    baseURL,
+  }) => {
+    await routerMode("router-b", "symmetric");
+    const file = leaks.watch(canaryFile(canary.fork("file"), { size: 300_001 }));
+
+    const sender = await actor("sender");
+    await recordPeerConnections(sender.context);
+    await sender.page.goto("/send");
+    await sender.page.getByLabel("Choose a file").setInputFiles({
+      name: file.name,
+      mimeType: file.mime,
+      buffer: file.bytes,
+    });
+    await sender.page.getByLabel("Who is it for?").fill("Anna");
+    await sender.page.getByRole("button", { name: "Add", exact: true }).click();
+    const link =
+      (await sender.page.getByLabel("Link for Anna", { exact: true }).textContent()) ?? "";
+    leaks.watchKey("link secret", new URL(link).hash.slice(1));
+
+    const recipient = await actor("recipient");
+    await recordPeerConnections(recipient.context);
+    await recipient.page.goto(link);
+    const downloading = recipient.page.waitForEvent("download");
+    await recipient.page.getByRole("button", { name: "Download" }).click();
+    await expect(recipient.page.getByText(verifiedText)).toBeVisible({ timeout: 60_000 });
+    const download = await downloading;
+    expect(sha256Hex(await buffer(await download.createReadStream()))).toBe(sha256Hex(file.bytes));
+    // Relayed by the box's coturn: the box's server hands out only turn.fidant.se.
+    await expect
+      .poll(async () => `${await pathOf(sender.page)} ${await pathOf(recipient.page)}`)
+      .toMatch(/relay/);
+    await watchIcePasswords(leaks, "sender", sender.page);
+    await watchIcePasswords(leaks, "recipient", recipient.page);
+    await expectSignaling(observed, baseURL);
+    const userAgents = await Promise.all(
+      [sender.page, recipient.page].map((page) => page.evaluate(() => navigator.userAgent)),
+    );
+
+    // The path report is the last line the server logs for a transfer.
+    let journal = "";
+    const entries = () =>
+      journal
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as JournalEntry);
+    const sigillLines = () =>
+      entries()
+        .filter((entry) => entry._SYSTEMD_UNIT === "sigill.service")
+        .map(messageOf);
+    await expect
+      .poll(async () => {
+        journal = await inBox(
+          ..."journalctl -o json --all --no-pager -u sigill -u caddy -u coturn".split(" "),
+        );
+        // The decoded messages as plain lines, which is what the leak scanner reads; JSON
+        // escapes and decimal byte arrays would hide a canary from it. Kept on every attempt.
+        // A binary MESSAGE goes in as hex: the scanner reads logs as UTF-8, which would mangle
+        // raw file bytes, and it matches hex views.
+        await writeFile(
+          boxJournal,
+          `${entries()
+            .map((entry) =>
+              Array.isArray(entry.MESSAGE)
+                ? Buffer.from(entry.MESSAGE).toString("hex")
+                : messageOf(entry),
+            )
+            .join("\n")}\n`,
+        );
+        return sigillLines().some((line) => line.startsWith('{"event":"path"'));
+      })
+      .toBe(true);
+
+    // Straight to rsyslog's socket: journald forwards nothing, so this proves rsyslog writes.
+    const probe = randomBytes(8).toString("hex");
+    await inBox("logger", "-u", "/run/systemd/journal/syslog", "-t", "sigill-e2e-probe", probe);
+    let syslog = "";
+    await expect
+      .poll(async () => {
+        syslog = await inBox("cat", "/var/log/syslog");
+        await writeFile(boxSyslog, syslog);
+        return syslog.includes(probe);
+      })
+      .toBe(true);
+
+    const services = /\s(node|caddy|turnserver|coturn)(\[\d+\])?:|(sigill|caddy|coturn)\.service/;
+    expect(syslog.split("\n").filter((line) => services.test(line))).toEqual([]);
+
+    const { files, settings } = winningJournald(
+      await inBox("systemd-analyze", "cat-config", "systemd/journald.conf"),
+    );
+    expect(files).toEqual(
+      expect.arrayContaining([
+        "/usr/lib/systemd/journald.conf.d/syslog.conf",
+        "/etc/systemd/journald.conf.d/zz-retention.conf",
+      ]),
+    );
+    expect(Object.fromEntries(settings)).toMatchObject({
+      ForwardToSyslog: "no",
+      MaxRetentionSec: "29day",
+      MaxFileSec: "1day",
+    });
+
+    // Every line of the app server is an allowlisted JSON object; the banner goes only to a TTY.
+    const lines = sigillLines();
+    expect(checkServerLog(lines, serverLogAllowlist)).toEqual([]);
+    const events = new Set(lines.map((line) => (JSON.parse(line) as { event: string }).event));
+    expect([...events]).toEqual(expect.arrayContaining(["joined", "path"]));
+
+    const addresses = await clientAddresses();
+    expect(addresses.length).toBeGreaterThan(0);
+    const messages = entries().map(messageOf);
+    for (const ip of addresses) {
+      expect(
+        messages.filter((m) => addressPattern(ip).test(m)),
+        ip,
+      ).toEqual([]);
+    }
+    for (const agent of [...userAgents, "Mozilla/"]) {
+      expect(
+        messages.filter((m) => m.includes(agent)),
+        agent,
+      ).toEqual([]);
+    }
+  });
+});

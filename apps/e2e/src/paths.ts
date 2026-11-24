@@ -17,6 +17,10 @@ export const coturnLog = join(runDir, "coturn.log");
 /** Every packet to and from coturn, in the network scenarios only (networks/compose.yaml). */
 export const coturnPcap = join(runDir, "coturn.pcap");
 
+/** The box container's journal (sigill, caddy, coturn) and /var/log/syslog, network scenarios only. */
+export const boxJournal = join(runDir, "box-journal.jsonl");
+export const boxSyslog = join(runDir, "box-syslog.log");
+
 /** Empties observations/ so a run only holds its own files. */
 export async function resetObservations(): Promise<void> {
   await rm(observationsDir, { recursive: true, force: true });

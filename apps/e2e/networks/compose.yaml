@@ -2,13 +2,14 @@
 #
 #   site-a 10.89.1.0/24: router-a (.2), net-a1 (.11), net-a2 (.12)
 #   site-b 10.89.2.0/24: router-b (.2), net-b1 (.11)
-#   public 198.51.100.0/24 (TEST-NET-2): router-a (.2), router-b (.3), coturn (.20)
+#   public 198.51.100.0/24 (TEST-NET-2): router-a (.2), router-b (.3), coturn (.20), box (.30)
 #
 # Each browser-xx shares the network namespace of net-xx, whose default route is its site's
 # router. The routers NAT onto public, which has no way out, so nothing reaches the internet.
 #
 # Environment: PLAYWRIGHT_VERSION, SIGILL_E2E_REPO (repo path on the host),
 # SIGILL_E2E_RUN_DIR (observations/run), SIGILL_E2E_COTURN_DIR (holds turnserver.conf),
+# SIGILL_E2E_BOX_DIR (the box's config files at their paths under /),
 # SIGILL_E2E_UID and SIGILL_E2E_GID (the host user, so files in the run dir stay theirs).
 name: sigill-e2e
 
@@ -158,3 +159,25 @@ services:
       test: ["CMD-SHELL", 'ls -l /proc/*/fd 2>/dev/null | grep -q " -> $$PCAP$$"']
       interval: 1s
       retries: 30
+
+  # The POC box: systemd with the app server, Caddy, coturn and rsyslog, configured from the
+  # rendered user data (box/Dockerfile). The browsers reach it as fidant.se and turn.fidant.se.
+  box:
+    image: sigill-e2e-box:4
+    build: box
+    privileged: true
+    tmpfs: [/run, /run/lock]
+    volumes:
+      # sigill.service's WorkingDirectory, as the release symlink is on the box.
+      - ${SIGILL_E2E_REPO:?}:/opt/sigill/current:ro
+      - ${SIGILL_E2E_BOX_DIR:?}:/box:ro
+    networks:
+      public: { ipv4_address: 198.51.100.30 }
+    healthcheck:
+      # The server's check is sigill-deploy's: sigill.service is briefly active even when it
+      # exits at once and restarts.
+      test:
+        - CMD-SHELL
+        - for u in sigill caddy coturn rsyslog; do systemctl is-active --quiet $$u || exit 1; done && curl -fsk --max-time 2 -o /dev/null https://127.0.0.1:8443/
+      interval: 1s
+      retries: 90

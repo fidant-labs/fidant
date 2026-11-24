@@ -22,6 +22,8 @@ import { exemptTest, registerSecrets } from "./leaks/registry.ts";
 import { formatLeakReport, logViolations } from "./leaks/report.ts";
 import { type Capture, type Finding, scan } from "./leaks/scan.ts";
 import {
+  boxJournal,
+  boxSyslog,
   coturnLog,
   coturnPcap,
   e2eDir,
@@ -60,8 +62,11 @@ export interface Leaks {
 /** A path relative to apps/e2e, as findings name points. */
 const point = (path: string) => relative(e2eDir, path);
 
-/** The run logs, server stdout first. All get the canary scan; stdout also the allowlist check. */
-const logs = [serverStdoutLog, serverStderrLog, coturnLog];
+/**
+ * The run logs, server stdout first. All get the canary scan; stdout also the allowlist check.
+ * The box's files exist only once its test wrote them; a missing log reads as empty.
+ */
+const logs = [serverStdoutLog, serverStderrLog, coturnLog, boxJournal, boxSyslog];
 
 /**
  * One test's leak check: its secrets, the recorders whose records it scans, and where the server
