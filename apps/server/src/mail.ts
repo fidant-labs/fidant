@@ -61,6 +61,12 @@ export function compose(mail: Mail): { subject: string; text: string } {
   return { subject: text.noticeSubject, text: [...lines, ...text.noticeEnd].join("\n\n") };
 }
 
+/** Plain SMTP is allowed only to this machine; every other host must upgrade with STARTTLS. */
+export function isLoopback(hostname: string): boolean {
+  const host = hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  return host === "localhost" || host === "::1" || /^127\.\d+\.\d+\.\d+$/.test(host);
+}
+
 export function smtpMailer(config: {
   url: string;
   from: string;
@@ -78,12 +84,13 @@ export function smtpMailer(config: {
   if (config.password && !url.username) {
     throw new Error("MAIL_SMTP_URL needs a user name when MAIL_PASSWORD_FILE is set.");
   }
+  const host = url.hostname.replace(/^\[|\]$/g, "");
   const secure = url.protocol === "smtps:";
   const transport = createTransport({
-    host: url.hostname,
+    host,
     port: Number(url.port) || (secure ? 465 : 587),
     secure,
-    requireTLS: Boolean(config.password),
+    requireTLS: Boolean(config.password) || !isLoopback(host),
     auth: config.password
       ? { user: decodeURIComponent(url.username), pass: config.password }
       : undefined,

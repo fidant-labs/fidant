@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { type AddressInfo, createServer } from "node:net";
 import { test } from "node:test";
-import { compose, type Mail, smtpMailer } from "./mail.ts";
+import { compose, isLoopback, type Mail, smtpMailer } from "./mail.ts";
 
 const url =
   "https://fidant.se/r/AAAAAAAAAAAAAAAAAAAAAA#BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
@@ -147,6 +147,35 @@ test("refuses to send a password over a server that offers no STARTTLS", async (
   await assert.rejects(send({ to, lang: "en", code: "123456" }));
   assert.ok(!smtp.commands.some((line) => /^AUTH/i.test(line)), smtp.commands.join("\n"));
   assert.deepEqual(smtp.messages, []);
+});
+
+test("refuses plain SMTP without a password to a host that is not loopback", async (t) => {
+  const smtp = await fakeSmtp(t);
+  const port = smtp.url.slice(smtp.url.lastIndexOf(":") + 1);
+  const send = smtpMailer({
+    url: `smtp://[::ffff:127.0.0.1]:${port}`,
+    from: "noreply@mail.fidant.test",
+  });
+  await assert.rejects(send({ to, lang: "en", code: "123456" }));
+  assert.ok(!smtp.commands.some((line) => /^MAIL/i.test(line)), smtp.commands.join("\n"));
+  assert.deepEqual(smtp.messages, []);
+});
+
+test("plain SMTP is allowed to loopback hosts only", () => {
+  for (const host of ["localhost", "127.0.0.1", "127.1.2.3", "[::1]", "::1"]) {
+    assert.ok(isLoopback(host), host);
+  }
+  for (const host of [
+    "smtp.example.com",
+    "10.0.0.5",
+    "127.0.0.1.example.com",
+    "[::2]",
+    "0.0.0.0",
+  ]) {
+    assert.ok(!isLoopback(host), host);
+  }
+  assert.ok(!isLoopback(new URL("smtp://[::2]:1025").hostname));
+  assert.ok(isLoopback(new URL("smtp://[::1]:1025").hostname));
 });
 
 test("rejects with an error that does not quote the server's answer", async (t) => {
