@@ -22,7 +22,7 @@ test("each page copy carries its own link preview in its own language", () => {
   const homeEn = previewPage(html, "en", "home");
   assert.ok(homeEn.includes(`<html lang="en">`));
   assert.ok(
-    homeEn.includes(`<meta property="og:title" content="Fidant: private file transfer" />`),
+    homeEn.includes(`<meta property="og:title" content="Private file transfer with Fidant" />`),
   );
   assert.ok(
     homeEn.includes(
