@@ -947,7 +947,7 @@ export const en = {
     sees: [
       [
         "Your IP address and browser details",
-        "Like any website you visit. We use them only to show you this page and connect you, and never write them to our logs.",
+        "Like any website you visit. We use them only to show you this page and connect you. Our server never writes them to its logs. Our relay logs nothing either, except while we fix a fault or stop abuse (see below).",
       ],
       [
         "A link ID",
@@ -971,9 +971,11 @@ export const en = {
       ],
     ] as ReadonlyArray<readonly [string, string]>,
     keepHeading: "What we keep",
-    keep: "We have no accounts, no database, no cookies and no tracking. Apart from the log lines below, the email counts above, which last an hour, and our mail service's list of bounced addresses, nothing is kept once the sender's page is closed, within a minute at most.",
+    keep: "We have no accounts, no database, no cookies and no tracking. Apart from the log lines below, a relay log while we fix a fault or stop abuse, the email counts above, which last an hour, and our mail service's list of bounced addresses, nothing is kept once the sender's page is closed, within a minute at most.",
     logFields,
     logRetention: "Log lines are deleted after 30 days.",
+    relayLog:
+      "Our relay, which carries the locked file when two browsers can't connect directly, keeps no log. Only to fix a fault or stop abuse do we turn one on. It then records, for each relayed connection, both IP addresses and ports, when it started and ended, and how much data passed through. Never names, keys or file data. We turn it off and delete it within 7 days.",
   },
 };
 

@@ -84,6 +84,7 @@ export function PrivacyPage() {
           ])}
         />
         <p class="mt-4">{p.logRetention}</p>
+        <p class="mt-4">{p.relayLog}</p>
       </section>
     </Page>
   );
