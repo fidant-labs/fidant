@@ -247,6 +247,24 @@ export const en = {
   },
   receive: {
     connecting: "Connecting to the sender…",
+    /** The code step of a link that was emailed. `to` is the masked address, like a***@example.se. */
+    verify: {
+      title: "Confirm your email to open this link",
+      body: (to: string) => `We'll email a code to ${to}.`,
+      send: "Send me a code",
+      sending: "Sending a code…",
+      codeLabel: "Code from the email",
+      submit: "Continue",
+      results: {
+        sent: "Code sent. Check your email.",
+        wait: "Too soon for another code. Try again in a moment.",
+        limit: "Too many codes for this link. Ask the sender to send you the link again.",
+        failed: "We couldn't send the code. Try again in a moment.",
+        wrong: "That code is wrong. Try again.",
+        expired: "The code has expired. Ask for a new one.",
+        tries: "Too many wrong tries. Ask for a new code.",
+      },
+    },
     /** `from` is the sender's typed name, or "" when they gave none. */
     offerTitle: (from: string) =>
       from ? `${from} wants to send you a file` : "You've been sent a file",

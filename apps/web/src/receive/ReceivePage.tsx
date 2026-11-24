@@ -3,7 +3,11 @@
 //
 // One attempt (see lib/peer.ts and lib/receive-file.ts):
 // - Connect to the signaling server, derive the link's signal key, and send
-//   `join`. The server answers with `joined`, carrying this pairing's ICE
+//   `gate`. A link that was emailed needs a code first: unless this tab holds
+//   a token for it in sessionStorage, the page asks the server to email a code
+//   and trades the right code for a token. A `gate` answer to a `join` means
+//   the token was refused, so the code step comes back.
+// - Then send `join`. The server answers with `joined`, carrying this pairing's ICE
 //   servers, before it tells the sender; the recipient peer is created
 //   synchronously on it, so the sender's offer, which comes later on the same
 //   socket, always finds a peer to answer it. Each attempt joins with a fresh
@@ -28,11 +32,13 @@
 // The secret stays in this tab (it is never stripped from the address bar in
 // this demo). The file name and size are shown, never logged or sent anywhere.
 
-import type { ConnectionPath } from "@sigill/protocol";
+import { type CodeResult, type ConnectionPath, isLinkId } from "@sigill/protocol";
 import { cn } from "cn";
 import { type ComponentChildren, Fragment, type VNode } from "preact";
 import { useEffect, useMemo, useReducer, useRef, useState } from "preact/hooks";
 import { Button, buttonVariants } from "#components/ui/button";
+import { Input } from "#components/ui/input";
+import { Label } from "#components/ui/label";
 import type { Messages } from "../i18n/en.ts";
 import { useI18n } from "../i18n/I18n.tsx";
 import { encodeBase64url } from "../lib/base64url.ts";
@@ -64,6 +70,7 @@ type ProblemKey = keyof Messages["receive"]["problems"];
 
 type View =
   | { s: "connecting" }
+  | { s: "verify"; to: string; asked: boolean; sending: boolean; result: CodeResult | undefined }
   | { s: "refused"; problem: ProblemKey }
   | { s: "offer"; offer: FileOffer }
   | { s: "receiving"; offer: FileOffer; bytes: number }
@@ -189,13 +196,17 @@ export function ReceivePage() {
       );
     };
     // Without it, a sender whose signals never arrive leaves "Connecting…" up for good.
-    attempt.timers.push(
-      setTimeout(() => {
+    let connectTimer: ReturnType<typeof setTimeout> | undefined;
+    const armConnectTimeout = () => {
+      clearTimeout(connectTimer);
+      connectTimer = setTimeout(() => {
         if (!attempt.channelOpen) {
           finish({ s: "failed", problem: attempt.peer ? unopened("connect") : "server" });
         }
-      }, CONNECT_TIMEOUT_MS),
-    );
+      }, CONNECT_TIMEOUT_MS);
+      attempt.timers.push(connectTimer);
+    };
+    armConnectTimeout();
 
     signaling.onClose(({ byClient }) => {
       if (byClient || !current()) {
@@ -209,8 +220,56 @@ export function ReceivePage() {
     });
     // Set before `join` is sent, so it is there when `joined` arrives.
     let signalKey: CryptoKey | undefined;
+    let joinSent = false;
+    const join = (token: string | undefined) => {
+      joinSent = true;
+      armConnectTimeout();
+      signaling.send(
+        token === undefined
+          ? { t: "join", link: linkId, attempt: attemptId }
+          : { t: "join", link: linkId, attempt: attemptId, token },
+      );
+    };
     signaling.subscribe((message) => {
       switch (message.t) {
+        case "gate": {
+          if (!current() || message.link !== linkId) {
+            break;
+          }
+          // The code step has no deadline; `join` arms it again.
+          clearTimeout(connectTimer);
+          if (joinSent) {
+            joinSent = false;
+            storeToken(linkId, undefined);
+          }
+          const token = message.to ? readToken(linkId) : undefined;
+          if (message.to && !token) {
+            setView({
+              s: "verify",
+              to: message.to,
+              asked: false,
+              sending: false,
+              result: undefined,
+            });
+          } else {
+            join(token);
+          }
+          break;
+        }
+        case "code":
+          if (current() && message.link === linkId) {
+            const { result } = message;
+            setView((v) => (v.s === "verify" ? { ...v, sending: false, result } : v));
+          }
+          break;
+        case "token":
+          if (!current() || message.link !== linkId || joinSent) {
+            break;
+          }
+          storeToken(linkId, message.token);
+          setView({ s: "connecting" });
+          join(message.token);
+          break;
         case "joined":
           if (
             !current() ||
@@ -358,7 +417,7 @@ export function ReceivePage() {
         if (!current()) {
           return;
         }
-        signaling.send({ t: "join", link: linkId, attempt: attemptId });
+        signaling.send({ t: "gate", link: linkId });
       } catch {
         finish({ s: "failed", problem: "server" });
       }
@@ -440,6 +499,35 @@ export function ReceivePage() {
 
   const onDecline = () => attemptRef.current?.decide?.(undefined);
 
+  const onSendCode = () => {
+    const attempt = attemptRef.current;
+    if (view.s !== "verify" || view.sending || !attempt || !link) {
+      return;
+    }
+    setView({ ...view, asked: true, sending: true, result: undefined });
+    attempt.signaling.send({ t: "send-code", link: link.linkId });
+  };
+
+  const onCode = (event: Event) => {
+    event.preventDefault();
+    const attempt = attemptRef.current;
+    if (view.s !== "verify" || !attempt || !link) {
+      return;
+    }
+    const input = (event.currentTarget as HTMLFormElement).elements.namedItem(
+      "code",
+    ) as HTMLInputElement;
+    const code = input.value.replace(/\s/g, "");
+    // The server drops the connection on a malformed code, so only six digits go out.
+    if (!/^[0-9]{6}$/.test(code)) {
+      setView({ ...view, result: "wrong" });
+      input.focus();
+      return;
+    }
+    setView({ ...view, result: undefined });
+    attempt.signaling.send({ t: "code", link: link.linkId, code });
+  };
+
   if (!link) {
     return (
       <Page>
@@ -463,6 +551,47 @@ export function ReceivePage() {
     case "connecting":
       body = <h1>{t.receive.connecting}</h1>;
       break;
+    case "verify": {
+      const { verify } = t.receive;
+      const isError = !view.sending && view.result !== undefined && view.result !== "sent";
+      body = (
+        <>
+          <h1>{verify.title}</h1>
+          <p>{verify.body(view.to)}</p>
+          <Button type="button" variant={view.asked ? "outline" : "default"} onClick={onSendCode}>
+            {verify.send}
+          </Button>
+          {view.asked && (
+            <form class="mt-6 flex flex-wrap items-end gap-2" onSubmit={onCode} noValidate>
+              <div class="flex flex-col gap-1">
+                <Label htmlFor="code">{verify.codeLabel}</Label>
+                <Input
+                  id="code"
+                  name="code"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  pattern="[0-9]{6}"
+                  required
+                  className="w-36"
+                  aria-invalid={view.result === "wrong" ? "true" : "false"}
+                  aria-describedby="code-note"
+                />
+              </div>
+              <Button type="submit">{verify.submit}</Button>
+            </form>
+          )}
+          <p
+            id="code-note"
+            class={isError ? "mt-3 text-destructive" : `mt-3 ${caption}`}
+            aria-live="polite"
+          >
+            {view.sending ? verify.sending : view.result && verify.results[view.result]}
+          </p>
+        </>
+      );
+      break;
+    }
     case "refused":
       body = <Problem {...t.receive.problems[view.problem]} />;
       break;
@@ -572,6 +701,28 @@ export function ReceivePage() {
       {panel}
     </Page>
   );
+}
+
+/** This tab's token for an emailed link. Storage that is blocked acts as empty. */
+function readToken(linkId: string): string | undefined {
+  try {
+    const token = sessionStorage.getItem(`token:${linkId}`);
+    return isLinkId(token) ? token : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function storeToken(linkId: string, token: string | undefined): void {
+  try {
+    if (token === undefined) {
+      sessionStorage.removeItem(`token:${linkId}`);
+    } else {
+      sessionStorage.setItem(`token:${linkId}`, token);
+    }
+  } catch {
+    // Not kept: this attempt still joins, and a reload asks for a new code.
+  }
 }
 
 function OfferDetails({ offer, sha256 }: { offer: FileOffer; sha256?: string }) {

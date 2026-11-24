@@ -246,6 +246,23 @@ export const sv: Messages = {
   },
   receive: {
     connecting: "Ansluter till avsändaren…",
+    verify: {
+      title: "Bekräfta din e-postadress för att öppna länken",
+      body: (to: string) => `Vi mejlar en kod till ${to}.`,
+      send: "Skicka en kod till mig",
+      sending: "Skickar en kod…",
+      codeLabel: "Koden från mejlet",
+      submit: "Fortsätt",
+      results: {
+        sent: "Koden har skickats. Titta i din e-post.",
+        wait: "För tidigt för en ny kod. Försök igen om en stund.",
+        limit: "För många koder för den här länken. Be avsändaren att skicka länken till dig igen.",
+        failed: "Vi kunde inte skicka koden. Försök igen om en stund.",
+        wrong: "Koden stämmer inte. Försök igen.",
+        expired: "Koden har gått ut. Be om en ny.",
+        tries: "För många felaktiga försök. Be om en ny kod.",
+      },
+    },
     offerTitle: (from: string) =>
       from ? `${from} vill skicka en fil till dig` : "Du har fått en fil",
     unverified: "Namnet är skrivet av avsändaren och inte verifierat.",
