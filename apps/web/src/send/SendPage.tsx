@@ -155,6 +155,7 @@ export function SendPage() {
     try {
       signalKey = await deriveSignalKey(recipient.secret, linkId);
     } catch {
+      console.warn("sigill: sender dropped a connection: signal-key");
       dispatch({ type: "dropped", linkId });
       return;
     }
@@ -214,7 +215,8 @@ export function SendPage() {
           },
         );
       },
-      onClose(reason) {
+      onClose(reason, _detail, name) {
+        console.warn(`sigill: sender dropped a connection: ${reason}${name ? ` (${name})` : ""}`);
         if (reason === "connection-failed") {
           sendPath(linkId, connection, "failed");
         }

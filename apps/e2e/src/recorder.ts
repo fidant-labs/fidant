@@ -44,6 +44,14 @@ export class Recorder {
         failure: request.failure()?.errorText ?? "unknown",
       }),
     );
+    context.on("console", (message) =>
+      this.#add({
+        type: "console",
+        time: now(),
+        url: stripFragment(message.page()?.url() ?? ""),
+        text: message.text(),
+      }),
+    );
     for (const page of context.pages()) {
       this.#watchPage(page);
     }
