@@ -36,10 +36,10 @@ export default defineConfig({
           args: [
             // Resolve every host except the server's to nothing, so a stray request cannot reach the
             // internet. The rule catches IP literals too, and TURN over TCP goes through the resolver,
-            // so the Docker networks also exclude the TURN server.
+            // so the TURN server's address is excluded as well (127.0.0.1 locally).
             networks
               ? `--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE ${serverIp}, EXCLUDE ${turnIp}`
-              : "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost",
+              : "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1",
             // Expose real host candidates in WebRTC instead of mDNS names.
             "--disable-features=WebRtcHideLocalIpsWithMdns",
           ],
