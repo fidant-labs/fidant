@@ -695,8 +695,17 @@ test.describe("the relay box", () => {
       actor,
     }) => {
       const [sender, recipient] = await relayPeers(actor);
+      // Re-applying the same secret writes nothing: each write blocks new allocations.
+      const written = () => inRelay("stat", "-c", "%y", "/var/lib/fidant-relay/turndb");
+      const before = await written();
+      await applyRelaySecret(secret);
+      expect(await written()).toBe(before);
       try {
         await applyRelaySecret(rotated);
+        const state = ["current", "previous", "previous-since"].map(
+          (f) => `/var/lib/fidant-relay/${f}`,
+        );
+        expect(await inRelay("stat", "-c", "%a %U:%G", ...state)).toBe("600 root:root\n".repeat(3));
         for (const credentials of [secret, rotated]) {
           const { echoed } = await relayedChannel(sender, recipient, relayIce("udp", credentials));
           expect(echoed).toBe(true);
@@ -761,9 +770,17 @@ test.describe("the relay box", () => {
     });
 
     test("keeps secrets and client addresses out of its journal", async () => {
-      const lines = (await inRelay("journalctl", "-o", "cat", "--no-pager")).split("\n");
-      // The fetch ran, offline here, and exited cleanly.
-      expect(lines).toContainEqual(expect.stringMatching(/^Finished fidant-relay-secret\.service/));
+      let lines: string[] = [];
+      // The fetch ran, offline here, and exited cleanly. The timer first fires 10 s after install.
+      await expect
+        .poll(
+          async () => {
+            lines = (await inRelay("journalctl", "-o", "cat", "--no-pager")).split("\n");
+            return lines.some((line) => line.startsWith("Finished fidant-relay-secret.service"));
+          },
+          { timeout: 20_000 },
+        )
+        .toBe(true);
       for (const value of [secret, rotated]) {
         expect(lines.filter((line) => line.includes(value))).toEqual([]);
       }

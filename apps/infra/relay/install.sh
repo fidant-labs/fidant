@@ -165,7 +165,7 @@ cat >/usr/local/bin/fidant-relay-secret <<'EOF'
 set -eu
 if [ "${1-}" != - ]; then
   . /etc/fidant-relay/relay.env
-  { curl -fs --max-time 10 --proto =https "$APP_URL/relay-secret/$RELAY_ID" || echo '!'; } |
+  { curl -fs --max-time 10 --proto =https "$APP_URL/relay-secret/$RELAY_ID" || echo '!'; } 2>/dev/null |
     /usr/local/bin/fidant-relay-secret -
   exit
 fi
