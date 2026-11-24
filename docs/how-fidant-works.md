@@ -102,7 +102,7 @@ iv     = direction(1: 0 sender, 1 recipient) ‖ 00 00 00 ‖ seq(8)
 1. When the file is chosen, or each time a text changes, the sender's browser computes its SHA-256 (`apps/web/src/lib/sha256.ts`, streamed in 4 MiB slices).
 2. INIT, then META. The recipient sees the name, size, type and the sender's typed name (for a text, only the sender's name), and chooses.
 3. The recipient sends ACCEPT or DECLINE, encrypted. ACCEPT also proves that the recipient holds the key. No file data is sent before it. After DECLINE the link still works.
-4. CHUNK frames, `chunkSize = min(48 KiB, maxMessageSize − 64)`, sent with backpressure on the channel buffer.
+4. CHUNK frames, `chunkSize = min(48 KiB, maxMessageSize − 64)` (64 is `FRAME_OVERHEAD_BYTES` in `send-file.ts`: the 26-byte header and tag, with margin), sent with backpressure on the channel buffer.
 5. END with the checksum and the exact size.
 6. The recipient checks and sends RECEIPT with the checksum it computed. The sender marks the link delivered only when it matches.
 
@@ -125,10 +125,10 @@ Anyone who sees the encrypted traffic (the networks, our relay) sees frame sizes
 - The size is rounded up with Padmé (Nikitin et al., 2019), which adds at most 12 %, then up to a whole number of chunks. An empty file is padded like a 1-byte file.
 - Every CHUNK frame has the same length. The exact size travels only inside the encrypted META and END.
 - META is always 1,024 bytes, so the name's length doesn't show.
-- A text is at most 32 KiB. Whenever `chunkSize` is at least 32 KiB (a maximum message size of at least 32,832 bytes), every text pads to exactly one CHUNK, so all texts on a connection have the same frame sizes. When the maximum message size is at least 49,216 bytes, `chunkSize` is 48 KiB, and a text then has the same frame sizes as any file of up to 48 KiB.
+- A text is at most 32 KiB. When `chunkSize` is at least 32 KiB (a maximum message size of at least 32,832 bytes), every text pads to exactly one CHUNK. The code enforces this: on `/secret`, a connection that allows less gets nothing, not even INIT (`textFitsOneChunk` in `text-secret.ts`, checked in `SendPage.tsx` when the data channel opens), and that recipient's card says the text wasn't sent. The check uses the 32 KiB limit, never the text's own size, so a refusal says nothing about the length. So all texts on a connection have the same frame sizes. When the maximum message size is at least 49,216 bytes, `chunkSize` is 48 KiB, and a text then has the same frame sizes as any file of up to 48 KiB.
 - Measured on 2026-11-24 with Playwright's browser builds: Chromium 159 and WebKit 27.2 report a maximum message size of 262,144 bytes, Firefox 159 reports 1,073,741,823, and pairs of different browsers settle at 262,144. When a browser reports none, the app uses 65,536 (`DEFAULT_MAX_MESSAGE_SIZE` in `peer.ts`). So today every text crosses the network as one 48 KiB CHUNK.
 
-An observer learns a file's size only roughly, plus the chunk size, which follows from the connection's maximum message size. A text's length doesn't show at all while the maximum message size is at least 32,832 bytes, as it is in every browser measured above.
+An observer learns a file's size only roughly, plus the chunk size, which follows from the connection's maximum message size. A text's length doesn't show at all: a text is sent only over a connection whose maximum message size is at least 32,832 bytes, which every browser measured above allows.
 
 ## Sharing a text
 
@@ -178,7 +178,7 @@ The send page has "Allow our relay if a direct connection isn't possible", on by
 
 - One send can go to up to 256 recipients (`MAX_LINKS`). Each has their own link, key, connection and transfer.
 - A link is used only after a matching RECEIPT. A later join on it is refused with `used`. A second page on a link that is already connected is refused with `busy`.
-- Until then the link can be opened again: after a decline, a dropped connection, a setup timeout (20 s) or a checksum mismatch. Each attempt has a new transfer ID and so a new file key.
+- Until then the link can be opened again: after a decline, a dropped connection, a setup timeout (20 s), a checksum mismatch or, for a text, a connection too small to carry it in one chunk. Each attempt has a new transfer ID and so a new file key.
 - Nothing is stored, so a link works only while the sender's page is open. When the sender's socket closes, the server forgets its links, within a minute at most (heartbeat every 30 s).
 
 ## What the server and relay see, keep and log
