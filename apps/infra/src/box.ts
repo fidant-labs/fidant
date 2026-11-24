@@ -1,28 +1,14 @@
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
 import { CfnOutput, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
 import * as lightsail from "aws-cdk-lib/aws-lightsail";
 import type { Construct } from "constructs";
-import { boxAddress, primaryDomain, siteNames } from "./config.ts";
-
-const root = new URL("../../../", import.meta.url);
-const nodeMajor = readFileSync(new URL(".node-version", root), "utf8").trim();
-const pnpmVersion = JSON.parse(
-  readFileSync(new URL("package.json", root), "utf8"),
-).packageManager.replace(/^pnpm@/, "");
+import { renderUserData } from "./user-data.ts";
 
 export class BoxStack extends Stack {
   constructor(scope: Construct, id: string, props: StackProps) {
     super(scope, id, props);
 
-    const turnserverConf = readFileSync(new URL("../box/turnserver.conf", import.meta.url), "utf8");
-    const userData = readFileSync(new URL("../box/user-data.sh", import.meta.url), "utf8")
-      .replaceAll("@TURNSERVER_CONF@", turnserverConf.trimEnd())
-      .replaceAll("@NODE_MAJOR@", nodeMajor)
-      .replaceAll("@PNPM_VERSION@", pnpmVersion)
-      .replaceAll("@REDIRECT_NAMES@", siteNames.filter((name) => name !== primaryDomain).join(", "))
-      .replaceAll("@DOMAIN@", primaryDomain)
-      .replaceAll("@BOX_ADDRESS@", boxAddress);
+    const userData = renderUserData();
     const box = new lightsail.CfnInstance(this, "Box", {
       // Lightsail updates user data in place without re-running it; a new name forces a fresh box.
       instanceName: `fidant-app-${createHash("sha256").update(userData).digest("hex").slice(0, 8)}`,

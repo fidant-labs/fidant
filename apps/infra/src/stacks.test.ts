@@ -7,6 +7,7 @@ import { Match, Template } from "aws-cdk-lib/assertions";
 import { addStacks } from "./app.ts";
 import { boxAddress, hostedZoneIds, siteNames, zoneNames } from "./config.ts";
 import { DnsStack } from "./dns.ts";
+import { renderUserData } from "./user-data.ts";
 
 const account = "111111111111";
 const dnsAccount = "222222222222";
@@ -161,6 +162,7 @@ test("the app box is open only on 80, 443 and the relay's ports, and on 22 only 
   box.hasResourceProperties("AWS::Lightsail::StaticIp", { AttachedTo: { Ref: instanceId } });
   box.hasResource("AWS::Lightsail::StaticIp", { DeletionPolicy: "Retain" });
   assert.match(instance?.Properties.InstanceName, /^fidant-app-[0-9a-f]{8}$/);
+  assert.equal(instance?.Properties.UserData, renderUserData());
   assert.match(instance?.Properties.UserData, /^fidant\.se \{$/m);
   assert.match(
     instance?.Properties.UserData,
