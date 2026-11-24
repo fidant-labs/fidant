@@ -1,11 +1,32 @@
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
+import { previewPage } from "./src/i18n/preview.ts";
 
 const latinGeist = /^assets\/geist-latin-wght-normal-[\w-]+\.woff2$/;
 
 export default defineConfig({
   plugins: [
     tailwindcss(),
+    {
+      name: "link-previews",
+      apply: "build",
+      enforce: "post",
+      generateBundle(_options, bundle) {
+        const index = bundle["index.html"];
+        if (index?.type !== "asset" || typeof index.source !== "string") {
+          throw new Error("link-previews: expected index.html in the bundle");
+        }
+        for (const lang of ["en", "sv"] as const) {
+          for (const kind of ["home", "receive"] as const) {
+            this.emitFile({
+              type: "asset",
+              fileName: `index.${kind}.${lang}.html`,
+              source: previewPage(index.source, lang, kind),
+            });
+          }
+        }
+      },
+    },
     {
       name: "preload-geist",
       apply: "build",

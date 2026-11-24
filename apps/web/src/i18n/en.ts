@@ -482,6 +482,12 @@ export const en = {
     source: "Source code",
     license: "Open source, MIT license",
   },
+  preview: {
+    title: "Fidant: private file transfer",
+    receiveTitle: "Sent to you with Fidant",
+    receiveDescription:
+      "Open the link to receive it. It's encrypted the whole way, and the link works only while the sender's page is open.",
+  },
   about: {
     title: "About Fidant",
     lede: "Fidant is a way to send a file to someone without trusting anyone in between, including us.",

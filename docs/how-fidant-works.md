@@ -194,12 +194,13 @@ The send page has "Allow our relay if a direct connection isn't possible", on by
 
 ## The web app and the server
 
-`apps/server/src/server.ts`, `apps/web/src/main.tsx`, `apps/infra/box/user-data.sh`
+`apps/server/src/server.ts`, `apps/web/src/main.tsx`, `apps/web/src/i18n/preview.ts`, `apps/web/vite.config.ts`, `apps/infra/box/user-data.sh`
 
 - HTTPS only, with `Strict-Transport-Security` (Caddy, Let's Encrypt). Send and receive refuse to run outside a secure context.
 - `Content-Security-Policy: default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`: code, styles, fonts and connections only from our own origin, and no framing. `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`.
 - No cookies, no third-party scripts, fonts or trackers.
 - Static files are served only from the build directory; path traversal is refused.
+- A path without a file extension gets one of four copies of `index.html` whose link preview (Open Graph tags) holds only fixed text: a receive link (`/r/<link ID>`) says something was sent to you, any other path says what Fidant is. The server picks the copy by path and by whether `Accept-Language` starts with `sv`, and sends `Vary: Accept-Language`. Like a browser, a preview fetcher sends us the path but never the part after `#`.
 - The WebSocket accepts upgrades only on `/signal`, and refuses one whose `Origin` is another site.
 - Limits: 1,000 sockets, 32 per client address (an IPv6 address counts by its /64), 1,000 messages per socket per 30-second window, 256 links per sender, 16,384 characters per relayed setup message, 256 KiB queued to a socket that isn't reading.
 

@@ -472,6 +472,12 @@ export const sv: Messages = {
     source: "Källkod",
     license: "Öppen källkod, MIT-licens",
   },
+  preview: {
+    title: "Fidant: privat filöverföring",
+    receiveTitle: "Skickat till dig med Fidant",
+    receiveDescription:
+      "Öppna länken för att ta emot det. Det är krypterat hela vägen, och länken fungerar bara medan avsändarens sida är öppen.",
+  },
   about: {
     title: "Om Fidant",
     lede: "Fidant är ett sätt att skicka en fil till någon utan att behöva lita på någon på vägen, inte heller på oss.",
