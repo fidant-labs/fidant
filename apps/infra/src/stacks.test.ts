@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import {
+  copyFileSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -810,4 +811,43 @@ test("SES bounce and complaint rates at AWS's review thresholds email the alert 
       ],
     ],
   );
+});
+
+test("the cap's Lambda code loads the way Lambda loads it: no package.json, no syntax detection", () => {
+  const folder = new URL("./relay-cap/", import.meta.url);
+  const asset = mkdtempSync(join(tmpdir(), "relay-cap-"));
+  try {
+    for (const file of readdirSync(folder).filter((name) => !name.endsWith(".test.ts"))) {
+      copyFileSync(new URL(file, folder), join(asset, file));
+    }
+    const stub = [
+      "LightsailClient",
+      "GetInstanceMetricDataCommand",
+      "PutInstancePublicPortsCommand",
+      "SSMClient",
+      "GetParameterCommand",
+      "PutParameterCommand",
+    ]
+      .map((name) => `export class ${name} {}`)
+      .join("\n");
+    for (const sdk of ["client-lightsail", "client-ssm"]) {
+      const dir = join(asset, "node_modules", "@aws-sdk", sdk);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "package.json"), '{"type":"module","exports":"./index.js"}');
+      writeFileSync(join(dir, "index.js"), stub);
+    }
+    const loaded = spawnSync(
+      process.execPath,
+      [
+        "--no-experimental-detect-module",
+        "--input-type=module",
+        "-e",
+        "const { handler } = await import('./index.mjs'); console.log(typeof handler);",
+      ],
+      { cwd: asset, encoding: "utf8" },
+    );
+    assert.equal(loaded.stdout.trim(), "function", loaded.stderr);
+  } finally {
+    rmSync(asset, { recursive: true, force: true });
+  }
 });
