@@ -20,6 +20,17 @@ for (const path of ["/privacy", "/privacy/"]) {
   });
 }
 
+test("the Privacy page opens without a secure connection", async ({ page }) => {
+  // The stack always serves HTTPS, so pretend the context is insecure.
+  await page.addInitScript(() =>
+    Object.defineProperty(window, "isSecureContext", { value: false }),
+  );
+  await page.goto("/send");
+  await expect(page.locator("main h1")).toHaveText("This page needs a secure connection");
+  await page.goto("/privacy");
+  await expect(page.locator("main h1")).toHaveText("Privacy");
+});
+
 test("leaving /send for Privacy and going back keeps the file and recipient", async ({
   page,
   leaks,
