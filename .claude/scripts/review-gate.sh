@@ -27,16 +27,22 @@ if [ "${1:-}" = mark ]; then
   exit 0
 fi
 
+# From here on the hook fails closed: Claude Code treats exit 1 and the like as non-blocking.
+trap 'rc=$?; [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ] || exit 2' EXIT
+
 if ! command -v jq >/dev/null; then
   input=$(cat)
-  [[ $input == *"pr create"* ]] || exit 0
+  # Broad on purpose: `pr` then later `create` or `new` as words anywhere in the raw JSON, so -R o/r
+  # between them is caught. A false block is fine, a false pass is not.
+  re=$'(^|[^[:alnum:]_-])pr([^[:alnum:]_].*)?[^[:alnum:]_-](create|new)([^[:alnum:]_-]|$)'
+  [[ $input =~ $re ]] || exit 0
   echo "Blocked: the review gate needs jq to read the command. Install jq and retry." >&2
   exit 2
 fi
 
-source "$(dirname "${BASH_SOURCE[0]}")/command.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/command.sh" || { echo "Blocked: cannot load command.sh." >&2; exit 2; }
 read_input
-runs "${GH_PR}create" || exit 0
+runs "${GH_PR}(create|new)" || exit 0
 
 # The hook cwd is the session shell's, so honour the last `cd` the command runs before creating the PR.
 if ! enter_target; then
@@ -44,13 +50,15 @@ if ! enter_target; then
   exit 2
 fi
 
-head=$(flag --head -H)
-head=${head##*:}
+# Look for --head/-H in everything after the match, not the cut `args`: quotes, heredocs and
+# line continuations hide it from that. Every occurrence must name the checked-out branch.
 branch=$(git branch --show-current)
-if [ -n "$head" ] && [ "$head" != "$branch" ]; then
-  echo "Blocked: --head $head is not the checked-out branch ($branch), so the gate cannot check its diff. cd into the worktree of $head and retry." >&2
-  exit 2
-fi
+while IFS= read -r head; do
+  if [ -z "$head" ] || [ "$head" != "$branch" ]; then
+    echo "Blocked: --head '$head' is not the checked-out branch ($branch), or is a cross-repo head, so the gate cannot check its diff. cd into the worktree of the branch and retry without an owner prefix." >&2
+    exit 2
+  fi
+done < <(head_values "${cmd#*"$match"}")
 
 id=$(diff_id)
 [ -n "$id" ] && [ "$(cat "$(marker)" 2>/dev/null)" = "$id" ] && exit 0

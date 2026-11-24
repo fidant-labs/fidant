@@ -1,13 +1,26 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, test } from "node:test";
 
 const scripts = import.meta.dirname;
+// HOME is the temp dir and inherited GIT_* variables are dropped: the pre-push hook runs this
+// test inside git, and GIT_DIR and friends would point every command at the wrong repo.
+const root = mkdtempSync(join(tmpdir(), "sigill-hooks-"));
 const env = {
-  ...process.env,
+  ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_"))),
+  HOME: root,
+  CLAUDE_PROJECT_DIR: root,
   GIT_CONFIG_GLOBAL: "/dev/null",
   GIT_CONFIG_NOSYSTEM: "1",
   GIT_AUTHOR_NAME: "Test",
@@ -16,22 +29,20 @@ const env = {
   GIT_COMMITTER_EMAIL: "test@example.invalid",
 };
 
-let root: string;
 let repo: string;
 
 const git = (...args: string[]) => execFileSync("git", ["-C", repo, ...args], { env }).toString();
 
-function hook(script: string, command: string, cwd = root, extraEnv: object = {}) {
+function hook(script: string, command: string, cwd = root) {
   const input = JSON.stringify({ cwd, tool_input: { command } });
   const r = spawnSync("bash", [join(scripts, script)], {
     input,
-    env: { ...env, ...extraEnv },
+    env,
   });
   return { code: r.status, out: r.stdout.toString(), err: r.stderr.toString() };
 }
 
 before(() => {
-  root = mkdtempSync(join(tmpdir(), "sigill-hooks-"));
   repo = join(root, "repo");
   execFileSync("git", ["init", "-q", "--bare", "-b", "main", join(root, "origin.git")], { env });
   execFileSync("git", ["init", "-q", "-b", "main", repo], { env });
@@ -81,7 +92,7 @@ describe("review gate", () => {
     execFileSync("bash", [join(scripts, "review-gate.sh"), "mark"], { cwd: repo, env });
     assert.equal(gate(`cd ${repo} && gh pr create`).code, 0);
     assert.equal(gate(`cd "${repo}" && gh pr create --head sig-12-thing`).code, 0);
-    assert.equal(gate("gh pr create --head me:sig-12-thing", repo).code, 0);
+    assert.equal(gate("gh pr create -Hsig-12-thing", repo).code, 0);
     git("config", "color.ui", "always");
     git("config", "diff.relative", "true");
     try {
@@ -95,7 +106,51 @@ describe("review gate", () => {
   test("blocks when --head names another branch", () => {
     const r = gate(`cd ${repo} && gh pr create --base main --head sig-99-other`);
     assert.equal(r.code, 2);
-    assert.match(r.err, /--head sig-99-other is not the checked-out branch/);
+    assert.match(r.err, /--head 'sig-99-other' is not the checked-out branch/);
+  });
+
+  test("blocks a --head that quoting, heredocs or continuations hide from the argument cut", () => {
+    for (const c of [
+      "gh pr create --title 'a; b' --head other",
+      "gh pr create --body 'Q&A' --head other",
+      "gh pr create --body-file - --head other <<'EOF'\nbody\nEOF",
+      "gh pr create \\\n  --head other",
+      "gh pr create -Hother",
+      "gh pr create -dH other",
+      "gh pr create -wHother",
+      'gh pr create "--head" other',
+      "gh pr create '-H' other",
+      "gh pr create --head sig-12-thing --head other",
+      "gh pr create --head",
+      "gh pr create --head me:sig-12-thing",
+    ]) {
+      const r = gate(`cd ${repo} && ${c}`);
+      assert.equal(r.code, 2, c);
+      assert.match(r.err, /not the checked-out branch/, c);
+    }
+  });
+
+  test("blocks gh pr new and -R between pr and the subcommand", () => {
+    rmSync(join(repo, ".git", "deep-review-clean"));
+    for (const c of [
+      "gh pr new",
+      "gh pr   new",
+      "gh pr\tnew",
+      "gh pr -R o/r create",
+      "gh -R o/r pr --repo=o/r new",
+    ]) {
+      assert.match(gate(`cd ${repo} && ${c}`).err, /no clean review/, c);
+    }
+  });
+
+  test("fails closed when command.sh cannot be loaded", () => {
+    const dir = mkdtempSync(join(root, "alone-"));
+    copyFileSync(join(scripts, "review-gate.sh"), join(dir, "review-gate.sh"));
+    const r = spawnSync("bash", [join(dir, "review-gate.sh")], {
+      input: JSON.stringify({ cwd: repo, tool_input: { command: "gh pr create" } }),
+      env,
+    });
+    assert.equal(r.status, 2);
   });
 
   test("blocks without jq instead of passing", () => {
@@ -108,6 +163,15 @@ describe("review gate", () => {
         env: { PATH: bin },
       });
     assert.equal(run("gh pr create").status, 2);
+    for (const c of [
+      "gh pr new",
+      "gh pr\t new",
+      "gh  pr   create",
+      "gh pr -R o/r create",
+      "gh pr --repo=o/r new",
+    ]) {
+      assert.equal(run(c).status, 2, c);
+    }
     assert.equal(run("ls").status, 0);
   });
 });
@@ -122,6 +186,35 @@ describe("behind-main hook", () => {
       assert.match(hook("behind-main.sh", c).out, /behind origin\/main/, c);
     }
     assert.equal(hook("behind-main.sh", `cd ${repo} && echo git push`).out, "");
+    assert.match(hook("behind-main.sh", `cd ${repo} && gh pr new`).out, /behind origin\/main/);
+  });
+
+  test("does not enter or fetch in a target outside CLAUDE_PROJECT_DIR", () => {
+    const marker = join(root, "ssh-ran");
+    const script = join(root, "evil-ssh.sh");
+    writeFileSync(script, `#!/bin/sh\ntouch ${marker}\n`, { mode: 0o755 });
+    const evil = join(mkdtempSync(join(tmpdir(), "sigill-evil-")), "repo");
+    try {
+      execFileSync("git", ["clone", "-q", repo, evil], { env });
+      execFileSync("git", ["-C", evil, "config", "core.sshCommand", script], { env });
+      execFileSync("git", ["-C", evil, "remote", "set-url", "origin", "ssh://host/x"], { env });
+      for (const c of [`cd ${evil} && git push`, `git -C ${evil} push`]) {
+        assert.equal(hook("behind-main.sh", c).out, "", c);
+      }
+      assert.equal(existsSync(marker), false);
+    } finally {
+      rmSync(join(evil, ".."), { recursive: true, force: true });
+    }
+  });
+
+  test("does nothing without CLAUDE_PROJECT_DIR", () => {
+    const e = { ...env } as Record<string, string | undefined>;
+    delete e.CLAUDE_PROJECT_DIR;
+    const r = spawnSync("bash", [join(scripts, "behind-main.sh")], {
+      input: JSON.stringify({ cwd: repo, tool_input: { command: "git push" } }),
+      env: e,
+    });
+    assert.equal(r.stdout.toString(), "");
   });
 });
 
@@ -136,6 +229,11 @@ describe("Linear reminder", () => {
   test("does not ask for Done while auto-merge is only queued", () => {
     assert.match(remind("gh pr merge 5 --auto --squash"), /only queued/);
     assert.match(remind("gh pr merge 5 --squash"), /to Done\./);
+  });
+
+  test("handles gh pr new, and gives no reminder for --disable-auto", () => {
+    assert.match(remind(`cd ${repo} && gh pr new`), /SIG-12/);
+    assert.equal(remind("gh pr merge 5 --disable-auto"), "");
   });
 
   test("ignores the phrase inside an argument", () => {

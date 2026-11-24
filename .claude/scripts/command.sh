@@ -2,7 +2,8 @@
 
 # Prefixes that still leave the next word in command position.
 _prefix=$'(^|[;&|({`\n])[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*|then|do|else|if|while|until|!|time|command|env|exec|nohup|timeout[[:space:]]+[0-9.]+[smhd]?)[[:space:]]+)*'
-GH_PR=$'gh([[:space:]]+(-R|--repo)([[:space:]]+|=)[^[:space:]]+)*[[:space:]]+pr[[:space:]]+'
+_ropt=$'([[:space:]]+(-R|--repo)([[:space:]]+|=)[^[:space:]]+)*'
+GH_PR="gh${_ropt}"$'[[:space:]]+pr'"${_ropt}"$'[[:space:]]+'
 GIT_PUSH=$'git([[:space:]]+-[Cc][[:space:]]+[^[:space:]]+)*[[:space:]]+push'
 
 # read_input: sets $cmd from the hook's JSON on stdin and moves into the session's folder.
@@ -28,7 +29,7 @@ runs() {
 enter_target() {
   local t
   t=$(grep -oE "(^|[;&|(])[[:space:]]*cd[[:space:]]+(\"[^\"]+\"|'[^']+'|[^[:space:];&|)]+)" <<<"$before" \
-    | tail -1 | sed -E "s/^.*cd[[:space:]]+//; s/^[\"']//; s/[\"']\$//")
+    | tail -1 | sed -E "s/^.*cd[[:space:]]+//")
   _enter "$t" || return 1
   [[ $match =~ -C[[:space:]]+([^[:space:]]+) ]] && { _enter "${BASH_REMATCH[1]}" || return 1; }
   return 0
@@ -42,15 +43,14 @@ _enter() {
   cd "${t/#\~/$HOME}" 2>/dev/null || true
 }
 
-# flag <name>...: the value of the first of these options in $args, quotes stripped.
-flag() {
-  local n
-  for n in "$@"; do
-    if [[ $args =~ (^|[[:space:]])$n([[:space:]]+|=)([^[:space:]]+) ]]; then
-      local v=${BASH_REMATCH[3]}
-      v=${v#[\"\']}
-      echo "${v%[\"\']}"
-      return
-    fi
+# head_values <text>: the value of every --head/-H option in <text> (also --head=x, -Hx and grouped
+# short flags like -dH x), one per line. Quotes and backslashes are stripped from the text first, so
+# "--head" x and --he\ad x match as gh sees them. An option with no value prints an empty line.
+# Prints nothing without one.
+head_values() {
+  local rest=${1//[\"\'\\]/} re=$'(^|[[:space:]])(--head(=|[[:space:]]+|$)|-[A-Za-z]*H(=|[[:space:]]*))([^[:space:]]*)'
+  while [[ $rest =~ $re ]]; do
+    printf '%s\n' "${BASH_REMATCH[5]}"
+    rest=${rest#*"${BASH_REMATCH[0]}"}
   done
 }
