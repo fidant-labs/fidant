@@ -420,6 +420,24 @@ function appBox(): Template {
   return Template.fromStack(stack as Stack);
 }
 
+function alarmsNamed(box: Template, prefix: string) {
+  return Object.values(box.findResources("AWS::CloudWatch::Alarm"))
+    .map((alarm) => alarm.Properties)
+    .filter((alarm) => String(alarm.AlarmName).startsWith(prefix));
+}
+
+function alertTopic(box: Template): { Ref: string } {
+  const subscriptions = Object.values(box.findResources("AWS::SNS::Subscription"));
+  assert.equal(subscriptions.length, 1);
+  return subscriptions[0]?.Properties.TopicArn;
+}
+
+function onlyId(box: Template, type: string): string {
+  const ids = Object.keys(box.findResources(type));
+  assert.equal(ids.length, 1, type);
+  return ids[0] ?? "";
+}
+
 test("the relay cap checks the box's traffic every 5 minutes", () => {
   const box = appBox();
   const [instanceId] = Object.keys(box.findResources("AWS::Lightsail::Instance"));
@@ -441,7 +459,9 @@ test("the relay cap checks the box's traffic every 5 minutes", () => {
 test("the relay cap may only read the box's metrics, set its ports, and keep its state", () => {
   const box = appBox();
   const [instanceId] = Object.keys(box.findResources("AWS::Lightsail::Instance"));
-  const policies = Object.values(box.findResources("AWS::IAM::Policy"));
+  const policies = Object.values(box.findResources("AWS::IAM::Policy")).filter(
+    (policy) => policy.Properties.Roles,
+  );
   assert.equal(policies.length, 1);
   const statements = policies[0]?.Properties.PolicyDocument.Statement;
   assert.equal(statements.length, 2);
@@ -458,17 +478,14 @@ test("the relay cap may only read the box's metrics, set its ports, and keep its
 
 test("relay traffic past 80 %, the cap, and a failing cap email the alert address", () => {
   const box = appBox();
-  const [topicId] = Object.keys(box.findResources("AWS::SNS::Topic"));
   box.hasResourceProperties("AWS::SNS::Subscription", {
     Protocol: "email",
     Endpoint: "budget-alert@fidant.se",
   });
-  const alarms = Object.values(box.findResources("AWS::CloudWatch::Alarm")).map(
-    (alarm) => alarm.Properties,
-  );
+  const alarms = alarmsNamed(box, "Fidant relay ");
   assert.equal(alarms.length, 3);
   const byName = (name: string) => alarms.find((alarm) => alarm.AlarmName === name);
-  const notify = [{ Ref: topicId }];
+  const notify = [alertTopic(box)];
   for (const [name, threshold] of [
     ["Fidant relay traffic past 80 % of the monthly cap", 1_440_000_000_000],
     ["Fidant relay stopped: monthly traffic cap reached", 1_800_000_000_000],
@@ -505,4 +522,142 @@ test("the cap's Lambda code imports nothing outside its folder", () => {
       }
     }
   }
+});
+
+test("the app sends mail as notify.fidant.se, with TLS required, no tracking and no suppression list", () => {
+  const box = appBox();
+  const configSet = onlyId(box, "AWS::SES::ConfigurationSet");
+  assert.deepEqual(box.findResources("AWS::SES::ConfigurationSet")[configSet]?.Properties, {
+    Name: "fidant-mail",
+    DeliveryOptions: { MaxDeliverySeconds: 900, TlsPolicy: "REQUIRE" },
+    SuppressionOptions: { SuppressedReasons: [] },
+  });
+  const identity = onlyId(box, "AWS::SES::EmailIdentity");
+  assert.deepEqual(box.findResources("AWS::SES::EmailIdentity")[identity]?.Properties, {
+    EmailIdentity: "notify.fidant.se",
+    ConfigurationSetAttributes: { ConfigurationSetName: { Ref: configSet } },
+    FeedbackAttributes: { EmailForwardingEnabled: false },
+    MailFromAttributes: { MailFromDomain: "bounce.notify.fidant.se" },
+  });
+});
+
+test("bounces and complaints go only to a topic nobody subscribes to", () => {
+  const box = appBox();
+  const alerts = alertTopic(box);
+  const feedback = Object.keys(box.findResources("AWS::SNS::Topic")).filter(
+    (id) => id !== alerts.Ref,
+  );
+  assert.equal(feedback.length, 1);
+  const destinations = Object.values(
+    box.findResources("AWS::SES::ConfigurationSetEventDestination"),
+  ).map((destination) => destination.Properties);
+  assert.deepEqual(destinations, [
+    {
+      ConfigurationSetName: { Ref: onlyId(box, "AWS::SES::ConfigurationSet") },
+      EventDestination: {
+        Enabled: true,
+        MatchingEventTypes: ["bounce", "complaint"],
+        SnsDestination: { TopicARN: { Ref: feedback[0] } },
+      },
+    },
+  ]);
+});
+
+test("the mail user may only send through the identity, and CDK gives it no key or password", () => {
+  const box = appBox();
+  const user = onlyId(box, "AWS::IAM::User");
+  assert.deepEqual(box.findResources("AWS::IAM::User")[user]?.Properties, {
+    UserName: "fidant-mail",
+  });
+  box.resourceCountIs("AWS::IAM::AccessKey", 0);
+  const arn = (resource: string, id: string) => ({
+    "Fn::Join": [
+      "",
+      [
+        "arn:",
+        { Ref: "AWS::Partition" },
+        `:ses:eu-north-1:${pocAccount}:${resource}/`,
+        { Ref: id },
+      ],
+    ],
+  });
+  const policies = Object.values(box.findResources("AWS::IAM::Policy"))
+    .filter((policy) => policy.Properties.Users)
+    .map((policy) => [policy.Properties.Users, policy.Properties.PolicyDocument.Statement]);
+  assert.deepEqual(policies, [
+    [
+      [{ Ref: user }],
+      [
+        {
+          Action: "ses:SendRawEmail",
+          Effect: "Allow",
+          Resource: [
+            arn("identity", onlyId(box, "AWS::SES::EmailIdentity")),
+            arn("configuration-set", onlyId(box, "AWS::SES::ConfigurationSet")),
+          ],
+        },
+      ],
+    ],
+  ]);
+});
+
+test("the app box outputs only its address and the three DKIM records", () => {
+  const box = appBox();
+  const identity = onlyId(box, "AWS::SES::EmailIdentity");
+  const outputs = box.toJSON().Outputs;
+  assert.deepEqual(Object.keys(outputs).sort(), ["Dkim1", "Dkim2", "Dkim3", "PublicIp"]);
+  for (const n of [1, 2, 3]) {
+    assert.deepEqual(outputs[`Dkim${n}`].Value, {
+      "Fn::Join": [
+        "",
+        [
+          { "Fn::GetAtt": [identity, `DkimDNSTokenName${n}`] },
+          " CNAME ",
+          { "Fn::GetAtt": [identity, `DkimDNSTokenValue${n}`] },
+        ],
+      ],
+    });
+  }
+});
+
+test("SES bounce and complaint rates at AWS's review thresholds email the alert address", () => {
+  const box = appBox();
+  const notify = [alertTopic(box)];
+  assert.deepEqual(
+    alarmsNamed(box, "Fidant SES reputation").map((alarm) => [
+      alarm.AlarmName,
+      alarm.Namespace,
+      alarm.MetricName,
+      alarm.Dimensions,
+      alarm.ComparisonOperator,
+      alarm.Threshold,
+      alarm.TreatMissingData,
+      alarm.AlarmActions,
+      alarm.OKActions,
+    ]),
+    [
+      [
+        "Fidant SES reputation: bounce rate 5 % or more",
+        "AWS/SES",
+        "Reputation.BounceRate",
+        undefined,
+        "GreaterThanOrEqualToThreshold",
+        0.05,
+        "ignore",
+        notify,
+        notify,
+      ],
+      [
+        "Fidant SES reputation: complaint rate 0.1 % or more",
+        "AWS/SES",
+        "Reputation.ComplaintRate",
+        undefined,
+        "GreaterThanOrEqualToThreshold",
+        0.001,
+        "ignore",
+        notify,
+        notify,
+      ],
+    ],
+  );
 });
