@@ -241,6 +241,36 @@ test("left while connecting returns the recipient to waiting", () => {
   assert.deepEqual(result.effects, [{ type: "close", linkId }]);
 });
 
+test("server-lost resets connecting recipients without blaming the relay", () => {
+  const a = withRecipient("Anna");
+  const b = withRecipient("Erik");
+  const c = withRecipient("Mia");
+  const d = withRecipient("Olle");
+  let state = initialSenderState;
+  state = run(state, { type: "add", link: a.link, name: "Anna" }).state;
+  state = run(state, { type: "add", link: b.link, name: "Erik" }).state;
+  state = run(state, { type: "add", link: c.link, name: "Mia" }).state;
+  state = run(state, { type: "add", link: d.link, name: "Olle" }).state;
+  state = run(state, joined(a.linkId, A, false), joined(b.linkId, A), joined(c.linkId, A), {
+    type: "channel-open",
+    linkId: c.linkId,
+  }).state;
+  const offered = findRecipient(state, c.linkId);
+  const result = update(state, { type: "server-lost" });
+  for (const id of [a.linkId, b.linkId]) {
+    const after = findRecipient(result.state, id);
+    assert.equal(after?.status, "waiting");
+    assert.equal(after?.noRelay, undefined);
+  }
+  assert.deepEqual(result.effects, [
+    { type: "close", linkId: a.linkId },
+    { type: "close", linkId: b.linkId },
+  ]);
+  assert.equal(findRecipient(result.state, c.linkId), offered);
+  assert.equal(statusOf(result.state, d.linkId), "waiting");
+  assert.equal(update(result.state, { type: "server-lost" }).state, result.state);
+});
+
 test("left once the channel is open is ignored; a receipt after it still delivers", () => {
   const { state: s0, linkId } = withRecipient();
   const offered = run(s0, joined(linkId, A), { type: "channel-open", linkId }).state;
@@ -299,7 +329,7 @@ test("a mismatching receipt fails the transfer and the next join retries", () =>
 
 test("events that do not fit the current status are ignored", () => {
   const { state: waiting, linkId } = withRecipient();
-  const outOfPlace: Exclude<SenderAction, { type: "add" }>[] = [
+  const outOfPlace: Exclude<SenderAction, { type: "add" | "server-lost" }>[] = [
     { type: "channel-open", linkId },
     { type: "accepted", linkId },
     { type: "progress", linkId, bytesSent: 10 },
