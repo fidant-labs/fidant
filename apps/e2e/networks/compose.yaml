@@ -1,0 +1,137 @@
+# Simulated networks for the network scenarios in the e2e suite.
+#
+#   site-a 10.89.1.0/24: router-a (.2), net-a1 (.11), net-a2 (.12)
+#   site-b 10.89.2.0/24: router-b (.2), net-b1 (.11)
+#   public 198.51.100.0/24 (TEST-NET-2): router-a (.2), router-b (.3), coturn (.20)
+#
+# Each browser-xx shares the network namespace of net-xx, whose default route is its site's
+# router. The routers NAT onto public, which has no way out, so nothing reaches the internet.
+#
+# Environment: PLAYWRIGHT_VERSION, SIGILL_E2E_REPO (repo path on the host),
+# SIGILL_E2E_RUN_DIR (observations/run), SIGILL_E2E_COTURN_DIR (holds turnserver.conf),
+# SIGILL_E2E_UID and SIGILL_E2E_GID (the host user, so files in the run dir stay theirs).
+name: sigill-e2e
+
+networks:
+  public:
+    name: sigill-e2e-public
+    internal: true
+    ipam:
+      config:
+        - subnet: 198.51.100.0/24
+  # The site networks are not internal: published ports need that, and with br_netfilter an
+  # internal network drops frames to addresses outside its subnet, such as browser -> router.
+  # The site's own default route points at its router instead.
+  site-a:
+    ipam:
+      config:
+        - subnet: 10.89.1.0/24
+  site-b:
+    ipam:
+      config:
+        - subnet: 10.89.2.0/24
+
+x-tools: &tools
+  image: sigill-e2e-net:1
+  build: .
+  cap_add: [NET_ADMIN]
+  init: true
+
+x-router: &router
+  <<: *tools
+  sysctls:
+    net.ipv4.ip_forward: 1
+  volumes:
+    - ./router.sh:/net/router.sh:ro
+  command: ["sh", "-c", "/net/router.sh init && /net/router.sh cone && exec sleep infinity"]
+  healthcheck:
+    test: ["CMD-SHELL", "iptables -t nat -S POSTROUTING | grep -q MASQUERADE"]
+    interval: 1s
+    retries: 30
+
+# Holds a site address and the network namespace its browser joins.
+x-host: &host
+  <<: *tools
+  command: ["sh", "-c", "ip route replace default via $$ROUTER && exec sleep infinity"]
+  healthcheck:
+    test: ["CMD-SHELL", 'ip route | grep -q "^default via $$ROUTER "']
+    interval: 1s
+    retries: 30
+
+x-browser: &browser
+  image: mcr.microsoft.com/playwright:v${PLAYWRIGHT_VERSION:?}-noble
+  init: true
+  shm_size: 1gb
+  volumes:
+    - ${SIGILL_E2E_REPO:?}:${SIGILL_E2E_REPO:?}:ro
+  working_dir: ${SIGILL_E2E_REPO:?}
+  # --unsafe keeps the launch args the tests send, such as --host-resolver-rules.
+  command:
+    - node
+    - apps/e2e/node_modules/@playwright/test/cli.js
+    - run-server
+    - --port=3000
+    - --host=0.0.0.0
+    - --unsafe
+  healthcheck:
+    test:
+      - CMD
+      - node
+      - -e
+      - "require('net').connect(3000, '127.0.0.1').on('connect', () => process.exit(0)).on('error', () => process.exit(1))"
+    interval: 1s
+    retries: 60
+
+services:
+  router-a:
+    <<: *router
+    networks:
+      site-a: { ipv4_address: 10.89.1.2 }
+      public: { ipv4_address: 198.51.100.2 }
+  router-b:
+    <<: *router
+    networks:
+      site-b: { ipv4_address: 10.89.2.2 }
+      public: { ipv4_address: 198.51.100.3 }
+
+  # ponytail: fixed host ports; read them with `docker compose port` if they ever collide.
+  net-a1:
+    <<: *host
+    environment: { ROUTER: 10.89.1.2 }
+    networks:
+      site-a: { ipv4_address: 10.89.1.11 }
+    ports: ["127.0.0.1:39011:3000"]
+  net-a2:
+    <<: *host
+    environment: { ROUTER: 10.89.1.2 }
+    networks:
+      site-a: { ipv4_address: 10.89.1.12 }
+    ports: ["127.0.0.1:39012:3000"]
+  net-b1:
+    <<: *host
+    environment: { ROUTER: 10.89.2.2 }
+    networks:
+      site-b: { ipv4_address: 10.89.2.11 }
+    ports: ["127.0.0.1:39021:3000"]
+
+  browser-a1:
+    <<: *browser
+    network_mode: service:net-a1
+  browser-a2:
+    <<: *browser
+    network_mode: service:net-a2
+  browser-b1:
+    <<: *browser
+    network_mode: service:net-b1
+
+  coturn:
+    image: coturn/coturn:4.7.0-r4@sha256:a00afb5b4890de4df22bbe70379c6b316685dffee297d53cac1271dcb91fab93
+    user: ${SIGILL_E2E_UID:?}:${SIGILL_E2E_GID:?}
+    # Replaces the image's default command, which looks up the external IP on the internet.
+    command: ["-c", "/etc/sigill/turnserver.conf"]
+    volumes:
+      - ${SIGILL_E2E_COTURN_DIR:?}:/etc/sigill:ro
+      # At its host path, so the log-file path in turnserver.conf is the same on both sides.
+      - ${SIGILL_E2E_RUN_DIR:?}:${SIGILL_E2E_RUN_DIR:?}
+    networks:
+      public: { ipv4_address: 198.51.100.20 }
