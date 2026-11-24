@@ -14,7 +14,7 @@ import * as sns from "aws-cdk-lib/aws-sns";
 import { EmailSubscription } from "aws-cdk-lib/aws-sns-subscriptions";
 import * as cr from "aws-cdk-lib/custom-resources";
 import type { Construct } from "constructs";
-import { mailDomain, relayCapBytes, relayWarnBytes } from "./config.ts";
+import { mailDomain, mailFrom, relayCapBytes, relayWarnBytes } from "./config.ts";
 import { renderUserData } from "./user-data.ts";
 
 const anywhere = { cidrs: ["0.0.0.0/0"], ipv6Cidrs: ["::/0"] };
@@ -179,7 +179,8 @@ export class BoxStack extends Stack {
         previous = setting;
       }
     }
-    new iam.User(this, "MailUser", { userName: "fidant-mail" }).addToPolicy(
+    const mailUser = new iam.User(this, "MailUser", { userName: "fidant-mail" });
+    mailUser.addToPolicy(
       new iam.PolicyStatement({
         actions: ["ses:SendRawEmail"],
         resources: [
@@ -190,6 +191,13 @@ export class BoxStack extends Stack {
             resourceName: configurationSet.configurationSetName,
           }),
         ],
+      }),
+    );
+    mailUser.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ["ses:SendRawEmail"],
+        resources: [this.formatArn({ service: "ses", resource: "identity", resourceName: "*" })],
+        conditions: { StringEquals: { "ses:FromAddress": mailFrom } },
       }),
     );
     for (const [index, record] of identity.dkimRecords.entries()) {

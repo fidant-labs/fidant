@@ -920,7 +920,7 @@ test("a first deploy with newMailIdentity leaves out the settings an unverified 
   appBox({ newMailIdentity: "false" }).resourceCountIs("Custom::AWS", 3);
 });
 
-test("the mail user may only send through the identity, and CDK gives it no key or password", () => {
+test("the mail user may only send through the identity or as mailFrom, and CDK gives it no key or password", () => {
   const box = appBox();
   const user = onlyId(box, "AWS::IAM::User");
   assert.deepEqual(box.findResources("AWS::IAM::User")[user]?.Properties, {
@@ -952,6 +952,17 @@ test("the mail user may only send through the identity, and CDK gives it no key 
             arn("identity", onlyId(box, "AWS::SES::EmailIdentity")),
             arn("configuration-set", onlyId(box, "AWS::SES::ConfigurationSet")),
           ],
+        },
+        {
+          Action: "ses:SendRawEmail",
+          Condition: { StringEquals: { "ses:FromAddress": "noreply@notify.fidant.se" } },
+          Effect: "Allow",
+          Resource: {
+            "Fn::Join": [
+              "",
+              ["arn:", { Ref: "AWS::Partition" }, `:ses:eu-north-1:${pocAccount}:identity/*`],
+            ],
+          },
         },
       ],
     ],
