@@ -532,7 +532,7 @@ export const sv: Messages = {
   },
   privacy: {
     title: "Integritet",
-    lede: "Din fil går från din webbläsare till webbläsaren hos den du skickar till, direkt när era nätverk tillåter det och annars via vårt relä. Den låses innan den lämnar din dator, och bara den som har länken kan låsa upp den. Vi får aldrig filen, dess namn eller nyckeln.",
+    lede: "Din fil går från din webbläsare till webbläsaren hos den du skickar till, direkt när era nätverk tillåter det och annars via vårt relä. Den låses innan den lämnar din dator, och bara den som har länken kan låsa upp den. Vi får aldrig filen, dess namn eller nyckeln. Detsamma gäller en text som du delar från sidan Dela en hemlighet.",
     howHeading: "Så går det till att skicka",
     steps: [
       [
@@ -570,6 +570,10 @@ export const sv: Messages = {
     neverHeading: "Aldrig",
     never: [
       ["Din fil", "Varken innehållet, filnamnet, storleken eller filtypen."],
+      [
+        "Din text",
+        "Varken texten du delar från sidan Dela en hemlighet eller dess längd: varje text fylls ut till samma storlek innan den lämnar din webbläsare.",
+      ],
       ["Nyckeln", "Den del av länken som låser upp filen når aldrig oss."],
       ["Namn", "Varken namnet du skriver för dig själv eller namnen på dem du skickar till."],
     ],

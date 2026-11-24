@@ -542,7 +542,7 @@ export const en = {
   },
   privacy: {
     title: "Privacy",
-    lede: "Your file goes from your browser to the browser of the person you send it to, directly when your networks allow it and otherwise through our relay. It's locked before it leaves your computer, and only the person with the link can unlock it. We never get the file, its name or the key.",
+    lede: "Your file goes from your browser to the browser of the person you send it to, directly when your networks allow it and otherwise through our relay. It's locked before it leaves your computer, and only the person with the link can unlock it. We never get the file, its name or the key. The same goes for a text you share from the Share a secret page.",
     howHeading: "How sending works",
     // [bold, rest]: the bold part opens each step.
     steps: [
@@ -582,6 +582,10 @@ export const en = {
     neverHeading: "Never",
     never: [
       ["Your file", "Not the contents, not the file name, not its size or type."],
+      [
+        "Your text",
+        "Not the text you share from the Share a secret page, and not its length: every text is padded to the same size before it leaves your browser.",
+      ],
       ["The key", "The part of the link that unlocks the file never reaches us."],
       ["Names", "Neither the name you type for yourself nor the names of the people you send to."],
     ] as ReadonlyArray<readonly [string, string]>,
