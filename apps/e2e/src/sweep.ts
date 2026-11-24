@@ -63,7 +63,7 @@ async function allCaptures(
         limits.push(...bodyLimits(point, records));
       }
     } else {
-      // Nothing else is written there today; scan anything new as it is.
+      // Saved mail (`mail/<ID>.eml`) and anything new: the whole file as it is.
       captures.push({ point, bytes });
     }
   }

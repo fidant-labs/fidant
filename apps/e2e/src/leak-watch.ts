@@ -21,6 +21,7 @@ import {
 import { exemptTest, registerSecrets } from "./leaks/registry.ts";
 import { formatLeakReport, logViolations } from "./leaks/report.ts";
 import { type Capture, type Finding, scan } from "./leaks/scan.ts";
+import { saveMail } from "./mail.ts";
 import {
   coturnLog,
   coturnPcap,
@@ -160,7 +161,10 @@ export class LeakWatch implements Leaks {
     return this.#needles.needles;
   }
 
-  /** This test's records so far, plus what the server logged since the test began. */
+  /**
+   * This test's records so far, what the server logged since the test began, and the mail Mailpit
+   * caught, which it saves under the test's observations first.
+   */
   async #observe(): Promise<{ captures: Capture[]; limits: Finding[]; stdout: LogSlice }> {
     const captures: Capture[] = [];
     const limits: Finding[] = [];
@@ -169,6 +173,9 @@ export class LeakWatch implements Leaks {
       const records = await recorder.records();
       captures.push(...recordCaptures(file, records));
       limits.push(...bodyLimits(file, records));
+    }
+    for (const path of await saveMail(join(observationsDir, this.#test))) {
+      captures.push({ point: point(path), bytes: await readFile(path) });
     }
     const slices = await Promise.all(
       logs.map(async (path, index) =>

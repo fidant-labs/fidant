@@ -46,6 +46,7 @@ Today:
 - WebSocket frames, sent and received, including `/signal`.
 - Server stdout and stderr. Stdout must also pass a strict allowlist: one JSON object per line, with known keys and values only (`src/leaks/server-log.ts`).
 - coturn's verbose log, `observations/run/coturn.log`.
+- Every mail Mailpit caught, as one capture of its raw source, which carries the envelope as Mailpit records it (Return-Path, Received and, for a recipient not in To or Cc, Bcc). Each test's check saves the mail that arrived during the test to `observations/<test>/mail/<ID>.eml`, and its teardown deletes those messages from Mailpit. Global teardown saves what is left to `observations/run/mail/`.
 - In the network scenarios only, every packet to and from coturn, `observations/run/coturn.pcap`. The `pcap` service of `networks/compose.yaml` runs tcpdump in coturn's network namespace with `NET_RAW`, so no sudo is needed (decision 0001 expected sudo on CI). The file is scanned as raw bytes, one capture per test from where it stood when the test began. It holds STUN and TURN headers and DTLS ciphertext only, so it is safe as a CI artifact. `pnpm e2e` has no packet capture.
 
 Every capture is decoded into views (percent, JSON escapes, base64, hex, gzip and others, nested) before matching, so encoded leaks are caught too.
@@ -57,11 +58,11 @@ Not wired yet. Each arrives with the first issue that needs the service:
 | DynamoDB requests, responses and snapshots   | SIG-42         |
 | BankID simulator and TSA, through the proxy  | SIG-42         |
 | File-name carriers (`src/leaks/carriers.ts`) | SIG-42, SIG-43 |
-| Object storage and mail (Mailpit)            | SIG-43         |
+| Object storage                               | SIG-43         |
 
 ## Adding an observation point
 
-Turn what the point saw into `Capture`s (`src/leaks/scan.ts`): a `point` naming where it was seen, such as `observations/run/mail.eml:3`, and the `bytes`. Add a `contentEncoding` hint if the bytes are compressed. Write the raw data under `observations/`, then add the captures to the per-test scan in `src/leak-watch.ts` and to the sweep in `src/sweep.ts`. `src/leaks/captures.ts` does this for browser records and logs.
+Turn what the point saw into `Capture`s (`src/leaks/scan.ts`): a `point` naming where it was seen, such as `observations/<test>/mail/<ID>.eml`, and the `bytes`. Add a `contentEncoding` hint if the bytes are compressed. Write the raw data under `observations/`, then add the captures to the per-test scan in `src/leak-watch.ts` and to the sweep in `src/sweep.ts`. `src/leaks/captures.ts` does this for browser records and logs.
 
 ## Reproducing a failure
 
@@ -75,4 +76,4 @@ A failure repeats the seed. Run `SIGILL_E2E_SEED=<seed> pnpm e2e` to get the sam
 
 ## Findings are public
 
-A finding prints up to 64 bytes around the match, and `observations/` is uploaded by CI. Both are public. That is acceptable only because canaries and canary keys are throwaway test values. Never watch real data, real keys or anything else secret.
+A finding prints up to 64 bytes around the match, and `observations/` is uploaded by CI. Both are public. That is acceptable only because canaries and canary keys are throwaway test values. Saved mail is uploaded too: it holds links to the local stack with throwaway keys, and made-up addresses. Never watch real data, real keys or anything else secret.
