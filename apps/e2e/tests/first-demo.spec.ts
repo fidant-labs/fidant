@@ -306,6 +306,32 @@ harness("a held Enter on Remove removes only one recipient", async ({ actor, lea
   await expect(sender.getByText("Enter a name.")).toHaveCount(0);
 });
 
+harness("a recipient gives up connecting after 30 seconds", async ({ actor, leaks, canary }) => {
+  const demo: Demo = { open: async (name) => (await actor(name)).page };
+  const sender = await openSender(demo, makeFile(leaks, canary, 10));
+  const anna = makeName(leaks, canary, "Anna");
+  const link = await addRecipient(leaks, sender, anna);
+
+  const recipient = await demo.open("recipient");
+  // The sender's offer never lands, so the data channel never opens.
+  await recipient.addInitScript(() => {
+    RTCPeerConnection.prototype.setRemoteDescription = () => new Promise(() => {});
+  });
+  await recipient.clock.install();
+  await recipient.goto(link);
+  await expect(recipient.getByRole("heading", { name: "Connecting to the sender…" })).toBeVisible();
+  // The server tells the sender only after it sent `joined`, so the recipient's peer exists by now.
+  await expect(
+    recipientRow(sender, anna).getByText(`Connecting through ${anna}'s link…`),
+  ).toBeVisible();
+
+  await recipient.clock.fastForward(29_000);
+  await expect(recipient.getByRole("heading", { name: "Connecting to the sender…" })).toBeVisible();
+  await recipient.clock.fastForward(1_000);
+  await expect(recipient.getByText("Couldn't connect to the sender's computer")).toBeVisible();
+  await expect(recipient.getByRole("button", { name: "Try again" })).toBeVisible();
+});
+
 test("the sender's name must fit with the file name, and stray drops are ignored", async ({
   demo,
   leaks,
