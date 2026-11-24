@@ -170,7 +170,7 @@ test("the app box keeps log lines for at most 30 days, before any service starts
   );
   const userData = String(instance?.Properties.UserData);
   const dropIn = userData.indexOf(
-    "\ncat >/etc/systemd/journald.conf.d/retention.conf <<'EOF'\n[Journal]\nMaxRetentionSec=29day\nMaxFileSec=1day\nForwardToSyslog=no\nEOF\nsystemctl restart systemd-journald\n",
+    "\ncat >/etc/systemd/journald.conf.d/zz-retention.conf <<'EOF'\n[Journal]\nMaxRetentionSec=29day\nMaxFileSec=1day\nForwardToSyslog=no\nEOF\nsystemctl restart systemd-journald\n",
   );
   assert.ok(dropIn > 0);
   assert.ok(dropIn < userData.indexOf("\napt-get "));
