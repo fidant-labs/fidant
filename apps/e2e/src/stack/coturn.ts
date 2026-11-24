@@ -101,6 +101,9 @@ const replaced: Record<string, string> = {
   "listening-port": "each run picks its own port",
   realm: "production's has a template placeholder",
   "log-file": "tests read coturn's log, and the leak check scans it",
+  "tls-listening-port": "a run with TLS sets its own port and certificate",
+  cert: "a run with TLS sets its own port and certificate",
+  pkey: "a run with TLS sets its own port and certificate",
 };
 /** Production peer denials the loopback stack drops, because every local peer is on loopback. */
 const loopbackDenials = ["denied-peer-ip=127.0.0.0-127.255.255.255", "denied-peer-ip=::1"];
@@ -115,8 +118,10 @@ export function coturnConfig(options: {
   port: number;
   secret: string;
   stateDir: string;
+  /** TURN over TLS on `port` with this certificate and key. Without it, coturn has no TLS. */
+  tls?: { port: number; cert: string; pkey: string };
 }): string {
-  const { ip, port, secret, stateDir } = options;
+  const { ip, port, secret, stateDir, tls } = options;
   const loopback = ip === host;
   const kept = productionConfig
     .split("\n")
@@ -131,6 +136,10 @@ export function coturnConfig(options: {
     `static-auth-secret=${secret}`,
     "realm=sigill.local",
     ...(loopback ? ["allow-loopback-peers"] : []),
+    // ponytail: the loopback stack keeps plain TURN over TCP; TLS is covered by the networks suite.
+    ...(tls
+      ? [`tls-listening-port=${tls.port}`, `cert=${tls.cert}`, `pkey=${tls.pkey}`]
+      : ["no-tls"]),
     `pidfile=${join(stateDir, "turnserver.pid")}`,
     `userdb=${join(stateDir, "turndb")}`,
     `log-file=${coturnLog}`,

@@ -192,9 +192,18 @@ test("the app box runs coturn after the site is up, with a secret that stays on 
   const lines = userData.split("\n");
   assert.ok(Buffer.byteLength(userData) < 16 * 1024);
 
-  for (const line of ["realm=turn.fidant.se", "use-auth-secret", "log-file=/dev/null"]) {
+  for (const line of [
+    "realm=turn.fidant.se",
+    "use-auth-secret",
+    "log-file=/dev/null",
+    "tls-listening-port=5349",
+    "cert=/etc/coturn/turn.crt",
+    "pkey=/etc/coturn/turn.key",
+    "no-dtls",
+  ]) {
     assert.ok(lines.includes(line), line);
   }
+  assert.ok(!lines.includes("no-tls"));
   assert.ok(userData.includes(`external-ip=${boxAddress}/`));
   const denied = lines.filter((line) => line.startsWith("denied-peer-ip="));
   assert.deepEqual(denied, [
