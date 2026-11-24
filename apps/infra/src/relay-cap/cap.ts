@@ -110,7 +110,7 @@ export function metricLine(total: number, now: Date): string {
   });
 }
 
-export async function runCap(deps: CapDeps, config: CapConfig, now: Date): Promise<CapState> {
+export async function runCap(deps: CapDeps, config: CapConfig, now: Date): Promise<void> {
   const previous = parseState(await deps.readState());
   const bytes = await deps.boxBytes(config.box, monthStart(now), now);
   const { state, total, ports } = decide(
@@ -125,5 +125,4 @@ export async function runCap(deps: CapDeps, config: CapConfig, now: Date): Promi
   }
   await deps.writeState(JSON.stringify(state));
   deps.log(metricLine(total, now));
-  return state;
 }
