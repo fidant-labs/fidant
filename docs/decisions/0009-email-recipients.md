@@ -1,4 +1,4 @@
-# 0008: Email recipients
+# 0009: Email recipients
 
 - Status: Accepted
 - Date: 2026-11-24
