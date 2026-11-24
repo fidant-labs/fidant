@@ -58,10 +58,11 @@ sender ⇄ recipient     WebRTC data channel "sigill" opens
 ```
 
 - The sender's page registers its link IDs with `host`, along with whether it allows our relay (`turn`).
-- The recipient's page joins with the link ID and an attempt ID: random, new for each page load and each "Try again".
+- The recipient's page joins with the link ID and an attempt ID: random, new for each page load, each "Try again" and each automatic retry.
 - The server binds at most one recipient page to a link and sends `joined` to both. It keeps no record of used links. The sender's page decides and answers with `refuse` (`used`, `busy`, `unknown` or `drop`).
 - Every SDP and ICE message is sealed with the signal key: `base64url(iv(12) ‖ AES-GCM ciphertext ‖ tag(16))` with the additional data `sigill/v1/signal|<link ID>|<attempt>|<direction>`. The server can't read or change them, can't reflect a message to its sender, can't move it to another link, and can't replay it into another attempt.
 - The SDP carries the DTLS certificate fingerprints of the WebRTC connection. Because the server can't change them, it can't put itself between the browsers.
+- If the WebSocket drops, the two pages behave differently. The sender's page opens a new socket after a growing, jittered delay (`signaling-client.ts`) and sends `host` again with all its links (`SendPage.tsx`). A recipient whose data channel hasn't opened, on a socket that had opened, starts a new attempt at once with a new socket and a new attempt ID, up to 4 times (`MAX_REJOINS`), then fails; a socket that never opened is left to the signaling client's own retries (`ReceivePage.tsx`). After a drop, `refused: unknown` makes the recipient wait and try again, because a restarted server only knows the link once the sender hosts it again. Once the data channel is open, the transfer no longer needs the server, so a drop only closes signaling.
 - Accepted residue: the sender learns the attempt ID from the server's `joined`, so a lying server could replay one old attempt's recipient signals to the sender. That only breaks that attempt: the replayed answer names a DTLS fingerprint of a closed connection, so no channel opens.
 
 ## Two layers of encryption

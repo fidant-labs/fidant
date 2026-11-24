@@ -548,6 +548,7 @@ export const en = {
           "The sender's page opens a WebSocket to our server and registers its link IDs. When the recipient opens their link, their page joins with the link ID and a random attempt ID, new for each page load and each retry. The server pairs at most one recipient page with a link at a time and tells both sides.",
           "The browsers then set up a WebRTC connection. The offer, the answer and the network candidates are encrypted with the signal key before they reach our server. Each message is bound to its link, attempt and direction, so the server can't read or change them, can't send a message back to the side that sent it, can't move it to another link and can't replay it into another attempt. Replaying old messages can at most make one attempt fail, which dropping them would do anyway.",
           "This matters beyond privacy: the setup messages carry the fingerprints of WebRTC's own DTLS encryption. Because the server can't change them, it can't put itself between the two browsers.",
+          "If the connection to our server drops, both pages try to reconnect by themselves. The sender's page registers its links again, and a recipient who was still connecting tries again a few times before giving up. A transfer that has already started doesn't need our server and carries on.",
         ],
       },
       {
