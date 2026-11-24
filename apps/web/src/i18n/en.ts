@@ -640,7 +640,7 @@ export const en = {
         "Not the names you give the people you send to. Your own name reaches us only if you ask us to email a link: it goes in that email, and we don't keep it.",
       ],
     ] as ReadonlyArray<readonly [string, string]>,
-    seesHeading: "Only what it needs to connect you",
+    seesHeading: "Only what it needs to connect you or email a link",
     sees: [
       [
         "Your IP address and browser details",
@@ -659,7 +659,7 @@ export const en = {
         "Whether the sender allows our relay, so we only give recipients access to it when they do. We forget it within a minute after the sender's page closes, and never write it to our logs.",
       ],
       [
-        "An email address, if you give one",
+        "If we email a link: the address, the link's key and your name",
         "If you ask us to email a link, your browser sends our server the recipient's email address, the link with its key, and your name. We keep the key and your name only until the email has gone. We keep the address in memory while your page is open, so we can email the recipient a code when they open the link. We also keep the latest code and which browser tabs entered the right one. We never log the address or write it to disk. Our mail service, Amazon SES, delivers the emails, and bounces go only to it, never to a mailbox of ours. An address that bounces as undeliverable goes on a list that Amazon SES keeps for all its customers, for up to 14 days, so that nobody sends it more mail. We can't turn that list off.",
       ],
       [
@@ -668,7 +668,7 @@ export const en = {
       ],
     ] as ReadonlyArray<readonly [string, string]>,
     keepHeading: "What we keep",
-    keep: "We have no accounts, no database, no cookies and no tracking. Apart from the log lines below and the email counts above, which last an hour, nothing is kept once the sender's page is closed, within a minute at most.",
+    keep: "We have no accounts, no database, no cookies and no tracking. Apart from the log lines below, the email counts above, which last an hour, and our mail service's list of bounced addresses, nothing is kept once the sender's page is closed, within a minute at most.",
     logFields,
     logRetention: "Log lines are deleted after 30 days.",
   },

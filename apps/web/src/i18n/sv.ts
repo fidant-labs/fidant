@@ -614,7 +614,7 @@ export const sv: Messages = {
         "Inte namnen du ger dem du skickar till. Ditt eget namn når oss bara om du ber oss mejla en länk: det står då i mejlet, och vi sparar det inte.",
       ],
     ],
-    seesHeading: "Bara det den behöver för att koppla ihop er",
+    seesHeading: "Bara det den behöver för att koppla ihop er eller mejla en länk",
     sees: [
       [
         "Din IP-adress och uppgifter om din webbläsare",
@@ -633,7 +633,7 @@ export const sv: Messages = {
         "Om avsändaren tillåter vårt relä, så att vi bara ger mottagare tillgång till det när avsändaren gör det. Vi glömmer det inom en minut efter att avsändarens sida har stängts, och skriver aldrig in det i våra loggar.",
       ],
       [
-        "En e-postadress, om du anger en",
+        "Om vi mejlar en länk: adressen, länkens nyckel och ditt namn",
         "Om du ber oss mejla en länk skickar din webbläsare mottagarens e-postadress, länken med nyckeln och ditt namn till vår server. Nyckeln och ditt namn har vi bara tills mejlet har gått iväg. Adressen har vi i minnet medan din sida är öppen, så att vi kan mejla mottagaren en kod när länken öppnas. Vi har också den senaste koden och vilka flikar som har angett rätt kod. Vi loggar aldrig adressen och skriver den aldrig till disk. Vår e-posttjänst, Amazon SES, levererar mejlen, och studsar går bara dit, aldrig till en inkorg hos oss. En adress som studsar för att den inte går att leverera hamnar på en lista som Amazon SES har för alla sina kunder, i upp till 14 dagar, så att ingen skickar mer e-post till den. Den listan kan vi inte stänga av.",
       ],
       [
@@ -642,7 +642,7 @@ export const sv: Messages = {
       ],
     ],
     keepHeading: "Vad vi sparar",
-    keep: "Vi har inga konton, ingen databas, inga cookies och ingen spårning. Förutom loggraderna nedan och antalet mejl ovan, som finns kvar en timme, sparas ingenting när avsändarens sida har stängts, inom högst en minut.",
+    keep: "Vi har inga konton, ingen databas, inga cookies och ingen spårning. Förutom loggraderna nedan, antalet mejl ovan, som finns kvar en timme, och e-posttjänstens lista över adresser som studsat sparas ingenting när avsändarens sida har stängts, inom högst en minut.",
     logFields,
     logRetention: "Loggraderna raderas efter 30 dagar.",
   },
