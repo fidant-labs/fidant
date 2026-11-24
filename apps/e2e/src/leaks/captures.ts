@@ -36,6 +36,9 @@ export function recordCaptures(file: string, records: readonly ObservationRecord
       case "requestfailed":
         add("failure", Buffer.from(record.failure));
         break;
+      case "console":
+        add("text", Buffer.from(record.text));
+        break;
     }
   });
   return captures;
