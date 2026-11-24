@@ -104,13 +104,16 @@ test("a text goes from /secret to the recipient, who shows and copies it", async
   await expect(page.locator("body")).not.toContainText("secret.txt");
   await show.click();
 
-  const shown = page.getByRole("textbox", { name: "The text" });
-  await expect(shown).toHaveValue(text);
-  await expect(shown).toHaveJSProperty("spellcheck", false);
+  const shown = page.getByRole("region", { name: "The text", exact: true });
+  await expect(shown).toHaveJSProperty("textContent", text);
   await expect(shown).toHaveJSProperty("translate", false);
-  await expect(shown).toHaveAttribute("autocomplete", "off");
-  await expect(shown).toHaveAttribute("writingsuggestions", "false");
-  await expect(shown).toHaveJSProperty("readOnly", true);
+  await expect(shown).toHaveAttribute("tabindex", "0");
+  // Browsers save form controls' values with the session, so none may hold the text.
+  const [firstLine = text] = text.split("\n");
+  const values = await page
+    .locator("input, textarea, select")
+    .evaluateAll((controls) => controls.map((control) => (control as HTMLInputElement).value));
+  expect(values.filter((value) => value.includes(firstLine))).toEqual([]);
   await expect(page.locator("body")).not.toContainText("secret.txt");
 
   // The canary repeats under --repeat-each, so a clipboard left by an earlier run would pass.
@@ -153,7 +156,10 @@ test("declining a text keeps the link working", async ({ actor, leaks, canary })
   await page.getByRole("button", { name: "Show the text again" }).click();
   await expect(offer).toBeVisible();
   await page.getByRole("button", { name: "Show", exact: true }).click();
-  await expect(page.getByRole("textbox", { name: "The text" })).toHaveValue(text);
+  await expect(page.getByRole("region", { name: "The text", exact: true })).toHaveJSProperty(
+    "textContent",
+    text,
+  );
   await expect(delivered(sender, name)).toBeVisible();
 });
 
