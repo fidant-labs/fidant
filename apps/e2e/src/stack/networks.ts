@@ -37,6 +37,26 @@ export async function routerMode(router: "router-a" | "router-b", mode: RouterMo
   await run("docker", [...compose, "exec", "-T", router, "/net/router.sh", mode]);
 }
 
+/** Freezes coturn, so STUN and TURN get no answer, as if the relay were down. */
+export async function pauseRelay(): Promise<void> {
+  await run("docker", [...compose, "pause", "coturn"]);
+}
+
+/** Undoes pauseRelay. Does nothing when coturn is not paused. */
+export async function resumeRelay(): Promise<void> {
+  const { stdout } = await run("docker", [
+    ...compose,
+    "ps",
+    "-a",
+    "--format",
+    "{{.State}}",
+    "coturn",
+  ]);
+  if (stdout.trim() === "paused") {
+    await run("docker", [...compose, "unpause", "coturn"]);
+  }
+}
+
 /** Fails at once with a clear message when Docker or Compose v2 is missing or not running. */
 export function assertDocker(): void {
   try {
