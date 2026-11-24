@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { MAX_CHUNK_BYTES, MAX_FROM_LENGTH, metaFits, paddedLength } from "./frames.ts";
 import { DEFAULT_MAX_MESSAGE_SIZE } from "./peer.ts";
+import { FRAME_OVERHEAD_BYTES } from "./send-file.ts";
 import {
   isTextOffer,
   MAX_TEXT_BYTES,
@@ -48,7 +49,7 @@ test("isTextOffer needs the exact type and a size within the cap", () => {
 });
 
 test("every text size pads to exactly one chunk", () => {
-  assert.ok(DEFAULT_MAX_MESSAGE_SIZE - 64 >= MAX_CHUNK_BYTES);
+  assert.ok(DEFAULT_MAX_MESSAGE_SIZE - FRAME_OVERHEAD_BYTES >= MAX_CHUNK_BYTES);
   for (let size = 0; size <= MAX_TEXT_BYTES; size++) {
     assert.equal(paddedLength(size, MAX_CHUNK_BYTES), MAX_CHUNK_BYTES);
     assert.equal(paddedLength(size, MAX_TEXT_BYTES), MAX_TEXT_BYTES);
