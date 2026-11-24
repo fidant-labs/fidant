@@ -613,7 +613,11 @@ export function ReceivePage() {
               <Icon name="check" class="size-8 stroke-[2.5]" />
               <h1 class="m-0">{t.secret.doneTitle}</h1>
             </div>
-            <ShownText blob={blob} />
+            <ShownText
+              blob={blob}
+              // RECEIPT already went out, so the link is spent: no Try again.
+              onUnreadable={() => setView({ s: "refused", problem: "save", text: true })}
+            />
             <p class="text-muted-foreground">{t.secret.notSaved}</p>
             <Direct from={t.common.sender} to={t.common.you} state="done" />
             <p class={caption}>{t.receive.doneCaption}</p>
@@ -697,14 +701,14 @@ function OfferDetails({ offer, sha256 }: { offer: Offer; sha256?: string }) {
 }
 
 /** A received text, as plain text outside any form field so session restore has none of it to save, with a button that copies it. */
-function ShownText({ blob }: { blob: Blob }) {
+function ShownText({ blob, onUnreadable }: { blob: Blob; onUnreadable(): void }) {
   const { t } = useI18n();
-  const [text, setText] = useState("");
+  const [text, setText] = useState<string | undefined>(undefined);
   const [copyNote, setCopyNote] = useState<CopyNote | "">("");
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
-    void decodeText(blob).then(setText);
+    void decodeText(blob).then(setText, onUnreadable);
   }, [blob]);
   useEffect(() => () => clearTimeout(timer.current), []);
 
@@ -715,6 +719,9 @@ function ShownText({ blob }: { blob: Blob }) {
   };
 
   const copy = async () => {
+    if (text === undefined) {
+      return;
+    }
     try {
       if (!navigator.clipboard) {
         throw new Error("no clipboard");
@@ -738,7 +745,7 @@ function ShownText({ blob }: { blob: Blob }) {
         <pre class="whitespace-pre-wrap wrap-anywhere">{text}</pre>
       </section>
       <div class="flex flex-wrap items-center gap-3">
-        <Button type="button" onClick={copy}>
+        <Button type="button" onClick={copy} disabled={text === undefined}>
           {t.secret.copy}
         </Button>
         <span class="text-[0.85rem] text-muted-foreground" role="status">

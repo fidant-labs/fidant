@@ -367,6 +367,10 @@ export const sv: Messages = {
         detail:
           "En del av överföringen från avsändaren gick inte att dekryptera eller följde inte överföringsformatet.",
       },
+      save: {
+        title: "Texten kunde inte visas",
+        body: "Webbläsaren kunde inte läsa texten den tog emot. Be avsändaren om en ny länk.",
+      },
     },
     back: "Tillbaka till texten",
     first: "Skriv eller klistra in texten först.",

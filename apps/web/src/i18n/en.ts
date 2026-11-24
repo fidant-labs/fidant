@@ -367,6 +367,10 @@ export const en = {
         body: "The sender's browser sent data we couldn't read, so nothing was shown.",
         detail: "A frame from the sender failed to decrypt or broke the transfer format.",
       },
+      save: {
+        title: "The text couldn't be shown",
+        body: "This browser couldn't read the text it received. Ask the sender for a new link.",
+      },
     },
     back: "Back to the text",
     first: "Write or paste the text first.",
