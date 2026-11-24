@@ -323,16 +323,25 @@ for (const row of scenarios) {
   });
 }
 
-/** One `journalctl -o json` entry; MESSAGE is a byte array when it is not valid UTF-8 text. */
+/**
+ * One `journalctl -o json --all` entry. MESSAGE is a byte array when it is not valid UTF-8 text;
+ * without --all it would also be null when over 4096 bytes.
+ */
 interface JournalEntry {
-  MESSAGE?: string | number[];
+  MESSAGE?: string | number[] | null;
   _SYSTEMD_UNIT?: string;
 }
 
-const messageOf = (entry: JournalEntry) =>
-  typeof entry.MESSAGE === "string"
-    ? entry.MESSAGE
-    : Buffer.from(entry.MESSAGE ?? []).toString("utf8");
+/** A missing MESSAGE throws, so a line the checks cannot read fails the test instead of passing them. */
+const messageOf = (entry: JournalEntry) => {
+  if (typeof entry.MESSAGE === "string") {
+    return entry.MESSAGE;
+  }
+  if (Array.isArray(entry.MESSAGE)) {
+    return Buffer.from(entry.MESSAGE).toString("utf8");
+  }
+  throw new Error(`journal entry without MESSAGE: ${JSON.stringify(entry).slice(0, 200)}`);
+};
 
 /** Matches the address on its own, so 198.51.100.2 does not match 198.51.100.20. */
 const addressPattern = (ip: string) => new RegExp(`(?<![\\d.])${ip.replaceAll(".", "\\.")}(?!\\d)`);
@@ -402,12 +411,25 @@ test.describe("the box", () => {
     await expect
       .poll(async () => {
         journal = await inBox(
-          ..."journalctl -o json --no-pager -u sigill -u caddy -u coturn".split(" "),
+          ..."journalctl -o json --all --no-pager -u sigill -u caddy -u coturn".split(" "),
+        );
+        // The decoded messages as plain lines, which is what the leak scanner reads; JSON
+        // escapes and decimal byte arrays would hide a canary from it. Kept on every attempt.
+        // A binary MESSAGE goes in as hex: the scanner reads logs as UTF-8, which would mangle
+        // raw file bytes, and it matches hex views.
+        await writeFile(
+          boxJournal,
+          `${entries()
+            .map((entry) =>
+              Array.isArray(entry.MESSAGE)
+                ? Buffer.from(entry.MESSAGE).toString("hex")
+                : messageOf(entry),
+            )
+            .join("\n")}\n`,
         );
         return sigillLines().some((line) => line.startsWith('{"event":"path"'));
       })
       .toBe(true);
-    await writeFile(boxJournal, journal);
 
     // Straight to rsyslog's socket: journald forwards nothing, so this proves rsyslog writes.
     const probe = randomBytes(8).toString("hex");
@@ -416,10 +438,10 @@ test.describe("the box", () => {
     await expect
       .poll(async () => {
         syslog = await inBox("cat", "/var/log/syslog");
+        await writeFile(boxSyslog, syslog);
         return syslog.includes(probe);
       })
       .toBe(true);
-    await writeFile(boxSyslog, syslog);
 
     const services = /\s(node|caddy|turnserver|coturn)(\[\d+\])?:|(sigill|caddy|coturn)\.service/;
     expect(syslog.split("\n").filter((line) => services.test(line))).toEqual([]);

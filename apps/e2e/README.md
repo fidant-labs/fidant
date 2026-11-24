@@ -48,7 +48,7 @@ Today:
 - Server stdout and stderr. Stdout must also pass a strict allowlist: one JSON object per line, with known keys and values only (`src/leaks/server-log.ts`).
 - coturn's verbose log, `observations/run/coturn.log`.
 - In the network scenarios only, every packet to and from coturn, `observations/run/coturn.pcap`. The `pcap` service of `networks/compose.yaml` runs tcpdump in coturn's network namespace with `NET_RAW`, so no sudo is needed (decision 0001 expected sudo on CI). The file is scanned as raw bytes, one capture per test from where it stood when the test began. It holds STUN and TURN headers and DTLS ciphertext only, so it is safe as a CI artifact. `pnpm e2e` has no packet capture.
-- In the network scenarios only, the box's journal for sigill, caddy and coturn (`observations/run/box-journal.jsonl`, `journalctl -o json`) and its `/var/log/syslog` (`observations/run/box-syslog.log`), written by the `the box` test after its transfer.
+- In the network scenarios only, the box's journal for sigill, caddy and coturn (`observations/run/box-journal.jsonl`, the message of each `journalctl -o json --all` entry, one per line, binary ones hex-encoded) and its `/var/log/syslog` (`observations/run/box-syslog.log`), written by the `the box` test after its transfer.
 
 Every capture is decoded into views (percent, JSON escapes, base64, hex, gzip and others, nested) before matching, so encoded leaks are caught too.
 

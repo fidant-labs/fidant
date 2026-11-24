@@ -1,7 +1,7 @@
 # The POC box (apps/infra/box/user-data.sh) as a container: systemd as PID 1, with the app server,
 # Caddy, coturn and rsyslog as services. compose.yaml mounts the repo at /opt/sigill/current and
 # the files from boxFiles() in src/stack/box.ts at /box.
-# Built as sigill-e2e-box:2; bump that tag in compose.yaml when this file changes.
+# Built as sigill-e2e-box:4; bump that tag in compose.yaml when this file changes.
 # The Ubuntu release matches the Lightsail blueprint, and the node binary is serverImage's in
 # src/stack/networks.ts; box.test.ts checks both.
 FROM ubuntu:24.04@sha256:562111b88caa79c71391c0c4d3c2114a7d5c35915c20561fd893cb1e07929e6b
@@ -11,7 +11,11 @@ RUN apt-get update \
   && DEBIAN_FRONTEND=noninteractive apt-get install -y \
     systemd systemd-sysv rsyslog openssl curl caddy git libatomic1 xz-utils coturn \
   && rm -rf /var/lib/apt/lists/* \
-  && systemctl enable caddy coturn rsyslog
+  && systemctl enable caddy coturn rsyslog \
+  # compose.yaml runs the box privileged, so the host's /dev is visible, and systemd does not see
+  # the container: without this, agetty would take over the host's virtual consoles (getty@,
+  # autovt@ from logind) or serial console (serial-getty@ from the getty generator).
+  && systemctl mask getty.target getty@.service autovt@.service serial-getty@.service console-getty.service
 COPY --from=node:26.13.1-bookworm@sha256:0a7c0471c10988ef5ab64718fa58bf8d5be578b4d20cf42b10b5fa6ccda39ae1 /usr/local/bin/node /usr/local/bin/node
 RUN useradd --system --create-home --home-dir /var/lib/sigill --shell /usr/sbin/nologin sigill
 STOPSIGNAL SIGRTMIN+3
