@@ -851,6 +851,7 @@ test.describe("emailed links", () => {
 
   test("a recipient enters the emailed code and gets the file", async ({
     demo,
+    observed,
     leaks,
     canary,
     baseURL,
@@ -903,6 +904,15 @@ test.describe("emailed links", () => {
     expect(sha256Hex(bytes)).toBe(sha256Hex(file.bytes));
     await expect(delivered(sender, name)).toBeVisible();
     await expect(verified).toBeVisible();
+
+    // A reload joins with the tab's token, without a new code, and the sender refuses a used link.
+    await recipient.reload();
+    await expect(recipient.getByText("This link has already been used")).toBeVisible();
+    const joins = await messages(observed, "recipient", "join");
+    expect(joins.map((join) => join.token)).toEqual([token, token]);
+    expect((await mailTo(to)).filter((mail) => mail.Subject === "Your Fidant code")).toHaveLength(
+      1,
+    );
     await expectNotLogged([to, code, token, emailed.mark]);
   });
 
