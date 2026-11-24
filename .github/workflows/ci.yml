@@ -68,8 +68,8 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y coturn
       # Mailpit catches the server's mail. It is not in apt: a pinned release, checked against its hash.
       - run: |
-          curl -fsSLo "$RUNNER_TEMP/mailpit.tar.gz" https://github.com/axllent/mailpit/releases/download/v1.34.0/mailpit-linux-amd64.tar.gz
-          echo "af236b42f171b1c74f0ac5ff444f44d36f2f2ecc0134f5a2f1d4e307e56a0d2c  $RUNNER_TEMP/mailpit.tar.gz" | sha256sum -c -
+          curl -fsSLo "$RUNNER_TEMP/mailpit.tar.gz" https://github.com/axllent/mailpit/releases/download/v1.33.1/mailpit-linux-amd64.tar.gz
+          echo "84d7fe375ebef25df26758984dc0d5d5e17d8c0734cb2e77be7873b14ab51716  $RUNNER_TEMP/mailpit.tar.gz" | sha256sum -c -
           sudo tar -xzf "$RUNNER_TEMP/mailpit.tar.gz" -C /usr/local/bin mailpit
       - run: pnpm e2e
       # Only the observations (recorded traffic, and run/ with the server and coturn logs) are uploaded.
