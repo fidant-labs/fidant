@@ -81,6 +81,14 @@ test("captures text frames as they are and binary frames decoded", () => {
   assert.deepEqual([...(captures[3]?.bytes ?? [])], [0, 1, 254, 255]);
 });
 
+test("captures a console message's page URL and text", () => {
+  const records: ObservationRecord[] = [{ type: "console", time, url, text: "sigill: key=SECRET" }];
+  assert.deepEqual(shown(recordCaptures(file, records)), [
+    `${file}#1 console.url = ${url}`,
+    `${file}#1 console.text = sigill: key=SECRET`,
+  ]);
+});
+
 const log = Buffer.from("one\ntwo\nthree\nfou");
 
 test("slices a whole log into its complete lines", () => {

@@ -102,3 +102,27 @@ test("each page has its own tab title", async ({ page }) => {
     await expect(page).toHaveTitle(title);
   }
 });
+
+test("the theme menu is in the header on wide screens and in the footer on phones", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const header = page.locator("header").getByRole("button", { name: "Theme" });
+  const footer = page.locator("footer").getByRole("button", { name: "Theme" });
+  await expect(header).toBeVisible();
+  await expect(footer).toBeHidden();
+
+  await page.setViewportSize({ width: 360, height: 800 });
+  await expect(header).toBeHidden();
+  await footer.click();
+  await page.getByRole("menuitemradio", { name: "Dark" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(page.getByRole("menu")).toHaveCount(0);
+
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await header.click();
+  await expect(page.getByRole("menuitemradio", { name: "Dark" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+});

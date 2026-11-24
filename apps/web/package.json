@@ -10,7 +10,7 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit -p .",
     "test": "node --test",
-    "lighthouse": "node -e \"require('node:net').connect(8444, 'localhost').on('connect', () => { console.error('Port 8444 is in use. Stop what holds it before running Lighthouse.'); process.exit(1); }).on('error', () => {})\" && lhci collect && lhci assert"
+    "lighthouse": "node -e \"require('node:net').connect(8444, 'localhost').on('connect', () => { console.error('Port 8444 is in use. Stop what holds it before running Lighthouse.'); process.exit(1); }).on('error', () => {})\" && lhci collect && lhci collect --additive --numberOfRuns=2 --url=https://localhost:8444/ && lhci assert"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",

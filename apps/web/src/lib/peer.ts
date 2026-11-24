@@ -77,9 +77,10 @@ export type PeerOptions = {
   onOpen(channel: RTCDataChannel, info: PeerOpenInfo): void;
   /**
    * The peer closed on its own. Called at most once, and never after close()
-   * was called by the owner.
+   * was called by the owner. `detail` can quote SDP, so never log it; `name`
+   * is a caught error's name (see errorName), safe to log.
    */
-  onClose(reason: PeerCloseReason, detail?: string): void;
+  onClose(reason: PeerCloseReason, detail?: string, name?: string): void;
 };
 
 export type Peer = {
@@ -226,6 +227,11 @@ export function connectionPath(
   return "direct";
 }
 
+/** A caught error's name, such as "OperationError", if it is a plain identifier. */
+export function errorName(error: unknown): string | undefined {
+  return error instanceof Error && /^[A-Za-z]{1,40}$/.test(error.name) ? error.name : undefined;
+}
+
 class PeerError extends Error {
   readonly reason: PeerCloseReason;
   constructor(reason: PeerCloseReason, message: string) {
@@ -273,7 +279,7 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
     pc.close();
   }
 
-  function fail(reason: PeerCloseReason, detail?: string): void {
+  function fail(reason: PeerCloseReason, detail?: string, name?: string): void {
     if (closed) {
       return;
     }
@@ -281,7 +287,7 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
     if (detail === undefined) {
       options.onClose(reason);
     } else {
-      options.onClose(reason, detail);
+      options.onClose(reason, detail, name);
     }
   }
 
@@ -289,7 +295,7 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
     if (error instanceof PeerError) {
       fail(error.reason, error.message);
     } else {
-      fail(fallback, error instanceof Error ? error.message : String(error));
+      fail(fallback, error instanceof Error ? error.message : String(error), errorName(error));
     }
   }
 
