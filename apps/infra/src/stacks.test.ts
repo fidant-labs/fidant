@@ -281,7 +281,7 @@ test("the committed config keeps fidant.se's Proton mail records", () => {
   committed.hasResourceProperties(recordSet, {
     Name: "_dmarc.fidant.se.",
     Type: "TXT",
-    ResourceRecords: [Match.stringLikeRegexp('^"v=DMARC1; p=(quarantine|reject)[;"]')],
+    ResourceRecords: [Match.stringLikeRegexp('^"v=DMARC1; p=reject[;"]')],
   });
 });
 
@@ -306,6 +306,23 @@ test("fidant.eu and fidant.org declare that they send no mail", () => {
       ResourceRecords: ['"v=DMARC1; p=reject"'],
     });
   }
+});
+
+test("only Caddy's two certificate authorities may issue for any name, and no wildcards", () => {
+  for (const zoneName of ["fidant.se", "fidant.eu", "fidant.org"]) {
+    dns.hasResourceProperties("AWS::Route53::RecordSet", {
+      HostedZoneId: zoneRef(zoneName),
+      Name: `${zoneName}.`,
+      Type: "CAA",
+      ResourceRecords: ['0 issue "letsencrypt.org"', '0 issue "sectigo.com"', '0 issuewild ";"'],
+    });
+  }
+  assert.equal(
+    Object.values(dns.findResources("AWS::Route53::RecordSet")).filter(
+      (record) => record.Properties.Type === "CAA",
+    ).length,
+    3,
+  );
 });
 
 test("fidant.se gets the mail records", () => {
