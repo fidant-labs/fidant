@@ -14,13 +14,20 @@ import {
 import { createTransferId, deriveFileKey } from "./keys.ts";
 import { createLink } from "./link.ts";
 import {
+  CREDIT_WINDOW_CHUNKS,
   type FileOffer,
   ReceiveError,
   type ReceiveFailure,
   type ReceiveFileOptions,
   receiveFile,
 } from "./receive-file.ts";
-import { type FrameChannel, type SendResult, sendFile } from "./send-file.ts";
+import {
+  FRAME_OVERHEAD_BYTES,
+  type FrameChannel,
+  type SendFileOptions,
+  type SendResult,
+  sendFile,
+} from "./send-file.ts";
 import { BlobSink, type Sink } from "./sink.ts";
 
 type Transit = {
@@ -118,6 +125,9 @@ function sha256(bytes: Uint8Array): Uint8Array {
 
 type RunOptions = {
   bytes: Uint8Array;
+  /** Sent instead of a File made from `bytes`; `bytes` is then unused but for the checksum default. */
+  file?: SendFileOptions["file"];
+  maxMessageSize?: number;
   pair?: Pair;
   recipientSecret?: string;
   sink?: Sink;
@@ -138,12 +148,15 @@ function run(options: RunOptions) {
   const sink = options.sink ?? new RecordingSink();
   const offers: FileOffer[] = [];
   const progress: number[] = [];
-  const file = new File([options.bytes as Uint8Array<ArrayBuffer>], "report.bin", {
-    type: "application/octet-stream",
-  });
+  const maxMessageSize = options.maxMessageSize ?? 65536;
+  const file =
+    options.file ??
+    new File([options.bytes as Uint8Array<ArrayBuffer>], "report.bin", {
+      type: "application/octet-stream",
+    });
   const sending: Promise<SendResult> = sendFile({
     channel: pair.sender,
-    maxMessageSize: 65536,
+    maxMessageSize,
     file,
     from: "Anna",
     secret,
@@ -155,7 +168,7 @@ function run(options: RunOptions) {
   sending.catch(() => {});
   const receiving = receiveFile({
     channel: pair.recipient,
-    maxMessageSize: 65536,
+    maxMessageSize,
     secret: options.recipientSecret ?? secret,
     signal: options.signal ?? new AbortController().signal,
     onOffer:
@@ -418,3 +431,176 @@ for (const early of ["CHUNK", "END"] as const) {
     assert.equal(late.writes, 0);
   });
 }
+
+test("aborts when the sender ignores the credit window", async () => {
+  const { secret } = createLink("https://localhost");
+  const pair = channelPair();
+  let accepted: (() => void) | undefined;
+  const acceptance = new Promise<void>((resolve) => {
+    accepted = resolve;
+  });
+  pair.sender.addEventListener("message", (event) => {
+    if (new Uint8Array((event as MessageEvent).data)[1] === RecipientKind.ACCEPT) {
+      accepted?.();
+    }
+  });
+  const sink = new RecordingSink();
+  sink.write = () => new Promise(() => {});
+  const receiving = receiveFile({
+    channel: pair.recipient,
+    maxMessageSize: 65536,
+    secret,
+    signal: new AbortController().signal,
+    onOffer: async () => sink,
+    onProgress: () => {},
+  });
+  receiving.catch(() => {});
+
+  // A sender that sends far more CHUNKs than it was granted.
+  const transferId = createTransferId();
+  const writer = new FrameWriter(await deriveFileKey(secret, transferId), "s");
+  const count = CREDIT_WINDOW_CHUNKS * 4;
+  const meta = { name: "a.bin", size: count * 16, type: "", chunkSize: 16, from: "" };
+  pair.sender.send(encodeInit(transferId));
+  pair.sender.send(await writer.encrypt(SenderKind.META, encodeMeta(meta)));
+  await acceptance;
+  for (let i = 0; i < count; i++) {
+    pair.sender.send(await writer.encrypt(SenderKind.CHUNK, new Uint8Array(16)));
+  }
+
+  await assert.rejects(
+    receiving,
+    (error: unknown) =>
+      failedWith("invalid")(error) && /exceeded the frame window/.test(String(error)),
+  );
+  assert.equal(sink.aborted, true);
+  pair.close();
+});
+
+/**
+ * Counts CHUNK frames the sender has put on the channel against chunks the
+ * sink has finished writing; `peak` is the most that were ever in between.
+ */
+function inFlight() {
+  const count = { sent: 0, written: 0, peak: 0 };
+  const pair = channelPair({
+    toRecipient(frame) {
+      if (frame[1] === SenderKind.CHUNK) {
+        count.sent++;
+        count.peak = Math.max(count.peak, count.sent - count.written);
+      }
+      return frame;
+    },
+  });
+  return { pair, count };
+}
+
+test("a slow sink holds the sender to the credit window", async () => {
+  const maxMessageSize = 4096;
+  const chunkSize = maxMessageSize - FRAME_OVERHEAD_BYTES;
+  const bytes = new Uint8Array(randomBytes(4 * CREDIT_WINDOW_CHUNKS * chunkSize));
+  const { pair, count } = inFlight();
+  const sink = new RecordingSink();
+  const write = sink.write.bind(sink);
+  sink.write = async (chunk) => {
+    await new Promise((resolve) => setTimeout(resolve, 1));
+    await write(chunk);
+    count.written++;
+  };
+  const r = run({ bytes, pair, sink, maxMessageSize });
+  const result = await r.receiving;
+  assert.equal(result.type, "received");
+  if (result.type !== "received") {
+    return;
+  }
+  assert.deepEqual(new Uint8Array(await (result.blob as Blob).arrayBuffer()), bytes);
+  assert.deepEqual(await r.sending, { type: "receipt", match: true });
+  assert.equal(count.sent, 4 * CREDIT_WINDOW_CHUNKS);
+  assert.ok(count.peak <= CREDIT_WINDOW_CHUNKS, `peak ${count.peak}`);
+  assert.ok(count.peak > CREDIT_WINDOW_CHUNKS / 2, `peak ${count.peak}`);
+});
+
+/** Deterministic bytes for positions [start, end) of a generated file. */
+function generated(start: number, end: number, out = new Uint8Array(end - start)) {
+  for (let i = 0; i < out.length; i++) {
+    const p = start + i;
+    out[i] = (p ^ (p >>> 9) ^ (p >>> 17)) & 0xff;
+  }
+  return out;
+}
+
+/** A File-like input of `size` generated bytes that are made only when sliced. */
+function generatedFile(size: number, start = 0, end = size): SendFileOptions["file"] {
+  return {
+    name: "big.bin",
+    type: "application/octet-stream",
+    size: end - start,
+    slice: (a = 0, b = end - start) =>
+      generatedFile(size, start + a, Math.min(start + b, end)) as unknown as Blob,
+    arrayBuffer: async () => generated(start, end).buffer,
+  } as unknown as SendFileOptions["file"];
+}
+
+// Moderate sizes keep `pnpm check` fast. SIGILL_FLOW_FULL=1 sends 1 GiB through
+// a slow sink and checks memory stays bounded by the credit window.
+const full = process.env.SIGILL_FLOW_FULL === "1";
+
+test("1 GiB through a slow sink keeps memory bounded", {
+  skip: full ? false : "set SIGILL_FLOW_FULL=1 to run",
+}, async () => {
+  const size = 1024 ** 3;
+  // One reused buffer, so hashing leaves no garbage to skew the samples below.
+  const expected = createHash("sha256");
+  const piece = new Uint8Array(1024 ** 2);
+  for (let offset = 0; offset < size; offset += piece.length) {
+    expected.update(generated(offset, offset + piece.length, piece));
+  }
+  const digest = new Uint8Array(expected.digest());
+
+  const used = () => {
+    const m = process.memoryUsage();
+    return m.heapUsed + m.arrayBuffers;
+  };
+  // Growth is the highest sample minus the lowest, so a collection
+  // mid-transfer cannot hide growth.
+  (globalThis as { gc?: () => void }).gc?.();
+  let low = used();
+  let high = low;
+  let writes = 0;
+  const { pair, count } = inFlight();
+  const sink: Sink = {
+    async write() {
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      count.written++;
+      if (++writes % 16 === 0) {
+        const now = used();
+        low = Math.min(low, now);
+        high = Math.max(high, now);
+      }
+    },
+    close: async () => undefined,
+    abort: async () => {},
+  };
+  const started = performance.now();
+  const r = run({
+    bytes: new Uint8Array(),
+    file: generatedFile(size),
+    senderSha256: digest,
+    pair,
+    sink,
+    maxMessageSize: 65536,
+  });
+  const result = await r.receiving;
+  const seconds = (performance.now() - started) / 1000;
+  assert.equal(result.type, "received");
+  if (result.type === "received") {
+    assert.deepEqual(result.sha256, digest);
+  }
+  assert.deepEqual(await r.sending, { type: "receipt", match: true });
+  const mib = (high - low) / 1024 ** 2;
+  console.log(
+    `1 GiB in ${seconds.toFixed(1)} s, peak memory growth ${mib.toFixed(1)} MiB, peak in flight ${count.peak} chunks`,
+  );
+  assert.ok(count.peak <= CREDIT_WINDOW_CHUNKS, `peak ${count.peak}`);
+  assert.ok(mib < 64, `peak memory growth ${mib.toFixed(1)} MiB`);
+});

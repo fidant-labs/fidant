@@ -72,7 +72,14 @@ import { ReceiveError, receiveFile } from "../lib/receive-file.ts";
 import { peerLostProblem } from "../lib/receive-problem.ts";
 import { addRelay, type Kind, NO_RELAYS, type Tie } from "../lib/server-facts.ts";
 import { connectSignaling, retryDelay, type SignalingClient } from "../lib/signaling-client.ts";
-import { BlobSink, createSink, isPickerCancel, type Sink } from "../lib/sink.ts";
+import {
+  BLOB_WARN_BYTES,
+  BlobSink,
+  canPickSaveFile,
+  createSink,
+  isPickerCancel,
+  type Sink,
+} from "../lib/sink.ts";
 import { decodeText, isTextOffer } from "../lib/text-secret.ts";
 import {
   Direct,
@@ -728,6 +735,9 @@ export function ReceivePage() {
           <h1>{offer.text ? t.secret.offerTitle(offer.from) : t.receive.offerTitle(offer.from)}</h1>
           {offer.from && <p class="text-muted-foreground">{t.receive.unverified}</p>}
           {!offer.text && <FileCard name={offer.name} size={formatBytes(offer.size, lang)} />}
+          {!offer.text && offer.size > BLOB_WARN_BYTES && !canPickSaveFile() && (
+            <p class="mt-3 text-muted-foreground">{t.receive.memoryWarning}</p>
+          )}
           <div class="mt-6 mb-8 flex flex-col items-start gap-2">
             {offer.text ? (
               <Button type="button" size="lg" onClick={onShow}>

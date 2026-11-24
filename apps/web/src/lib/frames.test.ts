@@ -3,14 +3,17 @@ import { createHash, randomBytes } from "node:crypto";
 import { test } from "node:test";
 import {
   ChecksumMismatchError,
+  decodeCredit,
   decodeEnd,
   decodeHeader,
   decodeInit,
   decodeMeta,
+  encodeCredit,
   encodeEnd,
   encodeHeader,
   encodeInit,
   encodeMeta,
+  FRAME_VERSION,
   FrameReader,
   FrameWriter,
   HEADER_BYTES,
@@ -30,7 +33,7 @@ import { createTransferId, deriveFileKey } from "./keys.ts";
 import { createLink } from "./link.ts";
 
 const { META, CHUNK, END } = SenderKind;
-const { ACCEPT, RECEIPT, DECLINE } = RecipientKind;
+const { ACCEPT, RECEIPT, DECLINE, CREDIT } = RecipientKind;
 const sha256 = (u8: Uint8Array) => new Uint8Array(createHash("sha256").update(u8).digest());
 
 async function setup() {
@@ -79,10 +82,10 @@ async function receiveFile(key: CryptoKey, frames: Uint8Array[]) {
 }
 
 test("header encodes version, kind and a u64 seq", () => {
-  const header = { version: 1, kind: CHUNK, seq: 2 ** 40 + 5 };
+  const header = { version: FRAME_VERSION, kind: CHUNK, seq: 2 ** 40 + 5 };
   const bytes = encodeHeader(header);
   assert.equal(bytes.length, HEADER_BYTES);
-  assert.deepEqual([...bytes], [1, 2, 0, 0, 1, 0, 0, 0, 0, 5]);
+  assert.deepEqual([...bytes], [FRAME_VERSION, 2, 0, 0, 1, 0, 0, 0, 0, 5]);
   assert.deepEqual(decodeHeader(bytes), header);
   assert.throws(() => decodeHeader(bytes.subarray(0, 9)));
 });
@@ -90,7 +93,7 @@ test("header encodes version, kind and a u64 seq", () => {
 test("INIT carries the transferId in clear at seq 0", async () => {
   const transferId = createTransferId();
   const frame = encodeInit(transferId);
-  assert.deepEqual(decodeHeader(frame), { version: 1, kind: SenderKind.INIT, seq: 0 });
+  assert.deepEqual(decodeHeader(frame), { version: FRAME_VERSION, kind: SenderKind.INIT, seq: 0 });
   assert.deepEqual(decodeInit(frame), transferId);
   assert.throws(() => decodeInit(frame.subarray(0, frame.length - 1)));
   assert.throws(() => decodeInit(flip(frame, 1)), "other kind");
@@ -231,6 +234,29 @@ test("recipient frames round trip and seq starts at 0 in each direction", async 
   assert.equal((await reader.decrypt(frames[2] as Uint8Array)).kind, DECLINE);
 });
 
+test("CREDIT carries a u64 grant from the recipient only", async () => {
+  const { key } = await setup();
+  const granted = 2 ** 40 + 128;
+  assert.deepEqual([...encodeCredit(128)], [0, 0, 0, 0, 0, 0, 0, 128]);
+  assert.throws(() => encodeCredit(-1));
+  assert.throws(() => encodeCredit(1.5));
+  const frame = await new FrameWriter(key, "r").encrypt(CREDIT, encodeCredit(granted));
+  const { kind, body } = await new FrameReader(key, "r").decrypt(frame);
+  assert.equal(kind, CREDIT);
+  assert.equal(decodeCredit(body), granted);
+
+  await assert.rejects(new FrameWriter(key, "s").encrypt(CREDIT, encodeCredit(1)), /not allowed/);
+  await assert.rejects(new FrameReader(key, "s").decrypt(frame), /not allowed/);
+
+  const r = new FrameWriter(key, "r");
+  await assert.rejects(r.encrypt(CREDIT, randomBytes(7)), /out of range/);
+  await assert.rejects(r.encrypt(CREDIT, randomBytes(9)), /out of range/);
+  assert.throws(() => decodeCredit(randomBytes(7)), /malformed/);
+  assert.throws(() => decodeCredit(randomBytes(9)), /malformed/);
+  // A u64 above 2^53 is refused rather than rounded.
+  assert.throws(() => decodeCredit(new Uint8Array(8).fill(0xff)), /out of range/);
+});
+
 test("a flipped bit anywhere in a frame fails", async () => {
   const { key } = await setup();
   const frame = await new FrameWriter(key, "s").encrypt(CHUNK, randomBytes(1000));
@@ -260,7 +286,7 @@ test("reordered, replayed or dropped frames fail", async () => {
 
   // Rewriting the header seq to the expected value breaks the tag (seq is in the AAD and IV).
   const relabelled = c.slice();
-  relabelled.set(encodeHeader({ version: 1, kind: CHUNK, seq: 1 }));
+  relabelled.set(encodeHeader({ version: FRAME_VERSION, kind: CHUNK, seq: 1 }));
   const reader = new FrameReader(key, "s");
   await reader.decrypt(a);
   await assert.rejects(reader.decrypt(relabelled), "seq rewritten");
@@ -336,7 +362,7 @@ test("chunk bodies are limited to 48 KiB and fixed-size kinds are checked", asyn
 
   // An oversized frame is refused before decryption.
   const big = new Uint8Array(HEADER_BYTES + MAX_CHUNK_BYTES + 17);
-  big.set(encodeHeader({ version: 1, kind: CHUNK, seq: 0 }));
+  big.set(encodeHeader({ version: FRAME_VERSION, kind: CHUNK, seq: 0 }));
   await assert.rejects(new FrameReader(key, "s").decrypt(big), /length out of range/);
 });
 

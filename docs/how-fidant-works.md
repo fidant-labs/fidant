@@ -79,7 +79,7 @@ WebRTC encrypts the data channel with DTLS. Fidant doesn't rely on that: every f
 
 ```
 frame  = header(10) ‖ body
-header = version(1) ‖ kind(1) ‖ seq(8, u64 big-endian)   plaintext, and the AES-GCM additional data
+header = version(1) = 2 ‖ kind(1) ‖ seq(8, u64 big-endian)   plaintext, and the AES-GCM additional data
 body   = AES-GCM(file key, iv, aad = header), 16-byte tag
 iv     = direction(1: 0 sender, 1 recipient) ‖ 00 00 00 ‖ seq(8)
 ```
@@ -93,11 +93,13 @@ iv     = direction(1: 0 sender, 1 recipient) ‖ 00 00 00 ‖ seq(8)
 | 16   | ACCEPT  | recipient | empty                                                                               |
 | 17   | RECEIPT | recipient | SHA-256(32) the recipient computed                                                  |
 | 18   | DECLINE | recipient | empty                                                                               |
+| 19   | CREDIT  | recipient | granted(8, u64): how many CHUNKs in all the sender may send                         |
 
 - Sequence numbers start at 0 in each direction. A reader accepts only the next one, and stops for good after any failure, so a dropped, reordered, repeated or altered frame ends the transfer.
 - The two directions use different nonces because the direction is in the IV.
 - Changing INIT changes the derived key, so META then fails to decrypt.
 - Each kind has a fixed direction and body size range; anything else is rejected.
+- Version 2 added CREDIT. A browser rejects a frame of any other version, so both pages must run the same release.
 
 ## The transfer
 
@@ -106,7 +108,7 @@ iv     = direction(1: 0 sender, 1 recipient) ‖ 00 00 00 ‖ seq(8)
 1. When the file is chosen, or each time a shared secret changes, the sender's browser computes its SHA-256 (`apps/web/src/lib/sha256.ts`, streamed in 4 MiB slices).
 2. INIT, then META. The recipient sees the name, size, type and the sender's typed name (for a shared secret, only the sender's name), and chooses.
 3. The recipient sends ACCEPT or DECLINE, encrypted. ACCEPT also proves that the recipient holds the key. No file data is sent before it. After DECLINE the link still works.
-4. CHUNK frames, `chunkSize = min(48 KiB, maxMessageSize − 64)` (64 is `FRAME_OVERHEAD_BYTES` in `send-file.ts`: the 26-byte header and tag, with margin), sent with backpressure on the channel buffer.
+4. CHUNK frames, `chunkSize = min(48 KiB, maxMessageSize − 64)` (64 is `FRAME_OVERHEAD_BYTES` in `send-file.ts`: the 26-byte header and tag, with margin), sent while the channel buffer holds at most 4 MiB (`bufferedAmount`) and only within the recipient's credit: right after ACCEPT the recipient sends CREDIT for 128 chunks (`CREDIT_WINDOW_CHUNKS` in `receive-file.ts`), and every 64 chunks its sink writes it raises the credit to 128 past what is written. The sender sends CHUNK i (counting from 0) only while i is below the highest CREDIT. END needs no credit.
 5. END with the checksum and the exact size.
 6. The recipient checks and sends RECEIPT with the checksum it computed. The sender marks the link delivered only when it matches.
 
@@ -114,7 +116,9 @@ iv     = direction(1: 0 sender, 1 recipient) ‖ 00 00 00 ‖ seq(8)
 
 `ReceiveVerifier` in `frames.ts` hashes the file bytes as they arrive and checks that every CHUNK is exactly `chunkSize`, the padding is zeros, the chunks add up to the padded length, and END's size and checksum match what arrived. Only then is the file kept. Any other ending (a frame that fails to decrypt, the wrong order, too much data, the channel closing first) aborts the sink, which discards what was written.
 
-`apps/web/src/lib/sink.ts`: where the browser has `showSaveFilePicker` (Chromium), the file streams to a place the recipient chose. Elsewhere it is collected in memory as a Blob and downloaded at the end. A shared secret is always collected in memory and never downloaded (see "Sharing a secret"). The Blob is always `application/octet-stream`, whatever type the sender claims, so a file can't run as a page in Fidant's origin.
+A recipient holds at most 129 incoming frames that it hasn't handled yet (the window and END), and a sender at most 8. One more ends the transfer as a broken format (`createInbox` in `inbox.ts`), so a sender that ignores its credit can't fill the recipient's memory: what waits for a slow sink stays at about 128 × `chunkSize`, 6 MiB at 48 KiB, whatever the file's size.
+
+`apps/web/src/lib/sink.ts`: where the browser has `showSaveFilePicker` (Chromium), the file streams to a place the recipient chose. Elsewhere it is collected in memory as a Blob and downloaded at the end, and an offer of a file over 256 MiB warns the recipient of that (`BLOB_WARN_BYTES`). A shared secret is always collected in memory and never downloaded (see "Sharing a secret"). The Blob is always `application/octet-stream`, whatever type the sender claims, so a file can't run as a page in Fidant's origin.
 
 ### Names
 
@@ -129,6 +133,7 @@ Anyone who sees the encrypted traffic (the networks, our relay) sees frame sizes
 - The size is rounded up with Padmé (Nikitin et al., 2019), which adds at most 12 %, then up to a whole number of chunks. An empty file is padded like a 1-byte file.
 - Every CHUNK frame has the same length. The exact size travels only inside the encrypted META and END.
 - META is always 1,024 bytes, so the name's length doesn't show.
+- CREDIT is a small encrypted frame of fixed size. Its timing shows only how fast the recipient writes, like the timing of any other frame.
 - A shared secret is at most 32 KiB. When `chunkSize` is at least 32 KiB (a maximum message size of at least 32,832 bytes), every shared secret pads to exactly one CHUNK. The code enforces this: on `/secret`, a connection that allows less gets nothing, not even INIT (`textFitsOneChunk` in `text-secret.ts`, checked in `SendPage.tsx` when the data channel opens), and that recipient's card says the secret wasn't sent. The check uses the 32 KiB limit, never the shared secret's own size, so a refusal says nothing about the length. So all shared secrets on a connection have the same frame sizes. When the maximum message size is at least 49,216 bytes, `chunkSize` is 48 KiB, and a shared secret then has the same frame sizes as any file of up to 48 KiB.
 - Measured on 2026-11-24 with Playwright's browser builds: Chromium 159 and WebKit 27.2 report a maximum message size of 262,144 bytes, Firefox 159 reports 1,073,741,823, and pairs of different browsers settle at 262,144. When a browser reports none, the app uses 65,536 (`DEFAULT_MAX_MESSAGE_SIZE` in `peer.ts`). So today every shared secret crosses the network as one 48 KiB CHUNK.
 

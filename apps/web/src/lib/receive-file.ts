@@ -5,9 +5,15 @@
 //   sender → recipient   INIT(transferId)                     plaintext
 //   sender → recipient   META{name, size, type, chunkSize, from}  → onOffer, user decides
 //   recipient → sender   ACCEPT  (or DECLINE: stop here)
+//   recipient → sender   CREDIT(granted)                      after ACCEPT, then as chunks are written
 //   sender → recipient   CHUNK × n                            verified, file bytes to the sink
 //   sender → recipient   END(sha256, size)                    checked against what arrived
 //   recipient → sender   RECEIPT(sha256 the recipient computed)
+//
+// Flow control: the recipient grants CREDIT_WINDOW_CHUNKS chunks with ACCEPT
+// and tops the grant back up to that many past the chunks the sink has
+// written whenever half of it is used, so a slow sink never has more than the
+// window of chunks on their way to it.
 //
 // The transfer only succeeds on an authenticated END whose size matches META
 // and the bytes received and whose checksum matches the bytes received. Any
@@ -27,6 +33,7 @@ import {
   ChecksumMismatchError,
   decodeInit,
   decodeMeta,
+  encodeCredit,
   type Frame,
   FrameReader,
   FrameWriter,
@@ -39,6 +46,9 @@ import { deriveFileKey } from "./keys.ts";
 import { assertFrameFits } from "./peer.ts";
 import { abortable, anySignal, type FrameChannel, PROGRESS_INTERVAL_MS } from "./send-file.ts";
 import type { Sink } from "./sink.ts";
+
+/** CHUNKs the sender may have sent beyond those the sink has written. */
+export const CREDIT_WINDOW_CHUNKS = 128;
 
 /** The part of RTCDataChannel that receiving uses, so tests can pass a fake. */
 export type ReceiveChannel = Pick<
@@ -105,7 +115,18 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
   const signal = anySignal([options.signal, abort.signal]);
   const onClose = () => abort.abort(new Error("data channel closed"));
   channel.addEventListener("close", onClose);
-  const inbox = createInbox(channel, signal);
+  // A sender that keeps to its credit has at most CREDIT_WINDOW_CHUNKS
+  // CHUNKs held: it sends no more than `granted` (at most written + window),
+  // and every written CHUNK has been handed out. END is the one frame on top.
+  // INIT and META can be held together before takeRaw(), but no CHUNK comes
+  // until ACCEPT, and by then both have been handed out.
+  const inbox = createInbox(channel, signal, CREDIT_WINDOW_CHUNKS + 1);
+  // A sender that overruns its credit fails the inbox while the sink may be
+  // stuck. Subscribe to that once: racing inbox.failed per CHUNK would leave
+  // one reaction on it for every CHUNK of the transfer.
+  const inboxFailed = new AbortController();
+  inbox.failed.catch((error: unknown) => inboxFailed.abort(error));
+  const writeSignal = anySignal([signal, inboxFailed.signal]);
   let sink: Sink | undefined;
 
   try {
@@ -164,6 +185,9 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
       return { type: "declined" };
     }
     sink = chosen;
+    let granted = CREDIT_WINDOW_CHUNKS;
+    let written = 0;
+    send(await writer.encrypt(RecipientKind.CREDIT, encodeCredit(granted)));
 
     let reportedAt = 0;
     let sha256: Uint8Array | undefined;
@@ -174,7 +198,12 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
       if (frame.kind === SenderKind.CHUNK) {
         const data = verifier.chunk(frame.body);
         if (data.length > 0) {
-          await abortable(saving(sink.write(data)), signal);
+          await abortable(saving(sink.write(data)), writeSignal);
+        }
+        written++;
+        if (written + CREDIT_WINDOW_CHUNKS - granted >= CREDIT_WINDOW_CHUNKS / 2) {
+          granted = written + CREDIT_WINDOW_CHUNKS;
+          send(await writer.encrypt(RecipientKind.CREDIT, encodeCredit(granted)));
         }
         const now = Date.now();
         if (now - reportedAt >= PROGRESS_INTERVAL_MS) {

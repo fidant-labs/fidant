@@ -1,7 +1,7 @@
 // Data channel framing and per-frame encryption.
 //
 // Frame  = header(10) || body
-// Header = version(1) = 1 || kind(1) || seq(8, u64 big-endian). Plaintext, and
+// Header = version(1) = 2 || kind(1) || seq(8, u64 big-endian). Plaintext, and
 //          the AES-GCM additional data of its frame.
 // Body   = AES-GCM-256(fileKey, iv, aad = header, plaintext body), 16-byte tag
 //          appended. Only INIT is sent in clear.
@@ -21,6 +21,9 @@
 // |   16 | ACCEPT  |  r  | empty (proves the recipient holds the key)       |
 // |   17 | RECEIPT |  r  | sha256(32) the recipient computed                |
 // |   18 | DECLINE |  r  | empty                                            |
+// |   19 | CREDIT  |  r  | granted(8, u64 big-endian): cumulative count of  |
+// |      |         |     | CHUNKs the sender may send; it may send CHUNK i  |
+// |      |         |     | (0-based) only while i < granted                 |
 //
 // Padding: anyone who can see frame sizes (the network, a TURN relay) learns
 // only paddedLength(size, chunkSize) of the file, never its exact size, and
@@ -48,7 +51,7 @@ import { Sha256 } from "./sha256.ts";
 
 export { hasForbiddenCharacters, MAX_FROM_LENGTH };
 
-export const FRAME_VERSION = 1;
+export const FRAME_VERSION = 2;
 export const HEADER_BYTES = 10;
 export const TAG_BYTES = 16;
 export const MAX_CHUNK_BYTES = 48 * 1024;
@@ -66,7 +69,7 @@ const META_LENGTH_BYTES = 2;
 export const MAX_TYPE_LENGTH = 255;
 
 export const SenderKind = { INIT: 0, META: 1, CHUNK: 2, END: 3 } as const;
-export const RecipientKind = { ACCEPT: 16, RECEIPT: 17, DECLINE: 18 } as const;
+export const RecipientKind = { ACCEPT: 16, RECEIPT: 17, DECLINE: 18, CREDIT: 19 } as const;
 
 export type SenderKind = (typeof SenderKind)[keyof typeof SenderKind];
 export type RecipientKind = (typeof RecipientKind)[keyof typeof RecipientKind];
@@ -84,6 +87,7 @@ const RULES: Record<EncryptedKind, { dir: Direction; min: number; max: number }>
   [RecipientKind.ACCEPT]: { dir: "r", min: 0, max: 0 },
   [RecipientKind.RECEIPT]: { dir: "r", min: 32, max: 32 },
   [RecipientKind.DECLINE]: { dir: "r", min: 0, max: 0 },
+  [RecipientKind.CREDIT]: { dir: "r", min: 8, max: 8 },
 };
 
 function rule(kind: number, dir: Direction) {
@@ -419,6 +423,20 @@ export function decodeEnd(body: Uint8Array): { sha256: Uint8Array; size: number 
   }
   const view = new DataView(body.buffer, body.byteOffset, 40);
   return { sha256: body.slice(0, 32), size: readU64(view, 32) };
+}
+
+/** CREDIT body: the cumulative number of CHUNKs the recipient lets the sender send. */
+export function encodeCredit(granted: number): Uint8Array<ArrayBuffer> {
+  const out = new Uint8Array(8);
+  writeU64(new DataView(out.buffer), 0, granted);
+  return out;
+}
+
+export function decodeCredit(body: Uint8Array): number {
+  if (body.length !== 8) {
+    throw new Error("malformed CREDIT body");
+  }
+  return readU64(new DataView(body.buffer, body.byteOffset, 8), 0);
 }
 
 /**
