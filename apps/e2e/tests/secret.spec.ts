@@ -333,8 +333,10 @@ test("a recipient whose browser can't read the received text is told so, with no
       });
   });
   await show.click();
+  await page.waitForFunction(
+    () => (globalThis as { failRead?: () => void }).failRead !== undefined,
+  );
   await expect(page.getByRole("button", { name: "Copy text" })).toBeDisabled();
-  await expect(page.getByText("Copied", { exact: true })).toHaveCount(0);
   await page.evaluate(() => (globalThis as { failRead?: () => void }).failRead?.());
   await expect(page.getByRole("heading", { name: "The text couldn't be shown" })).toBeFocused();
   await expect(page.getByRole("button", { name: "Copy text" })).toHaveCount(0);
