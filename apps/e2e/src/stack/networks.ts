@@ -103,10 +103,10 @@ async function startNetworks(): Promise<RunningService> {
   const secretFile = join(dir, "secret");
   await writeFile(secretFile, secret, { mode: 0o600 });
   // The config dir is mounted read-only, so coturn keeps its state in the container's /tmp.
-  // Like production (apps/infra/box/turnserver.conf), deny the private site ranges as peers.
-  // The public network has no route to them. Without this, coturn closed allocations right after
-  // Chrome checked a private peer through them ("reason: general"), and relayed rows failed at random.
-  const config = `${coturnConfig({ ip: turnIp, port: 3478, secret, stateDir: "/tmp" })}denied-peer-ip=10.0.0.0-10.255.255.255\n`;
+  // Production's peer denials stay, 10/8 among them: the public network has no route to the private
+  // sites, and without the denial coturn closed allocations right after Chrome checked a private
+  // peer through them ("reason: general"), and relayed rows failed at random.
+  const config = coturnConfig({ ip: turnIp, port: 3478, secret, stateDir: "/tmp" });
   await writeFile(join(dir, "turnserver.conf"), config, { mode: 0o600 });
 
   const playwright = join(e2eDir, "node_modules", "@playwright", "test", "package.json");
