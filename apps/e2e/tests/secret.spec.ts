@@ -1,6 +1,7 @@
 import type { Download, Page } from "@playwright/test";
 import {
   type Actor,
+  breakableSender,
   delivered,
   expect,
   type Leaks,
@@ -65,7 +66,10 @@ test("a text goes from /secret to the recipient, who shows and copies it", async
   leaks,
   canary,
 }) => {
-  const text = makeText(leaks, canary);
+  const body = makeText(leaks, canary);
+  // Starts with a byte order mark, which Blob.text() would drop on the recipient's side.
+  const text = `\uFEFF${body}`;
+  leaks.watchContent("text with its byte order mark", text);
   const from = makeName(leaks, canary, "David");
   const name = makeName(leaks, canary, "Anna");
 
@@ -88,6 +92,7 @@ test("a text goes from /secret to the recipient, who shows and copies it", async
     await expect(field).toHaveAttribute(attribute, value);
   }
   const link = await share(leaks, sender, text, from, name);
+  await expect(field).toHaveJSProperty("value", text);
 
   const { page, downloads } = await openRecipient(actor, link);
   await expect(page.getByRole("heading", { name: `${from} sent you a text` })).toBeFocused();
@@ -103,7 +108,7 @@ test("a text goes from /secret to the recipient, who shows and copies it", async
   await expect(shown).toHaveJSProperty("translate", false);
   await expect(shown).toHaveAttribute("tabindex", "0");
   // Browsers save form controls' values with the session, so none may hold the text.
-  const [firstLine = text] = text.split("\n");
+  const [firstLine = body] = body.split("\n");
   const values = await page
     .locator("input, textarea, select")
     .evaluateAll((controls) => controls.map((control) => (control as HTMLInputElement).value));
@@ -216,6 +221,26 @@ test("a recipient sees the text wording when the sender closes the page during t
   await expect(page.getByText("The file comes straight from their browser")).toHaveCount(0);
 });
 
+test("a recipient sees the text wording when the connection to the sender drops during the offer", async ({
+  actor,
+  leaks,
+  canary,
+}) => {
+  const text = makeText(leaks, canary);
+  const name = makeName(leaks, canary, "Ida");
+  const { page: sender } = await actor("sender");
+  await sender.addInitScript(breakableSender);
+  await sender.goto("/secret");
+  const link = await share(leaks, sender, text, "", name);
+
+  const { page } = await openRecipient(actor, link);
+  await expect(page.getByRole("button", { name: "Show", exact: true })).toBeVisible();
+  await sender.evaluate(() => (globalThis as { cut?: () => void }).cut?.());
+  await expect(page.getByText("The connection to the sender was lost")).toBeVisible();
+  await expect(page.getByText("The text wasn't shown.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Nothing was saved.")).toHaveCount(0);
+});
+
 test("a connection too small to carry a text in one chunk fails the card and sends nothing", async ({
   actor,
   leaks,
@@ -245,4 +270,77 @@ test("a connection too small to carry a text in one chunk fails the card and sen
   ).toBeVisible();
   expect(await sender.evaluate(() => (globalThis as { sent?: number }).sent)).toBe(0);
   await expect(page.getByRole("button", { name: "Show", exact: true })).toHaveCount(0);
+});
+
+test("a sender who loses the server sees the text wording", async ({ actor }) => {
+  const { page: sender } = await actor("sender");
+  await sender.addInitScript(() => {
+    const g = globalThis as {
+      serverOpen?: boolean;
+      opensAfterDrop?: number;
+      dropServer?: () => void;
+    };
+    const sockets: WebSocket[] = [];
+    let dropped = false;
+    g.opensAfterDrop = 0;
+    globalThis.WebSocket = class extends globalThis.WebSocket {
+      constructor(url: string | URL, protocols?: string | string[]) {
+        super(url, protocols);
+        sockets.push(this);
+        // Closed here, not on open: an open would let the page clear its lost-server timer.
+        if (dropped) {
+          this.close();
+        }
+        this.addEventListener("open", () => {
+          if (dropped) {
+            g.opensAfterDrop = (g.opensAfterDrop ?? 0) + 1;
+          } else {
+            g.serverOpen = true;
+          }
+        });
+      }
+    };
+    g.dropServer = () => {
+      dropped = true;
+      for (const socket of sockets) {
+        socket.close();
+      }
+    };
+  });
+  await sender.goto("/secret");
+  await sender.waitForFunction(() => (globalThis as { serverOpen?: boolean }).serverOpen === true);
+  await sender.evaluate(() => (globalThis as { dropServer?: () => void }).dropServer?.());
+  // The page waits LOST_AFTER_MS (10 s) before it says so.
+  await expect(sender.getByRole("alert")).toHaveText(
+    "Lost the connection to the server. Trying to reconnect… Texts already on their way can finish. Nobody new can connect until it's back, so keep this page open.",
+    { timeout: 20_000 },
+  );
+  await expect(sender.getByText("Files already on their way")).toHaveCount(0);
+  expect(
+    await sender.evaluate(() => (globalThis as { opensAfterDrop?: number }).opensAfterDrop),
+  ).toBe(0);
+});
+
+test("a recipient whose browser can't read the received text is told so, with nothing to copy", async ({
+  actor,
+  leaks,
+  canary,
+}) => {
+  const text = makeText(leaks, canary);
+  const name = makeName(leaks, canary, "Jon");
+  const { page: sender } = await actor("sender");
+  await sender.goto("/secret");
+  const link = await share(leaks, sender, text, "", name);
+
+  const { page } = await openRecipient(actor, link);
+  const show = page.getByRole("button", { name: "Show", exact: true });
+  await expect(show).toBeVisible();
+  // decodeText is the only Blob.arrayBuffer() caller on the recipient's side.
+  await page.evaluate(() => {
+    Blob.prototype.arrayBuffer = () => Promise.reject(new Error("unreadable"));
+  });
+  await show.click();
+  await expect(page.getByRole("heading", { name: "The text couldn't be shown" })).toBeFocused();
+  await expect(page.getByRole("button", { name: "Copy text" })).toHaveCount(0);
+  await expect(delivered(sender, name)).toBeVisible();
 });
