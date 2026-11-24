@@ -49,6 +49,12 @@ export const ICONS = {
       <path d="M12 7.5V13m0 3.5v.01" />
     </>
   ),
+  declined: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M8 12h8" />
+    </>
+  ),
   server: (
     <>
       <rect x="3" y="3.5" width="18" height="7" rx="1.5" />
@@ -374,7 +380,7 @@ export function Direct({
       </span>
       <span class={`mb-5 flex h-0.5 flex-1 items-center justify-center ${DIRECT_LINE[state]}`}>
         <span
-          class={`inline-flex rounded-[50%] border bg-background p-[0.35rem] ${done ? "border-primary" : "border-border"} text-primary`}
+          class={`inline-flex rounded-[50%] border bg-background p-1.5 ${done ? "border-primary" : "border-border"} text-primary`}
         >
           <Icon name={done ? "check" : "lock"} />
         </span>
