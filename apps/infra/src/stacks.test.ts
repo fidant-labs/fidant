@@ -381,7 +381,7 @@ test("fidant.se gets the mail records", () => {
   });
 });
 
-test("fidant.se verifies and sends SES mail for notify with SPF and MX, and no other zone does", () => {
+test("fidant.se holds the SES records for notify with SPF and MX, and no other zone has any", () => {
   const records = [
     ["notify.fidant.se.", "MX", ["0 ."]],
     ["notify.fidant.se.", "TXT", ['"v=spf1 -all"']],
@@ -396,6 +396,24 @@ test("fidant.se verifies and sends SES mail for notify with SPF and MX, and no o
     assert.deepEqual(found[0]?.Properties.HostedZoneId, zoneRef("fidant.se"));
   }
   assert.equal(all.filter((r) => String(r.Properties.Name).startsWith("_dmarc.notify")).length, 0);
+  for (const template of [dns, committed]) {
+    const rows = Object.values(template.findResources(recordSet));
+    const isNotify = (name: string) =>
+      name.endsWith("notify.fidant.se.") ||
+      name.startsWith("notify.") ||
+      name.startsWith("bounce.notify.") ||
+      name.includes("._domainkey.notify.");
+    for (const record of rows.filter((r) => isNotify(String(r.Properties.Name)))) {
+      assert.deepEqual(record.Properties.HostedZoneId, zoneRef("fidant.se"));
+    }
+    for (const zoneName of ["fidant.eu", "fidant.org"]) {
+      for (const record of rows.filter(
+        (r) => JSON.stringify(r.Properties.HostedZoneId) === JSON.stringify(zoneRef(zoneName)),
+      )) {
+        assert.doesNotMatch(String(record.Properties.Name), /^(notify|bounce\.notify)\./);
+      }
+    }
+  }
   for (const record of all) {
     if (record.Properties.Type === "TXT") {
       assert.doesNotMatch(JSON.stringify(record.Properties.ResourceRecords), /ruf=/);

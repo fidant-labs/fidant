@@ -29,25 +29,24 @@ function addMail(zone: route53.IHostedZone, mail: Mail): void {
 
 function addSesRecords(zone: route53.IHostedZone): void {
   const bounce = `bounce.${mailDomain}`;
-  const name = (domain: string) => domain.slice(0, -`.${primaryDomain}`.length);
   new route53.MxRecord(zone, "NotifyMx", {
     zone,
-    recordName: name(mailDomain),
+    recordName: mailDomain,
     values: [{ priority: 0, hostName: "." }],
   });
   new route53.TxtRecord(zone, "NotifySpf", {
     zone,
-    recordName: name(mailDomain),
+    recordName: mailDomain,
     values: ["v=spf1 -all"],
   });
   new route53.MxRecord(zone, "BounceMx", {
     zone,
-    recordName: name(bounce),
+    recordName: bounce,
     values: [{ priority: 10, hostName: `feedback-smtp.${mailRegion}.amazonses.com` }],
   });
   new route53.TxtRecord(zone, "BounceSpf", {
     zone,
-    recordName: name(bounce),
+    recordName: bounce,
     values: ["v=spf1 include:amazonses.com -all"],
   });
 }
