@@ -33,22 +33,28 @@ const logFields: Record<"event" | keyof LogFields, readonly [string, string]> = 
   port: ["the port the server listens on", "To confirm the server started where it should."],
 };
 
-const items: Record<
+export type Nouns = Record<
   Kind,
   {
     label: string;
     The: string;
     the: string;
+    it: string;
+    encrypted: string;
     data: string;
     key: string;
     unlocks: string;
     seen: string;
   }
-> = {
+>;
+
+const items: Nouns = {
   file: {
     label: "File data",
     The: "The file",
     the: "the file",
+    it: "it",
+    encrypted: "encrypted",
     data: "file data",
     key: "the part of that link that unlocks the file",
     unlocks: "the part that unlocks the file",
@@ -58,18 +64,22 @@ const items: Record<
     label: "Secret",
     The: "The secret",
     the: "the secret",
+    it: "it",
+    encrypted: "encrypted",
     data: "secrets",
-    key: "that link's secret",
-    unlocks: "the link's secret",
+    key: "the part of that link that unlocks the secret",
+    unlocks: "the part that unlocks the secret",
     seen: "the encrypted secret passing through, which shows nothing of its length",
   },
   unknown: {
     label: "Data",
-    The: "It",
-    the: "it",
+    The: "What is shared",
+    the: "what is shared",
+    it: "it",
+    encrypted: "encrypted",
     data: "what is shared",
-    key: "the part of that link that unlocks it",
-    unlocks: "the part that unlocks it",
+    key: "the part of that link that unlocks what is shared",
+    unlocks: "the part that unlocks what is shared",
     seen: "the encrypted data passing through, with its size rounded up so the exact size stays hidden",
   },
 };
@@ -498,9 +508,9 @@ export const en = {
       emailed,
       sending,
       mailed,
-      kind = "file",
+      kind,
     }: {
-      kind?: Kind;
+      kind: Kind;
       online: boolean;
       links: number;
       connected: number;
@@ -546,7 +556,7 @@ export const en = {
       return `${held} ${who} connected right now.`;
     },
     /** `emailed`: the link is one the server emailed. */
-    recipientHolds: (tie: Tie, emailed: boolean, kind: Kind = "file") =>
+    recipientHolds: (tie: Tie, emailed: boolean, kind: Kind) =>
       (emailed
         ? {
             paired: `The ID of your link, your email address, that this tab entered the right code, and that this page is connected to the sender. It had ${items[kind].unlocks} only while it emailed you the link.`,
@@ -569,7 +579,7 @@ export const en = {
         : `${messages} ${messages === 1 ? "setup message" : "setup messages"} (${size}), all encrypted so the server can't read them${emailed ? ", except for a link it emailed, whose key it had" : ""}.`,
     fileData: (kind: Kind) => `None. ${items[kind].The} goes directly between browsers.`,
     fileDataRelayed: (kind: Kind) =>
-      `None. The browsers couldn't connect directly, so ${items[kind].the} passes encrypted through our relay instead.`,
+      `None. The browsers couldn't connect directly, so ${items[kind].the} passes ${items[kind].encrypted} through our relay instead.`,
     relaySeesLabel: "Our relay sees",
     relaySees: (kind: Kind) =>
       `Both browsers' IP addresses and ${items[kind].seen}. It can't unlock ${items[kind].the}.`,
@@ -578,7 +588,7 @@ export const en = {
       `Nothing by default. Only while we fix a fault or stop abuse: connection times, IP addresses and how much data passed through, for at most 7 days. Never names, keys or ${items[kind].data}.`,
     relayKeepsLabel: "Our relay keeps",
     relayKeeps: (kind: Kind) =>
-      `Nothing of ${items[kind].the} once it has passed through. Log lines from fixing a fault or stopping abuse are deleted within 7 days.`,
+      `Nothing of ${items[kind].the} once ${items[kind].it} has passed through. Log lines from fixing a fault or stopping abuse are deleted within 7 days.`,
     /** `mailed`: this page asked the server to email a link. */
     senderAfterwards: (online: boolean, mailed: boolean): string =>
       `${

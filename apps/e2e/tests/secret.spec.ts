@@ -95,7 +95,7 @@ test("a text goes from /secret to the recipient, who shows and copies it", async
   const link = await share(leaks, sender, text, from, name);
   const senderPanel = sender.getByRole("region", { name: "What our server has right now" });
   await expect(senderPanel).toContainText("None. The secret goes directly between browsers.");
-  await expect(senderPanel).toContainText("never the link's secret");
+  await expect(senderPanel).toContainText("never the part that unlocks the secret");
   await expect(senderPanel).not.toContainText(/\bfiles?\b/i);
 
   const { page, downloads } = await openRecipient(actor, link);
