@@ -10,7 +10,7 @@ import { useI18n } from "./i18n/I18n.tsx";
 import { LANGUAGE_NAMES, type Lang } from "./i18n/language.ts";
 import { formatBytes } from "./lib/format.ts";
 import type { OpenPath } from "./lib/peer.ts";
-import type { Relayed } from "./lib/server-facts.ts";
+import type { Kind, Relayed } from "./lib/server-facts.ts";
 import type { Theme } from "./theme.ts";
 
 export const ICONS = {
@@ -468,28 +468,39 @@ export function ServerPanel({
   relayed,
   afterwards,
   viaRelay,
+  emailed,
+  kind,
 }: {
+  kind: Kind;
   sees: string;
   holds: string;
   relayed: Relayed;
   afterwards: string;
   /** A connection on this page went through our TURN relay. */
   viaRelay: boolean;
+  /** The server got the key of a link on this page, to email it. */
+  emailed: boolean;
 }) {
   const { t, lang } = useI18n();
   const headingId = useId();
   const rows: ReadonlyArray<readonly [string, string]> = [
     [t.server.seesLabel, sees],
     [t.server.holdsLabel, holds],
-    [t.server.passedOnLabel, t.server.passedOn(relayed.messages, formatBytes(relayed.bytes, lang))],
-    [t.server.fileDataLabel, viaRelay ? t.server.fileDataRelayed : t.server.fileData],
-    [t.server.logsLabel, t.server.logs],
+    [
+      t.server.passedOnLabel,
+      t.server.passedOn(relayed.messages, formatBytes(relayed.bytes, lang), emailed),
+    ],
+    [
+      t.server.fileDataLabel(kind),
+      viaRelay ? t.server.fileDataRelayed(kind) : t.server.fileData(kind),
+    ],
+    [t.server.logsLabel, t.server.logs(kind)],
     [t.server.afterwardsLabel, afterwards],
     ...(viaRelay
       ? ([
-          [t.server.relaySeesLabel, t.server.relaySees],
-          [t.server.relayLogsLabel, t.server.relayLogs],
-          [t.server.relayKeepsLabel, t.server.relayKeeps],
+          [t.server.relaySeesLabel, t.server.relaySees(kind)],
+          [t.server.relayLogsLabel, t.server.relayLogs(kind)],
+          [t.server.relayKeepsLabel, t.server.relayKeeps(kind)],
         ] as const)
       : []),
   ];

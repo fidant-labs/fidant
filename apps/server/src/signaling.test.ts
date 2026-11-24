@@ -4,16 +4,19 @@ import { createServer, request, type Server } from "node:http";
 import { type AddressInfo, connect as tcpConnect } from "node:net";
 import { after, before, test } from "node:test";
 import {
+  CODE_RESULTS,
   CONNECTION_PATHS,
   ERROR_CODES,
   type LogFields,
   MAX_RELAY_DATA,
+  parseEmailedFragment,
   parseServerMessage,
   REFUSE_REASONS,
   type ServerMessage,
   UPGRADE_REJECT_REASONS,
 } from "@sigill/protocol";
 import { WebSocket as WsClient } from "ws";
+import type { Mail, Mailer } from "./mail.ts";
 import { attachSignaling, clientAddress, HEARTBEAT_MS } from "./signaling.ts";
 
 const logLines: { event: string; fields: LogFields | undefined }[] = [];
@@ -57,8 +60,8 @@ type Client = {
   closed: Promise<number>;
 };
 
-/** Opens a WebSocket to /signal and queues the messages it receives. */
-async function connect(url = `ws://localhost:${port}/signal`): Promise<Client> {
+/** Opens a WebSocket to /signal, checks its hello and queues the messages after it. */
+async function connect(url = `ws://localhost:${port}/signal`, mail = false): Promise<Client> {
   const socket = new WebSocket(url);
   const queue: ServerMessage[] = [];
   const waiting: ((message: ServerMessage) => void)[] = [];
@@ -102,6 +105,7 @@ async function connect(url = `ws://localhost:${port}/signal`): Promise<Client> {
     closed,
   };
   clients.push(client);
+  assert.deepEqual(await client.next(), { t: "hello", mail });
   return client;
 }
 
@@ -132,6 +136,11 @@ async function joinAs(
   assert.deepEqual(await host.next(), joined);
   return Object.assign(guest, { attempt });
 }
+
+test("says hello first with whether the server can email links", async (t) => {
+  await connect((await mailServer(t)).url, true);
+  await connect();
+});
 
 test("relays messages between host and guest in both directions", async () => {
   const link = linkId();
@@ -395,7 +404,12 @@ test("logs only allowlisted fields and never relay payloads", async () => {
   await bad.closed;
 
   const allowed = new Set(["link", "links", "bytes", "reason", "code", "port", "path"]);
-  const logReasons: readonly unknown[] = [...REFUSE_REASONS, ...UPGRADE_REJECT_REASONS];
+  const logReasons: readonly unknown[] = [
+    ...REFUSE_REASONS,
+    ...UPGRADE_REJECT_REASONS,
+    ...CODE_RESULTS,
+    "unverified",
+  ];
   const errorCodes: readonly unknown[] = ERROR_CODES;
   const connectionPaths: readonly unknown[] = CONNECTION_PATHS;
   assert.ok(logLines.some((line) => line.event === "relay"));
@@ -634,11 +648,11 @@ test("drops relays to a socket that stops reading and keeps the sender open", as
 test("drops nothing to a socket that keeps reading", async (t) => {
   const relay = await bufferedRelay(t);
   await relay.flood(10);
-  // The guest's joined ack, then 200 relays.
-  for (let wait = 0; wait < 200 && relay.received() < 201; wait += 1) {
+  // The guest's hello and joined ack, then 200 relays.
+  for (let wait = 0; wait < 200 && relay.received() < 202; wait += 1) {
     await new Promise((done) => setTimeout(done, 5));
   }
-  assert.equal(relay.received(), 201);
+  assert.equal(relay.received(), 202);
   assert.ok(!relay.events.includes("relay-dropped"));
 });
 
@@ -690,6 +704,777 @@ test("closes the server side of a rejected upgrade the client never ends", async
       }
     } finally {
       socket.destroy();
+    }
+  }
+});
+
+const ORIGIN = "https://fidant.se";
+const SECRET = randomBytes(32).toString("base64url");
+const HOUR_MS = 60 * 60 * 1000;
+const CODE_GAP_MS = 30 * 1000;
+const CODE_MS = 10 * 60 * 1000;
+
+/** A signaling server on 127.0.0.1 that records each mail before `send` and keeps its log lines. */
+async function mailServer(
+  t: { after(fn: () => void): void },
+  send: Mailer = async () => {},
+  options: {
+    heartbeatMs?: number;
+    limits?: { noticesPerSocket?: number; noticesPerClient?: number; noticesPerRecipient?: number };
+  } = {},
+) {
+  const mails: Mail[] = [];
+  const lines: string[] = [];
+  const mailing = createServer();
+  const mailingSignaling = attachSignaling(mailing, {
+    log: (event, fields) => lines.push(JSON.stringify({ event, ...fields })),
+    mail: {
+      origin: ORIGIN,
+      send: (mail) => {
+        mails.push(mail);
+        return send(mail);
+      },
+    },
+    ...options,
+  });
+  t.after(() => {
+    mailingSignaling.close();
+    mailing.close();
+  });
+  await new Promise<void>((done) => mailing.listen(0, "127.0.0.1", done));
+  const url = `ws://127.0.0.1:${(mailing.address() as AddressInfo).port}/signal`;
+  return { url, mails, lines, server: mailing };
+}
+
+/** Connects a host for the given links on a mail server. */
+async function mailHost(url: string, ...links: string[]): Promise<Client> {
+  const host = await connect(url, true);
+  host.send({ t: "host", links, turn: true });
+  return host;
+}
+
+type EmailFields = { to?: string; secret?: string; from?: string; lang?: string };
+
+function emailMessage(link: string, fields: EmailFields = {}) {
+  return {
+    t: "email",
+    link,
+    to: "anna@example.se",
+    secret: SECRET,
+    from: "Bertil",
+    lang: "sv",
+    ...fields,
+  };
+}
+
+/** Checks that a reply for a registration the server took carries a mark, and returns it. */
+function markIn(answer: ServerMessage, link: string, status: "sent" | "failed" = "sent"): string {
+  assert.ok(
+    answer.t === "email" && answer.link === link && answer.status === status && answer.mark,
+    `not a marked ${status}: ${answer.t}`,
+  );
+  return answer.mark;
+}
+
+/** The mark in a notice's link. */
+function noticeMark(mail: Mail | undefined): string {
+  assert.ok(mail && "url" in mail, "no notice was mailed");
+  const marked = parseEmailedFragment(new URL(mail.url).hash.slice(1));
+  assert.ok(marked, `no mark in the notice's link`);
+  return marked.mark;
+}
+
+/** Emails a hosted link's notice, checks it went out and returns the mark in its link. */
+async function emailLink(host: Client, link: string, fields: EmailFields = {}): Promise<string> {
+  host.send(emailMessage(link, fields));
+  return markIn(await host.next(), link);
+}
+
+/** Asks, with a mark if given, where a link's code goes and returns the masked address, or "". */
+async function gateOf(guest: Client, link: string, mark?: string): Promise<string> {
+  guest.send({ t: "gate", link, mark });
+  const answer = await guest.next();
+  assert.ok(answer.t === "gate" && answer.link === link, `not a gate answer: ${answer.t}`);
+  return answer.to;
+}
+
+/** Joins a guest to a link on a mail server, with a token if given, and returns its attempt ID. */
+async function mailJoin(guest: Client, host: Client, link: string, token?: string) {
+  const attempt = randomBytes(16).toString("base64url");
+  guest.send({ t: "join", link, attempt, token });
+  const joined = { t: "joined", link, attempt, iceServers: [], turn: true };
+  assert.deepEqual(await guest.next(), joined);
+  assert.deepEqual(await host.next(), joined);
+  return attempt;
+}
+
+/** Checks the host was sent nothing more: its next message answers this round trip. */
+async function heardNothing(host: Client): Promise<void> {
+  host.send({ t: "relay", link: linkId(), data: "sync" });
+  assert.deepEqual(await host.next(), { t: "error", code: "not-on-link" });
+}
+
+/** Asks for a code, checks the host hears `verifying`, and returns the code that was mailed. */
+async function codeFor(guest: Client, host: Client, link: string, mails: Mail[], mark: string) {
+  guest.send({ t: "send-code", link, mark });
+  assert.deepEqual(await guest.next(), { t: "code", link, result: "sent" });
+  assert.deepEqual(await host.next(), { t: "email", link, status: "verifying" });
+  const mail = mails.at(-1);
+  assert.ok(mail && "code" in mail, "no code was mailed");
+  assert.match(mail.code, /^[0-9]{6}$/);
+  return mail.code;
+}
+
+/** Enters a fresh right code, checks the host hears `verified`, and returns the token. */
+async function tokenFor(guest: Client, host: Client, link: string, mails: Mail[], mark: string) {
+  guest.send({ t: "code", link, mark, code: await codeFor(guest, host, link, mails, mark) });
+  const answer = await guest.next();
+  assert.ok(answer.t === "token" && answer.link === link, `not a token: ${answer.t}`);
+  assert.match(answer.token, /^[A-Za-z0-9_-]{22}$/);
+  assert.deepEqual(await host.next(), { t: "email", link, status: "verified" });
+  return answer.token;
+}
+
+const wrongCode = (code: string) => (code === "000000" ? "111111" : "000000");
+
+test("answers failed to an email when the server cannot send mail", async () => {
+  const link = linkId();
+  const host = await hostFor(link);
+  host.send(emailMessage(link));
+  assert.deepEqual(await host.next(), { t: "email", link, status: "failed" });
+});
+
+test("emails a hosted link's notice once and tells the host it was sent", async (t) => {
+  const { url, mails } = await mailServer(t);
+  const link = linkId();
+  const host = await mailHost(url, link);
+  const mark = await emailLink(host, link, { from: "" });
+  assert.deepEqual(mails, [
+    { to: "anna@example.se", lang: "sv", from: "", url: `${ORIGIN}/r/${link}#e.${mark}.${SECRET}` },
+  ]);
+});
+
+test("builds the emailed link from the configured origin, never the request's Host", async (t) => {
+  const { url, mails, server: mailing } = await mailServer(t);
+  const hostHeaders: (string | undefined)[] = [];
+  mailing.prependListener("upgrade", (req) => hostHeaders.push(req.headers.host));
+  const socket = new WsClient(url, { headers: { host: "evil.example" } });
+  t.after(() => socket.terminate());
+  const received: unknown[] = [];
+  socket.on("message", (data) => received.push(JSON.parse(String(data))));
+  await new Promise((done) => socket.once("open", done));
+  const link = linkId();
+  socket.send(JSON.stringify({ t: "host", links: [link], turn: true }));
+  socket.send(JSON.stringify(emailMessage(link)));
+  for (let wait = 0; wait < 200 && received.length < 2; wait += 1) {
+    await new Promise((done) => setTimeout(done, 5));
+  }
+  assert.deepEqual(hostHeaders, ["evil.example"]);
+  const mark = noticeMark(mails[0]);
+  assert.deepEqual(received, [
+    { t: "hello", mail: true },
+    { t: "email", link, status: "sent", mark },
+  ]);
+  assert.deepEqual(
+    mails.map((mail) => ("url" in mail ? mail.url : "")),
+    [`${ORIGIN}/r/${link}#e.${mark}.${SECRET}`],
+  );
+});
+
+test("refuses an email from a guest or for a link this socket does not host", async (t) => {
+  const { url, mails } = await mailServer(t);
+  const link = linkId();
+  await mailHost(url, link);
+  const stranger = await connect(url, true);
+  stranger.send(emailMessage(link));
+  assert.deepEqual(await stranger.next(), { t: "email", link, status: "failed" });
+  const guest = await connect(url, true);
+  const attempt = linkId();
+  guest.send({ t: "join", link, attempt });
+  assert.deepEqual(await guest.next(), { t: "joined", link, attempt, iceServers: [], turn: true });
+  guest.send(emailMessage(link));
+  assert.deepEqual(await guest.next(), { t: "error", code: "wrong-role" });
+  assert.deepEqual(mails, []);
+});
+
+test("refuses a second email for a bound link, even while the first is out", async (t) => {
+  let finish = () => {};
+  const { url, mails } = await mailServer(
+    t,
+    () =>
+      new Promise<void>((done) => {
+        finish = done;
+      }),
+  );
+  const link = linkId();
+  const host = await mailHost(url, link);
+  host.send(emailMessage(link));
+  host.send(emailMessage(link, { to: "bob@example.se" }));
+  assert.deepEqual(await host.next(), { t: "email", link, status: "failed" });
+  finish();
+  markIn(await host.next(), link);
+  host.send(emailMessage(link, { to: "bob@example.se" }));
+  assert.deepEqual(await host.next(), { t: "email", link, status: "failed" });
+  assert.deepEqual(
+    mails.map((mail) => mail.to),
+    ["anna@example.se"],
+  );
+});
+
+test("keeps a link gated when its notice fails and refuses any later email for it", async (t) => {
+  let fail = true;
+  const { url, mails } = await mailServer(t, async () => {
+    if (fail) {
+      throw new Error("mail not sent");
+    }
+  });
+  const link = linkId();
+  const host = await mailHost(url, link);
+  host.send(emailMessage(link));
+  const mark = markIn(await host.next(), link, "failed");
+  assert.equal(noticeMark(mails[0]), mark);
+  fail = false;
+  host.send(emailMessage(link));
+  assert.deepEqual(await host.next(), { t: "email", link, status: "failed" });
+  const guest = await connect(url, true);
+  assert.equal(await gateOf(guest, link, mark), "a***@example.se");
+  guest.send({ t: "join", link, attempt: linkId() });
+  assert.deepEqual(await guest.next(), { t: "gate", link, to: "" });
+  await heardNothing(host);
+  assert.equal(mails.length, 1);
+  await codeFor(guest, host, link, mails, mark);
+});
+
+test("returns no mark for a link whose email hit a notice cap, and spends it even after the hour", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"] });
+  const { url, mails } = await mailServer(t, async () => {}, {
+    limits: { noticesPerRecipient: 1 },
+  });
+  const [first, capped, fresh] = [linkId(), linkId(), linkId()];
+  const host = await mailHost(url, first, capped, fresh);
+  await emailLink(host, first);
+  host.send(emailMessage(capped));
+  assert.deepEqual(await host.next(), { t: "email", link: capped, status: "limit" });
+  t.mock.timers.tick(HOUR_MS);
+  host.send(emailMessage(capped));
+  assert.deepEqual(await host.next(), { t: "email", link: capped, status: "failed" });
+  assert.equal(mails.length, 1);
+  await emailLink(host, fresh);
+  assert.equal(mails.length, 2);
+});
+
+test("refuses an email for a link that had a guest", async (t) => {
+  const { url, mails } = await mailServer(t);
+  const link = linkId();
+  const host = await mailHost(url, link);
+  const guest = await connect(url, true);
+  await mailJoin(guest, host, link);
+  guest.socket.close();
+  assert.deepEqual(await host.next(), { t: "left", link });
+  host.send(emailMessage(link));
+  assert.deepEqual(await host.next(), { t: "email", link, status: "failed" });
+  assert.deepEqual(mails, []);
+});
+
+test("keeps a link's binding when the host re-sends its set and drops it when unhosted", async (t) => {
+  const { url, mails } = await mailServer(t);
+  const link = linkId();
+  const other = linkId();
+  const host = await mailHost(url, link, other);
+  await emailLink(host, link);
+  host.send({ t: "host", links: [other, link], turn: true });
+  host.send(emailMessage(link, { to: "bob@example.se" }));
+  assert.deepEqual(await host.next(), { t: "email", link, status: "failed" });
+  host.send({ t: "host", links: [other], turn: true });
+  host.send({ t: "host", links: [other, link], turn: true });
+  await emailLink(host, link, { to: "bob@example.se" });
+  assert.deepEqual(
+    mails.map((mail) => mail.to),
+    ["anna@example.se", "bob@example.se"],
+  );
+});
+
+test("refuses a host message that carries an address", async (t) => {
+  const { url } = await mailServer(t);
+  const host = await connect(url, true);
+  host.send({ t: "host", links: [linkId()], turn: true, to: "anna@example.se" });
+  assert.deepEqual(await host.next(), { t: "error", code: "bad-message" });
+  assert.equal(await host.closed, 1008);
+});
+
+test("forgets a link's binding when its host closes while the mail is still out", async (t) => {
+  let calls = 0;
+  let failFirst: (error: Error) => void = () => {};
+  const { url, mails } = await mailServer(t, () => {
+    calls += 1;
+    return calls === 1
+      ? new Promise<void>((_, fail) => {
+          failFirst = fail;
+        })
+      : Promise.resolve();
+  });
+  const link = linkId();
+  const first = await mailHost(url, link);
+  first.send(emailMessage(link));
+  const guest = await connect(url, true);
+  const mark = noticeMark(mails[0]);
+  assert.equal(await gateOf(guest, link, mark), "a***@example.se");
+  first.socket.close();
+  while ((await gateOf(guest, link, mark)) !== "") {
+    await new Promise((done) => setTimeout(done, 5));
+  }
+
+  const second = await mailHost(url, link);
+  const fresh = await emailLink(second, link, { to: "bob@example.se" });
+  // The first send failing late must not unbind the second host's link.
+  failFirst(new Error("mail not sent"));
+  second.send(emailMessage(link));
+  assert.deepEqual(await second.next(), { t: "email", link, status: "failed" });
+  assert.equal(await gateOf(guest, link, fresh), "b***@example.se");
+  assert.equal(mails.length, 2);
+});
+
+test("caps one socket at 20 notices an hour", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"] });
+  const { url } = await mailServer(t);
+  const links = Array.from({ length: 20 }, linkId);
+  const last = linkId();
+  const host = await mailHost(url, ...links, last);
+  for (const [i, link] of links.entries()) {
+    await emailLink(host, link, { to: `r${i}@example.se` });
+  }
+  host.send(emailMessage(last, { to: "last@example.se" }));
+  assert.deepEqual(await host.next(), { t: "email", link: last, status: "limit" });
+  t.mock.timers.tick(HOUR_MS);
+  const again = linkId();
+  host.send({ t: "host", links: [...links, last, again], turn: true });
+  await emailLink(host, again, { to: "last@example.se" });
+});
+
+test("caps one client address at 50 notices an hour", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"] });
+  const { url } = await mailServer(t);
+  let count = 0;
+  for (const size of [20, 20, 10]) {
+    const links = Array.from({ length: size }, linkId);
+    const host = await mailHost(url, ...links);
+    for (const link of links) {
+      await emailLink(host, link, { to: `r${count}@example.se` });
+      count += 1;
+    }
+  }
+  const [last, again] = [linkId(), linkId()];
+  const host = await mailHost(url, last, again);
+  host.send(emailMessage(last, { to: "last@example.se" }));
+  assert.deepEqual(await host.next(), { t: "email", link: last, status: "limit" });
+  t.mock.timers.tick(HOUR_MS);
+  await emailLink(host, again, { to: "last@example.se" });
+});
+
+test("caps one destination address at 5 notices an hour, in any case, across heartbeats", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"] });
+  const { url } = await mailServer(t, async () => {}, { heartbeatMs: 20 });
+  const addresses = [
+    "anna@example.se",
+    "ANNA@example.se",
+    "Anna@Example.SE",
+    "anna@EXAMPLE.se",
+    "aNNa@example.se",
+  ];
+  const links = addresses.map(() => linkId());
+  const [last, other] = [linkId(), linkId()];
+  const host = await mailHost(url, ...links, last, other);
+  for (const [i, link] of links.entries()) {
+    await emailLink(host, link, { to: addresses[i] ?? "" });
+  }
+  const sleep = () => new Promise((done) => setTimeout(done, 50));
+  await sleep();
+  host.send(emailMessage(last, { to: "ANNA@EXAMPLE.SE" }));
+  assert.deepEqual(await host.next(), { t: "email", link: last, status: "limit" });
+  await emailLink(host, other, { to: "bertil@example.se" });
+  t.mock.timers.tick(HOUR_MS);
+  await sleep();
+  const again = linkId();
+  host.send({ t: "host", links: [...links, last, other, again], turn: true });
+  await emailLink(host, again, { to: "ANNA@EXAMPLE.SE" });
+});
+
+test("counts a notice against no cap when another cap refuses it", async (t) => {
+  const { url } = await mailServer(t, async () => {}, {
+    limits: { noticesPerRecipient: 1, noticesPerClient: 2 },
+  });
+  const [first, refused, second] = [linkId(), linkId(), linkId()];
+  const host = await mailHost(url, first, refused, second);
+  await emailLink(host, first);
+  host.send(emailMessage(refused));
+  assert.deepEqual(await host.next(), { t: "email", link: refused, status: "limit" });
+  await emailLink(host, second, { to: "bob@example.se" });
+});
+
+test("never logs an emailed link's address, secret, URL, mark or sender name", async (t) => {
+  const secret = randomBytes(32).toString("base64url");
+  const from = "Kanarie Namnsson";
+  const { url, mails, lines } = await mailServer(
+    t,
+    async (mail) => {
+      if (mail.to.startsWith("leaky")) {
+        // An SMTP error that quotes everything it was given.
+        throw new Error(`550 <${mail.to}> ${"url" in mail ? `${mail.url} ${mail.from}` : ""}`);
+      }
+    },
+    { limits: { noticesPerRecipient: 1 } },
+  );
+  const [sent, limited, failed] = [linkId(), linkId(), linkId()];
+  const host = await mailHost(url, sent, limited, failed);
+  const canary = "Canary.Address@Example.se";
+  const marks = [await emailLink(host, sent, { to: canary, secret, from })];
+  host.send(emailMessage(sent, { to: canary, secret, from }));
+  assert.deepEqual(await host.next(), { t: "email", link: sent, status: "failed" });
+  host.send(emailMessage(limited, { to: canary.toLowerCase(), secret, from }));
+  assert.deepEqual(await host.next(), { t: "email", link: limited, status: "limit" });
+  host.send(emailMessage(failed, { to: "leaky.canary@example.se", secret, from }));
+  marks.push(markIn(await host.next(), failed, "failed"));
+  assert.equal(mails.length, 2);
+
+  const emails = lines.filter((line) => line.includes('"event":"email"'));
+  assert.deepEqual(
+    emails.map((line) => JSON.parse(line).reason),
+    [undefined, "failed", "limit", "failed"],
+  );
+  for (const line of lines) {
+    const lower = line.toLowerCase();
+    const needles = ["canary", "kanarie", "namnsson", secret, "fidant.se", ...marks];
+    for (const needle of needles.map((needle) => needle.toLowerCase())) {
+      assert.ok(!lower.includes(needle), `${needle} leaked into the log: ${line}`);
+    }
+  }
+  for (const line of emails) {
+    assert.deepEqual(
+      Object.keys(JSON.parse(line)).filter((key) => key !== "reason"),
+      ["event", "link"],
+    );
+  }
+});
+
+test("answers a gate with an emailed link's masked address and nothing for other links", async (t) => {
+  const { url } = await mailServer(t);
+  const [emailed, plain] = [linkId(), linkId()];
+  const host = await mailHost(url, emailed, plain);
+  const mark = await emailLink(host, emailed);
+  const guest = await connect(url, true);
+  assert.equal(await gateOf(guest, emailed, mark), "a***@example.se");
+  assert.equal(await gateOf(guest, plain), "");
+  assert.equal(await gateOf(guest, plain, mark), "");
+  assert.equal(await gateOf(guest, linkId(), mark), "");
+  guest.send({ t: "host", links: [linkId()], turn: true });
+  assert.deepEqual(await guest.next(), { t: "error", code: "wrong-role" });
+  for (const message of [
+    { t: "gate", link: emailed, mark },
+    { t: "send-code", link: emailed, mark },
+    { t: "code", link: emailed, code: "123456", mark },
+  ]) {
+    host.send(message);
+    assert.deepEqual(await host.next(), { t: "error", code: "wrong-role" });
+  }
+});
+
+test("answers anyone without an emailed link's mark as for a plain link, and spends nothing", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"] });
+  const { url, mails } = await mailServer(t);
+  const link = linkId();
+  const host = await mailHost(url, link);
+  const mark = await emailLink(host, link);
+  const stranger = await connect(url, true);
+  const guesses = [undefined, linkId(), `${mark.startsWith("A") ? "B" : "A"}${mark.slice(1)}`];
+  for (const guess of guesses) {
+    assert.equal(await gateOf(stranger, link, guess), "");
+    stranger.send({ t: "send-code", link, mark: guess });
+    assert.deepEqual(await stranger.next(), { t: "code", link, result: "failed" });
+    stranger.send({ t: "join", link, attempt: linkId() });
+    assert.deepEqual(await stranger.next(), { t: "gate", link, to: "" });
+  }
+  assert.equal(mails.length, 1);
+  await heardNothing(host);
+
+  // The recipient still gets a code at once, and keeps all its tries.
+  const guest = await connect(url, true);
+  const code = await codeFor(guest, host, link, mails, mark);
+  for (const guess of guesses) {
+    for (const tried of [wrongCode(code), wrongCode(code), code]) {
+      stranger.send({ t: "code", link, code: tried, mark: guess });
+      assert.deepEqual(await stranger.next(), { t: "code", link, result: "expired" });
+    }
+  }
+  for (let i = 1; i < 5; i += 1) {
+    guest.send({ t: "code", link, code: wrongCode(code), mark });
+    assert.deepEqual(await guest.next(), { t: "code", link, result: "wrong" });
+  }
+  guest.send({ t: "code", link, code, mark });
+  assert.equal((await guest.next()).t, "token");
+  await heardNothing(stranger);
+});
+
+test("gives each registration of a link a new mark and answers an old mark as plain", async (t) => {
+  const { url, mails } = await mailServer(t);
+  const link = linkId();
+  const first = await mailHost(url, link);
+  const old = await emailLink(first, link);
+  assert.equal(noticeMark(mails[0]), old);
+  const guest = await connect(url, true);
+  first.socket.close();
+  while ((await gateOf(guest, link, old)) !== "") {
+    await new Promise((done) => setTimeout(done, 5));
+  }
+  const second = await mailHost(url, link);
+  const fresh = await emailLink(second, link, { to: "bob@example.se" });
+  assert.notEqual(fresh, old);
+  assert.equal(noticeMark(mails[1]), fresh);
+  assert.equal(await gateOf(guest, link, old), "");
+  guest.send({ t: "send-code", link, mark: old });
+  assert.deepEqual(await guest.next(), { t: "code", link, result: "failed" });
+  assert.equal(await gateOf(guest, link, fresh), "b***@example.se");
+  assert.equal(mails.length, 2);
+});
+
+test("answers a mark from before a restart as plain", async (t) => {
+  const first = await mailServer(t);
+  const link = linkId();
+  const mark = await emailLink(await mailHost(first.url, link), link);
+  const restarted = await mailServer(t);
+  const host = await mailHost(restarted.url, link);
+  const guest = await connect(restarted.url, true);
+  assert.equal(await gateOf(guest, link, mark), "");
+  guest.send({ t: "send-code", link, mark });
+  assert.deepEqual(await guest.next(), { t: "code", link, result: "failed" });
+  assert.deepEqual(restarted.mails, []);
+  await mailJoin(guest, host, link);
+});
+
+test("refuses a token on a link that is no longer email-bound, and lets a plain join through", async (t) => {
+  const { url, mails } = await mailServer(t);
+  const link = linkId();
+  const first = await mailHost(url, link);
+  const mark = await emailLink(first, link);
+  const guest = await connect(url, true);
+  const token = await tokenFor(guest, first, link, mails, mark);
+  first.send({ t: "host", links: [], turn: true });
+  await heardNothing(first);
+  const second = await mailHost(url, link);
+  await heardNothing(second);
+  guest.send({ t: "join", link, attempt: linkId(), token });
+  assert.deepEqual(await guest.next(), { t: "gate", link, to: "" });
+  await heardNothing(second);
+  await mailJoin(guest, second, link);
+});
+
+test("emails up to 5 codes per link, 30 seconds apart, in the link's language", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"] });
+  const { url, mails } = await mailServer(t);
+  const [link, plain] = [linkId(), linkId()];
+  const host = await mailHost(url, link, plain);
+  const mark = await emailLink(host, link, { lang: "en" });
+  const guest = await connect(url, true);
+  const first = await codeFor(guest, host, link, mails, mark);
+  assert.deepEqual(mails.at(-1), { to: "anna@example.se", lang: "en", code: first });
+  t.mock.timers.tick(CODE_GAP_MS - 1);
+  guest.send({ t: "send-code", link, mark });
+  assert.deepEqual(await guest.next(), { t: "code", link, result: "wait" });
+  let last = first;
+  for (let i = 1; i < 5; i += 1) {
+    t.mock.timers.tick(i === 1 ? 1 : CODE_GAP_MS);
+    last = await codeFor(guest, host, link, mails, mark);
+  }
+  t.mock.timers.tick(CODE_GAP_MS);
+  guest.send({ t: "send-code", link, mark });
+  assert.deepEqual(await guest.next(), { t: "code", link, result: "limit" });
+  assert.equal(mails.length, 6);
+  // The newest code is the one that works.
+  guest.send({ t: "code", link, code: last, mark });
+  assert.equal((await guest.next()).t, "token");
+  guest.send({ t: "send-code", link: plain });
+  assert.deepEqual(await guest.next(), { t: "code", link: plain, result: "failed" });
+  guest.send({ t: "code", link: plain, code: "123456" });
+  assert.deepEqual(await guest.next(), { t: "code", link: plain, result: "expired" });
+});
+
+test("caps codes to one address at 10 an hour, in any case, across links", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"] });
+  const { url, mails } = await mailServer(t);
+  const addresses = ["anna@example.se", "ANNA@example.se", "anna@EXAMPLE.se"];
+  const links = addresses.map(() => linkId());
+  const host = await mailHost(url, ...links);
+  const marks: string[] = [];
+  for (const [i, link] of links.entries()) {
+    marks.push(await emailLink(host, link, { to: addresses[i] ?? "" }));
+  }
+  const guest = await connect(url, true);
+  const [first = "", second = "", third = ""] = links;
+  const [firstMark = "", secondMark = "", thirdMark = ""] = marks;
+  for (let i = 0; i < 5; i += 1) {
+    await codeFor(guest, host, first, mails, firstMark);
+    await codeFor(guest, host, second, mails, secondMark);
+    t.mock.timers.tick(CODE_GAP_MS);
+  }
+  guest.send({ t: "send-code", link: third, mark: thirdMark });
+  assert.deepEqual(await guest.next(), { t: "code", link: third, result: "wait" });
+  t.mock.timers.tick(HOUR_MS);
+  await codeFor(guest, host, third, mails, thirdMark);
+});
+
+test("kills a code after 5 wrong tries, after 10 minutes and once it is right", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"] });
+  const { url, mails } = await mailServer(t);
+  const link = linkId();
+  const host = await mailHost(url, link);
+  const mark = await emailLink(host, link);
+  const guest = await connect(url, true);
+  const tried = await codeFor(guest, host, link, mails, mark);
+  for (let i = 1; i < 5; i += 1) {
+    guest.send({ t: "code", link, code: wrongCode(tried), mark });
+    assert.deepEqual(await guest.next(), { t: "code", link, result: "wrong" });
+  }
+  guest.send({ t: "code", link, code: wrongCode(tried), mark });
+  assert.deepEqual(await guest.next(), { t: "code", link, result: "tries" });
+  guest.send({ t: "code", link, code: tried, mark });
+  assert.deepEqual(await guest.next(), { t: "code", link, result: "expired" });
+
+  t.mock.timers.tick(CODE_GAP_MS);
+  const late = await codeFor(guest, host, link, mails, mark);
+  t.mock.timers.tick(CODE_MS);
+  guest.send({ t: "code", link, code: late, mark });
+  assert.deepEqual(await guest.next(), { t: "code", link, result: "expired" });
+
+  const right = await codeFor(guest, host, link, mails, mark);
+  t.mock.timers.tick(CODE_MS - 1);
+  guest.send({ t: "code", link, code: right, mark });
+  const answer = await guest.next();
+  assert.ok(answer.t === "token" && answer.link === link);
+  assert.deepEqual(await host.next(), { t: "email", link, status: "verified" });
+  guest.send({ t: "code", link, code: right, mark });
+  assert.deepEqual(await guest.next(), { t: "code", link, result: "expired" });
+});
+
+test("lets a verified browser join its emailed link again, and no other link", async (t) => {
+  const { url, mails } = await mailServer(t);
+  const [link, other] = [linkId(), linkId()];
+  const host = await mailHost(url, link, other);
+  const mark = await emailLink(host, link);
+  await emailLink(host, other, { to: "bob@example.se" });
+  const guest = await connect(url, true);
+  guest.send({ t: "join", link, attempt: linkId() });
+  assert.deepEqual(await guest.next(), { t: "gate", link, to: "" });
+  const token = await tokenFor(guest, host, link, mails, mark);
+  guest.send({ t: "join", link: other, attempt: linkId(), token });
+  assert.deepEqual(await guest.next(), { t: "gate", link: other, to: "" });
+  guest.send({ t: "join", link, attempt: linkId(), token: linkId() });
+  assert.deepEqual(await guest.next(), { t: "gate", link, to: "" });
+  await heardNothing(host);
+
+  const attempt = await mailJoin(guest, host, link, token);
+  // Gate before busy, so a browser without the token learns nothing about the bound guest.
+  const second = await connect(url, true);
+  second.send({ t: "join", link, attempt: linkId() });
+  assert.deepEqual(await second.next(), { t: "gate", link, to: "" });
+  second.send({ t: "join", link, attempt: linkId(), token });
+  assert.deepEqual(await second.next(), { t: "refused", reason: "busy" });
+
+  host.send({ t: "refuse", link, attempt, reason: "busy" });
+  assert.deepEqual(await guest.next(), { t: "refused", reason: "busy" });
+  await mailJoin(guest, host, link, token);
+  // A reload after a decline or a drop is a new socket with the same token.
+  guest.socket.close();
+  assert.deepEqual(await host.next(), { t: "left", link });
+  const reloaded = await connect(url, true);
+  await mailJoin(reloaded, host, link, token);
+  reloaded.socket.close();
+  assert.deepEqual(await host.next(), { t: "left", link });
+  await mailJoin(second, host, link, token);
+
+  host.socket.close();
+  assert.deepEqual(await second.next(), { t: "host-gone" });
+  const late = await connect(url, true);
+  late.send({ t: "join", link, attempt: linkId(), token });
+  assert.deepEqual(await late.next(), { t: "gate", link, to: "" });
+  late.send({ t: "join", link, attempt: linkId() });
+  assert.deepEqual(await late.next(), { t: "refused", reason: "unknown" });
+  assert.equal(await gateOf(late, link, mark), "");
+});
+
+test("forgets an emailed link's codes and tokens when it is unhosted", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"] });
+  const { url, mails } = await mailServer(t);
+  const link = linkId();
+  const host = await mailHost(url, link);
+  const mark = await emailLink(host, link);
+  const guest = await connect(url, true);
+  const token = await tokenFor(guest, host, link, mails, mark);
+  t.mock.timers.tick(CODE_GAP_MS);
+  const code = await codeFor(guest, host, link, mails, mark);
+  host.send({ t: "host", links: [], turn: true });
+  host.send({ t: "host", links: [link], turn: true });
+  const fresh = await emailLink(host, link);
+  for (const tried of [mark, fresh]) {
+    guest.send({ t: "code", link, code, mark: tried });
+    assert.deepEqual(await guest.next(), { t: "code", link, result: "expired" });
+  }
+  guest.send({ t: "join", link, attempt: linkId(), token });
+  assert.deepEqual(await guest.next(), { t: "gate", link, to: "" });
+});
+
+test("never logs an emailed link's address, mark, code or token", async (t) => {
+  const { url, mails, lines } = await mailServer(t, async (mail) => {
+    if ("code" in mail && mail.to.startsWith("leaky")) {
+      // An SMTP error that quotes everything it was given.
+      throw new Error(`550 <${mail.to}> ${mail.code}`);
+    }
+  });
+  const [link, leaky] = [linkId(), linkId()];
+  const host = await mailHost(url, link, leaky);
+  const canary = "Canary.Address@Example.se";
+  const mark = await emailLink(host, link, { to: canary });
+  const leakyMark = await emailLink(host, leaky, { to: "leaky.canary@example.se" });
+  const guest = await connect(url, true);
+  guest.send({ t: "join", link, attempt: linkId() });
+  assert.deepEqual(await guest.next(), { t: "gate", link, to: "" });
+  assert.equal(await gateOf(guest, link, mark), "C***@Example.se");
+  guest.send({ t: "send-code", link: leaky, mark: leakyMark });
+  assert.deepEqual(await guest.next(), { t: "code", link: leaky, result: "failed" });
+  const code = await codeFor(guest, host, link, mails, mark);
+  guest.send({ t: "send-code", link, mark });
+  assert.deepEqual(await guest.next(), { t: "code", link, result: "wait" });
+  guest.send({ t: "code", link, code: wrongCode(code), mark });
+  assert.deepEqual(await guest.next(), { t: "code", link, result: "wrong" });
+  guest.send({ t: "code", link, code, mark });
+  const answer = await guest.next();
+  assert.ok(answer.t === "token");
+  assert.deepEqual(await host.next(), { t: "email", link, status: "verified" });
+  await mailJoin(guest, host, link, answer.token);
+
+  const prefix = link.slice(0, 6);
+  assert.deepEqual(
+    lines
+      .map((line) => JSON.parse(line))
+      .filter((line) => ["code", "verified", "refused"].includes(line.event)),
+    [
+      { event: "refused", link: prefix, reason: "unverified" },
+      { event: "code", link: leaky.slice(0, 6), reason: "failed" },
+      { event: "code", link: prefix },
+      { event: "code", link: prefix, reason: "wait" },
+      { event: "code", link: prefix, reason: "wrong" },
+      { event: "verified", link: prefix },
+    ],
+  );
+  const codes = mails.flatMap((mail) => ("code" in mail ? [mail.code] : []));
+  assert.equal(codes.length, 2);
+  for (const line of lines) {
+    const lower = line.toLowerCase();
+    assert.ok(!lower.includes("canary"), `an address leaked into the log: ${line}`);
+    assert.ok(!line.includes(answer.token), `the token leaked into the log: ${line}`);
+    for (const value of [mark, leakyMark]) {
+      assert.ok(!line.includes(value), `a mark leaked into the log: ${line}`);
+    }
+    for (const value of codes) {
+      assert.ok(!line.includes(value), `a code leaked into the log: ${line}`);
     }
   }
 });

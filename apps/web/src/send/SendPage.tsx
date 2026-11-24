@@ -31,12 +31,26 @@
 //   recipient's card.
 // - Effects run outside render: `close` tears the peer down, `refuse` tells
 //   the server to refuse the joiner.
+// - When the server's `hello` says it can send mail, the add form offers an
+//   email address. Adding a recipient with one sends a single `email` message
+//   after the `host` that includes its link; the server's `email` replies go
+//   to the reducer. Its card offers no link until the server answers, then
+//   the marked link the server emailed, or the plain one if it refused. A
+//   reconnect never hosts an emailed link again (reducer `server-lost`).
 //
 // Names, the file or text and link secrets stay in this tab. The server only ever
 // gets link IDs, attempt IDs, opaque sealed signals, refusal reasons,
-// connection paths and the relay choice.
+// connection paths and the relay choice, except that an emailed link's one
+// `email` message carries its address, its secret and the sender's typed
+// name (decision 0012). Recipient names never leave this tab.
 
-import { type ConnectionPath, type IceServer, MAX_LINKS } from "@sigill/protocol";
+import {
+  type ConnectionPath,
+  type IceServer,
+  isAddress,
+  MAX_ADDRESS,
+  MAX_LINKS,
+} from "@sigill/protocol";
 import { useEffect, useReducer, useRef, useState } from "preact/hooks";
 import { Alert, AlertDescription } from "#components/ui/alert";
 import { Button } from "#components/ui/button";
@@ -51,6 +65,7 @@ import { createLink } from "../lib/link.ts";
 import { createSenderPeer, type Peer } from "../lib/peer.ts";
 import { hashFile, sendFile } from "../lib/send-file.ts";
 import {
+  emailBound,
   findRecipient,
   hostedLinks,
   initialSenderState,
@@ -108,6 +123,11 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
   const [relayed, countRelay] = useReducer(addRelay, NO_RELAYS);
   const [viaRelay, setViaRelay] = useState(false);
   const [nameError, setNameError] = useState<ErrorOf<"nameError">>("");
+  const [mail, setMail] = useState(false);
+  const [emailFilled, setEmailFilled] = useState(false);
+  const [emailError, setEmailError] = useState(false);
+  // ponytail: sticky for the page, since the server saw the key and keeps email counts for an hour
+  const [mailed, setMailed] = useState(false);
   const [fileError, setFileError] = useState<ErrorOf<"fileError">>("");
   const [from, setFrom] = useState("");
   const [fromError, setFromError] = useState<ErrorOf<"fromError">>("");
@@ -324,6 +344,17 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
         case "left":
           dispatch({ type: "left", linkId: message.link });
           break;
+        case "hello":
+          setMail(message.mail);
+          break;
+        case "email":
+          dispatch({
+            type: "email",
+            linkId: message.link,
+            status: message.status,
+            mark: message.mark,
+          });
+          break;
         case "relay":
           void connectionsRef.current.get(message.link)?.peer?.handleRelay(message.data);
           break;
@@ -428,6 +459,13 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
       return;
     }
     setNameError("");
+    const emailInput = form.elements.namedItem("email") as HTMLInputElement | null;
+    const email = emailInput?.value.trim() ?? "";
+    if (email && !isAddress(email)) {
+      setEmailError(true);
+      emailInput?.focus();
+      return;
+    }
     if (sender.recipients.length === 0) {
       const typed = from.trim();
       const problem = hasForbiddenCharacters(typed)
@@ -442,8 +480,26 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
       }
       fromRef.current = typed;
     }
-    dispatchRef.current({ type: "add", link: createLink(location.origin), name });
+    const link = createLink(location.origin);
+    dispatchRef.current(email ? { type: "add", link, name, email } : { type: "add", link, name });
+    // After `add`, so the server already hosts the link this names.
+    if (email && findRecipient(senderRef.current, link.linkId)) {
+      const sent = signalingRef.current?.send({
+        t: "email",
+        link: link.linkId,
+        to: email,
+        secret: link.secret,
+        from: fromRef.current,
+        lang,
+      });
+      if (sent) {
+        setMailed(true);
+      } else {
+        dispatchRef.current({ type: "email", linkId: link.linkId, status: "failed" });
+      }
+    }
     form.reset();
+    setEmailFilled(false);
     input.focus();
   };
 
@@ -467,6 +523,7 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
   const isLocalhost = LOCAL_HOSTS.has(location.hostname);
   // ponytail: counts by status, so it over-counts if a recipient's signaling drops mid-transfer; track joined/left if that matters
   const connected = sender.recipients.filter(isActive).length;
+  const emailed = sender.recipients.filter(emailBound);
   const unfinished = sender.recipients.some((r) => r.status !== "delivered");
 
   // Phones show one panel at a time: the file or text first, then recipients after "Continue".
@@ -634,6 +691,7 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
             )}
             <p id={id("from-hint")} class={`m-0 ${hint}`}>
               {t.send.fromHint}
+              {mail && ` ${t.send.fromHintEmail}`}
             </p>
           </div>
 
@@ -679,6 +737,38 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
                 }
               />
             </div>
+            {mail && (
+              <div class="flex basis-full flex-col gap-1">
+                <Label htmlFor={id("recipient-email")}>
+                  {t.send.emailLabel}{" "}
+                  <span class="font-normal text-muted-foreground">{t.send.optional}</span>
+                </Label>
+                <Input
+                  id={id("recipient-email")}
+                  name="email"
+                  type="email"
+                  autoComplete="off"
+                  maxLength={MAX_ADDRESS}
+                  disabled={!file || full}
+                  onInput={(event) => {
+                    setEmailFilled(event.currentTarget.value.trim() !== "");
+                    setEmailError(false);
+                  }}
+                  aria-invalid={emailError ? "true" : "false"}
+                  aria-describedby={
+                    emailError ? `${id("email-error")} ${id("email-notice")}` : id("email-notice")
+                  }
+                />
+                {emailError && (
+                  <p id={id("email-error")} class={fieldError}>
+                    {t.send.emailError}
+                  </p>
+                )}
+                <p id={id("email-notice")} class={`m-0 ${hint}`} aria-live="polite">
+                  {emailFilled && (text ? t.secret.emailNotice : t.send.emailNotice)}
+                </p>
+              </div>
+            )}
             <Button type="submit" disabled={!file || full}>
               {t.send.add}
             </Button>
@@ -717,10 +807,16 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
             links: hostedLinks(sender).length,
             connected,
             relay: allowRelay,
+            emailed: emailed.length,
+            sending: emailed.filter((r) => r.mail === "sending").length,
+            mailed,
+            kind: text ? "secret" : "file",
           })}
           relayed={relayed}
-          afterwards={t.server.senderAfterwards(!lostServer)}
+          afterwards={t.server.senderAfterwards(!lostServer, mailed)}
           viaRelay={viaRelay}
+          emailed={mailed}
+          kind={text ? "secret" : "file"}
         />
       </div>
 

@@ -26,7 +26,7 @@ test("each page copy carries its own link preview in its own language", () => {
   );
   assert.ok(
     homeEn.includes(
-      `<meta property="og:description" content="Files encrypted in your browser, readable only by the recipient." />`,
+      `<meta property="og:description" content="Files encrypted in your browser, readable only by the recipient unless you ask us to email the link." />`,
     ),
   );
   assert.ok(

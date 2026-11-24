@@ -10,3 +10,6 @@ export function addRelay(relayed: Relayed, bytes: number): Relayed {
 
 /** How the recipient page stands with the server. */
 export type Tie = "paired" | "unpaired" | "closed";
+
+/** What the page shares. `unknown` is a recipient page before the offer arrives. */
+export type Kind = "file" | "secret" | "unknown";

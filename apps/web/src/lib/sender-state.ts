@@ -92,13 +92,35 @@
 //   real enforcement.
 // - Removing a recipient is always allowed. If it was mid-transfer, the
 //   result includes a close effect.
+// - A recipient added with an email address starts at mail "sending"; `email`
+//   then records what the server said. The latest status wins, because a
+//   timed-out notice may still arrive and every new code says "verifying",
+//   except that "verified" stays once reached and a late notice reply
+//   ("sent", "failed", "limit") never replaces "verifying". Recipients without
+//   an address ignore it. A reply with a mark means the server took the link and emailed
+//   the marked copy, so the recipient's `url` becomes that copy. A refusal
+//   without one (`limit`, or `failed` before anything went out) keeps the
+//   plain link.
+// - `server-lost` also unbinds every recipient whose link the server emailed
+//   or may have emailed (a mark, "sending", or "verifying"/"verified" without
+//   a mark, see `unmarked`): the server dropped its binding with the socket,
+//   so `hostedLinks` leaves the link out from then on and nobody can host its
+//   ID plain from this page.
+// - The server answers every `email` it refuses with `failed` or `limit`, naming
+//   the link and with no mark, so a refusal never needs guessing which card it was for.
 //
 // Effects carry only link IDs, attempt IDs, refusal reasons and the ICE servers from the
 // server's `joined`. Recipient
 // names never leave this module through an effect, so nothing built from
 // effects can send a name to the network.
 
-import { type IceServer, MAX_LINKS, type RefuseReason } from "@sigill/protocol";
+import {
+  type EmailStatus,
+  emailedFragment,
+  type IceServer,
+  MAX_LINKS,
+  type RefuseReason,
+} from "@sigill/protocol";
 import type { Link } from "./link.ts";
 import type { OpenPath } from "./peer.ts";
 
@@ -127,13 +149,21 @@ export type Recipient = {
   readonly turn?: boolean;
   /** The last attempt couldn't connect directly while the sender refused our relay. */
   readonly noRelay?: true;
+  /** The address the server emails this link to, if the sender gave one. */
+  readonly email?: string;
+  /** Where that email stands: "sending" until the server answers. */
+  readonly mail?: "sending" | EmailStatus;
+  /** The server's value in the emailed link, once it took the link. Never logged. */
+  readonly mark?: string;
+  /** The server dropped this link's email binding, so the link is dead and no longer hosted. */
+  readonly unbound?: true;
 };
 
 /** Recipients in the order they were added. Link IDs are unique. */
 export type SenderState = { readonly recipients: readonly Recipient[] };
 
 export type SenderAction =
-  | { type: "add"; link: Link; name: string }
+  | { type: "add"; link: Link; name: string; email?: string }
   | { type: "remove"; linkId: string }
   | { type: "joined"; linkId: string; attempt: string; iceServers: IceServer[]; turn: boolean }
   | { type: "channel-open"; linkId: string }
@@ -146,7 +176,8 @@ export type SenderAction =
   | { type: "server-lost" }
   | { type: "declined"; linkId: string }
   | { type: "unsendable"; linkId: string }
-  | { type: "path"; linkId: string; attempt: string; path: OpenPath };
+  | { type: "path"; linkId: string; attempt: string; path: OpenPath }
+  | { type: "email"; linkId: string; status: EmailStatus; mark?: string | undefined };
 
 export type SenderEffect =
   | { type: "start"; linkId: string; attempt: string; iceServers: IceServer[] }
@@ -185,12 +216,25 @@ export function findRecipient(state: SenderState, linkId: string): Recipient | u
   return state.recipients.find((r) => r.linkId === linkId);
 }
 
+const MAIL_PENDING: ReadonlySet<Recipient["mail"]> = new Set(["sending", "verifying", "verified"]);
+
+/** True while the server may hold an email binding for the link but has not given the marked copy. */
+export function unmarked(recipient: Recipient): boolean {
+  return recipient.mark === undefined && MAIL_PENDING.has(recipient.mail);
+}
+
+/** True while the server holds, or may hold, an email binding for the recipient's link. */
+export function emailBound(recipient: Recipient): boolean {
+  return !recipient.unbound && (recipient.mark !== undefined || unmarked(recipient));
+}
+
 /**
  * Every link ID the sender should host: all recipients, including delivered
- * ones, so that the sender can answer a late join on them with "used".
+ * ones, so that the sender can answer a late join on them with "used", except
+ * those whose email binding the server dropped.
  */
 export function hostedLinks(state: SenderState): string[] {
-  return state.recipients.map((r) => r.linkId);
+  return state.recipients.filter((r) => !r.unbound).map((r) => r.linkId);
 }
 
 export function update(state: SenderState, action: SenderAction): SenderUpdate {
@@ -199,6 +243,7 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
       return { state, effects: [] };
     }
     const { linkId, secret, url } = action.link;
+    const { email } = action;
     const recipient: Recipient = {
       name: action.name,
       linkId,
@@ -206,19 +251,26 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
       url,
       status: "waiting",
       bytesSent: 0,
+      ...(email === undefined ? {} : { email, mail: "sending" as const }),
     };
     return { state: { recipients: [...state.recipients, recipient] }, effects: [] };
   }
   if (action.type === "server-lost") {
     const effects: SenderEffect[] = [];
+    let changed = false;
     const recipients = state.recipients.map((r) => {
-      if (r.status !== "connecting") {
-        return r;
+      let next = r;
+      if (emailBound(r)) {
+        next = { ...next, unbound: true };
       }
-      effects.push({ type: "close", linkId: r.linkId });
-      return waiting(r, false);
+      if (r.status === "connecting") {
+        effects.push({ type: "close", linkId: r.linkId });
+        next = waiting(next, false);
+      }
+      changed ||= next !== r;
+      return next;
     });
-    return { state: effects.length ? { recipients } : state, effects };
+    return { state: changed ? { recipients } : state, effects };
   }
 
   const { linkId } = action;
@@ -312,6 +364,24 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
         return end(state, current, waiting(current, true));
       }
       return { state: replace(state, { ...current, path: action.path }), effects: [] };
+    case "email": {
+      if (current.mail === undefined || current.unbound) {
+        return { state, effects: [] };
+      }
+      const keep =
+        current.mail === "verified" ||
+        (current.mail === "verifying" && action.status !== "verified");
+      const mail = keep ? current.mail : action.status;
+      const mark = current.mark ?? action.mark;
+      if (mail === current.mail && mark === current.mark) {
+        return { state, effects: [] };
+      }
+      const marked =
+        mark === undefined
+          ? {}
+          : { mark, url: `${current.url.split("#")[0]}#${emailedFragment(mark, current.secret)}` };
+      return { state: replace(state, { ...current, mail, ...marked }), effects: [] };
+    }
   }
 }
 

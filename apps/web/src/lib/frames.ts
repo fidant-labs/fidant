@@ -42,8 +42,11 @@
 // Writers and readers keep state: await each encrypt or decrypt before
 // starting the next one. A reader stops accepting frames after any failure.
 
+import { hasForbiddenCharacters, MAX_FROM_LENGTH } from "@sigill/protocol";
 import type { Direction } from "./keys.ts";
 import { Sha256 } from "./sha256.ts";
+
+export { hasForbiddenCharacters, MAX_FROM_LENGTH };
 
 export const FRAME_VERSION = 1;
 export const HEADER_BYTES = 10;
@@ -61,8 +64,6 @@ const META_LENGTH_BYTES = 2;
  * type and sender name together must fit in META_PADDED_BYTES (see metaFits).
  */
 export const MAX_TYPE_LENGTH = 255;
-/** Longest sender name META accepts, in UTF-16 code units like `maxLength`. */
-export const MAX_FROM_LENGTH = 100;
 
 export const SenderKind = { INIT: 0, META: 1, CHUNK: 2, END: 3 } as const;
 export const RecipientKind = { ACCEPT: 16, RECEIPT: 17, DECLINE: 18 } as const;
@@ -318,22 +319,6 @@ function isZero(bytes: Uint8Array): boolean {
     bits |= byte;
   }
   return bits === 0;
-}
-
-/**
- * C0 and C1 control characters (U+0000–001F, U+007F–009F) and the Unicode
- * direction controls (U+200E, U+200F, U+202A–202E, U+2066–2069).
- */
-const FORBIDDEN_CHARACTERS = /[\p{Cc}\u200E\u200F\u202A-\u202E\u2066-\u2069]/u;
-
-/**
- * Whether a file name, type or sender name contains characters META refuses: control
- * characters, which could break how the name is shown or saved, and direction
- * controls, which can make a name ending in ".exe" display as if it ended in
- * ".pdf". The sender checks it when a file is chosen; decodeMeta rejects such names.
- */
-export function hasForbiddenCharacters(text: string): boolean {
-  return FORBIDDEN_CHARACTERS.test(text);
 }
 
 function parseMeta(value: unknown): FileMeta | undefined {

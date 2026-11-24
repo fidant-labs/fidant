@@ -2,13 +2,22 @@
 // the file, or show the text, once its checksum is verified.
 //
 // One attempt (see lib/peer.ts and lib/receive-file.ts):
-// - Connect to the signaling server, derive the link's signal key, and send
-//   `join` once both are done. The server answers with `joined`, carrying
-//   this pairing's ICE servers, before it tells the sender; the recipient peer
-//   is created synchronously on it, so the sender's offer, which comes later
-//   on the same socket, always finds a peer to answer it. Each attempt joins
-//   with a fresh random attempt ID, so a sender's late refusal of an earlier
-//   attempt cannot end this one.
+// - Connect to the signaling server and derive the link's signal key. Once
+//   both are done, a plain link sends `join`. A link Fidant emailed carries
+//   the server's mark (`#e.<mark>.<secret>`), and its page sends `gate` with
+//   the mark first, on every attempt. Unless the server answers with the
+//   masked address, the mark no longer matches a binding and the page joins
+//   nothing (`unbound`). Otherwise it joins with this tab's token from
+//   sessionStorage, or first asks the server to email a code and trades the
+//   right code for a token. A `gate` answer to a `join` is a refusal: the
+//   token is dropped and an emailed link asks `gate` again; a plain link is
+//   email-bound and ends as `unbound`.
+// - The server answers `join` with `joined`, carrying this pairing's ICE
+//   servers, before it tells the sender; the recipient peer is created
+//   synchronously on it, so the sender's offer, which comes later on the same
+//   socket, always finds a peer to answer it. Each attempt joins with a fresh
+//   random attempt ID, so a sender's late refusal of an earlier attempt cannot
+//   end this one.
 // - `relay` goes to the peer. `refused` ends the attempt with the matching
 //   message, and so does `host-gone` until the file starts arriving. A
 //   transfer under way no longer needs the server (the sender may only have
@@ -22,6 +31,10 @@
 //   unknown` after a drop or failed connect waits retryDelay and tries again,
 //   up to MAX_REJOINS times. Once the channel is open the transfer no longer
 //   needs the server, so a drop then only closes the signaling client.
+//   Reaching the code step resets the rejoin count (a token holder's rejoins
+//   do not), and the code field survives a rejoin. A `failed` or `expired`
+//   code result asks the gate again, so a binding that is gone ends as "no
+//   longer works".
 // - If the data channel hasn't opened CONNECT_TIMEOUT_MS (30 s) after the
 //   attempt starts, the attempt fails with "connect" (a peer exists) or
 //   "server" (no `joined` yet), so "Connecting…" never stays up for good.
@@ -40,10 +53,13 @@
 // this demo). The file name and size, or the text, are shown, never logged or
 // sent anywhere.
 
+import { type CodeResult, isLinkId } from "@sigill/protocol";
 import { cn } from "cn";
 import { type ComponentChildren, Fragment, type VNode } from "preact";
 import { useEffect, useMemo, useReducer, useRef, useState } from "preact/hooks";
 import { Button, buttonVariants } from "#components/ui/button";
+import { Input } from "#components/ui/input";
+import { Label } from "#components/ui/label";
 import type { Messages } from "../i18n/en.ts";
 import { useI18n } from "../i18n/I18n.tsx";
 import { encodeBase64url } from "../lib/base64url.ts";
@@ -54,7 +70,7 @@ import { createRecipientPeer, type OpenPath, type Peer } from "../lib/peer.ts";
 import type { FileOffer } from "../lib/receive-file.ts";
 import { ReceiveError, receiveFile } from "../lib/receive-file.ts";
 import { peerLostProblem } from "../lib/receive-problem.ts";
-import { addRelay, NO_RELAYS, type Tie } from "../lib/server-facts.ts";
+import { addRelay, type Kind, NO_RELAYS, type Tie } from "../lib/server-facts.ts";
 import { connectSignaling, retryDelay, type SignalingClient } from "../lib/signaling-client.ts";
 import { BlobSink, createSink, isPickerCancel, type Sink } from "../lib/sink.ts";
 import { decodeText, isTextOffer } from "../lib/text-secret.ts";
@@ -81,6 +97,7 @@ type Offer = FileOffer & { text: boolean };
 
 type View =
   | { s: "connecting" }
+  | { s: "verify"; to: string; asked: boolean; sending: boolean; result: CodeResult | undefined }
   | { s: "refused"; problem: ProblemKey; text?: boolean }
   | { s: "offer"; offer: Offer }
   | { s: "receiving"; offer: Offer; bytes: number }
@@ -137,6 +154,7 @@ export function ReceivePage() {
   const [viaRelay, setViaRelay] = useState(false);
   const [path, setPath] = useState<OpenPath | undefined>(undefined);
   const attemptRef = useRef<Attempt | undefined>(undefined);
+  const codeAsked = useRef<string | undefined>(undefined);
 
   /** Closes everything an attempt holds. `linger` keeps the peer up for a moment. */
   const release = (attempt: Attempt, linger = false) => {
@@ -158,7 +176,7 @@ export function ReceivePage() {
     if (!link) {
       return;
     }
-    const { linkId, secret } = link;
+    const { linkId, secret, mark } = link;
     const previous = attemptRef.current;
     if (previous && !previous.ended) {
       release(previous);
@@ -215,28 +233,47 @@ export function ReceivePage() {
       );
     };
     // Without it, a sender whose signals never arrive leaves "Connecting…" up for good.
-    attempt.timers.push(
-      setTimeout(() => {
+    let connectTimer: ReturnType<typeof setTimeout> | undefined;
+    const armConnectTimeout = () => {
+      clearTimeout(connectTimer);
+      connectTimer = setTimeout(() => {
         if (!attempt.channelOpen) {
           finish({ s: "failed", problem: attempt.peer ? lostMessage() : "server" });
         }
-      }, CONNECT_TIMEOUT_MS),
-    );
+      }, CONNECT_TIMEOUT_MS);
+      attempt.timers.push(connectTimer);
+    };
+    armConnectTimeout();
 
     // Set before `join` is sent, so it is there when `joined` arrives.
     let signalKey: CryptoKey | undefined;
     let opened = false;
     /** A connection attempt failed, so the server may have restarted and lost the sender's link. */
     let failedBefore = false;
-    const join = () => {
-      if (opened && signalKey && current()) {
-        signaling.send({ t: "join", link: linkId, attempt: attemptId });
+    let joinSent = false;
+    const ask = () => {
+      if (!opened || !signalKey || !current()) {
+        return;
       }
+      if (mark) {
+        signaling.send({ t: "gate", link: linkId, mark });
+      } else {
+        join(undefined);
+      }
+    };
+    const join = (token: string | undefined) => {
+      joinSent = true;
+      armConnectTimeout();
+      signaling.send(
+        token === undefined
+          ? { t: "join", link: linkId, attempt: attemptId }
+          : { t: "join", link: linkId, attempt: attemptId, token },
+      );
     };
     void deriveSignalKey(secret, linkId).then(
       (key) => {
         signalKey = key;
-        join();
+        ask();
       },
       () => finish({ s: "failed", problem: "server" }),
     );
@@ -247,7 +284,7 @@ export function ReceivePage() {
       }
       opened = true;
       setTie("unpaired");
-      join();
+      ask();
     });
     signaling.onClose(({ byClient }) => {
       if (byClient || !current()) {
@@ -275,6 +312,68 @@ export function ReceivePage() {
     });
     signaling.subscribe((message) => {
       switch (message.t) {
+        case "gate": {
+          if (!current() || message.link !== linkId) {
+            break;
+          }
+          if (joinSent) {
+            joinSent = false;
+            storeToken(linkId, undefined);
+            if (mark) {
+              ask();
+            } else {
+              finish({ s: "refused", problem: "unbound" });
+            }
+            break;
+          }
+          // Someone else may host this link ID now, without the code that guards the emailed one.
+          if (!message.to) {
+            storeToken(linkId, undefined);
+            finish({ s: "refused", problem: "unbound" });
+            break;
+          }
+          const token = readToken(linkId);
+          if (token) {
+            join(token);
+            break;
+          }
+          // Time on the code step must not use up the attempts a dropped connection gets.
+          rejoins = 0;
+          // The code step has no deadline; `join` arms it again.
+          clearTimeout(connectTimer);
+          const to = message.to;
+          setView((v) =>
+            v.s === "verify"
+              ? v
+              : {
+                  s: "verify",
+                  to,
+                  asked: codeAsked.current === linkId,
+                  sending: false,
+                  result: undefined,
+                },
+          );
+          break;
+        }
+        case "code":
+          if (current() && message.link === linkId) {
+            const { result } = message;
+            setView((v) => (v.s === "verify" ? { ...v, sending: false, result } : v));
+            // The binding may be gone: the gate answers with no address if so.
+            if (!joinSent && (result === "failed" || result === "expired")) {
+              ask();
+            }
+          }
+          break;
+        case "token":
+          if (!current() || message.link !== linkId || joinSent) {
+            break;
+          }
+          storeToken(linkId, message.token);
+          codeAsked.current = undefined;
+          setView({ s: "connecting" });
+          join(message.token);
+          break;
         case "joined":
           if (
             !current() ||
@@ -520,6 +619,36 @@ export function ReceivePage() {
     attempt.decide(new BlobSink());
   };
 
+  const onSendCode = () => {
+    const attempt = attemptRef.current;
+    if (view.s !== "verify" || view.sending || !attempt || !link?.mark) {
+      return;
+    }
+    codeAsked.current = link.linkId;
+    setView({ ...view, asked: true, sending: true, result: undefined });
+    attempt.signaling.send({ t: "send-code", link: link.linkId, mark: link.mark });
+  };
+
+  const onCode = (event: Event) => {
+    event.preventDefault();
+    const attempt = attemptRef.current;
+    if (view.s !== "verify" || !attempt || !link?.mark) {
+      return;
+    }
+    const input = (event.currentTarget as HTMLFormElement).elements.namedItem(
+      "code",
+    ) as HTMLInputElement;
+    const code = input.value.replace(/\s/g, "");
+    // The server drops the connection on a malformed code, so only six digits go out.
+    if (!/^[0-9]{6}$/.test(code)) {
+      setView({ ...view, result: "wrong" });
+      input.focus();
+      return;
+    }
+    setView({ ...view, result: undefined });
+    attempt.signaling.send({ t: "code", link: link.linkId, code, mark: link.mark });
+  };
+
   if (!link) {
     return (
       <Page>
@@ -528,13 +657,18 @@ export function ReceivePage() {
     );
   }
 
+  const emailed = link?.mark !== undefined;
+  const isText = "offer" in view ? view.offer.text : "text" in view ? view.text : undefined;
+  const kind: Kind = isText === undefined ? "unknown" : isText ? "secret" : "file";
   const panel = reachedServer ? (
     <ServerPanel
       sees={t.server.seesRecipient}
-      holds={t.server.recipientHolds(tie)}
+      holds={t.server.recipientHolds(tie, emailed, kind)}
       relayed={relayed}
-      afterwards={t.server.afterwardsRecipient}
+      afterwards={t.server.afterwardsRecipient(emailed)}
       viaRelay={viaRelay}
+      emailed={emailed}
+      kind={kind}
     />
   ) : null;
 
@@ -543,6 +677,47 @@ export function ReceivePage() {
     case "connecting":
       body = <h1>{t.receive.connecting}</h1>;
       break;
+    case "verify": {
+      const { verify } = t.receive;
+      const isError = !view.sending && view.result !== undefined && view.result !== "sent";
+      body = (
+        <>
+          <h1>{verify.title}</h1>
+          <p>{verify.body(view.to)}</p>
+          <Button type="button" variant={view.asked ? "outline" : "default"} onClick={onSendCode}>
+            {verify.send}
+          </Button>
+          {view.asked && (
+            <form class="mt-6 flex flex-wrap items-end gap-2" onSubmit={onCode} noValidate>
+              <div class="flex flex-col gap-1">
+                <Label htmlFor="code">{verify.codeLabel}</Label>
+                <Input
+                  id="code"
+                  name="code"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  pattern="[0-9]{6}"
+                  required
+                  className="w-36"
+                  aria-invalid={view.result === "wrong" ? "true" : "false"}
+                  aria-describedby="code-note"
+                />
+              </div>
+              <Button type="submit">{verify.submit}</Button>
+            </form>
+          )}
+          <p
+            id="code-note"
+            class={isError ? "mt-3 text-destructive" : `mt-3 ${caption}`}
+            aria-live="polite"
+          >
+            {view.sending ? verify.sending : view.result && verify.results[view.result]}
+          </p>
+        </>
+      );
+      break;
+    }
     case "refused":
       body = <Problem {...problemFor(view)} />;
       break;
@@ -570,7 +745,7 @@ export function ReceivePage() {
           <Direct from={offer.from || t.common.sender} to={t.common.you} state="ready" />
           <p class={caption}>{t.receive.offerCaption(offer.from)}</p>
           {path && <PathLine path={path} />}
-          <OfferDetails offer={offer} />
+          <OfferDetails offer={offer} emailed={emailed} />
         </>
       );
       break;
@@ -638,7 +813,7 @@ export function ReceivePage() {
           <Direct from={t.common.sender} to={t.common.you} state="done" />
           <p class={caption}>{t.receive.doneCaption}</p>
           {path && <PathLine path={path} />}
-          <OfferDetails offer={offer} sha256={textBlob ? undefined : sha256} />
+          <OfferDetails offer={offer} sha256={textBlob ? undefined : sha256} emailed={emailed} />
         </>
       );
       break;
@@ -677,7 +852,37 @@ export function ReceivePage() {
   );
 }
 
-function OfferDetails({ offer, sha256 }: { offer: Offer; sha256?: string | undefined }) {
+/** This tab's token for an emailed link. Storage that is blocked acts as empty. */
+function readToken(linkId: string): string | undefined {
+  try {
+    const token = sessionStorage.getItem(`token:${linkId}`);
+    return isLinkId(token) ? token : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function storeToken(linkId: string, token: string | undefined): void {
+  try {
+    if (token === undefined) {
+      sessionStorage.removeItem(`token:${linkId}`);
+    } else {
+      sessionStorage.setItem(`token:${linkId}`, token);
+    }
+  } catch {
+    // Not kept: this attempt still joins, and a reload asks for a new code.
+  }
+}
+
+function OfferDetails({
+  offer,
+  sha256,
+  emailed,
+}: {
+  offer: Offer;
+  sha256?: string | undefined;
+  emailed: boolean;
+}) {
   const { t } = useI18n();
   const rows: Array<readonly [string, ComponentChildren]> = offer.text
     ? []
@@ -685,7 +890,10 @@ function OfferDetails({ offer, sha256 }: { offer: Offer; sha256?: string | undef
         [t.common.size, t.format.bytes(offer.size)],
         [t.common.type, offer.type || t.common.typeMissing],
       ];
-  rows.push([t.receive.encryptionLabel, t.receive.encryption]);
+  rows.push([
+    t.receive.encryptionLabel,
+    emailed ? t.receive.encryptionEmailed : t.receive.encryption,
+  ]);
   if (sha256) {
     rows.push([t.receive.sha256Checked, <code key="sha256">{sha256}</code>]);
   }
