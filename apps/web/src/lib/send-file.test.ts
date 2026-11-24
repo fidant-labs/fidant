@@ -17,14 +17,17 @@ import {
 } from "./frames.ts";
 import { deriveFileKey } from "./keys.ts";
 import { createLink } from "./link.ts";
+import { DEFAULT_MAX_MESSAGE_SIZE } from "./peer.ts";
 import {
   anySignal,
   anySignalFallback,
+  FRAME_OVERHEAD_BYTES,
   type FrameChannel,
   HASH_SLICE_BYTES,
   hashFile,
   sendFile,
 } from "./send-file.ts";
+import { MAX_TEXT_BYTES, MAX_TEXT_LENGTH, TEXT_TYPE, textFile } from "./text-secret.ts";
 
 type Behaviour =
   | "accept"
@@ -200,6 +203,29 @@ test("every CHUNK frame is full size, so the exact file size stays hidden", asyn
     }
     assert.equal(o.progress.at(-1) ?? 0, size);
     assert.ok(o.progress.every((n) => n <= size));
+  }
+});
+
+test("a text goes as exactly one CHUNK on every connection that may carry it", async () => {
+  const sizes = [262_144, DEFAULT_MAX_MESSAGE_SIZE, MAX_TEXT_BYTES + FRAME_OVERHEAD_BYTES];
+  for (const maxMessageSize of sizes) {
+    for (const text of ["x", "€".repeat(MAX_TEXT_LENGTH)]) {
+      const label = `max message size ${maxMessageSize}, text of ${text.length} characters`;
+      const file = textFile(text);
+      assert.ok(file, label);
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const { secret } = createLink("https://localhost");
+      const fake = fakeChannel(secret, "accept");
+      const o = options(fake.channel, secret, bytes);
+      const result = await sendFile({ ...o.value, file, maxMessageSize });
+      await fake.done();
+      const chunkSize = Math.min(MAX_CHUNK_BYTES, maxMessageSize - FRAME_OVERHEAD_BYTES);
+      assert.deepEqual(result, { type: "receipt", match: true }, label);
+      assert.deepEqual(fake.received.chunkFrames, [HEADER_BYTES + chunkSize + TAG_BYTES], label);
+      assert.equal(fake.received.meta?.type, TEXT_TYPE, label);
+      assert.equal(fake.received.meta?.chunkSize, chunkSize, label);
+      assert.equal(fake.received.bytes, bytes.length, label);
+    }
   }
 });
 

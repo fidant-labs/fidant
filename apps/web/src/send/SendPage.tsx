@@ -17,6 +17,9 @@
 //   `left` → reducer `left`, which only matters before the channel opens.
 // - When the data channel opens, sendFile runs the transfer and reports
 //   accepted, progress, declined and receipt back to the reducer.
+// - On /secret, a connection whose max message size can't carry every text in
+//   one chunk (textFitsOneChunk) gets nothing: reducer `unsendable` fails the
+//   recipient's card and refuses the joiner.
 // - A peer that closes or fails before delivery → `dropped`; a data channel
 //   that has not opened SETUP_TIMEOUT_MS after the join → `timeout`. Both
 //   refuse the joiner so the server unbinds it (see sender-state.ts).
@@ -76,7 +79,7 @@ import {
 } from "../lib/sender-state.ts";
 import { addRelay, NO_RELAYS } from "../lib/server-facts.ts";
 import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
-import { MAX_TEXT_LENGTH, textFile } from "../lib/text-secret.ts";
+import { MAX_TEXT_LENGTH, textFile, textFitsOneChunk } from "../lib/text-secret.ts";
 import { FileCard, Icon, lede, Page, ServerPanel, TechDetails } from "../ui.tsx";
 import { RecipientList } from "./RecipientList.tsx";
 
@@ -222,6 +225,11 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
             }
           }
         });
+        // Judged by the longest text, so a refusal says nothing about this text's length.
+        if (text && !textFitsOneChunk(info.maxMessageSize)) {
+          dispatch({ type: "unsendable", linkId });
+          return;
+        }
         dispatch({ type: "channel-open", linkId });
         const chosen = fileRef.current;
         if (!chosen) {
