@@ -74,9 +74,15 @@ export function PrivacyPage() {
         <h3 class={h3}>{p.neverHeading}</h3>
         <Facts rows={p.never} />
         <h3 class={h3}>{p.seesHeading}</h3>
-        <Facts rows={[...p.sees, [p.logLines, t.server.logs]]} />
+        <Facts rows={p.sees} />
         <h3 class={h3}>{p.keepHeading}</h3>
         <p>{p.keep}</p>
+        <Facts
+          rows={Object.values(p.logFields).map(([what, why]) => [
+            what.charAt(0).toUpperCase() + what.slice(1),
+            why,
+          ])}
+        />
       </section>
     </Page>
   );

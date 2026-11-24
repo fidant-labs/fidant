@@ -1,4 +1,9 @@
-import { ERROR_CODES, REFUSE_REASONS, UPGRADE_REJECT_REASONS } from "@sigill/protocol";
+import {
+  CONNECTION_PATHS,
+  ERROR_CODES,
+  REFUSE_REASONS,
+  UPGRADE_REJECT_REASONS,
+} from "@sigill/protocol";
 
 /**
  * The values server stdout may carry (0001, "Server stdout"). Every field is an enum value, a
@@ -8,6 +13,7 @@ export interface LogAllowlist {
   events: ReadonlySet<string>;
   reasons: ReadonlySet<string>;
   codes: ReadonlySet<string>;
+  paths: ReadonlySet<string>;
 }
 
 /** The rule a log line breaks. */
@@ -21,7 +27,8 @@ export type LogRule =
   | "bytes"
   | "port"
   | "reason"
-  | "code";
+  | "code"
+  | "path";
 
 export interface LogViolation {
   /** 1-based, as editors count. */
@@ -37,7 +44,7 @@ export interface LogViolation {
 }
 
 /**
- * The allowlist for today's server. Reasons and codes come from @sigill/protocol, so a new enum
+ * The allowlist for today's server. Reasons, codes and paths come from @sigill/protocol, so a new enum
  * value there is allowed here too. Protocol does not export the event names (the server passes
  * them as strings to its logger), so they are listed here; a new event needs a reviewed change.
  */
@@ -46,6 +53,7 @@ export const serverLogAllowlist: LogAllowlist = {
     "listening",
     "upgrade-rejected",
     "bad-message",
+    "rate-limited",
     "error",
     "host",
     "host-gone",
@@ -55,16 +63,18 @@ export const serverLogAllowlist: LogAllowlist = {
     "relay",
     "relay-dropped",
     "left",
+    "path",
   ]),
   // LogReason in @sigill/protocol.
   reasons: new Set<string>([...REFUSE_REASONS, ...UPGRADE_REJECT_REASONS]),
   codes: new Set<string>(ERROR_CODES),
+  paths: new Set<string>(CONNECTION_PATHS),
 };
 
 const excerptLength = 120;
 const linkPattern = /^[A-Za-z0-9_-]{6}$/;
 const counts = ["links", "bytes", "port"] as const;
-const allowedKeys = new Set(["event", "link", "reason", "code", ...counts]);
+const allowedKeys = new Set(["event", "link", "reason", "code", "path", ...counts]);
 
 /**
  * Checks server stdout line by line: each non-empty line is one JSON object with only the
@@ -96,7 +106,7 @@ export function checkServerLog(lines: string[], allowlist: LogAllowlist): LogVio
         report("key", `unknown key ${quote(key)}`);
       }
     }
-    const { event, link, reason, code } = fields;
+    const { event, link, reason, code, path } = fields;
     if (typeof event !== "string" || !allowlist.events.has(event)) {
       report("event", event === undefined ? "no event" : `unknown event ${quote(event)}`);
     }
@@ -114,6 +124,9 @@ export function checkServerLog(lines: string[], allowlist: LogAllowlist): LogVio
     }
     if ("code" in fields && (typeof code !== "string" || !allowlist.codes.has(code))) {
       report("code", `unknown code ${quote(code)}`);
+    }
+    if ("path" in fields && (typeof path !== "string" || !allowlist.paths.has(path))) {
+      report("path", `unknown path ${quote(path)}`);
     }
   });
   return violations;

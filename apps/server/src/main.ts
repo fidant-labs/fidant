@@ -1,15 +1,51 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { networkInterfaces } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseIceServers } from "@sigill/protocol";
 import { startServer } from "./server.ts";
 import type { Logger } from "./signaling.ts";
+import type { IceConfig } from "./turn.ts";
 
 const root = fileURLToPath(new URL("../../web/dist/", import.meta.url));
 if (!existsSync(join(root, "index.html"))) {
   console.error("The web client is not built. Run `pnpm start` from the repository root.");
   process.exit(1);
+}
+
+// TURN is optional. Both variables or neither: half a configuration is a
+// mistake, not a choice. The secret is read from a file so it never shows in
+// the process environment, and it is never printed.
+const turnUrls = process.env.TURN_URLS;
+const turnSecretFile = process.env.TURN_SECRET_FILE;
+let ice: IceConfig | undefined;
+if (turnUrls || turnSecretFile) {
+  if (!turnUrls || !turnSecretFile) {
+    console.error("Set both TURN_URLS and TURN_SECRET_FILE, or neither.");
+    process.exit(1);
+  }
+  let secret: string;
+  try {
+    secret = readFileSync(turnSecretFile, "utf8").trim();
+  } catch {
+    console.error("Could not read the file named by TURN_SECRET_FILE.");
+    process.exit(1);
+  }
+  const urls = turnUrls
+    .split(",")
+    .map((url) => url.trim())
+    .filter(Boolean);
+  if (!secret || urls.length === 0) {
+    console.error("TURN_URLS and the file named by TURN_SECRET_FILE must not be empty.");
+    process.exit(1);
+  }
+  // The same check browsers apply to `joined`, so a bad URL fails here, not in every pairing.
+  if (!parseIceServers([{ urls, username: "", credential: "" }])) {
+    console.error("TURN_URLS must be 1 to 4 turn:, turns: or stun: URLs.");
+    process.exit(1);
+  }
+  ice = { urls, secret };
 }
 
 const lanAddresses = Object.values(networkInterfaces())
@@ -26,6 +62,7 @@ const server = await startServer({
   root,
   certDir: process.env.CERT_DIR ?? fileURLToPath(new URL("../../../.certs/", import.meta.url)),
   hosts: ["localhost", "127.0.0.1", ...lanAddresses],
+  ice,
   log,
 });
 

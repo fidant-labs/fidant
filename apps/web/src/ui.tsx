@@ -392,20 +392,30 @@ export function ServerPanel({
   holds,
   relayed,
   afterwards,
+  viaRelay,
 }: {
   sees: string;
   holds: string;
   relayed: Relayed;
   afterwards: string;
+  /** A connection on this page went through our TURN relay. */
+  viaRelay: boolean;
 }) {
   const { t, lang } = useI18n();
   const rows: ReadonlyArray<readonly [string, string]> = [
     [t.server.seesLabel, sees],
     [t.server.holdsLabel, holds],
     [t.server.passedOnLabel, t.server.passedOn(relayed.messages, formatBytes(relayed.bytes, lang))],
-    [t.server.fileDataLabel, t.server.fileData],
+    [t.server.fileDataLabel, viaRelay ? t.server.fileDataRelayed : t.server.fileData],
     [t.server.logsLabel, t.server.logs],
     [t.server.afterwardsLabel, afterwards],
+    ...(viaRelay
+      ? ([
+          [t.server.relaySeesLabel, t.server.relaySees],
+          [t.server.relayLogsLabel, t.server.relayLogs],
+          [t.server.relayKeepsLabel, t.server.relayKeeps],
+        ] as const)
+      : []),
   ];
   return (
     <section class="mt-8 text-[0.9rem]" aria-labelledby="server-panel-heading">

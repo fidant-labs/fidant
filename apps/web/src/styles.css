@@ -143,4 +143,9 @@
     outline: 3px solid var(--color-primary);
     outline-offset: 2px;
   }
+
+  /* Headings that only receive focus from script, to announce a new step or page. */
+  :is(h1, h2)[tabindex="-1"]:focus {
+    outline: none;
+  }
 }

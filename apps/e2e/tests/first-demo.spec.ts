@@ -83,9 +83,17 @@ function makeName(leaks: Leaks, canary: SeededRandom, first: string): string {
   return name;
 }
 
-/** Opens the sender page, types the sender's name if given, and chooses the file. */
-async function openSender(demo: Demo, file: CanaryFile, from = ""): Promise<Page> {
+/** Opens the sender page, runs `init` in it before any page script, types the sender's name if given, and chooses the file. */
+async function openSender(
+  demo: Demo,
+  file: CanaryFile,
+  from = "",
+  init?: () => void,
+): Promise<Page> {
   const page = await demo.open("sender");
+  if (init) {
+    await page.addInitScript(init);
+  }
   await page.goto("/send");
   if (from) {
     await page.getByLabel("Your name").fill(from);
@@ -235,7 +243,7 @@ test("refuses used, unknown and malformed links", async ({ demo, leaks, canary, 
   ).toHaveCount(0);
 });
 
-test("a declined offer puts the recipient back to waiting, and can be reopened", async ({
+test("a declined offer shows as declined, and the link can be reopened", async ({
   demo,
   leaks,
   canary,
@@ -249,15 +257,50 @@ test("a declined offer puts the recipient back to waiting, and can be reopened",
   await recipient.goto(link);
   const opened = recipientRow(sender, name).getByText(`${name}'s link has been opened`);
   await expect(opened).toBeVisible();
-  await recipient.getByRole("button", { name: "Decline" }).click();
-  await expect(recipient.getByText("You declined the file")).toBeVisible();
+  const decline = recipient.getByRole("button", { name: "Decline" });
+  await expect(decline).toBeVisible();
+  const offerHeading = await recipient.locator("#receive h1").elementHandle();
+  // From the keyboard, so the browser would show a focus ring on the next focused element.
+  await decline.focus();
+  await recipient.keyboard.press("Enter");
+  const declined = recipient.getByRole("heading", { name: "You declined the file" });
+  await expect(declined).toBeFocused();
+  // Script moved focus there to announce the step; a heading isn't a control, so no ring.
+  await expect(declined).toHaveCSS("outline-style", "none");
+  // A new heading node, not the offer's heading with new text, so screen readers announce it.
+  expect(await offerHeading.evaluate((h) => h.isConnected)).toBe(false);
   await expect(
-    recipientRow(sender, name).getByText(`Waiting for ${name} to open the link`),
+    recipientRow(sender, name).getByText(
+      `${name}'s link was opened and the file declined. The link still works.`,
+    ),
   ).toBeVisible();
+  await expect(sender.getByRole("button", { name: `Copy link for ${name}` })).toBeVisible();
 
   await recipient.getByRole("button", { name: "Show the file again" }).click();
   await expect(recipient.getByRole("button", { name: "Download" })).toBeVisible();
   await expect(opened).toBeVisible();
+});
+
+// No one joins here, so the sender receives no signaling and the demo fixture's frame checks don't apply.
+harness("a held Enter on Remove removes only one recipient", async ({ actor, leaks, canary }) => {
+  const demo: Demo = { open: async (name) => (await actor(name)).page };
+  const sender = await openSender(demo, makeFile(leaks, canary, 10));
+  const anna = makeName(leaks, canary, "Anna");
+  const erik = makeName(leaks, canary, "Erik");
+  await addRecipient(leaks, sender, anna);
+  await addRecipient(leaks, sender, erik);
+
+  await sender.getByRole("button", { name: `Remove ${anna}` }).focus();
+  await sender.keyboard.down("Enter");
+  await expect(sender.getByRole("button", { name: `Remove ${erik}` })).toBeFocused();
+  await sender.keyboard.down("Enter"); // auto-repeat while held
+  await sender.keyboard.up("Enter");
+  await expect(recipientRow(sender, anna)).toHaveCount(0);
+  await expect(sender.getByRole("button", { name: `Copy link for ${erik}` })).toBeVisible();
+
+  await sender.keyboard.press("Enter");
+  await expect(recipientRow(sender, erik)).toHaveCount(0);
+  await expect(sender.getByLabel("Who is it for?")).toBeFocused();
 });
 
 test("the sender's name must fit with the file name, and stray drops are ignored", async ({
@@ -265,29 +308,42 @@ test("the sender's name must fit with the file name, and stray drops are ignored
   leaks,
   canary,
 }) => {
-  const fileName = `${base32Token(canary.fork("long file name"), 8)}${"r".repeat(872)}.bin`;
-  leaks.watchText("long file name", fileName);
+  // A canary file whose name is padded to 884 characters: too long with a 100-character sender name, short enough with a short one.
+  const base = canaryFile(canary.fork("long file name"), { size: 5, ext: "bin" });
+  const file = leaks.watch({
+    ...base,
+    name: base.name.replace(/\.bin$/, `${"r".repeat(884 - base.name.length)}.bin`),
+  });
   const page = await demo.open("sender");
   await page.goto("/send");
   await page.getByLabel("Your name").fill("x".repeat(100));
   await page.getByLabel("Choose a file").setInputFiles({
-    name: fileName,
-    mimeType: "application/octet-stream",
-    buffer: Buffer.from("hello"),
+    name: file.name,
+    mimeType: file.mime,
+    buffer: file.bytes,
   });
-  const drop = (id: string, fill: string) => `(() => {
-    const dt = new DataTransfer();
-    ${fill};
-    const e = new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: dt });
-    document.getElementById("${id}").dispatchEvent(e);
-    return e.defaultPrevented;
-  })()`;
-  const file = `dt.items.add(new File(["x"], "x.bin"))`;
+  // Whether a dragover and a drop of what `fill` adds (nothing: no DataTransfer) onto `selector` are cancelled.
+  const cancelled = async (selector: string, fill = "") => {
+    const results = [];
+    for (const type of ["dragover", "drop"]) {
+      results.push(
+        await page.evaluate(`(() => {
+          const dt = ${fill ? "new DataTransfer()" : "null"};
+          ${fill};
+          const e = new DragEvent("${type}", { bubbles: true, cancelable: true, dataTransfer: dt });
+          document.querySelector("${selector}").dispatchEvent(e);
+          return e.defaultPrevented;
+        })()`),
+      );
+    }
+    return results;
+  };
+  const someFile = `dt.items.add(new File(["x"], "x.bin"))`;
   const text = `dt.setData("text/plain", "x")`;
-  expect(await page.evaluate(drop("file", file))).toBe(false);
-  expect(await page.evaluate(drop("file", text))).toBe(true);
-  expect(await page.evaluate(drop("recipient-name", text))).toBe(false);
-  expect(await page.evaluate(drop("recipient-name", file))).toBe(true);
+  expect(await cancelled("#file", someFile)).toEqual([false, false]);
+  expect(await cancelled("#file", text)).toEqual([true, true]);
+  expect(await cancelled("#recipient-name", text)).toEqual([false, false]);
+  expect(await cancelled("#recipient-name", someFile)).toEqual([true, true]);
   const name = makeName(leaks, canary, "Anna");
   await page.getByLabel("Who is it for?").fill(name);
   await page.getByRole("button", { name: "Add", exact: true }).click();
@@ -296,16 +352,12 @@ test("the sender's name must fit with the file name, and stray drops are ignored
 
   const from = makeName(leaks, canary, "Al");
   await page.getByLabel("Your name").fill(from);
+  await expect(page.getByText("Your name and the file name are too long together")).toHaveCount(0);
   const link = await addRecipient(leaks, page, name);
   await expect(page.getByLabel("Your name")).toBeDisabled();
 
-  expect(await page.evaluate(drop("from", text))).toBe(true);
-  const strayDrop = `(() => {
-    const drop = new DragEvent("drop", { bubbles: true, cancelable: true });
-    document.body.dispatchEvent(drop);
-    return drop.defaultPrevented;
-  })()`;
-  expect(await page.evaluate(strayDrop)).toBe(true);
+  expect(await cancelled("#from", text)).toEqual([true, true]);
+  expect(await cancelled("body")).toEqual([true, true]);
 
   const recipient = await demo.open("recipient");
   await recipient.goto(link);
@@ -327,4 +379,72 @@ test("a waiting recipient sees when the sender goes offline", async ({ demo, lea
   await expect(
     recipient.getByRole("region", { name: "What our server has right now" }),
   ).toContainText("Nothing about this page once it notices the connection has closed");
+});
+
+/** Lets a test cut the sender's peer connections (`cut()`) and stop its data channels sending (`stalled`). */
+function breakableSender() {
+  const g = globalThis as { cut?: () => void; stalled?: boolean };
+  const peers: RTCPeerConnection[] = [];
+  const Native = globalThis.RTCPeerConnection;
+  globalThis.RTCPeerConnection = class extends Native {
+    constructor(config?: RTCConfiguration) {
+      super(config);
+      peers.push(this);
+    }
+  };
+  g.cut = () => {
+    for (const peer of peers) {
+      peer.close();
+    }
+  };
+  const send = RTCDataChannel.prototype.send;
+  RTCDataChannel.prototype.send = function (this: RTCDataChannel, ...args: unknown[]) {
+    if (!g.stalled) {
+      Reflect.apply(send, this, args);
+    }
+  } as RTCDataChannel["send"];
+}
+
+test("a lost sender says whether the file may have been saved", async ({ demo, leaks, canary }) => {
+  const file = makeFile(leaks, canary, 100_001);
+  const sender = await openSender(demo, file, "", breakableSender);
+  const stall = (stalled: boolean) =>
+    sender.evaluate((on) => {
+      (globalThis as { stalled?: boolean }).stalled = on;
+    }, stalled);
+  const cut = () => sender.evaluate(() => (globalThis as { cut?: () => void }).cut?.());
+
+  /** Opens a link for `first` and, if `download`, starts a download the stalled sender never feeds. */
+  const join = async (first: string, download: boolean) => {
+    const link = await addRecipient(leaks, sender, makeName(leaks, canary, first));
+    await stall(false);
+    const page = await demo.open(first.toLowerCase());
+    await page.goto(link);
+    await expect(page.getByRole("button", { name: "Download" })).toBeVisible();
+    if (download) {
+      await stall(true);
+      await page.getByRole("button", { name: "Download" }).click();
+      await expect(page.getByRole("heading", { name: "Downloading…" })).toBeVisible();
+    }
+    return page;
+  };
+
+  // Before the download: nothing can have been saved.
+  const anna = await join("Anna", false);
+  await cut();
+  await expect(anna.getByText("The connection to the sender was lost")).toBeVisible();
+  await expect(anna.getByText("Nothing was saved.")).toBeVisible();
+
+  // Mid-download, the connection drops while the sender's page stays open.
+  const erik = await join("Erik", true);
+  await cut();
+  await expect(erik.getByText("The connection to the sender was lost")).toBeVisible();
+  await expect(erik.getByText("The file may not have been saved.")).toBeVisible();
+
+  // Mid-download, the sender's page closes. The server says so at once, but the page waits for
+  // the peer connection to drop, which Chromium notices only when ICE consent expires (about 15 s).
+  const bo = await join("Bo", true);
+  await sender.close();
+  await expect(bo.getByText("The sender's page is closed")).toBeVisible({ timeout: 30_000 });
+  await expect(bo.getByText("The file may not have been saved.")).toBeVisible();
 });

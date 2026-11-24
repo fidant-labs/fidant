@@ -11,6 +11,9 @@ import {
 } from "./keys.ts";
 import { createLink } from "./link.ts";
 
+// Two recipient attempt IDs (22 base64url characters, like a link ID).
+const A = "A".repeat(22);
+const B = "B".repeat(22);
 const offer = { kind: "offer", sdp: "fake sdp for tests\r\n".repeat(20) };
 
 test("derived keys are non-extractable AES-GCM-256 keys", async () => {
@@ -37,56 +40,60 @@ test("sealSignal round trips and fits the relay limit", async () => {
   const { linkId, secret } = createLink("https://localhost");
   const sender = await deriveSignalKey(secret, linkId);
   const recipient = await deriveSignalKey(secret, linkId);
-  const data = await sealSignal(sender, linkId, "s", offer);
+  const data = await sealSignal(sender, linkId, A, "s", offer);
   assert.match(data, /^[A-Za-z0-9_-]+$/);
   assert.ok(!data.includes("fake sdp"));
-  assert.deepEqual(await openSignal(recipient, linkId, "s", data), offer);
+  assert.deepEqual(await openSignal(recipient, linkId, A, "s", data), offer);
 
   // Sealing the same payload twice uses a fresh IV.
-  assert.notEqual(await sealSignal(sender, linkId, "s", offer), data);
+  assert.notEqual(await sealSignal(sender, linkId, A, "s", offer), data);
 });
 
 test("the largest allowed payload fits MAX_RELAY_DATA; one byte more throws", async () => {
   const { linkId, secret } = createLink("https://localhost");
   const key = await deriveSignalKey(secret, linkId);
   const fits = "x".repeat(MAX_SIGNAL_PAYLOAD - 2); // JSON adds two quotes
-  const data = await sealSignal(key, linkId, "r", fits);
+  const data = await sealSignal(key, linkId, A, "r", fits);
   assert.ok(data.length <= MAX_RELAY_DATA);
-  assert.equal(await openSignal(key, linkId, "r", data), fits);
-  await assert.rejects(sealSignal(key, linkId, "r", `${fits}x`), /too large/);
+  assert.equal(await openSignal(key, linkId, A, "r", data), fits);
+  await assert.rejects(sealSignal(key, linkId, A, "r", `${fits}x`), /too large/);
 });
 
-test("openSignal fails with the wrong direction, link ID or secret", async () => {
+test("openSignal fails with the wrong direction, link ID, attempt or secret", async () => {
   const { linkId, secret } = createLink("https://localhost");
   const key = await deriveSignalKey(secret, linkId);
-  const data = await sealSignal(key, linkId, "s", offer);
+  const data = await sealSignal(key, linkId, A, "s", offer);
 
-  await assert.rejects(openSignal(key, linkId, "r", data), "reflected back");
+  await assert.rejects(openSignal(key, linkId, A, "r", data), "reflected back");
+  await assert.rejects(openSignal(key, linkId, B, "s", data), "replayed into another attempt");
 
   const other = createLink("https://localhost");
-  await assert.rejects(openSignal(key, other.linkId, "s", data), "other link ID in AAD");
+  await assert.rejects(openSignal(key, other.linkId, A, "s", data), "other link ID in AAD");
 
   const wrongSecret = await deriveSignalKey(other.secret, linkId);
-  await assert.rejects(openSignal(wrongSecret, linkId, "s", data), "wrong secret");
+  await assert.rejects(openSignal(wrongSecret, linkId, A, "s", data), "wrong secret");
 
   // Same secret under another link ID derives a different key.
   const otherSalt = await deriveSignalKey(secret, other.linkId);
-  await assert.rejects(openSignal(otherSalt, linkId, "s", data), "other salt");
+  await assert.rejects(openSignal(otherSalt, linkId, A, "s", data), "other salt");
 });
 
 test("openSignal fails on tampered or malformed data", async () => {
   const { linkId, secret } = createLink("https://localhost");
   const key = await deriveSignalKey(secret, linkId);
-  const data = await sealSignal(key, linkId, "r", offer);
+  const data = await sealSignal(key, linkId, A, "r", offer);
   const bytes = Buffer.from(data, "base64url");
   for (const index of [0, 11, 12, bytes.length - 1]) {
     const tampered = Buffer.from(bytes);
     tampered[index] = (tampered[index] as number) ^ 1;
-    await assert.rejects(openSignal(key, linkId, "r", tampered.toString("base64url")), `${index}`);
+    await assert.rejects(
+      openSignal(key, linkId, A, "r", tampered.toString("base64url")),
+      `${index}`,
+    );
   }
-  await assert.rejects(openSignal(key, linkId, "r", data.slice(0, 30)));
-  await assert.rejects(openSignal(key, linkId, "r", ""));
-  await assert.rejects(openSignal(key, linkId, "r", `${data}=`));
+  await assert.rejects(openSignal(key, linkId, A, "r", data.slice(0, 30)));
+  await assert.rejects(openSignal(key, linkId, A, "r", ""));
+  await assert.rejects(openSignal(key, linkId, A, "r", `${data}=`));
 });
 
 test("file keys differ per transferId and per secret", async () => {

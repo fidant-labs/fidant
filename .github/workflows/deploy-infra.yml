@@ -1,0 +1,66 @@
+name: Deploy infra
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - apps/infra/**
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - .node-version
+      - .github/workflows/deploy-infra.yml
+
+permissions: {}
+
+concurrency:
+  group: deploy-infra
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: deploy ${{ matrix.stack }}
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
+    # Keeps pnpm from re-installing the workspace before each run and from loading a .pnpmfile.
+    env:
+      pnpm_config_verify_deps_before_run: "false"
+      pnpm_config_ignore_pnpmfile: "true"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - stack: FidantDns
+            account: FIDANT_DNS_ACCOUNT
+          - stack: FidantApp
+            account: FIDANT_POC_ACCOUNT
+    steps:
+      # Only the protected files below are on disk, so nothing else in the repo can run here.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            /apps/infra/
+            /package.json
+            /pnpm-lock.yaml
+            /pnpm-workspace.yaml
+            /.node-version
+          sparse-checkout-cone-mode: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - run: pnpm install --frozen-lockfile --filter ./apps/infra --ignore-scripts
+      - run: pnpm --filter ./apps/infra test
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets[matrix.account] }}:role/fidant-ci-deploy
+          aws-region: eu-north-1
+      - run: pnpm --filter ./apps/infra cdk deploy ${{ matrix.stack }} --require-approval never
+        env:
+          FIDANT_DNS_ACCOUNT: ${{ secrets.FIDANT_DNS_ACCOUNT }}
+          FIDANT_POC_ACCOUNT: ${{ secrets.FIDANT_POC_ACCOUNT }}

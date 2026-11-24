@@ -4,8 +4,44 @@
 import type { LogFields } from "@sigill/protocol";
 import type { Tie } from "../lib/server-facts.ts";
 
+// Every field a server log line can carry (plus `event`, which names the log line), with what it is
+// and why we keep it. Keyed by LogFields, so a new field fails the typecheck until it is described
+// here and in sv.ts. Event names are typed by LogEvent in @sigill/protocol.
+const logFields: Record<"event" | keyof LogFields, readonly [string, string]> = {
+  event: [
+    "what happened, like a link being opened or a connection being refused",
+    "So we can see how the service behaves and find what went wrong.",
+  ],
+  link: [
+    "the first 6 characters of a link ID",
+    "So we can follow one link through the log when something goes wrong, without being able to find the link itself.",
+  ],
+  links: [
+    "how many links a sender has",
+    "To see how the service is used and to spot a sender with an unusual number of links.",
+  ],
+  bytes: ["message sizes", "To spot oversized or broken messages and to size the server."],
+  reason: [
+    "why a link or connection was refused",
+    "To see why connections fail, so we can fix the cause.",
+  ],
+  code: ["error codes", "To find bugs in the browser app or the server."],
+  path: [
+    "whether each connection was direct, went through our relay or failed",
+    "To know how often connections need our relay, which tells us how big it must be.",
+  ],
+  port: ["the port the server listens on", "To confirm the server started where it should."],
+};
+
 export const en = {
   product: "Fidant",
+  // Browser tab titles, one per page (WCAG 2.4.2).
+  tabTitles: {
+    landing: "Fidant: private file transfer",
+    send: "Send a file – Fidant",
+    receive: "Receive a file – Fidant",
+    privacy: "Privacy – Fidant",
+  },
   menu: {
     language: "Language",
     theme: "Theme",
@@ -58,7 +94,7 @@ export const en = {
     continue: "Continue",
     back: "Back to the file",
     title: "Send a file",
-    lede: "Your file goes straight from this browser to the people you choose. It's encrypted on the way and never uploaded or stored.",
+    lede: "Your file is sent from this browser to the people you choose. It's encrypted the whole way and never uploaded or stored.",
     localhost:
       "This page is open on localhost, so the links won't work on other computers. Open the network address the server printed instead.",
     lostServer:
@@ -93,16 +129,18 @@ export const en = {
     fileFirst: "Choose a file first.",
     full: (max: number) => `You can send to up to ${max} people at a time.`,
     oneLinkEach: "Each person gets their own link, which works once.",
-    keepOpen: "Keep this tab open until everyone has the file. It's sent straight from here.",
+    keepOpen: "Keep this tab open until everyone has the file. It's sent from here.",
     recipients: "Recipients",
     status: {
-      waiting: (name: string) => `Waiting for ${name} to open the link`,
-      connecting: (name: string) => `Connecting to ${name}…`,
+      waiting: (name: string) => `Waiting for ${name}'s link to be opened`,
+      connecting: (name: string) => `Connecting through ${name}'s link…`,
       offered: (name: string) => `${name}'s link has been opened`,
-      receiving: (name: string) => `Sending to ${name}`,
+      declined: (name: string) =>
+        `${name}'s link was opened and the file declined. The link still works.`,
+      receiving: (name: string) => `Sending through ${name}'s link`,
       delivered: (name: string) => `Delivered through ${name}'s link`,
       failed: (name: string) =>
-        `The file didn't arrive intact for ${name}. They can open the link again to retry.`,
+        `The file didn't arrive intact through ${name}'s link. The link can be opened again to retry.`,
     },
     progressFor: (name: string) => `Progress for ${name}`,
     copy: "Copy link",
@@ -124,16 +162,16 @@ export const en = {
     download: "Download",
     decline: "Decline",
     offerCaption: (from: string) =>
-      `Sent straight from ${from ? `${from}'s` : "the sender's"} computer to yours. Encrypted, never stored on a server.`,
+      `Sent from ${from ? `${from}'s` : "the sender's"} computer to yours. Encrypted, never stored on a server.`,
     receivingTitle: "Downloading…",
     progressLabel: "Download progress",
-    receivingCaption: "Receiving directly from the sender. Keep this tab open until it's done.",
+    receivingCaption: "Receiving from the sender. Keep this tab open until it's done.",
     doneTitle: "Download complete",
     verified: "We checked it: this is exactly the file that was sent.",
     autoDownload: "Your download should start by itself.",
     savedWhereChosen: "It's saved where you chose.",
     saveFile: "Save file",
-    doneCaption: "Sent straight from the sender's computer to yours. Encrypted the whole way.",
+    doneCaption: "Sent from the sender's computer to yours. Encrypted the whole way.",
     declinedTitle: "You declined the file",
     declinedBody:
       "You can close this tab. If you change your mind, the link still works while the sender's page is open.",
@@ -165,6 +203,10 @@ export const en = {
         title: "The sender's page is closed",
         body: "The file comes straight from their browser, so it has to stay open. Ask them for a new link.",
       },
+      offlineReceiving: {
+        title: "The sender's page is closed",
+        body: "The file comes straight from their browser, so it has to stay open. The file may not have been saved. Ask them for a new link.",
+      },
       lost: {
         title: "The connection to the sender was lost",
         body: "Nothing was saved.",
@@ -193,7 +235,7 @@ export const en = {
       },
       connect: {
         title: "Couldn't connect to the sender's computer",
-        body: "The file travels directly between your two computers, and they couldn't reach each other.",
+        body: "Your two computers couldn't reach each other.",
       },
       server: {
         title: "Couldn't reach the server",
@@ -252,6 +294,17 @@ export const en = {
         ? "Nothing yet."
         : `${messages} ${messages === 1 ? "setup message" : "setup messages"} (${size}), all encrypted so the server can't read them.`,
     fileData: "None. The file goes directly between browsers.",
+    fileDataRelayed:
+      "None. The browsers couldn't connect directly, so the file passes encrypted through our relay instead.",
+    relaySeesLabel: "Our relay sees",
+    relaySees:
+      "Both browsers' IP addresses and the encrypted file passing through, with its size rounded up so the exact size stays hidden. It can't unlock the file.",
+    relayLogsLabel: "Our relay logs",
+    relayLogs:
+      "Nothing by default. Only while we fix a fault or stop abuse: connection times, IP addresses and how much data passed through, for at most 7 days. Never names, keys or file data.",
+    relayKeepsLabel: "Our relay keeps",
+    relayKeeps:
+      "Nothing of the file once it has passed through. Log lines from fixing a fault or stopping abuse are deleted within 7 days.",
     senderAfterwards: (online: boolean): string =>
       online
         ? "When you close this tab, the server forgets your links, within a minute at most. Its log lines stay."
@@ -261,14 +314,9 @@ export const en = {
     logs: `What happened, like a link being opened, with ${new Intl.ListFormat("en", {
       type: "conjunction",
     }).format(
-      Object.values({
-        link: "the first 6 characters of a link ID",
-        links: "how many links a sender has",
-        bytes: "message sizes",
-        reason: "why a link or connection was refused",
-        code: "error codes",
-        port: "the port it listens on",
-      } satisfies Record<keyof LogFields, string>),
+      Object.entries(logFields)
+        .filter(([field]) => field !== "event")
+        .map(([, [what]]) => what),
     )}. Never names, keys, file data or IP addresses.`,
   },
   footer: {
@@ -406,7 +454,7 @@ export const en = {
       " sign. Browsers never send that part to any website, ours included. That is why we can't unlock your file even if we wanted to.",
     ] as readonly [string, string],
     direct:
-      "Because the two browsers connect directly, each can see the other's network address (IP address), the same as on a video call.",
+      "Because the two browsers connect directly, each can see the other's network address (IP address), the same as on a video call. If a network blocks that, the file passes through our relay instead, still locked. The relay then sees both IP addresses and roughly how big the file is, and can't unlock it.",
     linkWarning:
       "Anyone who has the link can open the file. Send each link only to the person it is for.",
     serverHeading: "What our server knows",
@@ -431,9 +479,9 @@ export const en = {
         "A few small, locked messages that help the two browsers connect. We pass them on without being able to read them, and don't keep them.",
       ],
     ] as ReadonlyArray<readonly [string, string]>,
-    logLines: "Log lines",
     keepHeading: "What we keep",
-    keep: "We have no accounts, no database, no cookies and no tracking. Apart from the log lines above, nothing is kept once the sender's page is closed, within a minute at most.",
+    keep: "We have no accounts, no database, no cookies and no tracking. Apart from the log lines below, nothing is kept once the sender's page is closed, within a minute at most.",
+    logFields,
   },
 };
 

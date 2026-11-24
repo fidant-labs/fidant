@@ -35,6 +35,10 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   process.env.SIGILL_E2E_BASE_URL = stack.baseURL;
   // The recording fixture blocks every origin not in this comma-separated list.
   process.env.SIGILL_E2E_STACK_ORIGINS = stack.origins.join(",");
+  // Set only when coturn runs, so a relay spec can skip without it.
+  if (stack.env.TURN_URLS) {
+    process.env.SIGILL_E2E_TURN_URLS = stack.env.TURN_URLS;
+  }
 
   return async () => {
     try {

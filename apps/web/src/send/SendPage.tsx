@@ -5,20 +5,24 @@
 // - On mount, connect to the signaling server and host every link ID on the
 //   list; re-host the full list after every add or remove.
 // - Server `joined` → reducer `joined`, whose `start` effect derives the
-//   link's signal key and creates a sender peer. `relay` goes to that peer.
+//   link's signal key and creates a sender peer with the ICE servers from
+//   `joined`. `relay` goes to that peer.
 //   `left` → reducer `left`, which only matters before the channel opens.
 // - When the data channel opens, sendFile runs the transfer and reports
 //   accepted, progress, declined and receipt back to the reducer.
 // - A peer that closes or fails before delivery → `dropped`; a data channel
 //   that has not opened SETUP_TIMEOUT_MS after the join → `timeout`. Both
 //   refuse the joiner so the server unbinds it (see sender-state.ts).
+// - Each connection reports its path to the server once: direct, stun or
+//   relay when the channel opens, failed on an ICE failure or a timeout.
 // - Effects run outside render: `close` tears the peer down, `refuse` tells
 //   the server to refuse the joiner.
 //
 // Names, the file and link secrets stay in this tab. The server only ever
-// gets link IDs, opaque sealed signals and refusal reasons.
+// gets link IDs, attempt IDs, opaque sealed signals, refusal reasons and
+// connection paths.
 
-import { MAX_LINKS } from "@sigill/protocol";
+import { type ConnectionPath, type IceServer, MAX_LINKS } from "@sigill/protocol";
 import { useEffect, useReducer, useRef, useState } from "preact/hooks";
 import { Alert, AlertDescription } from "#components/ui/alert";
 import { Button } from "#components/ui/button";
@@ -59,6 +63,8 @@ type Connection = {
   peer?: Peer;
   /** Fires `timeout` if the data channel has not opened in time. */
   deadline?: ReturnType<typeof setTimeout>;
+  /** Set once the connection's path went to the server. */
+  pathSent?: boolean;
 };
 
 // Errors are kept as keys and turned into text in render, so they follow a language switch.
@@ -77,6 +83,7 @@ export function SendPage() {
   const [sender, setSender] = useState<SenderState>(initialSenderState);
   const [lostServer, setLostServer] = useState(false);
   const [relayed, countRelay] = useReducer(addRelay, NO_RELAYS);
+  const [viaRelay, setViaRelay] = useState(false);
   const [nameError, setNameError] = useState<ErrorOf<"nameError">>("");
   const [fileError, setFileError] = useState<ErrorOf<"fileError">>("");
   const [from, setFrom] = useState("");
@@ -108,7 +115,14 @@ export function SendPage() {
     connection.peer?.close();
   };
 
-  const startConnection = async (linkId: string) => {
+  const sendPath = (linkId: string, connection: Connection, path: ConnectionPath) => {
+    if (!connection.pathSent) {
+      connection.pathSent = true;
+      signalingRef.current?.send({ t: "path", link: linkId, path });
+    }
+  };
+
+  const startConnection = async (linkId: string, attempt: string, iceServers: IceServer[]) => {
     const recipient = findRecipient(senderRef.current, linkId);
     const signaling = signalingRef.current;
     if (!recipient || !signaling) {
@@ -122,6 +136,7 @@ export function SendPage() {
     // silent; the reducer then refuses them so the link is free again.
     connection.deadline = setTimeout(() => {
       if (connectionsRef.current.get(linkId) === connection) {
+        sendPath(linkId, connection, "failed");
         dispatch({ type: "timeout", linkId });
       }
     }, SETUP_TIMEOUT_MS);
@@ -140,9 +155,22 @@ export function SendPage() {
     connection.peer = createSenderPeer({
       signaling,
       linkId,
+      attempt,
       signalKey,
+      iceServers,
       onOpen(channel, info) {
         clearTimeout(connection.deadline);
+        // The path may come after a short transfer already closed the
+        // connection; send it while the link is still hosted.
+        void info.path.then((path) => {
+          if (findRecipient(senderRef.current, linkId)) {
+            sendPath(linkId, connection, path);
+            // ponytail: sticky for the page, since the relay's log lines stay after the transfer
+            if (path === "relay") {
+              setViaRelay(true);
+            }
+          }
+        });
         dispatch({ type: "channel-open", linkId });
         const chosen = fileRef.current;
         if (!chosen) {
@@ -174,7 +202,10 @@ export function SendPage() {
           },
         );
       },
-      onClose() {
+      onClose(reason) {
+        if (reason === "connection-failed") {
+          sendPath(linkId, connection, "failed");
+        }
         dispatch({ type: "dropped", linkId });
       },
     });
@@ -183,13 +214,18 @@ export function SendPage() {
   const runEffect = (effect: SenderEffect) => {
     switch (effect.type) {
       case "start":
-        void startConnection(effect.linkId);
+        void startConnection(effect.linkId, effect.attempt, effect.iceServers);
         break;
       case "close":
         closeConnection(effect.linkId);
         break;
       case "refuse":
-        signalingRef.current?.send({ t: "refuse", link: effect.linkId, reason: effect.reason });
+        signalingRef.current?.send({
+          t: "refuse",
+          link: effect.linkId,
+          attempt: effect.attempt,
+          reason: effect.reason,
+        });
         break;
     }
   };
@@ -232,7 +268,12 @@ export function SendPage() {
     signaling.subscribe((message) => {
       switch (message.t) {
         case "joined":
-          dispatch({ type: "joined", linkId: message.link });
+          dispatch({
+            type: "joined",
+            linkId: message.link,
+            attempt: message.attempt,
+            iceServers: message.iceServers,
+          });
           break;
         case "left":
           dispatch({ type: "left", linkId: message.link });
@@ -469,7 +510,10 @@ export function SendPage() {
               autoComplete="name"
               maxLength={MAX_FROM_LENGTH}
               value={from}
-              onInput={(event) => setFrom(event.currentTarget.value)}
+              onInput={(event) => {
+                setFrom(event.currentTarget.value);
+                setFromError("");
+              }}
               disabled={hasRecipients}
               aria-invalid={fromError ? "true" : "false"}
               aria-describedby={fromError ? "from-error from-hint" : "from-hint"}
@@ -495,6 +539,7 @@ export function SendPage() {
                 autoComplete="off"
                 maxLength={100}
                 disabled={!file || full}
+                onInput={() => setNameError("")}
                 aria-invalid={nameError ? "true" : "false"}
                 aria-describedby={nameError ? "name-error recipient-hint" : "recipient-hint"}
               />
@@ -530,6 +575,7 @@ export function SendPage() {
           })}
           relayed={relayed}
           afterwards={t.server.senderAfterwards(!lostServer)}
+          viaRelay={viaRelay}
         />
       </div>
 

@@ -47,8 +47,10 @@ jobs:
         run: pnpm --filter @sigill/e2e exec playwright install --with-deps chromium
       - if: steps.pw-cache.outputs.cache-hit == 'true'
         run: pnpm --filter @sigill/e2e exec playwright install-deps chromium
+      # The stack runs its own coturn on a free port, so the system service the package starts does not get in the way.
+      - run: sudo apt-get update && sudo apt-get install -y coturn
       - run: pnpm e2e
-      # Only the observations (recorded traffic, and run/ with the server logs) are uploaded.
+      # Only the observations (recorded traffic, and run/ with the server and coturn logs) are uploaded.
       # Traces, screenshots and the HTML report can contain full link URLs with key fragments,
       # so they stay local: this repository's artifacts are public.
       - if: failure()

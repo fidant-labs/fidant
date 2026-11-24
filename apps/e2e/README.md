@@ -9,7 +9,9 @@ pnpm --filter @sigill/e2e exec playwright install chromium  # once per machine
 pnpm e2e                                                    # from the repository root
 ```
 
-`pnpm e2e` builds the web client, starts the server on a free port, runs the specs in `tests/` and stops the server. `pnpm check` does not run it.
+`pnpm e2e` builds the web client, starts coturn and the server on free ports, runs the specs in `tests/` and stops both. `pnpm check` does not run it.
+
+coturn is the TURN relay (`brew install coturn` on macOS, the `coturn` package on Linux). It listens on 127.0.0.1 only, with a secret made for the run, and the server gets `TURN_URLS` and `TURN_SECRET_FILE` so the `joined` signaling message hands each paired browser credentials for it. Without `turnserver` on PATH the stack starts without it and `joined` carries no ICE servers; with `CI` set, that fails the run instead. Global setup sets `SIGILL_E2E_TURN_URLS` only when coturn runs, so a spec that needs the relay can skip on it.
 
 ## Writing a test
 
@@ -30,6 +32,7 @@ Today:
 - Browser requests and responses: URL, every header and request bodies.
 - WebSocket frames, sent and received, including `/signal`.
 - Server stdout and stderr. Stdout must also pass a strict allowlist: one JSON object per line, with known keys and values only (`src/leaks/server-log.ts`).
+- coturn's verbose log, `observations/run/coturn.log`.
 
 Every capture is decoded into views (percent, JSON escapes, base64, hex, gzip and others, nested) before matching, so encoded leaks are caught too.
 
@@ -41,7 +44,7 @@ Not wired yet. Each arrives with the first issue that needs the service:
 | BankID simulator and TSA, through the proxy  | SIG-42         |
 | File-name carriers (`src/leaks/carriers.ts`) | SIG-42, SIG-43 |
 | Object storage and mail (Mailpit)            | SIG-43         |
-| coturn logs and packet capture               | SIG-44         |
+| coturn packet capture                        | SIG-44         |
 
 ## Adding an observation point
 
