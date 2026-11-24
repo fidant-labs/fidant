@@ -36,10 +36,10 @@ Both come from `crypto.getRandomValues`. Every recipient gets their own link ID 
 
 Two keys are derived from the secret with HKDF-SHA-256. Both are AES-256-GCM `CryptoKey`s, non-extractable, usable only to encrypt and decrypt.
 
-| Key        | HKDF salt                  | HKDF info          | Protects                        |
-| ---------- | -------------------------- | ------------------ | ------------------------------- |
-| Signal key | the link ID's 16 bytes     | `sigill/v1/signal` | setup messages (SDP and ICE)    |
-| File key   | the transfer ID (16 bytes) | `sigill/v1/file`   | every frame on the data channel |
+| Key        | HKDF salt                  | HKDF info          | Protects                     |
+| ---------- | -------------------------- | ------------------ | ---------------------------- |
+| Signal key | the link ID's 16 bytes     | `sigill/v1/signal` | setup messages (SDP and ICE) |
+| File key   | the transfer ID (16 bytes) | `sigill/v1/file`   | every frame after INIT       |
 
 The transfer ID is fresh and random for each transfer attempt, so a retry never reuses a (file key, nonce) pair.
 
@@ -66,7 +66,7 @@ sender ⇄ recipient     WebRTC data channel "sigill" opens
 
 ## Two layers of encryption
 
-WebRTC encrypts the data channel with DTLS. Fidant doesn't rely on that: every frame on the channel is also encrypted with AES-256-GCM under the file key, which only the two browsers hold.
+WebRTC encrypts the data channel with DTLS. Fidant doesn't rely on that: every frame on the channel after INIT is also encrypted with AES-256-GCM under the file key, which only the two browsers hold. INIT is sent in clear and carries only the random transfer ID, which is the file key's salt; changing it changes the key, so the next frame fails to decrypt.
 
 ## Frames
 
@@ -141,7 +141,7 @@ WebRTC tries the paths in this order, and the sender's page shows which one each
 
 - On any path each browser sees the other's IP address, like on a video call. STUN sees each browser's address for the binding request, and no file data passes through it.
 - Relay credentials are minted by the server for each pairing and sent only to the two paired sockets: the username is an expiry time 5 minutes ahead and the credential is HMAC-SHA1 of it under a secret that only the server and coturn hold. The expiry limits starting a relay connection, not how long it may run.
-- coturn relays UDP only (`no-tcp-relay`), refuses to forward to private, loopback, link-local and other internal ranges (`denied-peer-ip`), caps concurrent allocations (`total-quota=200`), and writes no log (`log-file=/dev/null`). Its listener is plain UDP and TCP on port 3478; the traffic it carries is DTLS and AES-GCM.
+- Browsers can reach coturn over UDP or TCP, but coturn forwards only over UDP (`no-tcp-relay`). It refuses to forward to other machines on private, loopback, link-local and other internal ranges (`denied-peer-ip`). The accepted exception is that relay clients can reach UDP services on the box's own private address and its global IPv6 address (`docs/decisions/0007-turn-relay.md`, Consequences). It also caps concurrent allocations (`total-quota=200`), and writes no log (`log-file=/dev/null`). Its listener is plain UDP and TCP on port 3478; the traffic it carries is DTLS and AES-GCM.
 - The relay forwards encrypted packets. It can't decrypt them and doesn't store them.
 
 ### Refusing the relay
@@ -165,12 +165,12 @@ The send page has "Allow our relay if a direct connection isn't possible", on by
 
 ## What the server and relay see, keep and log
 
-|            | Server                                                                                                                                                                                                                                                                                                               | Relay                                                                                                                      |
-| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| Sees       | IP addresses and browser details of each page; link IDs; the sender's relay choice; sealed setup messages and their sizes                                                                                                                                                                                            | Both browsers' IP addresses; encrypted packets, with the file size only roughly                                            |
-| Never sees | the file, its name, type or exact size, the secret, the keys, the content of setup messages                                                                                                                                                                                                                          | the same                                                                                                                   |
-| Keeps      | in memory only, while the pages are connected; forgotten within a minute after a page disconnects                                                                                                                                                                                                                    | nothing of the file once it has passed                                                                                     |
-| Logs       | events with a fixed set of fields (`LogEvent`, `LogFields` in `packages/protocol`): the first 6 characters of a link ID, link counts, message sizes, refuse and error codes, the connection path, the port. Never names, keys, file data or IP addresses. Deleted after 30 days (journald, `MaxRetentionSec=29day`). | nothing by default. Only to fix a fault or stop abuse: connection times, IP addresses and data volumes, for at most 7 days |
+|            | Server                                                                                                                                                                                                                                                                                                                     | Relay                                                                                                                      |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Sees       | IP addresses and browser details of each page; link IDs; the sender's relay choice; the connection path the sender reports for each attempt (direct, stun, relay or failed); whether a link was already used (the sender's refuse reasons); when each side connects and disconnects; sealed setup messages and their sizes | Both browsers' IP addresses; encrypted packets, with the file size only roughly                                            |
+| Never sees | the file, its name, type or exact size, the secret, the keys, the content of setup messages                                                                                                                                                                                                                                | the same                                                                                                                   |
+| Keeps      | in memory only, while the pages are connected; forgotten within a minute after a page disconnects                                                                                                                                                                                                                          | nothing of the file once it has passed                                                                                     |
+| Logs       | events with a fixed set of fields (`LogEvent`, `LogFields` in `packages/protocol`): the first 6 characters of a link ID, link counts, message sizes, refuse and error codes, the connection path, the port. Never names, keys, file data or IP addresses. Deleted after 30 days (journald, `MaxRetentionSec=29day`).       | nothing by default. Only to fix a fault or stop abuse: connection times, IP addresses and data volumes, for at most 7 days |
 
 /privacy lists every log field, generated from the same type.
 
@@ -190,7 +190,7 @@ The send page has "Allow our relay if a direct connection isn't possible", on by
 - **The link is the key.** Anyone who gets a link can open its file until it is used. Send each link only to its recipient, over a channel you trust.
 - **The served code.** The browser runs the code our server sends. A server that sent different code could read files. The code is public, but a browser can't yet check that what it received matches it.
 - **Unverified sender name.** Typed by the sender.
-- **Metadata.** The other browser sees your IP address. The networks and, on the relay path, our relay see both IP addresses, timing and the rough size.
+- **Metadata.** The other browser sees your IP address. The networks and, on the relay path, our relay see both IP addresses, timing and the rough size. Our server sees both IP addresses, which recipient connects to which sender, when, and how many recipients a sender has. So it learns who sends to whom, though not what.
 - **Compromised devices.** Malware on either computer can read the file before encryption or after decryption.
 - **No independent audit yet.**
 
