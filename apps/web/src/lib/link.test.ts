@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomBytes, randomInt } from "node:crypto";
 import { test } from "node:test";
-import { isLinkId } from "@sigill/protocol";
+import { emailedFragment, isLinkId } from "@sigill/protocol";
 import { decodeBase64url, encodeBase64url } from "./base64url.ts";
 import { createLink, isSecret, parseRecipientLocation } from "./link.ts";
 
@@ -42,6 +42,31 @@ test("parseRecipientLocation reads back a created link", () => {
     linkId: link.linkId,
     secret: link.secret,
   });
+});
+
+test("parseRecipientLocation reads an emailed link's mark and keeps the secret", () => {
+  const { linkId, secret } = createLink("https://localhost:8443");
+  const mark = createLink("https://localhost:8443").linkId;
+  const pathname = `/r/${linkId}`;
+  assert.deepEqual(
+    parseRecipientLocation({ pathname, hash: `#${emailedFragment(mark, secret)}` }),
+    {
+      linkId,
+      secret,
+      mark,
+    },
+  );
+  for (const hash of [
+    `#e.${secret}`,
+    `#e.${mark}`,
+    `#e.${mark}.`,
+    `#e.${mark}.${secret.slice(1)}`,
+    `#e.${mark.slice(1)}.${secret}`,
+    `#e.e.${mark}.${secret}`,
+    `#${secret}.e.${mark}`,
+  ]) {
+    assert.equal(parseRecipientLocation({ pathname, hash }), undefined, hash);
+  }
 });
 
 test("parseRecipientLocation rejects malformed IDs and secrets", () => {

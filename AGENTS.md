@@ -7,10 +7,10 @@ Planning lives in Linear: workspace `sigill`, team `SIG`, issue keys like `SIG-2
 ## Commands
 
 - `pnpm install`: installs dependencies and the git hooks.
-- `pnpm start`: builds the web client and serves it over HTTPS on `PORT` (default 8443), on all network interfaces, and prints the addresses to open. The first start creates a self-signed certificate in `.certs/` (or in `CERT_DIR` if set); browsers show a warning once. On macOS, a browser on another laptop needs Local Network access (System Settings → Privacy & Security → Local Network) or the page "can't be reached", even though `curl` works.
+- `pnpm start`: builds the web client and serves it over HTTPS on `PORT` (default 8443), on all network interfaces, and prints the addresses to open. The first start creates a self-signed certificate in `.certs/` (or in `CERT_DIR` if set); browsers show a warning once. It sends no mail unless `MAIL_SMTP_URL`, `MAIL_FROM` and `PUBLIC_ORIGIN` are all set, so by default the send page offers no email field (`README.md` shows how to try emailed links with Mailpit). On macOS, a browser on another laptop needs Local Network access (System Settings → Privacy & Security → Local Network) or the page "can't be reached", even though `curl` works.
 - `pnpm check`: lint, typecheck, unit tests and build across the workspace. Run it before every commit. The pre-push hook runs it too.
 - `pnpm format`: fixes formatting and safe lint issues.
-- `pnpm e2e`: builds the web client, starts the local stack and runs the Playwright suite in `apps/e2e` (Chromium). It is not part of `pnpm check`. Browser traffic and server logs are written to `apps/e2e/observations/`. Playwright traces and reports stay local and are never uploaded. One-time setup: `pnpm --filter @sigill/e2e exec playwright install chromium`.
+- `pnpm e2e`: builds the web client, starts the local stack (coturn, Mailpit and the server) and runs the Playwright suite in `apps/e2e` (Chromium). It is not part of `pnpm check`. Browser traffic and server logs are written to `apps/e2e/observations/`. Playwright traces and reports stay local and are never uploaded. One-time setup: `pnpm --filter @sigill/e2e exec playwright install chromium`.
 - `pnpm e2e:networks`: builds the web client and runs only `apps/e2e/tests/networks.spec.ts`, transfers between browsers in Docker networks behind simulated NAT routers, with the server and coturn in containers too. It needs no host Chromium or coturn. `pnpm e2e` never runs it. See `apps/e2e/README.md`.
 - `pnpm lighthouse`: builds the web client, starts the server on port 8444 and scores the public pages with Lighthouse (`apps/web/lighthouserc.json`), failing below each category's minimum. It needs a local Chrome and is not part of `pnpm check`; CI's `lighthouse` job is disabled until SIG-135 makes its scores stable. Reports go to `apps/web/.lighthouseci/` and are never uploaded.
 - `pnpm --filter @sigill/infra cdk deploy FidantDns --profile fidant-dns` and `pnpm --filter @sigill/infra cdk deploy FidantApp --profile fidant-poc`: deploy the AWS infrastructure in `apps/infra`, all of it in eu-north-1 except `FidantDnssec`, which is in us-east-1. Sign in first with `aws sso login --sso-session fidant`. The app reads the two account IDs from the untracked `apps/infra/.env` (see `.env.example`) and gives each profile only its own account's stacks, so a deploy under the wrong profile finds no stack. Bootstrap each account once with `pnpm --filter @sigill/infra cdk bootstrap --profile <profile>`, which bootstraps every region the app has stacks in for that account (eu-north-1 and us-east-1 for `fidant-dns`). A deploy that adds a stack in a new region needs that bootstrap first.
@@ -32,6 +32,7 @@ Planning lives in Linear: workspace `sigill`, team `SIG`, issue keys like `SIG-2
 - openssl, for the local certificate. macOS and Linux ship with it.
 - jq, for the Claude Code hooks. Recent macOS versions include it; on Linux, install it with the package manager.
 - coturn, only for `pnpm e2e` (`brew install coturn`; the `coturn` package on Linux). Without it the local run skips TURN; in CI it fails.
+- Mailpit, only for `pnpm e2e` and to try emailed links (`brew install mailpit`; the release binary on Linux). Without it the local run skips mail; in CI it fails.
 - Docker with Compose v2 (`docker compose`), only for `pnpm e2e:networks`. The first run pulls the images, so it needs the internet once.
 - AWS CLI v2, only for deploying `apps/infra`. Its SSO profiles (`fidant-mgmt`, `fidant-dns`, `fidant-poc`) are in SIG-54.
 
@@ -42,7 +43,7 @@ Planning lives in Linear: workspace `sigill`, team `SIG`, issue keys like `SIG-2
 - `packages/*`: code used by more than one app. Create a package only when a second consumer exists.
 - `packages/protocol` (`@sigill/protocol`): signaling message types, parsers and limits shared by the server and the web client.
 - `docs/decisions/`: decision records. See its README for the format.
-- `docs/how-fidant-works.md`: how Fidant moves a file and why no infrastructure can read it. The source of truth for the security model and data flow (see Invariants).
+- `docs/how-fidant-works.md`: how Fidant moves a file and why no infrastructure can read it, except through a peer-to-peer link that Fidant emails. The source of truth for the security model and data flow (see Invariants).
 - Workspace packages export TypeScript source directly (`"exports": { ".": "./src/index.ts" }`). Internal packages have no build step.
 - Every package with TypeScript has a `typecheck` script (`tsc --noEmit -p .`) and, if it has tests, a `test` script. The root scripts run them recursively.
 

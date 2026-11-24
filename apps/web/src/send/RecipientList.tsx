@@ -1,17 +1,24 @@
-// One card per recipient: status, connection path, progress, link, copy and remove.
+// One card per recipient: status, email, connection path, progress, link, copy and remove.
 //
-// Only the status sentence sits in the polite live region, so screen readers
-// hear "Sending through Anna's link", "Delivered through Anna's link" and so on,
-// not every progress tick. Each status names the link, not the person, because
-// whoever opens a link may not be the person it was made for.
+// Only the status sentence and the email line sit in polite live regions, so
+// screen readers hear "Sending through Anna's link", "Email sent to a***@example.se"
+// and so on, not every progress tick. Each status names the link or the masked
+// address, not the person, because whoever opens a link may not be the person
+// it was made for.
 
+import { maskAddress } from "@sigill/protocol";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { Button } from "#components/ui/button";
 import { Card, CardContent } from "#components/ui/card";
 import type { Messages } from "../i18n/en.ts";
 import { useI18n } from "../i18n/I18n.tsx";
 import { formatProgress } from "../lib/format.ts";
-import { type Recipient, type RecipientStatus, TOO_SMALL_FOR_TEXT } from "../lib/sender-state.ts";
+import {
+  type Recipient,
+  type RecipientStatus,
+  TOO_SMALL_FOR_TEXT,
+  unmarked,
+} from "../lib/sender-state.ts";
 import { Direct, Icon, PathLine } from "../ui.tsx";
 
 const STATUS_COLOR: Partial<Record<RecipientStatus, string>> = {
@@ -58,7 +65,8 @@ type RowProps = {
 };
 
 function RecipientRow({ recipient, fileSize, statusText, onRemove }: RowProps) {
-  const { name, url, status, bytesSent, linkId, path, noRelay, error } = recipient;
+  const { name, url, status, bytesSent, linkId, path, noRelay, error, email, mail, unbound } =
+    recipient;
   const { t, lang } = useI18n();
   const [copyNote, setCopyNote] = useState<CopyNote | "">("");
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -83,7 +91,10 @@ function RecipientRow({ recipient, fileSize, statusText, onRemove }: RowProps) {
     }
   };
 
-  const shareable = status === "waiting" || status === "declined" || status === "failed";
+  const open = status === "waiting" || status === "declined" || status === "failed";
+  // A link the server may still email, or whose email binding died, is not to be shared.
+  const shareable = open && !unmarked(recipient) && !unbound;
+  const lost = open && unbound;
 
   return (
     <li>
@@ -104,6 +115,14 @@ function RecipientRow({ recipient, fileSize, statusText, onRemove }: RowProps) {
                   : statusText[status](name)}
             </span>
           </p>
+          {email && mail && (
+            <p
+              class={`mt-1 mb-0 text-[0.9rem] wrap-anywhere ${lost || mail === "failed" || mail === "limit" ? "text-destructive" : "text-muted-foreground"}`}
+              aria-live="polite"
+            >
+              {t.send.mail[lost ? "lost" : mail](maskAddress(email))}
+            </p>
+          )}
           {path && <PathLine path={path} />}
           {status === "receiving" && (
             <>

@@ -19,8 +19,8 @@ function makeName(leaks: Leaks, canary: SeededRandom, first: string): string {
 
 /** Fills the text and the sender's name on /secret, adds a recipient and returns their link, with its secret watched. */
 async function share(leaks: Leaks, sender: Page, text: string, from: string, name: string) {
-  await sender.getByLabel("Your text").fill(text);
-  await expect(sender.getByLabel("Your text")).toHaveAttribute("writingsuggestions", "false");
+  await sender.getByLabel("Your secret").fill(text);
+  await expect(sender.getByLabel("Your secret")).toHaveAttribute("writingsuggestions", "false");
   if (from) {
     await sender.locator("#secret-from").fill(from);
   }
@@ -81,7 +81,7 @@ test("a text goes from /secret to the recipient, who shows and copies it", async
   await expect(sender).toHaveURL(/\/secret$/);
   await expect(sender).toHaveTitle("Share a secret – Fidant");
   await expect(entry).toHaveAttribute("aria-current", "page");
-  const field = sender.getByLabel("Your text");
+  const field = sender.getByLabel("Your secret");
   await expect(field).toHaveId("secret-text");
   await expect(field).toHaveJSProperty("spellcheck", false);
   await expect(field).toHaveJSProperty("translate", false);
@@ -93,9 +93,16 @@ test("a text goes from /secret to the recipient, who shows and copies it", async
     await expect(field).toHaveAttribute(attribute, value);
   }
   const link = await share(leaks, sender, text, from, name);
+  const senderPanel = sender.getByRole("region", { name: "What our server has right now" });
+  await expect(senderPanel).toContainText("None. The secret goes directly between browsers.");
+  await expect(senderPanel).toContainText("never the part that unlocks the secret");
+  await expect(senderPanel).not.toContainText(/\bfiles?\b/i);
 
   const { page, downloads } = await openRecipient(actor, link);
-  await expect(page.getByRole("heading", { name: `${from} sent you a text` })).toBeFocused();
+  await expect(page.getByRole("heading", { name: `${from} sent you a secret` })).toBeFocused();
+  const recipientPanel = page.getByRole("region", { name: "What our server has right now" });
+  await expect(recipientPanel).toContainText("None. The secret goes directly between browsers.");
+  await expect(recipientPanel).not.toContainText(/\bfiles?\b/i);
   await expect(page.getByText("Name typed by the sender, not verified.")).toBeVisible();
   const show = page.getByRole("button", { name: "Show", exact: true });
   await expect(show).toBeVisible();
@@ -103,7 +110,7 @@ test("a text goes from /secret to the recipient, who shows and copies it", async
   await expect(page.locator("body")).not.toContainText("secret.txt");
   await show.click();
 
-  const shown = page.getByRole("region", { name: "The text", exact: true });
+  const shown = page.getByRole("region", { name: "The secret", exact: true });
   await expect(shown).toHaveJSProperty("textContent", text);
   await expect(shown).toHaveJSProperty("translate", false);
   await expect(shown).toHaveAttribute("tabindex", "0");
@@ -117,7 +124,7 @@ test("a text goes from /secret to the recipient, who shows and copies it", async
 
   // The canary repeats under --repeat-each, so a clipboard left by an earlier run would pass.
   await page.evaluate(() => navigator.clipboard.writeText("not the text"));
-  await page.getByRole("button", { name: "Copy text" }).click();
+  await page.getByRole("button", { name: "Copy secret" }).click();
   await expect(page.getByText("Copied", { exact: true })).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(text);
 
@@ -142,7 +149,7 @@ test("a pasted text over 10,000 characters stays whole and can't be shared until
   leaks.watchContent("long text", long);
   const { page: sender } = await actor("sender");
   await sender.goto("/secret");
-  const field = sender.getByLabel("Your text");
+  const field = sender.getByLabel("Your secret");
   const error = sender.locator("#secret-text-error");
   const live = error.locator("[role=status]");
   const add = sender.getByRole("button", { name: "Add", exact: true });
@@ -154,17 +161,17 @@ test("a pasted text over 10,000 characters stays whole and can't be shared until
   await sender.keyboard.insertText(long);
   await expect(field).toHaveValue(long);
   await expect(field).toHaveAttribute("aria-invalid", "true");
-  await expect(error).toHaveText("12,000 of 10,000 characters. Shorten the text to share it.");
-  await expect(live).toHaveText("Shorten the text to share it.");
+  await expect(error).toHaveText("12,000 of 10,000 characters. Shorten the secret to share it.");
+  await expect(live).toHaveText("Shorten the secret to share it.");
   await expect(field).toHaveAccessibleDescription(
-    "12,000 of 10,000 characters. Shorten the text to share it. Up to 10,000 characters.",
+    "12,000 of 10,000 characters. Shorten the secret to share it. Up to 10,000 characters.",
   );
   await expect(add).toBeDisabled();
   await expect(sender.locator("#secret-recipient-name")).toBeDisabled();
   await expect(sender.locator("#secret-recipient-hint")).toHaveText(
-    "Shorten the text to share it.",
+    "Shorten the secret to share it.",
   );
-  await expect(sender.getByText("Write or paste the text first.")).toHaveCount(0);
+  await expect(sender.getByText("Write or paste the secret first.")).toHaveCount(0);
 
   await field.fill(long.slice(0, 10_000));
   await expect(field).toHaveAttribute("aria-invalid", "false");
@@ -181,21 +188,21 @@ test("declining a text keeps the link working", async ({ actor, leaks, canary })
   const link = await share(leaks, sender, text, "", name);
 
   const { page } = await openRecipient(actor, link);
-  const offer = page.getByRole("heading", { name: "You've been sent a text" });
+  const offer = page.getByRole("heading", { name: "You've been sent a secret" });
   await expect(offer).toBeFocused();
   await expect(page.getByText("Name typed by the sender, not verified.")).toHaveCount(0);
   await page.getByRole("button", { name: "Decline" }).click();
-  await expect(page.getByRole("heading", { name: "You declined the text" })).toBeFocused();
+  await expect(page.getByRole("heading", { name: "You declined the secret" })).toBeFocused();
   await expect(
     recipientRow(sender, name).getByText(
-      `${name}'s link was opened and the text was declined. The link still works.`,
+      `${name}'s link was opened and the secret was declined. The link still works.`,
     ),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: "Show the text again" }).click();
+  await page.getByRole("button", { name: "Show the secret again" }).click();
   await expect(offer).toBeVisible();
   await page.getByRole("button", { name: "Show", exact: true }).click();
-  await expect(page.getByRole("region", { name: "The text", exact: true })).toHaveJSProperty(
+  await expect(page.getByRole("region", { name: "The secret", exact: true })).toHaveJSProperty(
     "textContent",
     text,
   );
@@ -217,7 +224,7 @@ test("a recipient sees the text wording when the sender closes the page during t
   await expect(page.getByRole("button", { name: "Show", exact: true })).toBeVisible();
   await sender.close();
   await expect(page.getByText("The sender's page is closed")).toBeVisible();
-  await expect(page.getByText("The text comes straight from their browser")).toBeVisible();
+  await expect(page.getByText("The secret comes straight from their browser")).toBeVisible();
   await expect(page.getByText("The file comes straight from their browser")).toHaveCount(0);
 });
 
@@ -245,7 +252,7 @@ test("a connection too small to carry a text in one chunk fails the card and sen
   const { page } = await openRecipient(actor, link);
   await expect(
     recipientRow(sender, name).getByText(
-      `The text wasn't sent through ${name}'s link, because its length would have shown on this connection. The link still works.`,
+      `The secret wasn't sent through ${name}'s link, because its length would have shown on this connection. The link still works.`,
     ),
   ).toBeVisible();
   expect(await sender.evaluate(() => (globalThis as { sent?: number }).sent)).toBe(0);

@@ -6,6 +6,7 @@ import { createServer, type Server } from "node:https";
 import { isIP } from "node:net";
 import { extname, join, resolve, sep } from "node:path";
 import { isLinkId } from "@sigill/protocol";
+import type { Mailer } from "./mail.ts";
 import { attachSignaling, type Logger } from "./signaling.ts";
 import { type IceConfig, iceServersFor } from "./turn.ts";
 
@@ -116,6 +117,7 @@ export function startServer(options: {
   hosts: string[];
   ice?: IceConfig | undefined;
   log?: Logger;
+  mail?: { send: Mailer; origin: string } | undefined;
 }): Promise<Server> {
   const server = createServer(
     ensureCert(options.certDir, options.hosts),
@@ -124,6 +126,7 @@ export function startServer(options: {
   const signaling = attachSignaling(server, {
     log: options.log ?? (() => {}),
     iceServers: (turn) => iceServersFor(options.ice, Date.now(), turn),
+    mail: options.mail,
   });
   server.on("close", () => signaling.close());
   return new Promise((done, fail) => {

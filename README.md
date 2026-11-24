@@ -39,6 +39,7 @@ A link works once: after a confirmed delivery, opening it again shows "This link
 ## Network tips
 
 - With a local `pnpm start`, sender and recipients must be on the same network: it hands out no STUN or TURN servers unless `TURN_URLS` and `TURN_SECRET_FILE` are set, so browsers connect only over local addresses.
+- A local `pnpm start` sends no mail, so the send page offers no email field. To try emailed links, run `mailpit` in another terminal and start with `MAIL_SMTP_URL=smtp://127.0.0.1:1025 MAIL_FROM="Fidant <noreply@example.se>" PUBLIC_ORIGIN=https://localhost:8443 pnpm start` (`PUBLIC_ORIGIN` is the address recipients open). Mailpit shows the mail at http://localhost:8025.
 - The hosted site at https://fidant.se has a STUN and TURN relay, so browsers there can be on different networks.
 - A phone hotspot is a reliable network for a demo.
 - Guest Wi-Fi with client isolation does not work: devices on it can't reach each other.
@@ -46,10 +47,10 @@ A link works once: after a confirmed delivery, opening it again shows "This link
 
 ## What the server sees
 
-- Random link IDs, and encrypted signaling messages it passes between browsers to set up the connection. It cannot read them, so it cannot see or change the connection details (SDP, ICE candidates, DTLS fingerprints).
+- Random link IDs, and encrypted signaling messages it passes between browsers to set up the connection. It cannot read them, except for a link it emails, so it cannot see or change the connection details (SDP, ICE candidates, DTLS fingerprints).
 - The IP addresses of the browsers that connect to it, as any web server does.
 
-It never sees keys, file content, file names, sizes or types:
+It never sees keys, file content, file names, sizes or types, except that for a link it emails it sees that link's key (see `docs/how-fidant-works.md`):
 
 - Each link's secret is in the URL fragment (the part after `#`). Browsers don't send the fragment to the server.
 - The file, its name, size and type travel only over the encrypted connection between the two browsers.

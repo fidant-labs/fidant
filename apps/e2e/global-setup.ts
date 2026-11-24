@@ -3,7 +3,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { formatSeed, runSeed } from "./src/leaks/canary.ts";
-import { repoRoot, resetObservations } from "./src/paths.ts";
+import { saveMail } from "./src/mail.ts";
+import { repoRoot, resetObservations, runDir } from "./src/paths.ts";
 import { startStack } from "./src/stack/index.ts";
 import { assertDocker, dockerNetworks, dockerServer } from "./src/stack/networks.ts";
 import { sweepRun } from "./src/sweep.ts";
@@ -44,11 +45,15 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   if (stack.env.TURN_URLS) {
     process.env.SIGILL_E2E_TURN_URLS = stack.env.TURN_URLS;
   }
+  // Mailpit's API, set only when it runs, so an email spec can skip without it.
+  if (stack.env.MAILPIT_API) {
+    process.env.SIGILL_E2E_MAILPIT = stack.env.MAILPIT_API;
+  }
 
   return async () => {
     try {
-      // Stopped first, so the server logs are complete when the sweep reads them.
-      await stack.stop();
+      // Leftover mail is saved while Mailpit runs; the stack stops before the sweep reads the logs.
+      await saveMail(runDir).finally(() => stack.stop());
       const report = await sweepRun(registry, seed);
       // Throwing here makes the run fail even when every test passed.
       if (report) {

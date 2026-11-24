@@ -14,6 +14,28 @@ export interface ByteSecret {
   window?: number;
   /** ASCII letters match in either case, as for base32 tokens. */
   caseInsensitive?: boolean;
+  /** Where it may appear, for a secret of an emailed link (`allowEmailed`). Nowhere if unset. */
+  allowed?: Allowed;
+}
+
+/**
+ * Where decision 0012 lets a secret of an emailed link appear: signaling messages about the link
+ * and mail to its address alone. `allowEmailed` drops findings there; elsewhere they stand.
+ */
+export interface Allowed {
+  /** The emailed link's ID. */
+  link: string;
+  /**
+   * The signaling messages about `link` that may carry it, as direction and type, such as
+   * `sent email`, `received token` or `sent join`. Of `sent email` only the first counts: a link
+   * is registered for email once.
+   */
+  frames: readonly string[];
+  /**
+   * Mail as one plain-text part to `to` alone (one To, no Cc or Bcc) may carry it: with `notice`
+   * (a Mailpit ID) only that message's body, without it any part of any such mail.
+   */
+  mail?: { to: string; notice?: string };
 }
 
 /** A file size N, found as a whole decimal or hex number (check (i) of 0001). */

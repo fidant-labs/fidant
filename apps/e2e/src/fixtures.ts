@@ -9,6 +9,7 @@ import {
 import { parseStackOrigins } from "./hosts.ts";
 import { type Leaks, LeakWatch } from "./leak-watch.ts";
 import { runSeed, SeededRandom } from "./leaks/canary.ts";
+import { deleteSavedMail } from "./mail.ts";
 import {
   assertActorName,
   type BlockedRecord,
@@ -74,6 +75,8 @@ export const test = base.extend<Fixtures>({
       const watch = await LeakWatch.start(testDirName(testInfo), process.env.SIGILL_E2E_REGISTRY);
       await use(watch);
       const report = await watch.check();
+      // check() saved this test's mail, so the next test does not take it for its own.
+      await deleteSavedMail(join(observationsDir, testDirName(testInfo)));
       if (report) {
         throw new Error(report);
       }

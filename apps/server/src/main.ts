@@ -4,6 +4,7 @@ import { networkInterfaces } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseIceServers } from "@sigill/protocol";
+import { type Mailer, smtpMailer } from "./mail.ts";
 import { startServer } from "./server.ts";
 import type { Logger } from "./signaling.ts";
 import type { IceConfig } from "./turn.ts";
@@ -48,6 +49,47 @@ if (turnUrls || turnSecretFile) {
   ice = { urls, secret };
 }
 
+// Mail is optional too, and the SMTP password comes from a file for the same reason.
+// Emailed links point at PUBLIC_ORIGIN, never at whatever Host a request names.
+const mailUrl = process.env.MAIL_SMTP_URL;
+const mailFrom = process.env.MAIL_FROM;
+const mailPasswordFile = process.env.MAIL_PASSWORD_FILE;
+const publicOrigin = process.env.PUBLIC_ORIGIN;
+let mail: { send: Mailer; origin: string } | undefined;
+if (mailUrl || mailFrom || mailPasswordFile || publicOrigin) {
+  if (!mailUrl || !mailFrom || !publicOrigin) {
+    console.error(
+      "Set MAIL_SMTP_URL, MAIL_FROM and PUBLIC_ORIGIN together, or none of them and no MAIL_PASSWORD_FILE.",
+    );
+    process.exit(1);
+  }
+  const parsed = URL.parse(publicOrigin);
+  if (parsed?.protocol !== "https:" || parsed.origin !== publicOrigin) {
+    console.error("PUBLIC_ORIGIN must be an https:// origin with no path, like https://fidant.se.");
+    process.exit(1);
+  }
+  let password: string | undefined;
+  if (mailPasswordFile) {
+    try {
+      password = readFileSync(mailPasswordFile, "utf8").trim();
+    } catch {
+      console.error("Could not read the file named by MAIL_PASSWORD_FILE.");
+      process.exit(1);
+    }
+    if (!password) {
+      console.error("The file named by MAIL_PASSWORD_FILE must not be empty.");
+      process.exit(1);
+    }
+  }
+  try {
+    mail = { send: smtpMailer({ url: mailUrl, from: mailFrom, password }), origin: publicOrigin };
+  } catch (error) {
+    // smtpMailer's own messages, which echo nothing from the configuration.
+    console.error((error as Error).message);
+    process.exit(1);
+  }
+}
+
 const lanAddresses = Object.values(networkInterfaces())
   .flat()
   .flatMap((address) => (address?.family === "IPv4" && !address.internal ? [address.address] : []));
@@ -64,6 +106,7 @@ const server = await startServer({
   hosts: ["localhost", "127.0.0.1", ...lanAddresses],
   ice,
   log,
+  mail,
 });
 
 const { port } = server.address() as AddressInfo;

@@ -1,4 +1,5 @@
 import { coturn } from "./coturn.ts";
+import { mailpit } from "./mailpit.ts";
 import { server } from "./server.ts";
 import type { RunningService, Service } from "./service.ts";
 
@@ -6,14 +7,17 @@ export interface Stack {
   baseURL: string;
   /** The origin of every running service. The browser may reach these and nothing else. */
   origins: string[];
-  /** What the services handed on, merged. TURN_URLS is set only when coturn runs. */
+  /**
+   * What the services handed on, merged. TURN_URLS is set only when coturn runs, MAILPIT_API
+   * only when Mailpit does.
+   */
   env: Record<string, string>;
   stop(): Promise<void>;
 }
 
 // Services start in this order and stop in reverse. Later services (database, storage, relay)
 // get their own module next to server.ts and go into this list before the services that need them.
-const defaultServices: readonly Service[] = [coturn, server];
+const defaultServices: readonly Service[] = [coturn, mailpit, server];
 
 /**
  * Starts every service of the local stack. If one fails, the ones already running are stopped
