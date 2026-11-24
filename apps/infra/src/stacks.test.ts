@@ -607,7 +607,7 @@ test("the relay cap checks the box's traffic every 5 minutes", () => {
   box.hasResourceProperties("AWS::Lambda::EventInvokeConfig", { MaximumRetryAttempts: 0 });
 });
 
-test("the relay cap may only read the box's metrics, set its ports, and keep its state", () => {
+test("the relay cap may only read instance metrics, set the box's ports, and keep its state", () => {
   const box = appBox();
   const [instanceId] = Object.keys(box.findResources("AWS::Lightsail::Instance"));
   const policies = Object.values(box.findResources("AWS::IAM::Policy")).filter(
@@ -615,15 +615,20 @@ test("the relay cap may only read the box's metrics, set its ports, and keep its
   );
   assert.equal(policies.length, 1);
   const statements = policies[0]?.Properties.PolicyDocument.Statement;
-  assert.equal(statements.length, 2);
+  assert.equal(statements.length, 3);
   assert.deepEqual(statements[0], {
-    Action: ["lightsail:GetInstanceMetricData", "lightsail:PutInstancePublicPorts"],
+    Action: "lightsail:GetInstanceMetricData",
+    Effect: "Allow",
+    Resource: "*",
+  });
+  assert.deepEqual(statements[1], {
+    Action: "lightsail:PutInstancePublicPorts",
     Effect: "Allow",
     Resource: { "Fn::GetAtt": [instanceId, "InstanceArn"] },
   });
-  assert.deepEqual(statements[1].Action, ["ssm:GetParameter", "ssm:PutParameter"]);
-  assert.equal(statements[1].Effect, "Allow");
-  const resource = statements[1].Resource["Fn::Join"];
+  assert.deepEqual(statements[2].Action, ["ssm:GetParameter", "ssm:PutParameter"]);
+  assert.equal(statements[2].Effect, "Allow");
+  const resource = statements[2].Resource["Fn::Join"];
   assert.match(resource[1].at(-1), /:parameter\/fidant\/relay-cap$/);
 });
 
