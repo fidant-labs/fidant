@@ -41,6 +41,7 @@ export const en = {
     send: "Send a file – Fidant",
     receive: "Receive a file – Fidant",
     privacy: "Privacy – Fidant",
+    how: "How it works – Fidant",
     about: "About – Fidant",
     terms: "Terms of use – Fidant",
     security: "Security – Fidant",
@@ -76,6 +77,61 @@ export const en = {
     relayNote:
       "If the two browsers can't connect directly, the file passes through our relay instead, still encrypted. The relay then sees both IP addresses and roughly how big the file is, and can't unlock it.",
     caveat: "The catch: since nothing is stored, keep your tab open until the file has arrived.",
+  },
+  how: {
+    title: "How it works",
+    lede: "What happens to your file, step by step. In short: it is locked on your computer, and only someone with the link can unlock it.",
+    sections: {
+      stays: {
+        heading: "Your file stays on your computer",
+        body: [
+          "You choose a file in your browser. It is not uploaded anywhere.",
+          "Your browser locks it before it leaves your computer.",
+        ],
+      },
+      link: {
+        heading: "You get a link with the key inside",
+        body: [
+          "You get one link for each person. Each link works once. You send it yourself, for example by email or chat.",
+          "The key that unlocks the file is the part after the # sign. Browsers never send that part to us, so we never see the key.",
+          "Anyone with the link can open the file. Send each link only to the person it is for.",
+        ],
+      },
+      open: {
+        heading: "They open the link while your page is open",
+        body: [
+          "Nothing is stored, so your page must stay open until they have the file.",
+          "Our server helps the two browsers find each other, like an operator connecting a phone call. It passes on a few small locked messages that it can't read.",
+          "They see the file's name and size and choose whether to download it.",
+        ],
+      },
+      direct: {
+        heading: "The file goes straight to them, locked",
+        body: [
+          "When the networks allow it, the file goes straight from your computer to theirs. It stays locked the whole way.",
+          "Their browser unlocks it and checks that it is exactly the file you sent.",
+          "Like on a video call, each device can see the other's internet address.",
+        ],
+      },
+      relay: {
+        heading: "Sometimes it goes through our relay",
+        body: [
+          "Some networks can't connect directly to each other. This is common on mobile data and office networks.",
+          "Then the file goes through our relay in Stockholm instead, still locked.",
+          "The relay can't open the file, and it doesn't keep it.",
+          "It sees the internet address of each device and roughly how big the file is.",
+        ],
+      },
+      never: {
+        heading: "What we never see",
+        body: [
+          "Not your file. Not its name. Not the key that unlocks it.",
+          "That goes for our server and our relay.",
+        ],
+      },
+    },
+    more: "Want the details? The privacy page says exactly what our server sees and what it logs.",
+    moreLink: "Read the privacy page",
   },
   insecure: {
     title: "This page needs a secure connection",
@@ -354,6 +410,7 @@ export const en = {
   footer: {
     label: "Site",
     tagline: "Files encrypted in your browser, readable only by the recipient.",
+    how: "How it works",
     about: "About",
     terms: "Terms",
     security: "Security",
