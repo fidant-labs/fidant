@@ -20,14 +20,20 @@ test.afterEach(() => {
 });
 
 async function expectNoOverflow(page: Page) {
-  await page.setViewportSize({ width: 375, height: 800 });
+  await page.setViewportSize({ width: 360, height: 800 });
   await page.goto("/how");
   await expect(page.locator("main h1")).toBeVisible();
   const width = await page.evaluate(async () => {
     await document.fonts.ready;
-    return { scroll: document.documentElement.scrollWidth, inner: innerWidth };
+    const menu = [...document.querySelectorAll("header nav li")];
+    return {
+      scroll: document.documentElement.scrollWidth,
+      menu: Math.max(...menu.map((item) => item.getBoundingClientRect().right)),
+      inner: innerWidth,
+    };
   });
   expect(width.scroll).toBeLessThanOrEqual(width.inner);
+  expect(width.menu).toBeLessThanOrEqual(width.inner);
 }
 
 async function expectFinalFrames(page: Page) {
