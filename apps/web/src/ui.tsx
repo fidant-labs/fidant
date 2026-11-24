@@ -1,6 +1,7 @@
 // Pieces shared by the pages.
 
 import type { AnchorHTMLAttributes, ComponentChildren } from "preact";
+import { useId } from "preact/hooks";
 import { DropdownMenu } from "radix-ui";
 import { Alert, AlertDescription, AlertTitle } from "#components/ui/alert";
 import { buttonVariants } from "#components/ui/button";
@@ -475,6 +476,7 @@ export function ServerPanel({
   viaRelay: boolean;
 }) {
   const { t, lang } = useI18n();
+  const headingId = useId();
   const rows: ReadonlyArray<readonly [string, string]> = [
     [t.server.seesLabel, sees],
     [t.server.holdsLabel, holds],
@@ -491,8 +493,8 @@ export function ServerPanel({
       : []),
   ];
   return (
-    <section class="mt-8 text-[0.9rem]" aria-labelledby="server-panel-heading">
-      <h2 id="server-panel-heading" class="m-0 text-[1rem] font-bold">
+    <section class="mt-8 text-[0.9rem]" aria-labelledby={headingId}>
+      <h2 id={headingId} class="m-0 text-[1rem] font-bold">
         {t.server.heading}
       </h2>
       <Facts rows={rows} />
