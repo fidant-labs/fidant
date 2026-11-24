@@ -11,7 +11,7 @@ import {
   type Port,
   parseState,
   runCap,
-} from "./cap.ts";
+} from "./cap.mts";
 
 const limit = 1_800_000_000_000;
 

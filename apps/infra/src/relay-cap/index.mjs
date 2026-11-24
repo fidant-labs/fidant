@@ -4,7 +4,7 @@ import {
   PutInstancePublicPortsCommand,
 } from "@aws-sdk/client-lightsail";
 import { GetParameterCommand, PutParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
-import { configFromEnv, runCap } from "./cap.ts";
+import { configFromEnv, runCap } from "./cap.mts";
 
 const lightsail = new LightsailClient({});
 const ssm = new SSMClient({});
