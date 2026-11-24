@@ -50,8 +50,8 @@ async function open(page: Page): Promise<void> {
 
 /**
  * Opens the real /signal endpoint and sends one relay message carrying `data`. The page has not
- * joined the link, so the server answers `not-on-link`; the frame was sent all the same, and
- * waiting for the answer means its record is in.
+ * joined the link, so the server answers `not-on-link` after its hello; the frame was sent all
+ * the same, and waiting for the answer means its record is in.
  */
 async function relay(page: Page, link: string, data: string): Promise<string> {
   return page.evaluate(
@@ -62,6 +62,9 @@ async function relay(page: Page, link: string, data: string): Promise<string> {
           socket.send(JSON.stringify({ t: "relay", link, data })),
         );
         socket.addEventListener("message", (event) => {
+          if (JSON.parse(String(event.data)).t === "hello") {
+            return;
+          }
           resolve(String(event.data));
           socket.close();
         });

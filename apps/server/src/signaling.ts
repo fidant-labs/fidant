@@ -22,6 +22,7 @@ import {
   type ServerMessage,
 } from "@sigill/protocol";
 import { type RawData, WebSocket, WebSocketServer } from "ws";
+import type { Mailer } from "./mail.ts";
 
 export type Logger = (event: LogEvent, fields?: LogFields) => void;
 
@@ -149,9 +150,10 @@ export function attachSignaling(
     limits?: Partial<typeof LIMITS>;
     /** Minted once per pairing, so TURN credentials are fresh. Never logged. */
     iceServers?: () => IceServer[];
+    mail?: Mailer | undefined;
   },
 ): { close(): void } {
-  const { log, iceServers = () => [] } = options;
+  const { log, iceServers = () => [], mail } = options;
   const limits = { ...LIMITS, ...options.limits };
   const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
   const peers = new Map<WebSocket, Peer>();
@@ -230,6 +232,7 @@ export function attachSignaling(
     });
     socket.on("close", () => disconnect(socket, peer));
     socket.on("error", () => socket.terminate());
+    send(socket, { t: "hello", mail: mail !== undefined });
   }
 
   function handle(socket: WebSocket, peer: Peer, message: ClientMessage): void {

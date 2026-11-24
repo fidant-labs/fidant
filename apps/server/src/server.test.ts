@@ -103,7 +103,7 @@ test("serves over https with a generated certificate", async () => {
   }
 });
 
-/** Opens a /signal socket on a TLS server and returns its raw text frames as they arrive. */
+/** Opens a /signal socket on a TLS server and returns its raw text frames after the hello. */
 async function rawSocket(port: number): Promise<{ socket: WsClient; next(): Promise<string> }> {
   const socket = new WsClient(`wss://localhost:${port}/signal`, { rejectUnauthorized: false });
   const frames: string[] = [];
@@ -118,13 +118,12 @@ async function rawSocket(port: number): Promise<{ socket: WsClient; next(): Prom
     }
   });
   await new Promise((done, fail) => socket.once("open", done).once("error", fail));
-  return {
-    socket,
-    next: () => {
-      const frame = frames.shift();
-      return frame ? Promise.resolve(frame) : new Promise((done) => waiting.push(done));
-    },
+  const next = (): Promise<string> => {
+    const frame = frames.shift();
+    return frame ? Promise.resolve(frame) : new Promise((done) => waiting.push(done));
   };
+  assert.deepEqual(parseServerMessage(await next()), { t: "hello", mail: false });
+  return { socket, next };
 }
 
 for (const turn of [false, true]) {

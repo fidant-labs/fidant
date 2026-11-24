@@ -53,8 +53,8 @@ type Client = {
   closed: Promise<number>;
 };
 
-/** Opens a WebSocket to /signal and queues the messages it receives. */
-async function connect(url = `ws://localhost:${port}/signal`): Promise<Client> {
+/** Opens a WebSocket to /signal, checks its hello and queues the messages after it. */
+async function connect(url = `ws://localhost:${port}/signal`, mail = false): Promise<Client> {
   const socket = new WebSocket(url);
   const queue: ServerMessage[] = [];
   const waiting: ((message: ServerMessage) => void)[] = [];
@@ -98,6 +98,7 @@ async function connect(url = `ws://localhost:${port}/signal`): Promise<Client> {
     closed,
   };
   clients.push(client);
+  assert.deepEqual(await client.next(), { t: "hello", mail });
   return client;
 }
 
@@ -120,6 +121,18 @@ async function joinAs(link: string, host: Client): Promise<Client & { attempt: s
   assert.deepEqual(await host.next(), { t: "joined", link, attempt, iceServers: [] });
   return Object.assign(guest, { attempt });
 }
+
+test("says hello first with whether the server can email links", async (t) => {
+  const mailing = createServer();
+  const mailingSignaling = attachSignaling(mailing, { log: () => {}, mail: async () => {} });
+  t.after(() => {
+    mailingSignaling.close();
+    mailing.close();
+  });
+  await new Promise<void>((done) => mailing.listen(0, done));
+  await connect(`ws://localhost:${(mailing.address() as AddressInfo).port}/signal`, true);
+  await connect();
+});
 
 test("relays messages between host and guest in both directions", async () => {
   const link = linkId();
@@ -580,11 +593,11 @@ test("drops relays to a socket that stops reading and keeps the sender open", as
 test("drops nothing to a socket that keeps reading", async (t) => {
   const relay = await bufferedRelay(t);
   await relay.flood(10);
-  // The guest's joined ack, then 200 relays.
-  for (let wait = 0; wait < 200 && relay.received() < 201; wait += 1) {
+  // The guest's hello and joined ack, then 200 relays.
+  for (let wait = 0; wait < 200 && relay.received() < 202; wait += 1) {
     await new Promise((done) => setTimeout(done, 5));
   }
-  assert.equal(relay.received(), 201);
+  assert.equal(relay.received(), 202);
   assert.ok(!relay.events.includes("relay-dropped"));
 });
 
