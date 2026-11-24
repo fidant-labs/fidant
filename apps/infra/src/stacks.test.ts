@@ -371,6 +371,8 @@ test("the app box routes 443 by SNI to Caddy and to coturn's TLS, and copies Cad
     '  runuser -u caddy -- cat "$key" >/etc/coturn/turn.key.new',
     "  install -m 644 /dev/null /etc/coturn/turn.crt.new",
     '  runuser -u caddy -- cat "$crt" >/etc/coturn/turn.crt.new',
+    "  openssl pkey -pubout -in /etc/coturn/turn.key.new >/etc/coturn/turn.pub.new",
+    "  if ! openssl x509 -pubkey -noout -in /etc/coturn/turn.crt.new | cmp -s - /etc/coturn/turn.pub.new; then",
     "  mv /etc/coturn/turn.key.new /etc/coturn/turn.key",
     "  mv /etc/coturn/turn.crt.new /etc/coturn/turn.crt",
     "  if systemctl is-active --quiet coturn; then",

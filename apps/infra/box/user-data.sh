@@ -260,6 +260,15 @@ if [ -n "$crt" ] && ! cmp -s "$crt" /etc/coturn/turn.crt; then
   runuser -u caddy -- cat "$key" >/etc/coturn/turn.key.new
   install -m 644 /dev/null /etc/coturn/turn.crt.new
   runuser -u caddy -- cat "$crt" >/etc/coturn/turn.crt.new
+  # A renewal between the two reads could pair a new certificate with the old key, and the cmp above
+  # would never copy again. Refuse such a pair; the next run reads both files afresh.
+  openssl pkey -pubout -in /etc/coturn/turn.key.new >/etc/coturn/turn.pub.new
+  if ! openssl x509 -pubkey -noout -in /etc/coturn/turn.crt.new | cmp -s - /etc/coturn/turn.pub.new; then
+    rm -f /etc/coturn/turn.key.new /etc/coturn/turn.crt.new /etc/coturn/turn.pub.new
+    echo "refused: Caddy's certificate and key for $name don't match" >&2
+    exit 1
+  fi
+  rm -f /etc/coturn/turn.pub.new
   mv /etc/coturn/turn.key.new /etc/coturn/turn.key
   mv /etc/coturn/turn.crt.new /etc/coturn/turn.crt
   # USR2 reloads the pair and keeps relayed transfers. A coturn that started without one opens its
