@@ -2,7 +2,9 @@ import { createHash } from "node:crypto";
 import type { Page } from "@playwright/test";
 import { canaryFile, canaryKey, expect, test } from "../src/fixtures.ts";
 import { base32Token } from "../src/leaks/canary.ts";
+import type { Allowed } from "../src/leaks/needles.ts";
 import type { Finding } from "../src/leaks/scan.ts";
+import { injectMail, mailTo } from "../src/mail.ts";
 
 // The detector's self-test: each case leaks a canary from the page to the real stack on purpose
 // and checks that the scan finds it, with the right class, label, observation point and view.
@@ -297,6 +299,72 @@ test.describe("the detector catches", () => {
       field: "console.text",
       view: /^raw$/,
     });
+  });
+});
+
+test.describe("an emailed link", () => {
+  test.skip(!process.env.SIGILL_E2E_MAILPIT, "needs Mailpit");
+
+  test("may carry its secrets in its two carriers, and in any other mail they are caught", async ({
+    page,
+    leaks,
+    canary,
+  }) => {
+    const to = `anna-${base32Token(canary.fork("address"), 8).toLowerCase()}@example.com`;
+    await page.goto("/send");
+    await page.getByLabel("Choose a file").setInputFiles({
+      name: "a.bin",
+      mimeType: "application/octet-stream",
+      buffer: Buffer.from("x"),
+    });
+    await page.getByLabel("Who is it for?").fill("Anna");
+    await page.getByLabel("Their email address").fill(to);
+    await page.getByRole("button", { name: "Add", exact: true }).click();
+    // Shown once the server has emailed it: the link with the server's value before the secret.
+    const link = new URL(
+      (await page.getByLabel("Link for Anna", { exact: true }).textContent()) ?? "",
+    );
+    const [, mark = "", secret = ""] = /^#e\.([\w-]{22})\.([\w-]{43})$/.exec(link.hash) ?? [];
+    const linkId = link.pathname.slice("/r/".length);
+    await expect.poll(async () => (await mailTo(to)).length).toBe(1);
+    const [notice] = await mailTo(to);
+    if (!notice) {
+      throw new Error("no notice");
+    }
+    expect(notice.Text).toContain(link.href);
+    const mail: Allowed["mail"] = { to, notice: notice.ID };
+    leaks.watchKey("link secret", secret, "K", { link: linkId, frames: ["sent email"], mail });
+    leaks.watchKey("value", mark, "K", {
+      link: linkId,
+      frames: ["received email", "sent gate", "sent send-code", "sent code"],
+      mail,
+    });
+    leaks.watchText("address", to, { link: linkId, frames: ["sent email"], mail: { to } });
+    // The registering frame and the notice carry all three, and the scan allows them there.
+    expect(await leaks.scan()).toEqual([]);
+
+    const header = await injectMail({ to, subject: secret, text: "Hello" });
+    const copy = await injectMail({ to, subject: notice.Subject, text: notice.Text });
+    const code = await injectMail({
+      to,
+      subject: "Your Fidant code",
+      text: `Your code: 123456\n\n${secret}`,
+    });
+    const other = await injectMail({ to: "bob@example.com", subject: "Hi", text: `Mail ${to}` });
+    const found = (await leaks.scan()).map(
+      (f) => `${f.label.replace(/ text$/, "")} @ ${f.point.replace(/^.*\/mail\//, "")}`,
+    );
+    expect([...new Set(found)].sort()).toEqual(
+      [
+        `address @ ${other}.eml body`,
+        `link secret @ ${code}.eml body`,
+        `link secret @ ${copy}.eml body`,
+        `link secret @ ${header}.eml headers`,
+        `value @ ${copy}.eml body`,
+      ].sort(),
+    );
+    expect(await leaks.check()).toMatch(/Leak check failed/);
+    leaks.expectLeaks();
   });
 });
 

@@ -1,6 +1,6 @@
 import { isUtf8 } from "node:buffer";
 import { decodeViews } from "./decode.ts";
-import { minWindow } from "./needles.ts";
+import { type Allowed, minWindow, type Secret } from "./needles.ts";
 import { type Capture, context, type Finding } from "./scan.ts";
 
 /**
@@ -153,4 +153,90 @@ function fill(bytes: Buffer, form: Buffer): void {
   for (let at = bytes.indexOf(form); at !== -1; at = bytes.indexOf(form, at + form.length)) {
     bytes.fill(filler, at, at + form.length);
   }
+}
+
+/**
+ * Drops the findings of an emailed link's secrets (`Allowed`, decision 0012) at the points where
+ * they may appear, and keeps every other finding. A mail allows nothing unless its headers show one
+ * plain-text part sent to the link's address alone, so a second recipient voids the allowance.
+ */
+export function allowEmailed(
+  findings: Finding[],
+  captures: readonly Capture[],
+  secrets: readonly Secret[],
+): Finding[] {
+  const rules = new Map<string, Allowed>();
+  for (const secret of secrets) {
+    if ("allowed" in secret && secret.allowed) {
+      rules.set(secret.label, secret.allowed);
+    }
+  }
+  if (rules.size === 0) {
+    return findings;
+  }
+  const bytes = new Map(captures.map((capture) => [capture.point, capture.bytes]));
+  /** The point of each link's first registering message. */
+  const registered = new Map<unknown, string>();
+  for (const capture of captures) {
+    const message = frame(capture.point, capture.bytes);
+    if (message?.kind === "sent email" && !registered.has(message.link)) {
+      registered.set(message.link, capture.point);
+    }
+  }
+  const allowed = (point: string, rule: Allowed): boolean => {
+    const message = frame(point, bytes.get(point));
+    if (message) {
+      return (
+        message.link === rule.link &&
+        rule.frames.includes(message.kind) &&
+        (message.kind !== "sent email" || registered.get(rule.link) === point)
+      );
+    }
+    const mail = /\/mail\/([^/]+)\.eml (headers|body)$/.exec(point);
+    const headers = bytes.get(point.replace(/ body$/, " headers"));
+    if (!mail || !rule.mail || !headers || !aloneTo(headers, rule.mail.to)) {
+      return false;
+    }
+    return rule.mail.notice === undefined || (rule.mail.notice === mail[1] && mail[2] === "body");
+  };
+  return findings.filter((finding) => {
+    const rule = rules.get(finding.label);
+    return !(rule && allowed(finding.point, rule));
+  });
+}
+
+/** A recorded signaling message's direction and type (`sent email`) and its link. */
+function frame(
+  point: string,
+  bytes: Uint8Array | undefined,
+): { kind: string; link: unknown } | undefined {
+  const direction = / frame-(sent|received)\.payload$/.exec(point)?.[1];
+  if (!direction || !bytes) {
+    return undefined;
+  }
+  try {
+    const message = JSON.parse(Buffer.from(bytes).toString("utf8")) as Record<string, unknown>;
+    return { kind: `${direction} ${String(message.t)}`, link: message.link };
+  } catch {
+    return undefined;
+  }
+}
+
+/** Whether unfolded mail headers show one plain-text part to `to` alone: one To, no Cc or Bcc. */
+function aloneTo(headers: Uint8Array, to: string): boolean {
+  const fields = Buffer.from(headers).toString("latin1").split(/\r?\n/);
+  const values = (name: string) =>
+    fields
+      .filter((field) => field.toLowerCase().startsWith(`${name}:`))
+      .map((field) => field.slice(name.length + 1));
+  const recipients = values("to").flatMap((value) => value.match(/[^\s<>,"]+@[^\s<>,"]+/g) ?? []);
+  const [type = "text/plain", ...moreTypes] = values("content-type");
+  return (
+    values("cc").length === 0 &&
+    values("bcc").length === 0 &&
+    recipients.length === 1 &&
+    recipients[0]?.toLowerCase() === to.toLowerCase() &&
+    moreTypes.length === 0 &&
+    /^\s*text\/plain\b/i.test(type)
+  );
 }

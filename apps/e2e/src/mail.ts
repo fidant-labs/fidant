@@ -54,3 +54,41 @@ export async function deleteSavedMail(dir: string): Promise<void> {
     });
   }
 }
+
+/** A message as Mailpit's API gives it: `Text` is the decoded plain-text body. */
+export interface Message {
+  ID: string;
+  Subject: string;
+  Text: string;
+  HTML: string;
+}
+
+/** The messages Mailpit holds for `to`, newest first. */
+export async function mailTo(to: string): Promise<Message[]> {
+  const query = encodeURIComponent(`to:"${to}"`);
+  const { messages } = (await (await call(`/api/v1/search?query=${query}`)).json()) as {
+    messages: { ID: string }[];
+  };
+  return Promise.all(
+    messages.map(async ({ ID }) => (await (await call(`/api/v1/message/${ID}`)).json()) as Message),
+  );
+}
+
+/** Puts a message into Mailpit through its send API, for a deliberate leak. Returns its ID. */
+export async function injectMail(message: {
+  to: string;
+  subject: string;
+  text: string;
+}): Promise<string> {
+  const response = await call("/api/v1/send", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      From: { Email: "noreply@example.com" },
+      To: [{ Email: message.to }],
+      Subject: message.subject,
+      Text: message.text,
+    }),
+  });
+  return ((await response.json()) as { ID: string }).ID;
+}

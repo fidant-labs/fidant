@@ -1,7 +1,7 @@
 import { appendFileSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { ByteSecret, Secret, SecretClass } from "./needles.ts";
+import type { Allowed, ByteSecret, Secret, SecretClass } from "./needles.ts";
 
 /**
  * The run's registry of secrets, so the run-level sweep can check every secret any test watched.
@@ -20,6 +20,7 @@ type Entry =
       bytes: string;
       window?: number;
       caseInsensitive?: true;
+      allowed?: Allowed;
     }
   | { test: string; class: "M"; label: string; size: number }
   /** The test registered as leaking on purpose (`leaks.expectLeaks()`): the sweep skips its secrets. */
@@ -38,6 +39,7 @@ export function registerSecrets(dir: string, test: string, secrets: readonly Sec
             bytes: Buffer.from(secret.bytes).toString("base64"),
             ...(secret.window !== undefined ? { window: secret.window } : {}),
             ...(secret.caseInsensitive ? { caseInsensitive: true as const } : {}),
+            ...(secret.allowed ? { allowed: secret.allowed } : {}),
           };
     return `${JSON.stringify(entry)}\n`;
   });
@@ -90,6 +92,9 @@ export async function readRegistry(
     }
     if (entry.caseInsensitive) {
       secret.caseInsensitive = true;
+    }
+    if (entry.allowed) {
+      secret.allowed = entry.allowed;
     }
     secrets.push(secret);
   }
