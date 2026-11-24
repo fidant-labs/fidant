@@ -414,7 +414,7 @@ export function ReceivePage() {
       }).then(
         (result) => {
           if (result.type === "declined") {
-            finish({ s: "declined", text: offered?.text === true }, true);
+            finish({ s: "declined", text: attempt.text }, true);
           } else if (offered) {
             const sha256 = toHex(result.sha256);
             finish({ s: "done", offer: offered, blob: result.blob, sha256 }, true);
@@ -605,47 +605,40 @@ export function ReceivePage() {
     }
     case "done": {
       const { offer, blob, sha256 } = view;
-      if (offer.text && blob) {
-        body = (
-          <>
-            <div class="flex items-center gap-2.5 text-primary">
-              <Icon name="check" class="size-8 stroke-[2.5]" />
-              <h1 class="m-0">{t.secret.doneTitle}</h1>
-            </div>
-            <ShownText
-              blob={blob}
-              // RECEIPT already went out, so the link is spent: no Try again.
-              onUnreadable={() => setView({ s: "refused", problem: "save", text: true })}
-            />
-            <p class="text-muted-foreground">{t.secret.notSaved}</p>
-            <Direct from={t.common.sender} to={t.common.you} state="done" />
-            <p class={caption}>{t.receive.doneCaption}</p>
-            {path && <PathLine path={path} />}
-            <OfferDetails offer={offer} />
-          </>
-        );
-        break;
-      }
+      const textBlob = offer.text ? blob : undefined;
       body = (
         <>
           <div class="flex items-center gap-2.5 text-primary">
             <Icon name="check" class="size-8 stroke-[2.5]" />
-            <h1 class="m-0">{t.receive.doneTitle}</h1>
+            <h1 class="m-0">{textBlob ? t.secret.doneTitle : t.receive.doneTitle}</h1>
           </div>
-          <FileCard name={offer.name} size={formatBytes(offer.size, lang)} />
-          <p>{t.receive.verified}</p>
-          {blob ? (
-            <div class="flex flex-wrap items-center gap-4">
-              <p class="text-muted-foreground">{t.receive.autoDownload}</p>
-              <SaveLink blob={blob} name={offer.name} label={t.receive.saveFile} />
-            </div>
+          {textBlob ? (
+            <>
+              <ShownText
+                blob={textBlob}
+                // RECEIPT already went out, so the link is spent: no Try again.
+                onUnreadable={() => setView({ s: "refused", problem: "save", text: true })}
+              />
+              <p class="text-muted-foreground">{t.secret.notSaved}</p>
+            </>
           ) : (
-            <p class="text-muted-foreground">{t.receive.savedWhereChosen}</p>
+            <>
+              <FileCard name={offer.name} size={formatBytes(offer.size, lang)} />
+              <p>{t.receive.verified}</p>
+              {blob ? (
+                <div class="flex flex-wrap items-center gap-4">
+                  <p class="text-muted-foreground">{t.receive.autoDownload}</p>
+                  <SaveLink blob={blob} name={offer.name} label={t.receive.saveFile} />
+                </div>
+              ) : (
+                <p class="text-muted-foreground">{t.receive.savedWhereChosen}</p>
+              )}
+            </>
           )}
           <Direct from={t.common.sender} to={t.common.you} state="done" />
           <p class={caption}>{t.receive.doneCaption}</p>
           {path && <PathLine path={path} />}
-          <OfferDetails offer={offer} sha256={sha256} />
+          <OfferDetails offer={offer} sha256={textBlob ? undefined : sha256} />
         </>
       );
       break;
@@ -684,7 +677,7 @@ export function ReceivePage() {
   );
 }
 
-function OfferDetails({ offer, sha256 }: { offer: Offer; sha256?: string }) {
+function OfferDetails({ offer, sha256 }: { offer: Offer; sha256?: string | undefined }) {
   const { t } = useI18n();
   const rows: Array<readonly [string, ComponentChildren]> = offer.text
     ? []
