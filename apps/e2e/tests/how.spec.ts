@@ -30,6 +30,22 @@ async function expectNoOverflow(page: Page) {
   expect(width.scroll).toBeLessThanOrEqual(width.inner);
 }
 
+async function expectFinalFrames(page: Page) {
+  expect(await page.evaluate(() => document.getAnimations().length)).toBe(0);
+  const notFinal = await page.evaluate(
+    () =>
+      [...document.querySelectorAll("main svg *")].filter((element) => {
+        const style = getComputedStyle(element);
+        return (
+          style.opacity !== "1" ||
+          style.translate !== "none" ||
+          !["0", "0px"].includes(style.strokeDashoffset)
+        );
+      }).length,
+  );
+  expect(notFinal).toBe(0);
+}
+
 async function expectBelowHeader(page: Page, selector: string) {
   await expect
     .poll(() =>
@@ -71,7 +87,7 @@ test.describe("in Swedish", () => {
     await page.goto("/how");
     await expect(page.locator("main h1")).toHaveText("Så fungerar det");
     await expect(page).toHaveTitle("Så fungerar det – Fidant");
-    await expect(page.locator("main section h2")).toHaveCount(SECTIONS.length);
+    await expect(page.locator("#relay h2")).toHaveText("Ibland går den via vårt relä");
   });
 
   test("the Swedish page fits a phone screen", async ({ page }) => {
@@ -106,22 +122,19 @@ test("with reduced motion nothing animates", async ({ page }) => {
     await drawing.scrollIntoViewIfNeeded();
     await expect(drawing).toHaveAttribute("data-seen", "");
   }
-  expect(await page.evaluate(() => document.getAnimations().length)).toBe(0);
-  const notFinal = await page.evaluate(
-    () =>
-      [...document.querySelectorAll("main svg *")].filter((element) => {
-        const style = getComputedStyle(element);
-        return (
-          style.opacity !== "1" ||
-          style.translate !== "none" ||
-          !["0", "0px"].includes(style.strokeDashoffset)
-        );
-      }).length,
-  );
-  expect(notFinal).toBe(0);
+  await expectFinalFrames(page);
 });
 
-test("each drawing waits until it is scrolled into view, then plays", async ({ page }) => {
+test("printing shows every drawing at its final frame", async ({ page }) => {
+  await page.emulateMedia({ media: "print" });
+  await page.goto("/how");
+  await expect(page.locator("main h1")).toHaveText("How it works");
+  await expectFinalFrames(page);
+});
+
+test("a drawing below the fold waits, and each one plays once scrolled into view", async ({
+  page,
+}) => {
   await page.goto("/how");
   const states = (id: string) =>
     page
@@ -151,7 +164,7 @@ test("the page fits a phone screen", async ({ page }) => {
   await expectNoOverflow(page);
 });
 
-test("a receive link's fragment is never looked up as an anchor", async ({ page }) => {
+test("only the How it works page looks up its fragment as an anchor", async ({ page }) => {
   const fragment = "A".repeat(43);
   await page.addInitScript(() => {
     const calls: string[] = [];
@@ -162,10 +175,19 @@ test("a receive link's fragment is never looked up as an anchor", async ({ page 
       return original(id);
     };
   });
-  await page.goto(`/r/unknown#${fragment}`);
-  await expect(page.locator("main h1")).toBeVisible();
-  const lookups = await page.evaluate(
-    () => (window as unknown as { idLookups: string[] }).idLookups,
-  );
-  expect(lookups).not.toContain(fragment);
+  const lookups = () =>
+    page.evaluate(() => (window as unknown as { idLookups: string[] }).idLookups);
+
+  // The tab title is set by the effect that runs just before the anchor lookup.
+  for (const [path, title] of [
+    [`/r/unknown#${fragment}`, "Receive a file – Fidant"],
+    [`/#${fragment}`, "Fidant: private file transfer"],
+  ] as const) {
+    await page.goto(path);
+    await expect(page).toHaveTitle(title);
+    expect(await lookups()).not.toContain(fragment);
+  }
+  await page.goto("/how#relay");
+  await expect(page).toHaveTitle("How it works – Fidant");
+  expect(await lookups()).toContain("relay");
 });
