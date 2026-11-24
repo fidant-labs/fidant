@@ -17,6 +17,11 @@ export function textFitsOneChunk(maxMessageSize: number): boolean {
   return maxMessageSize - FRAME_OVERHEAD_BYTES >= MAX_TEXT_BYTES;
 }
 
+/** Decodes a received text as UTF-8, keeping a leading U+FEFF (Blob.text() drops it); invalid bytes become U+FFFD. */
+export async function decodeText(blob: Blob): Promise<string> {
+  return new TextDecoder("utf-8", { ignoreBOM: true }).decode(await blob.arrayBuffer());
+}
+
 export function isTextOffer(offer: { type: string; size: number }): boolean {
   return offer.type === TEXT_TYPE && offer.size <= MAX_TEXT_BYTES;
 }

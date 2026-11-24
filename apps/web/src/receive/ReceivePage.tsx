@@ -57,7 +57,7 @@ import { peerLostProblem } from "../lib/receive-problem.ts";
 import { addRelay, NO_RELAYS, type Tie } from "../lib/server-facts.ts";
 import { connectSignaling, retryDelay, type SignalingClient } from "../lib/signaling-client.ts";
 import { BlobSink, createSink, isPickerCancel, type Sink } from "../lib/sink.ts";
-import { isTextOffer } from "../lib/text-secret.ts";
+import { decodeText, isTextOffer } from "../lib/text-secret.ts";
 import {
   Direct,
   FileCard,
@@ -703,9 +703,8 @@ function ShownText({ blob }: { blob: Blob }) {
   const [copyNote, setCopyNote] = useState<CopyNote | "">("");
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  // Blob.text() decodes UTF-8 like a non-fatal TextDecoder: invalid bytes become U+FFFD.
   useEffect(() => {
-    void blob.text().then(setText);
+    void decodeText(blob).then(setText);
   }, [blob]);
   useEffect(() => () => clearTimeout(timer.current), []);
 
