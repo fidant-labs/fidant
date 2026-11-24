@@ -334,6 +334,9 @@ export const en = {
     lede: "Paste a password, an API key or any short text. It goes from this browser to the people you choose, encrypted the whole way, and is never uploaded or stored.",
     label: "Your text",
     hint: (max: number) => `Up to ${max.toLocaleString("en-US")} characters.`,
+    count: (length: number, max: number) =>
+      `${length.toLocaleString("en-US")} of ${max.toLocaleString("en-US")} characters.`,
+    tooLong: "Shorten the text to share it.",
     lostServer:
       "Lost the connection to the server. Trying to reconnect… Texts already on their way can finish. Nobody new can connect until it's back, so keep this page open.",
     // Only the problems after an offer whose file wording would be wrong; the rest come from receive.problems.
