@@ -2,6 +2,18 @@
 # Lightsail runs this once as root through /bin/sh after a script of its own, so it must stay POSIX sh.
 set -eux
 
+# /privacy promises log lines are deleted after 30 days. The journal is the only log store: journald
+# drops a day-long file once its newest line is 29 days old, and forwards nothing to rsyslog's
+# /var/log/syslog, which logrotate would keep for about five weeks.
+install -d /etc/systemd/journald.conf.d
+cat >/etc/systemd/journald.conf.d/retention.conf <<'EOF'
+[Journal]
+MaxRetentionSec=29day
+MaxFileSec=1day
+ForwardToSyslog=no
+EOF
+systemctl restart systemd-journald
+
 fallocate -l 2G /swapfile
 chmod 600 /swapfile
 mkswap /swapfile
