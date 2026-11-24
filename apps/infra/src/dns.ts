@@ -55,7 +55,11 @@ export class DnsStack extends Stack {
       }
 
       const target = route53.RecordTarget.fromIpAddresses(props.boxAddress);
-      for (const recordName of [zoneName, `www.${zoneName}`]) {
+      const recordNames = [zoneName, `www.${zoneName}`];
+      if (zoneName === primaryDomain) {
+        recordNames.push(`turn.${zoneName}`);
+      }
+      for (const recordName of recordNames) {
         new route53.ARecord(zone, `${recordName} A`, { zone, recordName, target });
       }
     }

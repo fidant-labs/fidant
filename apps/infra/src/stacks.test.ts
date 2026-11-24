@@ -124,9 +124,9 @@ test("any other account gets no stacks", () => {
 const recordSet = "AWS::Route53::RecordSet";
 const committed = Template.fromStack(stacksFor(dnsAccount)[0] as Stack);
 
-test("the committed config points every site name at the box, over IPv4 only", () => {
+test("the committed config points every site name and the relay at the box, over IPv4 only", () => {
   assert.equal(isIP(boxAddress), 4);
-  for (const name of siteNames) {
+  for (const name of [...siteNames, "turn.fidant.se"]) {
     committed.hasResourceProperties(recordSet, {
       Name: `${name}.`,
       Type: "A",
@@ -136,7 +136,7 @@ test("the committed config points every site name at the box, over IPv4 only", (
   }
 });
 
-test("the app box is open only on 80 and 443, and on 22 only to Lightsail's browser SSH", () => {
+test("the app box is open only on 80, 443 and the relay's ports, and on 22 only to Lightsail's browser SSH", () => {
   const stack = stacksFor(pocAccount).find((child) => child.stackName === "FidantApp");
   const box = Template.fromStack(stack as Stack);
   const [instance] = Object.values(box.findResources("AWS::Lightsail::Instance"));
@@ -144,6 +144,9 @@ test("the app box is open only on 80 and 443, and on 22 only to Lightsail's brow
     { Protocol: "tcp", FromPort: 80, ToPort: 80, Cidrs: ["0.0.0.0/0"], Ipv6Cidrs: ["::/0"] },
     { Protocol: "tcp", FromPort: 443, ToPort: 443, Cidrs: ["0.0.0.0/0"], Ipv6Cidrs: ["::/0"] },
     { Protocol: "tcp", FromPort: 22, ToPort: 22, CidrListAliases: ["lightsail-connect"] },
+    { Protocol: "tcp", FromPort: 3478, ToPort: 3478, Cidrs: ["0.0.0.0/0"], Ipv6Cidrs: ["::/0"] },
+    { Protocol: "udp", FromPort: 3478, ToPort: 3478, Cidrs: ["0.0.0.0/0"], Ipv6Cidrs: ["::/0"] },
+    { Protocol: "udp", FromPort: 49152, ToPort: 65535, Cidrs: ["0.0.0.0/0"], Ipv6Cidrs: ["::/0"] },
   ]);
   const [instanceId] = Object.keys(box.findResources("AWS::Lightsail::Instance"));
   box.hasResourceProperties("AWS::Lightsail::StaticIp", { AttachedTo: { Ref: instanceId } });
@@ -158,6 +161,83 @@ test("the app box is open only on 80 and 443, and on 22 only to Lightsail's brow
   const topLevel = String(instance?.Properties.UserData).split("<<'EOF'")[0] ?? "";
   assert.match(topLevel, /^#!\/bin\/sh\n.*\nset -eux\n/);
   assert.doesNotMatch(topLevel, /pipefail|\[\[/);
+});
+
+test("the app box runs coturn after the site is up, with a secret that stays on the box", () => {
+  const stack = stacksFor(pocAccount).find((child) => child.stackName === "FidantApp");
+  const box = Template.fromStack(stack as Stack);
+  const [instance] = Object.values(box.findResources("AWS::Lightsail::Instance"));
+  const userData = String(instance?.Properties.UserData);
+  const lines = userData.split("\n");
+  assert.ok(Buffer.byteLength(userData) < 16 * 1024);
+
+  for (const line of ["realm=turn.fidant.se", "use-auth-secret", "log-file=/dev/null"]) {
+    assert.ok(lines.includes(line), line);
+  }
+  assert.ok(userData.includes(`external-ip=${boxAddress}/`));
+  const denied = lines.filter((line) => line.startsWith("denied-peer-ip="));
+  assert.deepEqual(denied, [
+    "denied-peer-ip=0.0.0.0-0.255.255.255",
+    "denied-peer-ip=10.0.0.0-10.255.255.255",
+    "denied-peer-ip=100.64.0.0-100.127.255.255",
+    "denied-peer-ip=127.0.0.0-127.255.255.255",
+    "denied-peer-ip=169.254.0.0-169.254.255.255",
+    "denied-peer-ip=172.16.0.0-172.31.255.255",
+    "denied-peer-ip=192.168.0.0-192.168.255.255",
+    "denied-peer-ip=::1",
+    "denied-peer-ip=::ffff:0.0.0.0-::ffff:255.255.255.255",
+    "denied-peer-ip=64:ff9b::-64:ff9b::ffff:ffff",
+    "denied-peer-ip=2002::-2002:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+    "denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+    "denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+  ]);
+  assert.ok(denied.every((line) => !line.includes(boxAddress)));
+
+  const caddy = userData.indexOf("\nsystemctl restart caddy\n");
+  const mask = userData.indexOf("\nsystemctl mask coturn\n");
+  const install = userData.indexOf(" install -y coturn\n");
+  const conf = userData.indexOf("\ninstall -m 640 -g turnserver /dev/null /etc/turnserver.conf\n");
+  const template = userData.indexOf("\ncat >>/etc/turnserver.conf <<'EOF'\n");
+  const secret = userData.indexOf("; cat /etc/sigill/turn-secret; } >>/etc/turnserver.conf\n");
+  const online = userData.indexOf(
+    "\ncat >/etc/systemd/system/coturn.service.d/online.conf <<'EOF'\n[Unit]\nWants=network-online.target\nAfter=network-online.target\nEOF\n",
+  );
+  const unmask = userData.indexOf("\nsystemctl unmask coturn\n");
+  const enable = userData.indexOf("\nsystemctl enable --now coturn\n");
+  const active = userData.indexOf("\nif systemctl is-active --quiet coturn; then\n");
+  const dropIn = userData.indexOf("\n  install -d /etc/systemd/system/sigill.service.d\n");
+  const fi = userData.indexOf("\nfi\n", active);
+  const order = [
+    caddy,
+    mask,
+    install,
+    conf,
+    template,
+    secret,
+    online,
+    unmask,
+    enable,
+    active,
+    dropIn,
+    fi,
+  ];
+  assert.ok(
+    order.every((index) => index > 0),
+    order.join(),
+  );
+  assert.deepEqual(
+    order,
+    order.toSorted((a, b) => a - b),
+  );
+  assert.doesNotMatch(userData.slice(0, caddy), /coturn|turn-secret/);
+
+  assert.deepEqual(userData.match(/static-auth-secret=.*/g), [
+    'static-auth-secret=\' "$private_ip"; cat /etc/sigill/turn-secret; } >>/etc/turnserver.conf',
+  ]);
+  assert.doesNotMatch(userData, /\$\(openssl/);
+  assert.deepEqual(userData.match(/.*rand -hex.*/g), [
+    "(umask 077 && openssl rand -hex 32 >/etc/sigill/turn-secret)",
+  ]);
 });
 
 test("the committed config keeps fidant.se's Proton mail records", () => {
@@ -244,4 +324,14 @@ test("every site name points at the box over IPv4 only", () => {
     });
   }
   dns.resourcePropertiesCountIs("AWS::Route53::RecordSet", { Type: "AAAA" }, 0);
+});
+
+test("only fidant.se gets the relay name, pointing at the box over IPv4", () => {
+  const relay = Object.values(dns.findResources(recordSet)).filter((record) =>
+    String(record.Properties.Name).startsWith("turn."),
+  );
+  assert.deepEqual(
+    relay.map(({ Properties: p }) => [p.HostedZoneId, p.Name, p.Type, p.ResourceRecords]),
+    [[zoneRef("fidant.se"), "turn.fidant.se.", "A", ["192.0.2.10"]]],
+  );
 });

@@ -309,9 +309,11 @@ export const sv: Messages = {
     relaySees:
       "Båda webbläsarnas IP-adresser och den krypterade filen som passerar, med storleken avrundad uppåt så att den exakta storleken inte syns. Reläet kan inte låsa upp filen.",
     relayLogsLabel: "Vårt relä loggar",
-    relayLogs: "Anslutningstider och IP-adresser. Aldrig namn, nycklar eller filinnehåll.",
+    relayLogs:
+      "Inget i vanliga fall. Bara när vi felsöker eller stoppar missbruk: anslutningstider, IP-adresser och hur mycket data som passerade, i högst 7 dagar. Aldrig namn, nycklar eller filinnehåll.",
     relayKeepsLabel: "Vårt relä sparar",
-    relayKeeps: "Ingenting av filen när den har passerat. Loggraderna finns kvar.",
+    relayKeeps:
+      "Ingenting av filen när den har passerat. Loggrader som sparas när vi felsöker eller stoppar missbruk raderas inom 7 dagar.",
     senderAfterwards: (online: boolean) =>
       online
         ? "När du stänger den här fliken glömmer servern dina länkar, inom högst en minut. Loggraderna finns kvar."
