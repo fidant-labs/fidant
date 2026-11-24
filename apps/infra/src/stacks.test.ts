@@ -907,12 +907,9 @@ test("a first deploy with newMailIdentity leaves out the settings an unverified 
     ),
     [],
   );
-  const statements = (box: Template) =>
-    Object.values(box.findResources("AWS::SNS::TopicPolicy"))[0]?.Properties.PolicyDocument
-      .Statement;
-  assert.deepEqual(statements(first), statements(full).slice(0, 1));
   for (const type of [
     "AWS::Lightsail::Instance",
+    "AWS::SNS::TopicPolicy",
     "AWS::SES::EmailIdentity",
     "AWS::SES::ConfigurationSet",
     "AWS::SES::ConfigurationSetEventDestination",

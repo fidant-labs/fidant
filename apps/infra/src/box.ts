@@ -123,20 +123,20 @@ export class BoxStack extends Stack {
       configurationSet,
       mailFromDomain: `bounce.${mailDomain}`,
     });
-    if (!props.newMailIdentity) {
-      const { policyDependable } = feedback.addToResourcePolicy(
-        new iam.PolicyStatement({
-          actions: ["sns:Publish"],
-          resources: [feedback.topicArn],
-          principals: [new iam.ServicePrincipal("ses.amazonaws.com")],
-          conditions: {
-            StringEquals: {
-              "AWS:SourceAccount": this.account,
-              "AWS:SourceArn": identity.emailIdentityArn,
-            },
+    const { policyDependable } = feedback.addToResourcePolicy(
+      new iam.PolicyStatement({
+        actions: ["sns:Publish"],
+        resources: [feedback.topicArn],
+        principals: [new iam.ServicePrincipal("ses.amazonaws.com")],
+        conditions: {
+          StringEquals: {
+            "AWS:SourceAccount": this.account,
+            "AWS:SourceArn": identity.emailIdentityArn,
           },
-        }),
-      );
+        },
+      }),
+    );
+    if (!props.newMailIdentity) {
       const settingsLogs = new logs.LogGroup(this, "MailSettingsLogs", {
         retention: logs.RetentionDays.ONE_MONTH,
         removalPolicy: RemovalPolicy.DESTROY,
