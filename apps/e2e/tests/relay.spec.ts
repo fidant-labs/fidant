@@ -262,7 +262,7 @@ test("a sender who refuses the relay and fails setup shows the refused relay", a
   const link = (await sender.getByLabel("Link for Anna", { exact: true }).textContent()) ?? "";
   leaks.watchKey("link secret", new URL(link).hash.slice(1));
 
-  const recipient = await relayOnly(actor, "recipient");
+  const recipient = await relayOnly(actor, "recipient", "udp");
   await recipient.goto(link);
   await expect(recipient.getByText("The sender doesn't allow our relay")).toBeVisible({
     timeout: 20_000,
