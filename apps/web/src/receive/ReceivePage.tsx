@@ -67,11 +67,10 @@ import {
   Problem,
   ServerPanel,
   TechDetails,
+  useCopyNote,
 } from "../ui.tsx";
 
 const caption = "text-[0.9rem] text-muted-foreground";
-
-type CopyNote = keyof Messages["secret"]["copyNote"];
 
 /** Which problem to show. Text comes from the dictionary at render time, so a language switch re-renders it. */
 type ProblemKey = keyof Messages["receive"]["problems"];
@@ -704,34 +703,11 @@ function OfferDetails({ offer, sha256 }: { offer: Offer; sha256?: string }) {
 function ShownText({ blob, onUnreadable }: { blob: Blob; onUnreadable(): void }) {
   const { t } = useI18n();
   const [text, setText] = useState<string | undefined>(undefined);
-  const [copyNote, setCopyNote] = useState<CopyNote | "">("");
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const { note, copy } = useCopyNote();
 
   useEffect(() => {
     void decodeText(blob).then(setText, onUnreadable);
   }, [blob]);
-  useEffect(() => () => clearTimeout(timer.current), []);
-
-  const showNote = (note: CopyNote) => {
-    clearTimeout(timer.current);
-    setCopyNote(note);
-    timer.current = setTimeout(() => setCopyNote(""), 4000);
-  };
-
-  const copy = async () => {
-    if (text === undefined) {
-      return;
-    }
-    try {
-      if (!navigator.clipboard) {
-        throw new Error("no clipboard");
-      }
-      await navigator.clipboard.writeText(text);
-      showNote("copied");
-    } catch {
-      showNote("failed");
-    }
-  };
 
   return (
     <div class="my-4 flex flex-col gap-3">
@@ -745,11 +721,15 @@ function ShownText({ blob, onUnreadable }: { blob: Blob; onUnreadable(): void })
         <pre class="whitespace-pre-wrap wrap-anywhere">{text}</pre>
       </section>
       <div class="flex flex-wrap items-center gap-3">
-        <Button type="button" onClick={copy} disabled={text === undefined}>
+        <Button
+          type="button"
+          onClick={() => text !== undefined && copy(text)}
+          disabled={text === undefined}
+        >
           {t.secret.copy}
         </Button>
         <span class="text-[0.85rem] text-muted-foreground" role="status">
-          {copyNote && t.secret.copyNote[copyNote]}
+          {note && t.secret.copyNote[note]}
         </span>
       </div>
     </div>

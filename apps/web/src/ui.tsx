@@ -1,7 +1,7 @@
 // Pieces shared by the pages.
 
 import type { AnchorHTMLAttributes, ComponentChildren } from "preact";
-import { useId } from "preact/hooks";
+import { useEffect, useId, useRef, useState } from "preact/hooks";
 import { DropdownMenu } from "radix-ui";
 import { Alert, AlertDescription, AlertTitle } from "#components/ui/alert";
 import { buttonVariants } from "#components/ui/button";
@@ -514,4 +514,34 @@ export function Problem({ title, body }: { title: string; body: string }) {
       <AlertDescription>{body}</AlertDescription>
     </Alert>
   );
+}
+
+type CopyNote = "copied" | "failed";
+
+/** Copies a text to the clipboard; `note` says how it went, as a `copyNote` key, for 4 s. */
+export function useCopyNote() {
+  const [note, setNote] = useState<CopyNote | "">("");
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => () => clearTimeout(timer.current), []);
+
+  const showNote = (next: CopyNote) => {
+    clearTimeout(timer.current);
+    setNote(next);
+    timer.current = setTimeout(() => setNote(""), 4000);
+  };
+
+  const copy = async (text: string) => {
+    try {
+      if (!navigator.clipboard) {
+        throw new Error("no clipboard");
+      }
+      await navigator.clipboard.writeText(text);
+      showNote("copied");
+    } catch {
+      showNote("failed");
+    }
+  };
+
+  return { note, copy };
 }
