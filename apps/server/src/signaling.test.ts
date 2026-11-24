@@ -17,9 +17,13 @@ import { WebSocket as WsClient } from "ws";
 import { attachSignaling, clientAddress, HEARTBEAT_MS } from "./signaling.ts";
 
 const logLines: { event: string; fields: LogFields | undefined }[] = [];
+const RELAY = { urls: ["turn:relay.example:3478"], username: "1700000000", credential: "hmac" };
 const server = createServer((_req, res) => res.writeHead(404).end());
 const signaling = attachSignaling(server, {
   log: (event, fields) => logLines.push({ event, fields }),
+  iceServers: (turn) => (turn ? [RELAY] : []),
+  // Every test's sockets stay open until after(), and all come from one address.
+  limits: { socketsPerAddress: 1000 },
 });
 let port = 0;
 const clients: Client[] = [];
@@ -104,20 +108,28 @@ async function connect(url = `ws://localhost:${port}/signal`): Promise<Client> {
 /** Connects a host for the given links and waits until the server has registered them. */
 async function hostFor(...links: string[]): Promise<Client> {
   const host = await connect();
-  host.send({ t: "host", links });
+  host.send({ t: "host", links, turn: true });
   // Messages on one socket are handled in order, so a round trip proves the host is registered.
   host.send({ t: "relay", link: linkId(), data: "sync" });
   assert.deepEqual(await host.next(), { t: "error", code: "not-on-link" });
   return host;
 }
 
-/** Joins a fresh guest to a link with a fresh attempt ID and waits until both ends hear of it. */
-async function joinAs(link: string, host: Client): Promise<Client & { attempt: string }> {
+/**
+ * Joins a fresh guest to a link with a fresh attempt ID and waits until both ends hear of it,
+ * with `turn` as the host's relay choice.
+ */
+async function joinAs(
+  link: string,
+  host: Client,
+  turn = true,
+): Promise<Client & { attempt: string }> {
   const guest = await connect();
   const attempt = randomBytes(16).toString("base64url");
   guest.send({ t: "join", link, attempt });
-  assert.deepEqual(await guest.next(), { t: "joined", link, attempt, iceServers: [] });
-  assert.deepEqual(await host.next(), { t: "joined", link, attempt, iceServers: [] });
+  const joined = { t: "joined", link, attempt, iceServers: turn ? [RELAY] : [], turn };
+  assert.deepEqual(await guest.next(), joined);
+  assert.deepEqual(await host.next(), joined);
   return Object.assign(guest, { attempt });
 }
 
@@ -150,8 +162,9 @@ test("refuses a second concurrent guest as busy and frees the link when the firs
   // A refused guest may try again once the link is free.
   const attempt = linkId();
   second.send({ t: "join", link, attempt });
-  assert.deepEqual(await second.next(), { t: "joined", link, attempt, iceServers: [] });
-  assert.deepEqual(await host.next(), { t: "joined", link, attempt, iceServers: [] });
+  const joined = { t: "joined", link, attempt, iceServers: [RELAY], turn: true };
+  assert.deepEqual(await second.next(), joined);
+  assert.deepEqual(await host.next(), joined);
 });
 
 test("forwards the sender's refusal to the guest and unbinds it", async () => {
@@ -213,8 +226,8 @@ test("keeps the guest bound when the host re-sends an unchanged list", async () 
   const other = linkId();
   const host = await hostFor(link, other);
   const guest = await joinAs(link, host);
-  host.send({ t: "host", links: [link, other] });
-  host.send({ t: "host", links: [other, link] });
+  host.send({ t: "host", links: [link, other], turn: true });
+  host.send({ t: "host", links: [other, link], turn: true });
   // Had the guest been told host-gone, that would arrive before this relay.
   host.send({ t: "relay", link, data: "c3RpbGw" });
   assert.deepEqual(await guest.next(), { t: "relay", link, data: "c3RpbGw" });
@@ -222,12 +235,35 @@ test("keeps the guest bound when the host re-sends an unchanged list", async () 
   assert.deepEqual(await host.next(), { t: "relay", link, data: "Ym91bmQ" });
 });
 
+test("echoes the host's relay choice at each join and keeps the guest bound when it changes", async () => {
+  const bound = linkId();
+  const fresh = linkId();
+  const host = await hostFor(bound, fresh);
+  const guest = await joinAs(bound, host);
+  host.send({ t: "host", links: [bound, fresh], turn: false });
+  // Had the guest been told host-gone, that would arrive before this relay.
+  host.send({ t: "relay", link: bound, data: "c3RpbGw" });
+  assert.deepEqual(await guest.next(), { t: "relay", link: bound, data: "c3RpbGw" });
+  await joinAs(fresh, host, false);
+  guest.send({ t: "relay", link: bound, data: "Ym91bmQ" });
+  assert.deepEqual(await host.next(), { t: "relay", link: bound, data: "Ym91bmQ" });
+});
+
+test("leaves TURN out of joined when the host refuses it", async () => {
+  const link = linkId();
+  const host = await connect();
+  host.send({ t: "host", links: [link], turn: false });
+  host.send({ t: "relay", link: linkId(), data: "sync" });
+  assert.deepEqual(await host.next(), { t: "error", code: "not-on-link" });
+  await joinAs(link, host, false);
+});
+
 test("tells the guest when the host drops its link from the list", async () => {
   const kept = linkId();
   const dropped = linkId();
   const host = await hostFor(kept, dropped);
   const guest = await joinAs(dropped, host);
-  host.send({ t: "host", links: [kept] });
+  host.send({ t: "host", links: [kept], turn: true });
   assert.deepEqual(await guest.next(), { t: "host-gone" });
 });
 
@@ -235,7 +271,7 @@ test("rejects hosting a link another socket already hosts", async () => {
   const link = linkId();
   await hostFor(link);
   const rival = await connect();
-  rival.send({ t: "host", links: [linkId(), link] });
+  rival.send({ t: "host", links: [linkId(), link], turn: true });
   assert.deepEqual(await rival.next(), { t: "error", code: "already-hosted" });
 });
 
@@ -252,7 +288,7 @@ test("rejects messages from a socket that is not on the link or has the wrong ro
   host.send({ t: "join", link: linkId(), attempt: linkId() });
   assert.deepEqual(await host.next(), { t: "error", code: "wrong-role" });
   const guest = await joinAs(link, host);
-  guest.send({ t: "host", links: [linkId()] });
+  guest.send({ t: "host", links: [linkId()], turn: true });
   assert.deepEqual(await guest.next(), { t: "error", code: "wrong-role" });
   guest.send({ t: "join", link: linkId(), attempt: linkId() });
   assert.deepEqual(await guest.next(), { t: "error", code: "already-joined" });
@@ -388,14 +424,14 @@ test("terminates a guest that never answers pings and tells the host it left", a
 
   const link = linkId();
   const host = await connect(url);
-  host.send({ t: "host", links: [link] });
+  host.send({ t: "host", links: [link], turn: true });
   host.send({ t: "relay", link: linkId(), data: "sync" });
   assert.deepEqual(await host.next(), { t: "error", code: "not-on-link" });
 
   const guest = new WsClient(url, { autoPong: false });
   const attempt = linkId();
   guest.on("open", () => guest.send(JSON.stringify({ t: "join", link, attempt })));
-  assert.deepEqual(await host.next(), { t: "joined", link, attempt, iceServers: [] });
+  assert.deepEqual(await host.next(), { t: "joined", link, attempt, iceServers: [], turn: true });
   const joinedAt = performance.now();
   assert.deepEqual(await host.next(), { t: "left", link });
   assert.ok(performance.now() - joinedAt < 200, "the silent guest outlived two heartbeats");
@@ -542,7 +578,7 @@ async function bufferedRelay(t: { after(fn: () => void): void }) {
   const url = `ws://localhost:${(limited.address() as AddressInfo).port}/signal`;
   const link = linkId();
   const host = await connect(url);
-  host.send({ t: "host", links: [link] });
+  host.send({ t: "host", links: [link], turn: true });
   const guest = new WsClient(url);
   t.after(() => guest.terminate());
   let received = 0;
@@ -551,7 +587,7 @@ async function bufferedRelay(t: { after(fn: () => void): void }) {
   });
   const attempt = linkId();
   guest.on("open", () => guest.send(JSON.stringify({ t: "join", link, attempt })));
-  assert.deepEqual(await host.next(), { t: "joined", link, attempt, iceServers: [] });
+  assert.deepEqual(await host.next(), { t: "joined", link, attempt, iceServers: [], turn: true });
   const data = "A".repeat(MAX_RELAY_DATA);
   return {
     events,

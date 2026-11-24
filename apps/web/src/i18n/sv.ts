@@ -89,6 +89,19 @@ export const sv: Messages = {
     you: "Du",
     sender: "Avsändare",
   },
+  connection: {
+    why: "Varför?",
+    direct: {
+      label: "Direkt anslutning",
+      explain:
+        "Filen går direkt mellan de två enheterna. Båda sidor kan se den andras internetadress, precis som i ett videosamtal.",
+    },
+    relay: {
+      label: "Via vårt relä",
+      explain:
+        "De två nätverken kunde inte ansluta direkt till varandra, vilket är vanligt på mobildata och kontors-wifi. Därför går filen via vårt relä i Stockholm. Den är låst hela vägen, och reläet kan varken öppna den eller spara den. Reläet ser båda enheternas internetadresser och ungefär hur stor filen är.",
+    },
+  },
   format: {
     bytes: (n: number) => `${n.toLocaleString("sv")} byte`,
     progress: (percent: string, done: string, total: string) => `${percent} · ${done} av ${total}`,
@@ -107,6 +120,7 @@ export const sv: Messages = {
     fromLabel: "Ditt namn",
     optional: "(valfritt)",
     fromHint: "Visas för dem du skickar till.",
+    allowRelay: "Tillåt vårt relä om en direkt anslutning inte går",
     fromError: {
       unsafe: "Ditt namn innehåller tecken som inte kan skickas. Ta bort dem och försök igen.",
       tooLong:
@@ -147,6 +161,8 @@ export const sv: Messages = {
       failed: (name: string) =>
         `Filen kom inte fram oskadd via länken till ${name}. Länken kan öppnas igen för att försöka på nytt.`,
     },
+    noRelay: (name: string) =>
+      `Länken till ${name} öppnades men kunde inte ansluta direkt. Om du tillåter vårt relä kan den kanske ansluta när de försöker igen.`,
     progressFor: (name: string) => `Förlopp för ${name}`,
     copy: "Kopiera länk",
     copyFor: (name: string) => `Kopiera länken till ${name}`,
@@ -242,6 +258,10 @@ export const sv: Messages = {
         title: "Det gick inte att ansluta till avsändarens dator",
         body: "Era två datorer kunde inte nå varandra.",
       },
+      noRelay: {
+        title: "Det gick inte att ansluta direkt till avsändaren",
+        body: "Avsändaren tillåter inte vårt relä, och era nätverk kunde inte ansluta direkt till varandra. Ett annat nätverk kan fungera, till exempel mobildata i din telefon.",
+      },
       server: {
         title: "Det gick inte att nå servern",
         body: "Servern kopplar ihop dig med avsändaren. Kontrollera din internetanslutning.",
@@ -260,23 +280,27 @@ export const sv: Messages = {
       "Din IP-adress och de vanliga uppgifterna om webbläsaren som alla webbplatser får, och samma sak för varje mottagare när de öppnar sin länk.",
     seesRecipient:
       "Din IP-adress och de vanliga uppgifterna om webbläsaren som alla webbplatser får.",
-    senderHolds: ({ online, links, connected }) => {
+    senderHolds: ({ online, links, connected, relay }) => {
       if (!online) {
         return "Ingenting, när den har märkt att anslutningen har stängts. Det tar upp till en minut om nätverket bröts.";
       }
+      const choice = relay
+        ? "Ditt val att tillåta vårt relä."
+        : "Ditt val att inte tillåta vårt relä.";
       if (links === 0) {
-        return "Inga länkar ännu.";
+        return `Inga länkar ännu. ${choice}`;
       }
       const ids =
         links === 1
           ? "ID:t för din länk, aldrig den del som låser upp filen."
           : `ID:na för dina ${links} länkar, aldrig den del som låser upp filen.`;
+      const held = `${ids} ${choice}`;
       if (connected === 0) {
-        return ids;
+        return held;
       }
       const who =
         connected === 1 ? "1 mottagare är ansluten" : `${connected} mottagare är anslutna`;
-      return `${ids} ${who} just nu.`;
+      return `${held} ${who} just nu.`;
     },
     recipientHolds: (tie: Tie) =>
       ({
@@ -419,7 +443,7 @@ export const sv: Messages = {
   },
   privacy: {
     title: "Integritet",
-    lede: "Din fil går direkt från din webbläsare till webbläsaren hos den du skickar till. Den låses innan den lämnar din dator, och bara den som har länken kan låsa upp den. Vi får aldrig filen, dess namn eller nyckeln.",
+    lede: "Din fil går från din webbläsare till webbläsaren hos den du skickar till, direkt när era nätverk tillåter det och annars via vårt relä. Den låses innan den lämnar din dator, och bara den som har länken kan låsa upp den. Vi får aldrig filen, dess namn eller nyckeln.",
     howHeading: "Så går det till att skicka",
     steps: [
       [
@@ -436,8 +460,8 @@ export const sv: Messages = {
       ],
       ["De ser filens namn och storlek och väljer att ladda ner den, eller tackar nej.", ""],
       [
-        "Filen går direkt från din dator till deras, låst hela vägen.",
-        "Deras webbläsare låser upp den och kontrollerar att det är exakt den fil du skickade.",
+        "Filen går från din dator till deras, låst hela vägen.",
+        "Den går direkt när era nätverk tillåter det, annars via vårt relä. Deras webbläsare låser upp den och kontrollerar att det är exakt den fil du skickade.",
       ],
     ],
     keepOpen:
@@ -473,6 +497,10 @@ export const sv: Messages = {
       [
         "Uppkopplingsmeddelanden",
         "Några små, låsta meddelanden som hjälper de två webbläsarna att ansluta. Vi skickar dem vidare utan att kunna läsa dem, och sparar dem inte.",
+      ],
+      [
+        "Avsändarens val om reläet",
+        "Om avsändaren tillåter vårt relä, så att vi bara ger mottagare tillgång till det när avsändaren gör det. Vi glömmer det inom en minut efter att avsändarens sida har stängts, och skriver aldrig in det i våra loggar.",
       ],
     ],
     keepHeading: "Vad vi sparar",
