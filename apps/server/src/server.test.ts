@@ -77,12 +77,14 @@ test("app routes get the page copy for their link preview and language", async (
     [`/r/${linkId}`, "svx", "receive.en"],
     [`/r/${linkId}/more`, undefined, "home.en"],
   ] as const) {
-    const res = await fetch(`${base}${path}`, {
-      headers: language ? { "accept-language": language } : {},
-    });
+    const res = language
+      ? await fetch(`${base}${path}`, { headers: { "accept-language": language } }).then(
+          async (r) => ({ status: r.status, body: await r.text(), vary: r.headers.get("vary") }),
+        )
+      : await rawGet(path).then((r) => ({ status: r.status, body: r.body, vary: r.headers.vary }));
     assert.equal(res.status, 200, path);
-    assert.equal(await res.text(), `<!doctype html><title>${page}</title>`, `${path} ${language}`);
-    assert.equal(res.headers.get("vary"), "accept-language", path);
+    assert.equal(res.body, `<!doctype html><title>${page}</title>`, `${path} ${language}`);
+    assert.equal(res.vary, "accept-language", path);
   }
   const asset = await fetch(`${base}/assets/app.js`);
   assert.equal(asset.headers.get("vary"), null);
