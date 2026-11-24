@@ -317,7 +317,7 @@ export const en = {
       "Both browsers' IP addresses and the encrypted file passing through, with its size rounded up so the exact size stays hidden. It can't unlock the file.",
     relayLogsLabel: "Our relay logs",
     relayLogs:
-      "Nothing by default. Only while we fix a fault or stop abuse: connection times and IP addresses, for at most 7 days. Never names, keys or file data.",
+      "Nothing by default. Only while we fix a fault or stop abuse: connection times, IP addresses and how much data passed through, for at most 7 days. Never names, keys or file data.",
     relayKeepsLabel: "Our relay keeps",
     relayKeeps:
       "Nothing of the file once it has passed through. Log lines from fixing a fault or stopping abuse are deleted within 7 days.",
