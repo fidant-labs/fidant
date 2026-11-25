@@ -738,6 +738,28 @@ test.describe("the relay box", () => {
       }
     });
 
+    test("applies a hand-out after a crash empties or removes previous-since", async () => {
+      const dir = "/var/lib/fidant-relay";
+      const stored = () =>
+        inRelay("sqlite3", `${dir}/turndb`, "SELECT value FROM turn_secret ORDER BY value");
+      try {
+        for (const lose of [": >", "rm"]) {
+          // A crash in a rotation to `rotated`, after current moved to previous.
+          await inRelay(
+            "sh",
+            "-c",
+            `mv ${dir}/current ${dir}/previous && ${lose} ${dir}/previous-since`,
+          );
+          await applyRelaySecret(rotated);
+          expect(await stored(), lose).toBe(`${[secret, rotated].sort().join("\n")}\n`);
+          expect(await inRelay("cat", `${dir}/previous-since`), lose).toMatch(/^\d+\n$/);
+          await applyRelaySecret(secret);
+        }
+      } finally {
+        await applyRelaySecret(secret);
+      }
+    });
+
     test("keeps its current secret when the hand-out can't be opened", async ({ actor }) => {
       const seal = (key: string, plaintext: string) =>
         publicEncrypt(
@@ -849,6 +871,56 @@ test.describe("the relay box", () => {
       const { path, echoed } = await relayedChannel(sender, recipient, relayIce("tls", secret));
       expect(echoed).toBe(true);
       expect(path).toMatch(/^relay\+tls\//);
+    });
+
+    test("installs a first certificate whose deploy hook didn't finish", async ({ actor }) => {
+      const tls = "/etc/fidant-relay/tls";
+      const saved = "/tmp/first-cert";
+      const lineage = `/etc/letsencrypt/live/${relayHost}`;
+      const pid = () => inRelay("systemctl", "show", "-p", "MainPID", "--value", "coturn");
+      const fingerprint = "openssl x509 -noout -fingerprint -sha256";
+      const served = () =>
+        inRelay(
+          "sh",
+          "-c",
+          `timeout 5 openssl s_client -connect 127.0.0.1:443 </dev/null 2>/dev/null | ${fingerprint} 2>/dev/null || true`,
+        );
+      await inRelay(
+        "sh",
+        "-c",
+        `mkdir ${saved} && mv ${tls}/turn.crt ${tls}/turn.key ${saved}/ && systemctl restart coturn`,
+      );
+      try {
+        await expect.poll(() => inRelay("ss", "-lnu")).toMatch(/:3478\b/);
+        expect(await served()).toBe("");
+        const running = await pid();
+        // As certbot leaves it when the hook never ran: live/ links to the files.
+        await inRelay(
+          "sh",
+          "-c",
+          `mkdir -p ${lineage} && ln -s ${saved}/turn.crt ${lineage}/fullchain.pem \
+            && ln -s ${saved}/turn.key ${lineage}/privkey.pem`,
+        );
+        expect(await inRelay("sh", "-c", 'fidant-relay-cert 2>&1; echo "exit $?"')).toBe(
+          "exit 0\n",
+        );
+        expect(await pid()).not.toBe(running);
+        await inRelay("cmp", `${saved}/turn.crt`, `${tls}/turn.crt`);
+        const certificate = await inRelay("sh", "-c", `${fingerprint} -in ${saved}/turn.crt`);
+        await expect.poll(served).toBe(certificate);
+
+        const [sender, recipient] = await relayPeers(actor);
+        const { path, echoed } = await relayedChannel(sender, recipient, relayIce("tls", secret));
+        expect(echoed).toBe(true);
+        expect(path).toMatch(/^relay\+tls\//);
+      } finally {
+        await inRelay(
+          "sh",
+          "-c",
+          `mv ${saved}/turn.crt ${saved}/turn.key ${tls}/ && rm -rf /etc/letsencrypt/live ${saved} \
+            && systemctl restart coturn`,
+        );
+      }
     });
 
     test("maps its DNS name to external-ip only when the name points elsewhere", async ({

@@ -24,9 +24,10 @@ ForwardToSyslog=no
 EOF
 systemctl restart systemd-journald
 
-systemctl mask coturn
 export DEBIAN_FRONTEND=noninteractive
 dpkg -s coturn certbot sqlite3 ufw curl logrotate >/dev/null 2>&1 || {
+  # Else the package starts coturn with its default config, which has no auth.
+  systemctl mask coturn
   apt-get -o DPkg::Lock::Timeout=600 update
   apt-get -o DPkg::Lock::Timeout=600 install -y coturn certbot sqlite3 ufw curl logrotate
 }
@@ -129,16 +130,26 @@ if [ ${#secret} -ne 64 ]; then
   echo 'fidant-relay: not a secret' >&2
   exit 1
 fi
+now=$(date +%s)
 current=$(cat "$dir/current" 2>/dev/null || true)
 if [ "$secret" != "$current" ]; then
   if [ -n "$current" ]; then
+    printf '%s\n' "$now" >"$dir/previous-since"
     mv "$dir/current" "$dir/previous"
-    date +%s >"$dir/previous-since"
   fi
   printf '%s\n' "$secret" >"$dir/current"
 fi
-if [ -e "$dir/previous" ] && [ $(($(date +%s) - $(cat "$dir/previous-since" 2>/dev/null || echo 0))) -gt 86400 ]; then
-  rm -f "$dir/previous" "$dir/previous-since"
+if [ -e "$dir/previous" ]; then
+  since=$(cat "$dir/previous-since" 2>/dev/null || true)
+  case $since in
+  '' | *[!0-9]*)
+    since=$now
+    printf '%s\n' "$now" >"$dir/previous-since"
+    ;;
+  esac
+  if [ $((now - since)) -gt 86400 ]; then
+    rm -f "$dir/previous" "$dir/previous-since"
+  fi
 fi
 wanted=$(cat "$dir/current" "$dir/previous" 2>/dev/null | LC_ALL=C sort -u)
 have=$(sqlite3 "$db" "SELECT value FROM turn_secret WHERE realm='$RELAY_NAME' ORDER BY value")
@@ -194,6 +205,7 @@ cat >/etc/systemd/system/fidant-relay-secret.timer <<'EOF'
 [Timer]
 OnActiveSec=10s
 OnUnitInactiveSec=60s
+AccuracySec=1s
 
 [Install]
 WantedBy=timers.target
@@ -238,6 +250,10 @@ cat >/usr/local/bin/fidant-relay-cert <<'EOF'
 set -eu
 . /etc/fidant-relay/relay.env
 if [ -d "/etc/letsencrypt/live/$RELAY_NAME" ]; then
+  # certbot got the certificate, but its deploy hook never finished.
+  if [ ! -e /etc/fidant-relay/tls/turn.crt ]; then
+    RENEWED_LINEAGE=/etc/letsencrypt/live/$RELAY_NAME /usr/local/bin/fidant-relay-cert-installed
+  fi
   exit 0
 fi
 # Let's Encrypt pauses a name after 1,152 failed validations, and an unresolvable name fails each one.
@@ -325,10 +341,11 @@ ufw --force enable
 systemctl daemon-reload
 systemctl unmask coturn
 systemctl enable coturn
-systemctl restart coturn
 systemctl enable --now fidant-relay-secret.timer fidant-relay-cert.timer fidant-relay-address.timer
 
 set +x
 echo "fidant-relay: public key for $RELAY_ID"
 cat /etc/fidant-relay/relay.pub
 echo "fidant-relay: end of public key"
+# Last, so a coturn that won't start still leaves the timers running and the key printed.
+systemctl restart coturn
