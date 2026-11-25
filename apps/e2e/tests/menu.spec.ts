@@ -47,7 +47,7 @@ test("leaving /send for Privacy and going back keeps the file and recipient", as
     buffer: file.bytes,
   });
   await page.getByLabel("Who is it for?").fill(name);
-  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByRole("button", { name: "Create link", exact: true }).click();
   const link = await page.getByLabel(`Link for ${name}`, { exact: true }).textContent();
   leaks.watchKey("link secret", new URL(link ?? "").hash.slice(1));
   const pages = page.context().pages().length;
@@ -62,7 +62,7 @@ test("leaving /send for Privacy and going back keeps the file and recipient", as
   await page.goBack();
   await expect(page).toHaveURL(/\/send$/);
   expect(await page.evaluate(() => "notReloaded" in window)).toBe(true);
-  await expect(page.getByText(file.name)).toBeVisible();
+  await expect(page.getByText(file.name, { exact: true })).toBeVisible();
   await expect(recipientRow(page, name)).toBeVisible();
   await expect(page.getByLabel(`Link for ${name}`, { exact: true })).toHaveText(link ?? "");
 });
@@ -74,7 +74,7 @@ test("the menu's Send a file and the landing page's button open /send", async ({
   await expect(page.getByLabel("Choose a file")).toBeAttached();
 
   await page.goto("/");
-  await page.getByRole("main").getByRole("link", { name: "Send a file" }).click();
+  await page.getByRole("main").getByRole("link", { name: "Send a file", exact: true }).click();
   await expect(page).toHaveURL(/\/send$/);
   await expect(page.getByLabel("Choose a file")).toBeAttached();
 });
