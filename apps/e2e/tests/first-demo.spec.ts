@@ -115,9 +115,21 @@ async function openSender(
   return page;
 }
 
-/** Adds a recipient on the sender page and returns their link, with its secret watched. */
-async function addRecipient(leaks: Leaks, sender: Page, name: string): Promise<string> {
+const CHECK_CHOICE = /^Check a number with this recipient before the (file|secret) goes$/;
+
+/** Adds a recipient on the sender page, with the check number if `check`, and returns their link, with its secret watched. */
+async function addRecipient(
+  leaks: Leaks,
+  sender: Page,
+  name: string,
+  check = false,
+): Promise<string> {
   await sender.getByLabel("Who is it for?").fill(name);
+  // Off by default for a link the sender passes on themselves.
+  await expect(sender.getByLabel(CHECK_CHOICE)).not.toBeChecked();
+  if (check) {
+    await sender.getByLabel(CHECK_CHOICE).check();
+  }
   await sender.getByRole("button", { name: "Create link", exact: true }).click();
   const link = (await sender.getByLabel(`Link for ${name}`, { exact: true }).textContent()) ?? "";
   const secret = new URL(link).hash.slice(1);
@@ -774,6 +786,186 @@ test.describe("a hostile path", () => {
   });
 });
 
+const NUMBER = /^\d{3} \d{3}$/;
+
+/** The check number on the sender's card for `name`, once it shows. */
+async function senderNumber(sender: Page, name: string): Promise<string> {
+  const number = recipientRow(sender, name).getByText(NUMBER);
+  await expect(number).toBeVisible({ timeout: 30_000 });
+  return (await number.textContent()) ?? "";
+}
+
+/** The check number on the recipient page, once it shows. */
+async function recipientNumber(page: Page): Promise<string> {
+  await expect(page.getByRole("heading", { name: "Check number" })).toBeVisible({
+    timeout: 30_000,
+  });
+  const number = page.getByText(NUMBER);
+  await expect(number).toBeVisible();
+  return (await number.textContent()) ?? "";
+}
+
+/** Both pages show the same check number; returns it. */
+async function sameNumber(sender: Page, name: string, recipient: Page): Promise<string> {
+  const theirs = await recipientNumber(recipient);
+  await expect.poll(() => senderNumber(sender, name)).toBe(theirs);
+  return theirs;
+}
+
+/** The recipient says the numbers differ; both pages say so and nothing was offered. */
+async function differ(sender: Page, name: string, recipient: Page): Promise<void> {
+  await recipient.getByRole("button", { name: "They said it differs" }).click();
+  await expect(recipient.getByRole("heading", { name: "The numbers didn't match" })).toBeVisible();
+  await expect(
+    recipientRow(sender, name).getByText("The numbers didn't match, so nothing was sent."),
+  ).toBeVisible();
+  await expect(recipient.getByRole("button", { name: "Download" })).toHaveCount(0);
+}
+
+test.describe("check number", () => {
+  test("an emailed recipient and the sender see the same check number, and the file waits for both", async ({
+    demo,
+    leaks,
+    canary,
+  }) => {
+    test.skip(!process.env.SIGILL_E2E_MAILPIT, "needs Mailpit");
+    const file = makeFile(leaks, canary, 100_001);
+    const sender = await openSender(demo, file);
+    const name = makeName(leaks, canary, "Anna");
+    const to = addressFor(canary, "Anna");
+    const emailed = await addEmailed(leaks, sender, name, to, "", true);
+    const recipient = await demo.open("recipient");
+    await recipient.goto(emailed.link);
+    await enterCode(recipient, await requestCode(recipient, to));
+    await sameNumber(sender, name, recipient);
+    await watchToken(leaks, recipient, emailed, name);
+    await expect(recipient.getByRole("heading", { name: "Check number" })).toBeFocused();
+    await expect(recipient.getByText("Read this number to the sender.")).toBeVisible();
+    await expect(
+      recipientRow(sender, name).getByText(
+        `Ask ${name} to read the number on their screen. Does it match?`,
+      ),
+    ).toBeVisible();
+
+    await recipientRow(sender, name).getByRole("button", { name: "It matches" }).click();
+    await expect(
+      recipientRow(sender, name).getByText("You said it matches. It goes once they confirm too."),
+    ).toBeVisible();
+    // The sender's click alone sends nothing about the file.
+    await expect(recipient.getByRole("button", { name: "Download" })).toHaveCount(0);
+    await expect(recipient.getByRole("heading", { name: "Check number" })).toBeVisible();
+
+    await recipient.getByRole("button", { name: "They said it matches" }).click();
+    await expect(recipient.getByRole("heading", { name: "You've been sent a file" })).toBeVisible({
+      timeout: 30_000,
+    });
+    const bytes = await download(recipient, file);
+    expect(sha256Hex(bytes)).toBe(sha256Hex(file.bytes));
+    await expect(delivered(sender, name)).toBeAttached();
+  });
+
+  test("it differs: nothing is offered, and trying again gives a new number", async ({
+    demo,
+    leaks,
+    canary,
+  }) => {
+    const sender = await openSender(demo, makeFile(leaks, canary, 10));
+    const name = makeName(leaks, canary, "Anna");
+    const link = await addRecipient(leaks, sender, name, true);
+    const recipient = await demo.open("recipient");
+    await recipient.goto(link);
+    const first = await sameNumber(sender, name, recipient);
+    await differ(sender, name, recipient);
+
+    await recipient.getByRole("button", { name: "Try again" }).click();
+    const second = await sameNumber(sender, name, recipient);
+    expect(second).not.toBe(first);
+  });
+
+  test("the sender saying it differs stops both pages", async ({ demo, leaks, canary }) => {
+    const sender = await openSender(demo, makeFile(leaks, canary, 10));
+    const name = makeName(leaks, canary, "Anna");
+    const link = await addRecipient(leaks, sender, name, true);
+    const recipient = await demo.open("recipient");
+    await recipient.goto(link);
+    await sameNumber(sender, name, recipient);
+    await recipientRow(sender, name).getByRole("button", { name: "It differs" }).click();
+    await expect(
+      recipient.getByRole("heading", { name: "The numbers didn't match" }),
+    ).toBeVisible();
+    await expect(
+      recipientRow(sender, name).getByText("The numbers didn't match, so nothing was sent."),
+    ).toBeVisible();
+    await expect(recipient.getByRole("button", { name: "Download" })).toHaveCount(0);
+  });
+
+  test("two recipients each see their own number", async ({ demo, leaks, canary }) => {
+    const sender = await openSender(demo, makeFile(leaks, canary, 10));
+    const names = [makeName(leaks, canary, "Anna"), makeName(leaks, canary, "Erik")];
+    const pages: Page[] = [];
+    for (const [i, name] of names.entries()) {
+      const link = await addRecipient(leaks, sender, name, true);
+      const page = await demo.open(`recipient-${i + 1}`);
+      await page.goto(link);
+      pages.push(page);
+    }
+    for (const [i, name] of names.entries()) {
+      await sameNumber(sender, name, pages[i] as Page);
+    }
+  });
+
+  test("a recipient who reloads mid-check gets a new number on both sides", async ({
+    demo,
+    leaks,
+    canary,
+  }) => {
+    const sender = await openSender(demo, makeFile(leaks, canary, 10));
+    const name = makeName(leaks, canary, "Anna");
+    const link = await addRecipient(leaks, sender, name, true);
+    const recipient = await demo.open("recipient");
+    await recipient.goto(link);
+    const first = await sameNumber(sender, name, recipient);
+    await recipient.reload();
+    const second = await sameNumber(sender, name, recipient);
+    expect(second).not.toBe(first);
+  });
+
+  test("five checks that differ end the link", async ({ demo, leaks, canary }) => {
+    test.setTimeout(120_000);
+    const sender = await openSender(demo, makeFile(leaks, canary, 10));
+    const name = makeName(leaks, canary, "Anna");
+    const link = await addRecipient(leaks, sender, name, true);
+    const recipient = await demo.open("recipient");
+    await recipient.goto(link);
+    for (let i = 1; i <= 5; i++) {
+      await sameNumber(sender, name, recipient);
+      if (i < 5) {
+        await differ(sender, name, recipient);
+        await recipient.getByRole("button", { name: "Try again" }).click();
+      }
+    }
+    await recipient.getByRole("button", { name: "They said it differs" }).click();
+    await expect(
+      recipientRow(sender, name).getByText(
+        "The check failed 5 times, so this link no longer works.",
+      ),
+    ).toBeVisible();
+    await expect(recipientRow(sender, name).getByRole("button", { name: /^Copy/ })).toHaveCount(0);
+    await recipient.getByRole("button", { name: "Try again" }).click();
+    await expect(recipient.getByRole("heading", { name: "This link isn't active" })).toBeVisible();
+  });
+
+  test("a copied link without the check shows no number", async ({ demo, leaks, canary }) => {
+    const file = makeFile(leaks, canary, 100_001);
+    const sender = await openSender(demo, file);
+    const name = makeName(leaks, canary, "Anna");
+    const link = await addRecipient(leaks, sender, name);
+    const { page } = await receive(demo, "recipient", link, file, "100 KB");
+    await expect(page.getByText(NUMBER)).toHaveCount(0);
+    await expect(sender.getByText(NUMBER)).toHaveCount(0);
+  });
+});
+
 test.describe("through a server restart", () => {
   // The client's reconnect backoff and the recipient's rejoins add to the transfer time.
   test.describe.configure({ timeout: 120_000 });
@@ -896,7 +1088,7 @@ interface Emailed {
 /**
  * Adds `name` with the address `to` and waits for the notice. Watches the link's secret, the
  * server's value, the address and, if given, the sender's typed name `from` where decision 0012
- * lets them appear.
+ * lets them appear. The check number is on by default for an emailed link; `check` false turns it off.
  */
 async function addEmailed(
   leaks: Leaks,
@@ -904,10 +1096,15 @@ async function addEmailed(
   name: string,
   to: string,
   from = "",
+  check = false,
 ): Promise<Emailed> {
   await sender.getByLabel("Who is it for?").fill(name);
   // Emailing is opt-in; the choice stays ticked for the next recipient.
   await sender.getByLabel("Email the link for me (less private)").check();
+  await expect(sender.getByLabel(CHECK_CHOICE)).toBeChecked();
+  if (!check) {
+    await sender.getByLabel(CHECK_CHOICE).uncheck();
+  }
   await sender.getByLabel("Their email address").fill(to);
   await sender.getByRole("button", { name: "Create and email link", exact: true }).click();
   await expect(
