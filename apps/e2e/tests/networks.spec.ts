@@ -654,6 +654,16 @@ test.describe("the relay box", () => {
       expect(ufw).toContain(rule);
     }
     expect(await inRelay("ss", "-lnu")).toMatch(/:3478\b/);
+    const pins: [string, string][] = [
+      ["StartLimitIntervalUSec", "0"],
+      ["RestartUSec", "5s"],
+      ["Restart", "on-failure"],
+    ];
+    for (const [property, value] of pins) {
+      expect(await inRelay("systemctl", "show", "-p", property, "--value", "coturn")).toBe(
+        `${value}\n`,
+      );
+    }
   });
 
   // Until SIG-153 hands it a secret, the relay answers STUN and refuses every allocation.
@@ -743,7 +753,8 @@ test.describe("the relay box", () => {
       const stored = () =>
         inRelay("sqlite3", `${dir}/turndb`, "SELECT value FROM turn_secret ORDER BY value");
       try {
-        for (const lose of [": >", "rm"]) {
+        const future = "echo $(( $(date +%s) + 100000 )) >";
+        for (const lose of [": >", "rm", "echo x >", "echo 08 >", future]) {
           // A crash in a rotation to `rotated`, after current moved to previous.
           await inRelay(
             "sh",
@@ -752,7 +763,9 @@ test.describe("the relay box", () => {
           );
           await applyRelaySecret(rotated);
           expect(await stored(), lose).toBe(`${[secret, rotated].sort().join("\n")}\n`);
-          expect(await inRelay("cat", `${dir}/previous-since`), lose).toMatch(/^\d+\n$/);
+          const since = await inRelay("cat", `${dir}/previous-since`);
+          expect(since, lose).toMatch(/^\d{10}\n$/);
+          expect(Number(since), lose).toBeLessThanOrEqual(Date.now() / 1000 + 5);
           await applyRelaySecret(secret);
         }
       } finally {
@@ -885,12 +898,12 @@ test.describe("the relay box", () => {
           "-c",
           `timeout 5 openssl s_client -connect 127.0.0.1:443 </dev/null 2>/dev/null | ${fingerprint} 2>/dev/null || true`,
         );
-      await inRelay(
-        "sh",
-        "-c",
-        `mkdir ${saved} && mv ${tls}/turn.crt ${tls}/turn.key ${saved}/ && systemctl restart coturn`,
-      );
       try {
+        await inRelay(
+          "sh",
+          "-c",
+          `mkdir ${saved} && mv ${tls}/turn.crt ${tls}/turn.key ${saved}/ && systemctl restart coturn`,
+        );
         await expect.poll(() => inRelay("ss", "-lnu")).toMatch(/:3478\b/);
         expect(await served()).toBe("");
         const running = await pid();
@@ -917,8 +930,8 @@ test.describe("the relay box", () => {
         await inRelay(
           "sh",
           "-c",
-          `mv ${saved}/turn.crt ${saved}/turn.key ${tls}/ && rm -rf /etc/letsencrypt/live ${saved} \
-            && systemctl restart coturn`,
+          `for f in turn.crt turn.key; do [ -e ${saved}/$f ] && mv ${saved}/$f ${tls}/; done; \
+            rm -rf /etc/letsencrypt/live ${saved}; systemctl restart coturn`,
         );
       }
     });
@@ -996,8 +1009,12 @@ test.describe("the relay box", () => {
         );
       try {
         expect(await run()).toMatch(/^exit 0\n.*No such file/);
-        await inRelay("sh", "-c", `echo '198.51.100.99 ${relayHost}' >>/etc/hosts`);
+        await inRelay("sh", "-c", `echo '${relayIp} ${relayHost}' >>/etc/hosts`);
         expect(await run()).toBe(`exit 0\n${marker}\n`);
+        await inRelay("fidant-relay-address");
+        expect(await inRelay("sh", "-c", "grep '^external-ip=' /etc/turnserver.conf || true")).toBe(
+          "",
+        );
       } finally {
         await inRelay("sh", "-c", `cat /tmp/hosts-cert >/etc/hosts; rm -f /tmp/certbot ${marker}`);
       }

@@ -54,8 +54,9 @@ if [ ! -e /var/lib/fidant-relay/turndb ]; then
 fi
 
 external_ip=$(grep '^external-ip=' /etc/turnserver.conf || true)
-install -m 640 -g turnserver /dev/null /etc/turnserver.conf.new
-cat >>/etc/turnserver.conf.new <<EOF
+tmp=$(mktemp /etc/turnserver.conf.XXXXXX)
+install -m 640 -g turnserver /dev/null "$tmp"
+cat >>"$tmp" <<EOF
 listening-port=3478
 tls-listening-port=443
 min-port=49152
@@ -90,15 +91,23 @@ denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
 denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff
 EOF
 if [ -n "$external_ip" ]; then
-  printf '%s\n' "$external_ip" >>/etc/turnserver.conf.new
+  printf '%s\n' "$external_ip" >>"$tmp"
 fi
-mv /etc/turnserver.conf.new /etc/turnserver.conf
+mv "$tmp" /etc/turnserver.conf
 
 install -d /etc/systemd/system/coturn.service.d
 cat >/etc/systemd/system/coturn.service.d/online.conf <<'EOF'
 [Unit]
 Wants=network-online.target
 After=network-online.target
+EOF
+# Else the package unit's fast restarts hit systemd's start limit, and nothing starts coturn again.
+cat >/etc/systemd/system/coturn.service.d/restart.conf <<'EOF'
+[Unit]
+StartLimitIntervalSec=0
+[Service]
+Restart=on-failure
+RestartSec=5s
 EOF
 # Ubuntu's unit runs coturn as turnserver with no capabilities, which can't bind 443.
 cat >/etc/systemd/system/coturn.service.d/bind443.conf <<'EOF'
@@ -142,9 +151,15 @@ fi
 if [ -e "$dir/previous" ]; then
   since=$(cat "$dir/previous-since" 2>/dev/null || true)
   case $since in
-  '' | *[!0-9]*)
+  '' | *[!0-9]* | 0?* | ???????????*)
     since=$now
     printf '%s\n' "$now" >"$dir/previous-since"
+    ;;
+  *)
+    if [ "$since" -gt "$now" ]; then
+      since=$now
+      printf '%s\n' "$now" >"$dir/previous-since"
+    fi
     ;;
   esac
   if [ $((now - since)) -gt 86400 ]; then
@@ -234,12 +249,10 @@ rm -f $tls/turn.pub.new
 mv $tls/turn.key.new $tls/turn.key
 mv $tls/turn.crt.new $tls/turn.crt
 # USR2 keeps relayed transfers, but a coturn that started without a certificate opens TLS only on restart.
-if systemctl is-active --quiet coturn; then
-  if [ "$had_cert" = yes ]; then
-    systemctl kill -s USR2 coturn
-  else
-    systemctl restart coturn
-  fi
+if [ "$had_cert" = yes ] && systemctl is-active --quiet coturn; then
+  systemctl kill -s USR2 coturn
+else
+  systemctl try-restart coturn
 fi
 EOF
 chmod 700 /usr/local/bin/fidant-relay-cert-installed
@@ -290,7 +303,7 @@ cat >/usr/local/bin/fidant-relay-address <<'EOF'
 set -eu
 . /etc/fidant-relay/relay.env
 conf=/etc/turnserver.conf
-address=$(getent ahostsv4 "$RELAY_NAME" | awk '{ print $1; exit }')
+address=$(getent ahostsv4 "$RELAY_NAME" | awk '$1 !~ /^127\./ { print $1; exit }')
 relay_ip=$(sed -n 's/^relay-ip=//p' $conf)
 # A failed lookup changes nothing: the restart would drop every relayed transfer.
 if [ -z "$address" ] || [ -z "$relay_ip" ]; then
@@ -303,12 +316,13 @@ fi
 if [ "$wanted" = "$(grep '^external-ip=' $conf || true)" ]; then
   exit 0
 fi
-install -m 640 -g turnserver /dev/null $conf.new
-grep -v '^external-ip=' $conf >>$conf.new
+tmp=$(mktemp "$conf.XXXXXX")
+install -m 640 -g turnserver /dev/null "$tmp"
+grep -v '^external-ip=' $conf >>"$tmp"
 if [ -n "$wanted" ]; then
-  printf '%s\n' "$wanted" >>$conf.new
+  printf '%s\n' "$wanted" >>"$tmp"
 fi
-mv $conf.new $conf
+mv "$tmp" $conf
 systemctl try-restart coturn
 EOF
 chmod 700 /usr/local/bin/fidant-relay-address
