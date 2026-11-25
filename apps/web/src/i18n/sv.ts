@@ -945,7 +945,7 @@ export const sv: Messages = {
         body: [
           "Vår server ser varje sidas IP-adress och webbläsaruppgifter, länk-ID:na, avsändarens val om reläet, vilken väg avsändaren rapporterar för varje försök (direkt, STUN, relä eller misslyckad), om en länk redan har använts, när varje sida ansluter och kopplar ner samt de krypterade meddelandena för uppkopplingen och deras storlek. Den ser aldrig filen, dess namn, typ eller exakta storlek, och inte heller en delad hemlighet eller dess längd. Den ser aldrig en länks hemlighet eller nycklarna och kan inte läsa meddelandena, utom för en länk som vi mejlar: då får den länkens hemlighet en gång för att skriva mejlet, tillsammans med mottagarens e-postadress och namnet avsändaren skrev. Den har det den vet om sidor bara i minnet och glömmer en sida inom en minut efter att den kopplat ner. Undantagen är en mejlad länks adress, koder och tokens, som finns kvar tills avsändarens sida släpper länken, och antalet mejl, som finns kvar en timme.",
           "Dess loggrader har en fast lista med fält, till exempel de 6 första tecknen i ett länk-ID och om en förbindelse gick direkt. Aldrig namn, e-postadresser, koder, nycklar, filinnehåll eller IP-adresser. De raderas efter 30 dagar.",
-          "Vårt relä ser varje webbläsares IP-adress när webbläsaren frågar det om sin offentliga adress (STUN). De två webbläsarna frågar ungefär samtidigt, så det kan oftast se vilka två adresser som hör ihop. När reläet läggs till vet det med säkerhet vilka adresser som hör ihop, och på vägen via reläet ser det den krypterade trafiken, alltså filens storlek bara ungefär och ingenting av en delad hemlighets längd. Det för ingen logg över trafiken. Bara för att rätta ett fel eller stoppa missbruk slår vi på en, med tider för anslutningar, IP-adresser och datamängder, i högst 7 dagar. Det sparar sin nuvarande och sin förra hemlighet, och ingenting av filen. Medan det förnyar sitt certifikat, några sekunder ungefär varannan månad, loggar det adresserna som når det på port 80. Det är Let's Encrypts kontroller och skannrar på internet, aldrig webbläsare, och de raderas inom ungefär fem veckor.",
+          "Vårt relä ser varje webbläsares IP-adress när webbläsaren frågar det om sin offentliga adress (STUN). De två webbläsarna frågar ungefär samtidigt, så det kan oftast se vilka två adresser som hör ihop. När reläet läggs till kan det också få veta det från reläadresserna som webbläsarna reserverar, och på vägen via reläet ser det den krypterade trafiken, alltså filens storlek bara ungefär och ingenting av en delad hemlighets längd. Det för ingen logg över trafiken. Bara för att rätta ett fel eller stoppa missbruk slår vi på en, med tider för anslutningar, IP-adresser och datamängder, i högst 7 dagar. Det sparar sin nuvarande och sin förra hemlighet, och ingenting av filen. Medan det förnyar sitt certifikat, några sekunder ungefär varannan månad, loggar det adresserna som når det på port 80. Det är Let's Encrypts kontroller och skannrar på internet, aldrig webbläsare, och de raderas inom ungefär fem veckor.",
         ],
         link: ["Alla loggfält, på integritetssidan", "/privacy"],
       },
@@ -1022,11 +1022,11 @@ export const sv: Messages = {
         items: {
           local: {
             heading: "Direkt, på samma nätverk",
-            body: "När båda webbläsarna är på samma lokala nätverk ansluter de över sina lokala adresser. Filen går direkt mellan dem, och vår server och vårt relä ser ingenting av den. Varje webbläsare frågar ändå vår STUN-tjänst om sin offentliga adress, vilket visar den IP-adressen. Om du tillåter reläet och det är tillgängligt reserverar webbläsarna också reläadresser, som visar reläet båda IP-adresserna tillsammans, men bara när ingen anslutning har kommit till stånd 3 sekunder efter att mottagaren har svarat.",
+            body: "När båda webbläsarna är på samma lokala nätverk ansluter de över sina lokala adresser. Filen går direkt mellan dem, och vår server och vårt relä ser ingenting av den. Varje webbläsare frågar ändå vår STUN-tjänst om sin offentliga adress, vilket visar den IP-adressen. De två webbläsarna frågar ungefär samtidigt, så vår STUN-tjänst kan oftast se vilka två adresser som hör ihop. Om du tillåter reläet och det är tillgängligt, och den här vägen inte är uppkopplad 3 sekunder efter att mottagaren har svarat, lägger webbläsarna till reläet, som då kan få veta att de två adresserna hör ihop.",
           },
           stun: {
             heading: "Direkt, via offentliga adresser",
-            body: "Varje webbläsare frågar vår STUN-tjänst om sin offentliga adress, vilket visar vår STUN-tjänst den IP-adressen. De två webbläsarna frågar ungefär samtidigt, så den kan oftast se vilka två adresser som hör ihop. Filen går sedan direkt mellan webbläsarna över internet. Om du tillåter reläet och det är tillgängligt, och den här vägen inte är uppkopplad 3 sekunder efter att mottagaren har svarat, lägger webbläsarna till reläet, som då vet med säkerhet att de två adresserna hör ihop.",
+            body: "Varje webbläsare frågar vår STUN-tjänst om sin offentliga adress, vilket visar vår STUN-tjänst den IP-adressen. De två webbläsarna frågar ungefär samtidigt, så vår STUN-tjänst kan oftast se vilka två adresser som hör ihop. Filen går sedan direkt mellan webbläsarna över internet. Om du tillåter reläet och det är tillgängligt, och den här vägen inte är uppkopplad 3 sekunder efter att mottagaren har svarat, lägger webbläsarna till reläet, som då kan få veta att de två adresserna hör ihop.",
           },
           relay: {
             heading: "Via vårt relä",
@@ -1334,7 +1334,7 @@ export const sv: Messages = {
             ["", "Varje webbläsares publika IP-adress, när webbläsaren frågar efter den."],
             [
               "direct",
-              "Om vårt relä är tillgängligt och ingen anslutning har kommit till stånd 3 sekunder efter att mottagaren har svarat: båda IP-adresserna tillsammans, eftersom varje webbläsare då reserverar en reläadress, även om en direkt väg vinner till slut.",
+              "Om vårt relä är tillgängligt och ingen anslutning har kommit till stånd 3 sekunder efter att mottagaren har svarat: båda IP-adresserna tillsammans, även om en direkt väg vinner till slut. Båda webbläsarna reserverar då en reläadress, eller bara din webbläsares om mottagarens webbläsare redan var ansluten när din sidas begäran om att lägga till reläet kom fram. Reläet kan i båda fallen få veta båda IP-adresserna.",
             ],
             [
               "relay",
@@ -1439,7 +1439,7 @@ export const sv: Messages = {
           "Krypterade meddelanden för uppkopplingen och deras storlek. Den kan inte läsa dem, utom för en länk vi mejlat.",
           "Ingenting. Den skickar dem vidare.",
           "Varje meddelandes storlek, med de 6 första tecknen i länk-ID:t.",
-          "Varje webbläsares IP-adress, när den frågar efter sin offentliga adress (STUN). Om du tillåter reläet och det är tillgängligt, och ingen anslutning har kommit till stånd 3 sekunder efter att mottagaren har svarat, reserverar varje webbläsare också en reläadress, så reläet ser båda IP-adresserna, även om en direkt väg vinner till slut.",
+          "Varje webbläsares IP-adress, när den frågar efter sin offentliga adress (STUN). Om du tillåter reläet och det är tillgängligt, och ingen anslutning har kommit till stånd 3 sekunder efter att mottagaren har svarat, lägger webbläsarna till reläet. Båda reserverar då en reläadress, eller bara din webbläsares om mottagarens webbläsare redan var ansluten när din sidas begäran om att lägga till reläet kom fram. Reläet kan i båda fallen få veta båda IP-adresserna, även om en direkt väg vinner till slut.",
         ],
         [
           "Filen eller hemligheten skickas",

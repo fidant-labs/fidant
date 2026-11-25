@@ -989,7 +989,7 @@ export const en = {
         body: [
           "Our server sees each page's IP address and browser details, the link IDs, the sender's relay choice, the connection path the sender reports for each attempt (direct, STUN, relay or failed), whether a link was already used, when each side connects and disconnects, and the encrypted setup messages and their sizes. It never sees the file, its name, its type or its exact size, or a shared secret or its length. It never sees a link's secret or the keys and can't read the setup messages, except for a link we email: then it gets that link's secret once to write the email, along with the recipient's email address and the sender's typed name. It keeps what it knows about pages in memory only, and forgets a page within a minute after it disconnects. The exceptions are an emailed link's address, codes and tokens, which stay until the sender's page lets the link go, and the email counts, which last an hour.",
           "Its log lines use a fixed list of fields, such as the first 6 characters of a link ID and whether a connection was direct. Never names, email addresses, codes, keys, file data or IP addresses. They are deleted after 30 days.",
-          "Our relay sees each browser's IP address when the browser asks it for its public address (STUN). The two browsers ask at about the same time, so it can usually tell which two addresses belong together. When the browsers add the relay, it can tell for certain, and on the relay route it sees the encrypted traffic, so the file's size only roughly and nothing of a shared secret's length. It keeps no log of the traffic. Only to fix a fault or stop abuse do we turn one on, with connection times, IP addresses and data volumes, for at most 7 days. It keeps its current and previous secret, and nothing of the file. While it renews its certificate, a few seconds every two months or so, it logs the addresses that reach it on port 80. Those are Let's Encrypt's checks and internet scanners, never browsers, and they are deleted within about five weeks.",
+          "Our relay sees each browser's IP address when the browser asks it for its public address (STUN). The two browsers ask at about the same time, so it can usually tell which two addresses belong together. When the browsers add the relay, it can also learn that from the relay addresses they reserve, and on the relay route it sees the encrypted traffic, so the file's size only roughly and nothing of a shared secret's length. It keeps no log of the traffic. Only to fix a fault or stop abuse do we turn one on, with connection times, IP addresses and data volumes, for at most 7 days. It keeps its current and previous secret, and nothing of the file. While it renews its certificate, a few seconds every two months or so, it logs the addresses that reach it on port 80. Those are Let's Encrypt's checks and internet scanners, never browsers, and they are deleted within about five weeks.",
         ],
         link: ["Every log field, on the privacy page", "/privacy"],
       },
@@ -1066,11 +1066,11 @@ export const en = {
         items: {
           local: {
             heading: "Direct, on the same network",
-            body: "When both browsers are on the same local network, they connect over their local addresses. The file goes straight between them, and our server and relay see none of it. Each browser still asks our STUN service for its public address, which shows it that IP address. If you allow the relay and it is available, the browsers also reserve relay addresses, which show the relay both IP addresses together, but only when nothing has connected 3 seconds after the recipient answers.",
+            body: "When both browsers are on the same local network, they connect over their local addresses. The file goes straight between them, and our server and relay see none of it. Each browser still asks our STUN service for its public address, which shows it that IP address. The two browsers ask at about the same time, so our STUN service can usually tell which two addresses belong together. If you allow the relay and it is available, and this route hasn't connected 3 seconds after the recipient answers, the browsers add the relay, which can then learn that the two addresses belong together.",
           },
           stun: {
             heading: "Direct, through public addresses",
-            body: "Each browser asks our STUN service for its public address, which shows our STUN service that IP address. The two browsers ask at about the same time, so it can usually tell which two addresses belong together. The file then goes straight between the browsers over the internet. If you allow the relay, it is available and this route hasn't connected 3 seconds after the recipient answers, the browsers add the relay, which then knows for certain that the two addresses belong together.",
+            body: "Each browser asks our STUN service for its public address, which shows our STUN service that IP address. The two browsers ask at about the same time, so our STUN service can usually tell which two addresses belong together. The file then goes straight between the browsers over the internet. If you allow the relay and it is available, and this route hasn't connected 3 seconds after the recipient answers, the browsers add the relay, which can then learn that the two addresses belong together.",
           },
           relay: {
             heading: "Through our relay",
@@ -1371,7 +1371,7 @@ export const en = {
             ["", "Each browser's public IP address, when the browser asks for it."],
             [
               "direct",
-              "If our relay is available and nothing has connected 3 seconds after the recipient answers: both IP addresses together, because each browser then reserves a relay address, even if a direct route wins after all.",
+              "If our relay is available and nothing has connected 3 seconds after the recipient answers: both IP addresses together, even if a direct route wins after all. Both browsers then reserve a relay address, or only your browser's if the recipient's browser had already connected when your page's request to add the relay reached it. Either way the relay can learn both IP addresses.",
             ],
             [
               "relay",
@@ -1476,7 +1476,7 @@ export const en = {
           "Encrypted setup messages and their sizes. It can't read them, except for a link we emailed.",
           "Nothing. It passes them on.",
           "Each message's size, with the first 6 characters of the link ID.",
-          "Each browser's IP address, when it asks for its public address (STUN). If you allow the relay, it is available and nothing has connected 3 seconds after the recipient answers, each browser also reserves a relay address, so the relay sees both IP addresses, even if a direct route wins after all.",
+          "Each browser's IP address, when it asks for its public address (STUN). If you allow the relay and it is available, and nothing has connected 3 seconds after the recipient answers, the browsers add the relay. Both then reserve a relay address, or only your browser's if the recipient's browser had already connected when your page's request to add the relay reached it. Either way the relay can learn both IP addresses, even if a direct route wins after all.",
         ],
         [
           "The file or secret travels",
