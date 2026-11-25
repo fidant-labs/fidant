@@ -4,6 +4,7 @@ import {
   type BrowserContext,
   type BrowserContextOptions,
   test as base,
+  expect,
   type Page,
 } from "@playwright/test";
 import { parseStackOrigins } from "./hosts.ts";
@@ -343,6 +344,15 @@ export const delivered = (sender: Page, name: string) =>
     .getByRole("listitem", { includeHidden: true })
     .filter({ hasText: name })
     .getByText(`Delivered through ${name}'s link`);
+
+/** Chooses a file the send page accepts, then waits for the page to move focus to "Your name" a frame later, which would otherwise take the text of a field being filled. */
+export async function chooseFile(
+  page: Page,
+  file: { name: string; mimeType: string; buffer: Buffer },
+): Promise<void> {
+  await page.getByLabel("Choose a file").setInputFiles(file);
+  await expect(page.getByLabel("Your name")).toBeFocused();
+}
 
 /** Runs in the page through addInitScript, so it may use nothing from this module: `cut()` closes the sender's peers, `stalled` stops its data channels sending. */
 export function breakableSender() {

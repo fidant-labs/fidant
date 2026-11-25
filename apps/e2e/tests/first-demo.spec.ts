@@ -6,6 +6,7 @@ import {
   breakableSender,
   canaryFile,
   canaryKey,
+  chooseFile,
   delivered,
   expect,
   test as harness,
@@ -105,7 +106,7 @@ async function openSender(
   if (from) {
     await page.getByLabel("Your name").fill(from);
   }
-  await page.getByLabel("Choose a file").setInputFiles({
+  await chooseFile(page, {
     name: file.name,
     mimeType: file.mime,
     buffer: file.bytes,
@@ -1274,7 +1275,7 @@ harness(
     expect(mail).toBe(Boolean(process.env.SIGILL_E2E_MAILPIT));
     // The add form shows once a file is chosen. The address field appears only once the sender
     // chooses to have the link emailed.
-    await page.getByLabel("Choose a file").setInputFiles({
+    await chooseFile(page, {
       name: "a.bin",
       mimeType: "application/octet-stream",
       buffer: Buffer.from("x"),
