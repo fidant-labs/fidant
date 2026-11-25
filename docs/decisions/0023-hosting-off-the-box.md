@@ -147,8 +147,11 @@ These are on `main` from SIG-260. None of them changes how a local run, `pnpm e2
 
 What the later parts will add:
 
-- The container will set `SIGNALING_ONLY=1` from its first start in part 2. The image holds no web build, and without the setting the server stops when it finds none.
-- It will set `PUBLIC_ORIGIN=https://fidant.se`, and `TRUSTED_PROXIES` to the load balancer's subnets, by part 3's trial at the latest. Pages loaded from `https://fidant.se` through the CDN open `wss://sto.signal.fidant.se/signal`, and the origin check refuses them without `PUBLIC_ORIGIN`. An application load balancer appends the client's address as the last `X-Forwarded-For` entry ([X-Forwarded headers](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/x-forwarded-headers.html), read on 2026-11-25), so the rightmost entry will be the one it wrote. So `sto.signal.fidant.se` will use both rules before the cutover, while no visitor uses it.
+- From its first start in part 2 (SIG-261), the container will set all three server settings:
+  - `SIGNALING_ONLY=1`. The image holds no web build, and without the setting the server stops when it finds none.
+  - `TRUSTED_PROXIES`, set to the load balancer's subnets. Every connection reaches the container from the load balancer, so without it the per-address limits would count every socket against the load balancer's own address. An application load balancer appends the client's address as the last `X-Forwarded-For` entry ([X-Forwarded headers](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/x-forwarded-headers.html), read on 2026-11-25), so the rightmost entry will be the one it wrote.
+  - `PUBLIC_ORIGIN=https://fidant.se`. Pages loaded from `https://fidant.se` through the CDN, first in part 3's trial, open `wss://sto.signal.fidant.se/signal`, and the origin check refuses them without it. Set from the start, it needs no later change to the container.
+- So `sto.signal.fidant.se` will use both new rules from part 2, with no visitor on it until the cutover. fidant.se on the box configures nothing new, and its traffic moves onto these rules at the cutover.
 - The release workflow's web build will set `SIGNALS_FILE` to `apps/web/signals.json` from part 3. The box keeps building its own without it.
 - Part 2 will add a matching `signals` list and name function to `apps/infra/src/config.ts`, like `relays` and `relayName`, and a test that keeps the two lists in step. SIG-260 leaves them out, so it touches no path that needs a `maintainers` approval.
 - From part 3 the page and header rules will exist twice: in `serveStatic` for local runs, and in the edge function for production. A test will run the edge function against the same cases as the server's tests, and compare the page each picks and the headers they share. The edge's CSP will have its one extra `connect-src` source, and the test will allow exactly that difference. The test cannot live in `apps/infra`, whose tests run in the deploy job with only `apps/infra` on disk.
@@ -242,7 +245,7 @@ SIG-259's estimates of 2026-11-25, per month: the container about 10 USD, three 
 
 ### Amendments from this record's merge
 
-SIG-260's code is on `main` from this record's merge, so these hold from then. Both rules are off unless configured. On fidant.se neither accepts anything new: it sets no `TRUSTED_PROXIES`, and sets `PUBLIC_ORIGIN` only while mail is on, to its own origin. `sto.signal.fidant.se` will use both from part 2 or 3 (see "Changes to the app code"), while no visitor uses it.
+SIG-260's code is on `main` from this record's merge, so these hold from then. Both rules are off unless configured. On fidant.se neither accepts anything new: it sets no `TRUSTED_PROXIES`, and sets `PUBLIC_ORIGIN` only while mail is on, to its own origin. `sto.signal.fidant.se` will use both from part 2, with no visitor on it until the cutover (see "Changes to the app code").
 
 This record amends 0006. It is not superseded. Read it with this replacement:
 
@@ -254,7 +257,7 @@ This record amends 0006. It is not superseded. Read it with this replacement:
 
 ### Amendments from when this record is Accepted
 
-These take effect in the cutover pull request (SIG-263), when fidant.se's traffic moves onto the new setup. Some of the rules they describe run on `sto.signal.fidant.se` earlier, while no visitor uses it. The cutover pull request completes this list. Until then 0006, 0007, 0010 and 0015 stand as written for production, read with the replacement above, and 0015's runbooks are the ones in force. This record amends them; none is superseded.
+These take effect in the cutover pull request (SIG-263), when fidant.se's traffic moves onto the new setup. `sto.signal.fidant.se` will use the two new rules from part 2, with no visitor on it until then. The cutover pull request completes this list. Until then 0006, 0007, 0010 and 0015 stand as written for production, read with the replacement above, and 0015's runbooks are the ones in force. This record amends them; none is superseded.
 
 | Where it says                                                                                                                                                                                                                                                                                                                              | Read                                                                                                                                                                                                                                                                          |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
