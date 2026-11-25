@@ -1571,7 +1571,7 @@ export const en = {
     sees: [
       [
         "Your IP address and browser details",
-        "Like any website you visit, along with which page you open, whose address names the language you chose. We use them only to show you this page and connect you. Our server never writes them to its logs. Our relay doesn't log them either, except while we fix a fault or stop abuse (see below).",
+        "Like any website you visit, we see them, along with which page you open. That page's address names the language you chose. We use them only to show you this page and connect you. Our server never writes them to its logs. Our relay doesn't log them either, except while we fix a fault or stop abuse (see below).",
       ],
       [
         "A link ID",
@@ -1583,11 +1583,11 @@ export const en = {
       ],
       [
         "The sender's relay choice",
-        "Whether the sender allows our relay, so we only give recipients access to it when they do. We forget it within a minute after the sender's page closes, and never write it to our logs.",
+        "Whether the sender allows our relay, so we only give recipients access to it when the sender does. We forget it within a minute after the sender's page closes, and never write it to our logs.",
       ],
       [
         "If we email a link: the address, the link's key and your name",
-        "If you ask us to email a link, your browser sends our server the recipient's email address, the link with its key, and your name. We keep the key and your name only until the email has gone. We keep the address in memory while your page is open, so we can email the recipient a code when they open the link. We also keep the latest code and which browser tabs entered the right one. We never log the address or write it to disk. Our mail service, Amazon SES, delivers the emails, and bounces go only to it, never to a mailbox of ours. Amazon SES keeps an email with a link, and so the key and your name, only until it is delivered: if the recipient's mail server doesn't accept it at once, Amazon SES tries again for at most 15 minutes and then drops it. An address that bounces as undeliverable goes on a list that Amazon SES keeps for all its customers, for up to 14 days, so that nobody sends it more mail. We can't turn that list off.",
+        "If you ask us to email a link, your browser sends our server the recipient's email address, the link with its key, and your name. We keep the key and your name only until the email has gone. We keep the address in memory while your page is open, so we can email the recipient a code when they open the link. We also keep the latest code and which browser tabs entered the right one. We never log the address or write it to disk. Our mail service, Amazon SES, delivers the emails, and bounces go only to it, never to a mailbox of ours. Amazon SES keeps an email with a link, and so the key and your name, only until it is delivered. If the recipient's mail server doesn't accept the email at once, Amazon SES tries again for at most 15 minutes and then drops it. An address that bounces as undeliverable goes on a list that Amazon SES keeps for all its customers, for up to 14 days, so that nobody sends it more mail. We can't turn that list off.",
       ],
       [
         "Counts of emails and codes",
@@ -1595,11 +1595,11 @@ export const en = {
       ],
     ] as ReadonlyArray<readonly [string, string]>,
     keepHeading: "What we keep",
-    keep: "We have no accounts, no database of people or transfers, no cookies and no tracking. Apart from the log lines below, a relay log while we fix a fault or stop abuse, the email and code counts above, which last an hour, and our mail service's list of bounced addresses, nothing about you is kept once the sender's page is closed, within 2 minutes at most.",
+    keep: "We have no accounts, no database of people or transfers, no cookies and no tracking. Once the sender's page is closed, nothing about you is kept, within 2 minutes at most, apart from the log lines below, a relay log while we fix a fault or stop abuse, the email and code counts above, which last an hour, and our mail service's list of bounced addresses.",
     logFields,
     logRetention: "Log lines are deleted after 30 days.",
     relayLog:
-      "Our relay, which can carry the locked file when two browsers can't connect directly, keeps no log of the traffic. Only to fix a fault or stop abuse do we turn one on. It then records, for each relayed connection, both IP addresses and ports, when it started and ended, and how much data passed through. Never names, keys or file data. We turn it off and delete it within 7 days. Separately, while the relay renews its certificate, a few seconds every two months or so, it logs the addresses that reach it on port 80. Those are Let's Encrypt's checks and internet scanners, never browsers, and they are deleted within about five weeks.",
+      "Our relay, which can carry the locked file when two browsers can't connect directly, keeps no log of the traffic. We turn one on only to fix a fault or stop abuse. The log then records, for each relayed connection, both IP addresses and ports, when the connection started and ended, and how much data passed through. Never names, keys or file data. We turn it off and delete it within 7 days. Separately, while the relay renews its certificate, a few seconds every two months or so, it logs the addresses that reach it on port 80. Those are Let's Encrypt's checks and internet scanners, never browsers, and they are deleted within about five weeks.",
     limitsHeading: "What we can't protect you from",
     limits: [
       "Anyone who has the link can open the file. A link we email also needs a code we send to the same address, so anyone who can read that mailbox can open it. Send each link only to the person it is for.",

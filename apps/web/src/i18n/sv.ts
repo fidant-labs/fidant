@@ -668,14 +668,14 @@ export const sv: Messages = {
             unpaired:
               "Din e-postadress, som avsändaren angav för den här länken, den senaste koden den mejlade dig och om den här fliken har angett den. Bara avsändarens sida kan hålla kvar dem där.",
             closed:
-              "Ingenting om den här sidan, när den har märkt att anslutningen har stängts, utom om den här fliken har angett rätt kod. Det tar upp till en minut om nätverket bröts. Bara avsändarens sida kan hålla kvar det, din länks ID och din e-postadress där.",
+              "Ingenting om den här sidan, när servern har märkt att anslutningen har stängts, utom om den här fliken har angett rätt kod. Det tar upp till en minut om nätverket bröts. Bara avsändarens sida kan hålla kvar det, din länks ID och din e-postadress där.",
           }
         : {
             paired: `ID:t för din länk, aldrig ${items[kind].unlocks}, och att den här sidan är ansluten till avsändaren.`,
             unpaired:
               "Ingenting som knyter den här sidan till din länk. Bara avsändarens sida kan hålla kvar din länks ID där.",
             closed:
-              "Ingenting om den här sidan, när den har märkt att anslutningen har stängts. Det tar upp till en minut om nätverket bröts. Bara avsändarens sida kan hålla kvar din länks ID där.",
+              "Ingenting om den här sidan, när servern har märkt att anslutningen har stängts. Det tar upp till en minut om nätverket bröts. Bara avsändarens sida kan hålla kvar din länks ID där.",
           })[tie],
     passedOn: (messages: number, size: string, emailed: boolean) =>
       messages === 0
@@ -1537,7 +1537,7 @@ export const sv: Messages = {
     sees: [
       [
         "Din IP-adress och uppgifter om din webbläsare",
-        "Som på alla webbplatser du besöker, och vilken sida du öppnar, vars adress visar vilket språk du har valt. Vi använder dem bara för att visa dig sidan och koppla ihop er. Vår server skriver aldrig in dem i sina loggar. Vårt relä loggar dem inte heller, utom medan vi åtgärdar ett fel eller stoppar missbruk (se nedan).",
+        "Liksom alla webbplatser du besöker ser vi dem och vilken sida du öppnar. Sidans adress visar vilket språk du har valt. Vi använder dem bara för att visa dig sidan och koppla ihop er. Vår server skriver aldrig in dem i sina loggar. Vårt relä loggar dem inte heller, utom medan vi åtgärdar ett fel eller stoppar missbruk (se nedan).",
       ],
       [
         "Ett länk-ID",
@@ -1553,7 +1553,7 @@ export const sv: Messages = {
       ],
       [
         "Om vi mejlar en länk: adressen, länkens nyckel och ditt namn",
-        "Om du ber oss mejla en länk skickar din webbläsare mottagarens e-postadress, länken med nyckeln och ditt namn till vår server. Nyckeln och ditt namn har vi bara tills mejlet har gått iväg. Adressen har vi i minnet medan din sida är öppen, så att vi kan mejla mottagaren en kod när länken öppnas. Vi har också den senaste koden och vilka flikar som har angett rätt kod. Vi loggar aldrig adressen och skriver den aldrig till disk. Vår e-posttjänst, Amazon SES, levererar mejlen, och studsar går bara dit, aldrig till en inkorg hos oss. Amazon SES har kvar ett mejl med en länk, och därmed nyckeln och ditt namn, bara tills det har levererats: om mottagarens e-postserver inte tar emot det direkt försöker Amazon SES igen i högst 15 minuter och kastar det sedan. En adress som studsar för att den inte går att leverera hamnar på en lista som Amazon SES har för alla sina kunder, i upp till 14 dagar, så att ingen skickar mer e-post till den. Den listan kan vi inte stänga av.",
+        "Om du ber oss mejla en länk skickar din webbläsare mottagarens mejladress, länken med nyckeln och ditt namn till vår server. Nyckeln och ditt namn har vi bara tills mejlet har gått iväg. Adressen har vi i minnet medan din sida är öppen, så att vi kan mejla mottagaren en kod när länken öppnas. Vi har också den senaste koden och vilka flikar som har angett rätt kod. Vi loggar aldrig adressen och skriver den aldrig till disk. Vår mejltjänst, Amazon SES, levererar mejlen, och studsar går bara dit, aldrig till en inkorg hos oss. Amazon SES har kvar ett mejl med en länk, och därmed nyckeln och ditt namn, bara tills det har levererats. Om mottagarens mejlserver inte tar emot mejlet direkt försöker Amazon SES igen i högst 15 minuter och kastar det sedan. En adress som studsar för att den inte går att leverera hamnar på en lista som Amazon SES har för alla sina kunder, i upp till 14 dagar, så att ingen skickar fler mejl till den. Den listan kan vi inte stänga av.",
       ],
       [
         "Antal mejl och koder",
@@ -1561,14 +1561,14 @@ export const sv: Messages = {
       ],
     ],
     keepHeading: "Vad vi sparar",
-    keep: "Vi har inga konton, ingen databas över personer eller överföringar, inga cookies och ingen spårning. Förutom loggraderna nedan, en relälogg medan vi åtgärdar ett fel eller stoppar missbruk, antalet mejl och koder ovan, som finns kvar en timme, och e-posttjänstens lista över adresser som studsat sparas ingenting om dig när avsändarens sida har stängts, inom högst två minuter.",
+    keep: "Vi har inga konton, ingen databas över personer eller överföringar, inga cookies och ingen spårning. När avsändarens sida har stängts sparas ingenting om dig, inom högst två minuter, förutom loggraderna nedan, en relälogg medan vi åtgärdar ett fel eller stoppar missbruk, antalet mejl och koder ovan, som finns kvar en timme, och mejltjänstens lista över adresser som studsat.",
     logFields,
     logRetention: "Loggraderna raderas efter 30 dagar.",
     relayLog:
-      "Vårt relä, som kan föra den låsta filen vidare när två webbläsare inte kan ansluta direkt, för ingen logg över trafiken. Bara för att åtgärda ett fel eller stoppa missbruk slår vi på en. Den sparar då för varje vidarebefordrad anslutning båda IP-adresserna och portarna, när den började och slutade och hur mycket data som gick igenom. Aldrig namn, nycklar eller fildata. Vi stänger av den och raderar den inom 7 dagar. Dessutom loggar reläet adresserna som når det på port 80 medan det förnyar sitt certifikat, några sekunder ungefär varannan månad. Det är Let's Encrypts kontroller och skannrar på internet, aldrig webbläsare, och de raderas inom ungefär fem veckor.",
+      "Vårt relä, som kan föra den låsta filen vidare när två webbläsare inte kan ansluta direkt, för ingen logg över trafiken. Vi slår bara på en för att åtgärda ett fel eller stoppa missbruk. Loggen sparar då för varje vidarebefordrad anslutning båda IP-adresserna och portarna, när anslutningen började och slutade och hur mycket data som gick igenom. Aldrig namn, nycklar eller fildata. Vi stänger av den och raderar den inom 7 dagar. Dessutom loggar reläet adresserna som når det på port 80 medan det förnyar sitt certifikat, några sekunder ungefär varannan månad. Det är Let's Encrypts kontroller och skannrar på internet, aldrig webbläsare, och de raderas inom ungefär fem veckor.",
     limitsHeading: "Det här kan vi inte skydda dig mot",
     limits: [
-      "Den som har länken kan öppna filen. En länk vi mejlar kräver också en kod som vi skickar till samma adress, så den som kan läsa den inkorgen kan öppna den. Skicka varje länk bara till den som den är avsedd för.",
+      "Den som har länken kan öppna filen. En länk vi mejlar kräver också en kod som vi skickar till samma adress, så den som kan läsa den inkorgen kan öppna länken. Skicka varje länk bara till personen den är avsedd för.",
       "Din webbläsare kör den kod vår server skickar. En server som skickade annan kod skulle kunna läsa filer, och hoppa över kontrollnumret. Koden är offentlig, men webbläsare kan ännu inte kontrollera att det de fick stämmer med den.",
       "Den andra webbläsaren ser din IP-adress, precis som i ett videosamtal. Vår server ser båda IP-adresserna, vilken mottagare som ansluter till vilken avsändare och när, och hur många mottagare en avsändare har. Så den får veta vem som skickar till vem, men inte vad, utom för en länk vi mejlat med kontrollnumret avstängt.",
       "Varje webbläsare frågar vårt relä om sin offentliga adress, så reläet ser varje IP-adress. Nätverken på vägen, och vårt relä när filen går via det, ser båda IP-adresserna, när överföringen sker och ungefär hur stor filen är.",
