@@ -993,15 +993,6 @@ export const en = {
           "The setup WebSocket refuses connections opened from other sites, and limits protect the server from overload: connections in total and per address, messages per connection, links per sender, the size of each setup message, and the emails and codes described above.",
         ],
       },
-      seen: {
-        heading: "What our server and relay see and keep",
-        body: [
-          "Our server sees each page's IP address and browser details, the link IDs, the sender's relay choice, the connection path the sender reports for each attempt (direct, STUN, relay or failed), whether a link was already used, when each side connects and disconnects, and the encrypted setup messages and their sizes. It never sees the file, its name, its type or its exact size, or a shared secret or its length. It never sees a link's secret or the keys and can't read the setup messages, except for a link we email: then it gets that link's secret once to write the email, along with the recipient's email address and the sender's typed name. It keeps what it knows about pages in memory only, and forgets a page within a minute after it disconnects. The exceptions are an emailed link's address, codes and tokens, which stay until the sender's page lets the link go, and the email counts, which last an hour.",
-          "Its log lines use a fixed list of fields, such as the first 6 characters of a link ID and whether a connection was direct. Never names, email addresses, codes, keys, file data or IP addresses. They are deleted after 30 days.",
-          "Our relay sees each browser's IP address when the browser asks it for its public address (STUN). The two browsers ask at about the same time, so it can usually tell which two addresses belong together. When the browsers add the relay, it can also learn that from the relay addresses they reserve, and on the relay route it sees the encrypted traffic, so the file's size only roughly and nothing of a shared secret's length. It keeps no log of the traffic. Only to fix a fault or stop abuse do we turn one on, with connection times, IP addresses and data volumes, for at most 7 days. It keeps its current and previous secret, and nothing of the file. While it renews its certificate, a few seconds every two months or so, it logs the addresses that reach it on port 80. Those are Let's Encrypt's checks and internet scanners, never browsers, and they are deleted within about five weeks.",
-        ],
-        link: ["Every log field, on the privacy page", "/privacy"],
-      },
       limits: {
         heading: "What it doesn't protect against",
         body: [
@@ -1024,22 +1015,6 @@ export const en = {
         link: [
           "The design records on GitHub",
           "https://github.com/sigill-labs/sigill/tree/main/docs/decisions",
-        ],
-      },
-      sender: {
-        heading: "Traces in the sender's browser",
-        body: [
-          "The file is read from your disk and copied nowhere else. The links, the keys and the transfers exist only in the page's memory, and go when it closes.",
-          "A shared secret is typed into a text box. A browser can save what is in a text box with its session, to restore it after a crash or a reopened tab.",
-          "If you copy a link, it is on your clipboard. Fidant itself saves only your choice of language and theme in the browser.",
-        ],
-      },
-      recipient: {
-        heading: "Traces in the recipient's browser",
-        body: [
-          "The file is where the recipient saved it: Chrome and Edge write it to the place the recipient chose, and other browsers to their downloads. A shared secret is only in the page's memory, until the recipient copies it. Then it is on their clipboard too, where clipboard history, clipboard sync and other apps can read it.",
-          "The link, with its key, stays in the browser's history like any address. A link is refused once its file has been delivered, and works only while the sender's page is open.",
-          "For a link we email, the token that the right code gets is kept in that browser tab until the tab closes. Fidant itself saves only the choice of language and theme.",
         ],
       },
     } satisfies Record<string, Section>,
@@ -1235,7 +1210,7 @@ export const en = {
     explorer: {
       heading: "See what your transfer leaves behind",
       body: [
-        "Pick how you send, and see every place a trace of it is kept: what, and for how long. Places that aren't part of that path say so.",
+        "Pick how you send to see every place that keeps a trace of it: what it keeps, and for how long. Places your path doesn't use say so.",
       ],
       questions: {
         what: { legend: "What do you send?", options: { file: "A file", secret: "A secret" } },
@@ -1255,15 +1230,20 @@ export const en = {
       kept: "Kept",
       never: "Never",
       notUsed: "Not part of this path.",
+      link: ["Every log field, on the privacy page", "/privacy"] as readonly [string, string],
       places: {
         sender: {
           name: "Your browser",
-          kept: "Mostly until you close the tab; see each line",
+          kept: "Mostly until you close the tab",
           never: "Fidant saves no file, secret, link or key on your device.",
           lines: [
             [
               "",
-              "The link and its key, in this tab's memory until you close it. If you copy a link, it also stays on your clipboard until you replace it, or longer with clipboard history, clipboard sync and other apps.",
+              "The links, their keys and the transfers, only in this tab's memory, until you close it.",
+            ],
+            [
+              "",
+              "A link you copy, on your clipboard until you copy something else. Clipboard history, clipboard sync and other apps can keep it longer.",
             ],
             [
               "file",
@@ -1271,7 +1251,7 @@ export const en = {
             ],
             [
               "secret",
-              "The secret in its text box, until you close the tab. A browser can save it with its session.",
+              "The secret, in its text box until you close the tab. The browser can also save it with the session, to restore it after a crash or a reopened tab.",
             ],
             [
               "",
@@ -1279,7 +1259,7 @@ export const en = {
             ],
             [
               "direct,relay",
-              "While our relay is available, relay credentials for this pair, valid 5 minutes to start a relay, in memory while the page is open.",
+              "While our relay is available: credentials for it, made for this pair of browsers, in memory while the page is open. A relay connection can start with them for 5 minutes.",
             ],
           ],
         },
@@ -1290,24 +1270,24 @@ export const en = {
           lines: [
             [
               "self",
-              "The full link, key included, in the chat, mail or messaging service you send it with. Its link preview may open the address, but never gets the key, which is after the #.",
+              "The full link, key included, in the chat, mail or messaging service you send it with. The service's link preview may open the address, but never gets the key, which is after the #.",
             ],
           ],
         },
         server: {
           name: "Our server, in memory",
-          kept: "While the pages are open, and gone within a minute after. On an emailed link, counters for up to an hour.",
+          kept: "While the pages are open, and up to a minute after. Email counters: up to an hour",
           never:
-            "Your file, its name, size or type, or the secret, except on an emailed link as below.",
+            "Your file, its name, size or type, or the secret or its length, except on an emailed link as below.",
           lines: [
             ["", "Both IP addresses, the link ID and which page is paired with which link."],
             [
               "",
-              "Encrypted setup messages pass through it and aren't kept. On a link you pass on, it can't read them.",
+              "Encrypted setup messages pass through it and aren't kept. On a link you pass on yourself, it can't read them.",
             ],
             [
               "direct,relay",
-              "While our relay is available, makes relay credentials for this pair, valid for 5 minutes, and sends them to both pages without keeping them.",
+              "While our relay is available, it makes relay credentials for this pair of browsers, valid for 5 minutes, and sends them to both pages without keeping them.",
             ],
             [
               "email",
@@ -1319,8 +1299,9 @@ export const en = {
             ],
             [
               "email",
-              "Send times, for up to an hour, under keyed hashes (HMAC) of the recipient's address and of your IP address, and two server-wide counters, one for all emails and one for all codes, not tied to any address, to enforce limits. The token a right code gets, while your page is open.",
+              "To enforce limits, for up to an hour: send times, filed under keyed hashes (HMAC) of the recipient's address and of your IP address, and two server-wide counters, one for all emails and one for all codes, not tied to any address.",
             ],
+            ["email", "The token that the right code gets, while your page is open."],
           ],
         },
         proxy: {
@@ -1331,7 +1312,7 @@ export const en = {
           lines: [
             [
               "",
-              "Each source IP address (an IPv6 address by its /64) and its connection count, in memory.",
+              "Each source IP address (for IPv6, its /64 block) and how many connections it has, in memory.",
             ],
           ],
         },
@@ -1342,7 +1323,7 @@ export const en = {
           lines: [
             [
               "",
-              "It decrypts HTTPS: it sees each request's path, such as /r/ with the link ID, each browser's IP address, and every message the pages send our server, in memory only. Setup messages stay encrypted.",
+              "It decrypts HTTPS, so it sees, in memory only, each request's path (such as /r/ with the link ID), each browser's IP address and every message the pages send our server. Setup messages stay encrypted.",
             ],
             [
               "email",
@@ -1350,7 +1331,7 @@ export const en = {
             ],
             [
               "",
-              "Its own log, about starting, goes to the journal. It keeps no access log, and its error and TLS logs are off.",
+              "Its own log, about starting up, goes to the system journal. It keeps no access log, and its error and TLS logs are off.",
             ],
           ],
         },
@@ -1361,46 +1342,72 @@ export const en = {
           lines: [
             [
               "",
-              "Short lines: that a sender registered and how many links, that a recipient joined, the size of each setup message, and the route taken. A link shows only by its first 6 characters.",
+              "Short lines with a fixed list of fields: that a sender registered and how many links, that a recipient joined, the size of each setup message, and the route taken. A link shows only by its first 6 characters.",
             ],
             ["email", "Whether the email was sent, each code sent or refused, and a right code."],
             ["", "That a recipient left, and that your page closed, with how many links it had."],
             [
               "direct,relay",
-              "If our relay is available and nothing has connected 3 seconds after the recipient answers: lines for about a dozen more setup messages, from adding the relay. They hint that you allowed it.",
+              "If our relay is available and the browsers still haven't connected 3 seconds after the recipient answers, they add the relay. That adds lines for about a dozen more setup messages, which hint that you allowed the relay.",
             ],
-            ["norelay", "If a relayed connection comes up anyway, that your page ended it."],
+            ["norelay", "If a relayed connection comes up anyway: that your page ended it."],
           ],
         },
         relay: {
           name: "Our relay",
-          kept: "Nothing once the traffic has passed. No log of the traffic. Only to fix a fault or stop abuse do we turn one on, with connection times, IP addresses and data volumes, for at most 7 days. While it renews its certificate, it also logs the addresses that reach it on port 80, never browsers', for about five weeks.",
+          kept: "Nothing once the traffic has passed. Some logs: up to about five weeks",
           never: "The key, the file or the secret. It can't decrypt what it carries.",
           lines: [
-            ["", "Each browser's public IP address, when the browser asks for it."],
+            [
+              "",
+              "Each browser's public IP address, when the browser asks for it. The two browsers ask at about the same time, so the relay can usually tell which two addresses belong together.",
+            ],
             [
               "direct",
-              "If our relay is available and nothing has connected 3 seconds after the recipient answers: both IP addresses together, even if a direct route wins after all. Both browsers then reserve a relay address, or only your browser's if the recipient's browser had already connected when your page's request to add the relay reached it. Either way the relay can learn both IP addresses.",
+              "If our relay is available and the browsers still haven't connected 3 seconds after the recipient answers: both IP addresses together, even if a direct route wins after all. Both browsers then reserve a relay address. Only yours does if the recipient's browser had already connected when your page's request to add the relay reached it. Either way the relay can learn both IP addresses.",
             ],
             [
               "relay",
               "Both IP addresses, and the encrypted traffic, which it forwards and doesn't store.",
             ],
+            ["relay file", "The file's size, only roughly."],
+            ["relay secret", "Not the secret's length: every secret is the same size on the wire."],
+            [
+              "",
+              "No log of the traffic. We turn one on only to fix a fault or stop abuse, for at most 7 days, with connection times, IP addresses and data volumes.",
+            ],
+            [
+              "",
+              "While it renews its certificate, a few seconds every two months or so, it logs the addresses that reach it on port 80. They come from Let's Encrypt's checks and internet scanners, never from browsers, and are deleted within about five weeks.",
+            ],
+            ["", "Its own current and previous secret, which hold no trace of your transfer."],
           ],
         },
         relayCap: {
           name: "Our monthly traffic count",
-          kept: "The month's totals until the next month starts, and their last 100 versions, about 8 hours. The month's total as of every 5 minutes for 63 days, every hour for 15 months, and in its own log for 30 days. Our host, Amazon Lightsail, keeps how much traffic our server and our relay carry, for 455 days.",
+          kept: "Up to 15 months; at our host, 455 days",
           never:
             "Which transfer the traffic belongs to, IP addresses, the key, the file or the secret.",
           lines: [
             [
               "",
-              "The pages your browser loads and the messages it exchanges with our server, and its requests to our relay, counted with all their other traffic, so that we can switch the relay off when the estimated cost reaches our budget.",
+              "The pages your browser loads, the messages it exchanges with our server and its requests to our relay. They are counted together with all other traffic through them, so that we can switch the relay off when the estimated cost reaches our budget.",
             ],
             [
               "relay",
-              "Your transfer's encrypted size, rounded up, in the traffic of the relay that carried it. Every 5 minutes we save the month's totals for our server and our relay. On a quiet relay, the step between two saved values can match your transfer's size and time.",
+              "Your transfer's encrypted size, rounded up, is counted in the traffic of the relay that carried it. We save the month's totals for our server and our relay every 5 minutes, so on a quiet relay, the step between two saved values can match your transfer's size and time.",
+            ],
+            [
+              "",
+              "The month's totals until the next month starts, and their last 100 versions, which cover about 8 hours.",
+            ],
+            [
+              "",
+              "The month's total as it stood every 5 minutes, for 63 days, and every hour, for 15 months. The count's own log keeps it for 30 days.",
+            ],
+            [
+              "",
+              "Our host, Amazon Lightsail, keeps how much traffic our server and our relay carry, for 455 days.",
             ],
           ],
         },
@@ -1417,20 +1424,29 @@ export const en = {
         },
         recipient: {
           name: "The recipient's browser",
-          kept: "Mostly until the tab closes; see each line",
+          kept: "Mostly until the tab closes",
           never:
             "Fidant saves no key on their device, apart from what the browser's history keeps.",
           lines: [
-            ["", "The link, key included, in the browser's history."],
-            ["file", "The file, where they save it."],
+            [
+              "",
+              "The link, key included, in the browser's history like any address. Your page refuses the link once the delivery is done, and the link works only while your page is open.",
+            ],
+            [
+              "file",
+              "The file, where they save it: Chrome and Edge write it where the recipient chooses, other browsers to their downloads.",
+            ],
             [
               "secret",
-              "The secret, only in the page's memory, until they copy it. Then it's on their clipboard too.",
+              "The secret, only in the page's memory until they copy it. Then it's also on their clipboard, where clipboard history, clipboard sync and other apps can read it.",
             ],
-            ["email", "A token for the right code, in that tab's session storage."],
+            [
+              "email",
+              "A token for the right code, in that tab's session storage until the tab closes.",
+            ],
             [
               "direct,relay",
-              "While our relay is available, relay credentials for this pair, valid 5 minutes to start a relay, in memory while the page is open.",
+              "While our relay is available: credentials for it, made for this pair of browsers, in memory while the page is open. A relay connection can start with them for 5 minutes.",
             ],
             ["", "Their theme and language choice, in the browser's local storage, until cleared."],
           ],
@@ -1450,14 +1466,14 @@ export const en = {
     data: {
       heading: "Step by step",
       body: [
-        "The same, for each step of a transfer: what our server sees, keeps and logs, and what our relay sees. A shared secret goes through the same steps as a file.",
+        "The same facts in the order a transfer happens: what our server sees, keeps and logs at each step, and what our relay sees. A shared secret goes through the same steps as a file.",
       ],
       columns: ["Step", "Our server sees", "Our server keeps", "Our server logs", "Our relay"],
       rows: [
         [
           "You open the site",
           "Your IP address and browser details, like any website.",
-          "Nothing. A send page also opens a connection to our server, which it holds in memory while the page is open.",
+          "Nothing. A send page also opens a connection to our server, which the server holds in memory while the page is open.",
           "Nothing.",
           "Nothing.",
         ],
@@ -1501,7 +1517,7 @@ export const en = {
           "Encrypted setup messages and their sizes. It can't read them, except for a link we emailed.",
           "Nothing. It passes them on.",
           "Each message's size, with the first 6 characters of the link ID.",
-          "Each browser's IP address, when it asks for its public address (STUN). If you allow the relay and it is available, and nothing has connected 3 seconds after the recipient answers, the browsers add the relay. Both then reserve a relay address, or only your browser's if the recipient's browser had already connected when your page's request to add the relay reached it. Either way the relay can learn both IP addresses, even if a direct route wins after all.",
+          "Each browser's IP address, when it asks for its public address (STUN). If you allow the relay and it is available, and the browsers still haven't connected 3 seconds after the recipient answers, they add the relay. Both then reserve a relay address. Only yours does if the recipient's browser had already connected when your page's request to add the relay reached it. Either way the relay can learn both IP addresses, even if a direct route wins after all.",
         ],
         [
           "The file or secret travels",
@@ -1529,7 +1545,7 @@ export const en = {
           "Nothing.",
           "Only the scrambled counts of emails and codes, and two server-wide counters of when emails and codes were sent, not tied to any address, for up to an hour.",
           "Log lines are deleted after 30 days.",
-          "No log of the traffic. Only to fix a fault or stop abuse do we turn one on, with connection times, IP addresses and data volumes, for at most 7 days. Separately, while it renews its certificate, it logs the addresses that reach it on port 80, never browsers', for about five weeks.",
+          "No log of the traffic. We turn one on only to fix a fault or stop abuse, for at most 7 days, with connection times, IP addresses and data volumes. While it renews its certificate, it also logs the addresses that reach it on port 80, never browsers', for about five weeks.",
         ],
       ],
     },

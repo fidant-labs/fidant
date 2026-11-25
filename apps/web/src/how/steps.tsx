@@ -75,13 +75,7 @@ export const STEPS = [
     id: "never",
     slug: "traces",
     art: "never",
-    detail: [
-      { explorer: true },
-      { section: "seen" },
-      { table: "data" },
-      { section: "sender" },
-      { section: "recipient" },
-    ],
+    detail: [{ explorer: true }, { table: "data" }],
   },
   {
     id: "protection",
