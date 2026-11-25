@@ -59,7 +59,7 @@
 //   no refusal: the joiner is gone.
 // - `server-lost` (our own signaling socket dropped) does the same for every
 //   connecting recipient, since the server forgot their joins with the socket.
-//   Unlike `left` it never sets `noRelay`: the server dropped, not the relay.
+//   Unlike `left` it never sets `noRelay` or `noConnect`: the server dropped, not the relay.
 // - Every join carries the recipient's attempt ID, and every refusal names the
 //   attempt it refuses. A join is refused with its own attempt; `dropped`,
 //   `timeout` and `unsendable` refuse the attempt stored when the recipient
@@ -88,7 +88,9 @@
 //   allowed our relay when the server paired it. An attempt that ends while
 //   still connecting (dropped, timeout, left) under `turn` false returns to
 //   "waiting" with `noRelay`, because a refused relay is the likely reason it
-//   never connected. The next join clears it.
+//   never connected. The next join clears it. Under `turn` true it returns
+//   with `noConnect` instead, so the sender sees that someone tried and
+//   couldn't connect; the next join clears that too.
 // - A `relay` path for an active attempt under `turn` false ends that attempt
 //   like a timeout and sets `noRelay`. This is a best-effort backstop: an
 //   honest recipient gets no relay for such a send, and the server is the
@@ -112,7 +114,8 @@
 //   or may have emailed (a mark, "sending", or "verifying"/"verified" without
 //   a mark, see `unmarked`): the server dropped its binding with the socket,
 //   so `hostedLinks` leaves the link out from then on and nobody can host its
-//   ID plain from this page.
+//   ID plain from this page. It also clears `noRelay` and `noConnect` there:
+//   an unbound link can't be retried.
 // - The server answers every `email` it refuses with `failed` or `limit`, naming
 //   the link and with no mark, so a refusal never needs guessing which card it was for.
 //
@@ -175,6 +178,8 @@ export type Recipient = {
   readonly turn?: boolean;
   /** The last attempt couldn't connect directly while the sender refused our relay. */
   readonly noRelay?: true;
+  /** The last attempt ended before it connected, with our relay allowed. */
+  readonly noConnect?: true;
   /** The address the server emails this link to, if the sender gave one. */
   readonly email?: string;
   /** Where that email stands: "sending" until the server answers. */
@@ -313,7 +318,8 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
     const recipients = state.recipients.map((r) => {
       let next = r;
       if (emailBound(r)) {
-        next = { ...next, unbound: true };
+        const { noRelay: _noRelay, noConnect: _noConnect, ...rest } = next;
+        next = { ...rest, unbound: true };
       }
       if (r.status === "connecting") {
         effects.push({ type: "close", linkId: r.linkId });
@@ -542,13 +548,16 @@ function failedCheck(current: Recipient, next: Recipient): Recipient {
   return { ...reset(next, "failed"), checkFailures, error: CHECK_LIMIT, locked: true };
 }
 
-/** Back to waiting, with `noRelay` if the attempt was `blocked` while the sender refused our relay. */
+/** Back to waiting, with `noRelay` (relay refused) or `noConnect` if the attempt was `blocked`. */
 function waiting(recipient: Recipient, blocked: boolean): Recipient {
   const next = reset(recipient, "waiting");
-  return blocked && recipient.turn === false ? { ...next, noRelay: true } : next;
+  if (!blocked) {
+    return next;
+  }
+  return recipient.turn === false ? { ...next, noRelay: true } : { ...next, noConnect: true };
 }
 
-/** The recipient with a new status, no progress, error, attempt, path, relay choice or noRelay. */
+/** The recipient with a new status, no progress, error, attempt, path, relay choice, noRelay or noConnect. */
 function reset(recipient: Recipient, status: RecipientStatus): Recipient {
   const {
     error: _error,
@@ -556,6 +565,7 @@ function reset(recipient: Recipient, status: RecipientStatus): Recipient {
     path: _path,
     turn: _turn,
     noRelay: _noRelay,
+    noConnect: _noConnect,
     ...rest
   } = recipient;
   return { ...rest, status, bytesSent: 0 };
