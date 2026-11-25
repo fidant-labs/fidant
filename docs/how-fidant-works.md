@@ -1,6 +1,6 @@
 # How Fidant works
 
-This is the source of truth for how Fidant moves a file or a shared secret and why no infrastructure can read it, except through a peer-to-peer link that Fidant emails (see "Emailed links"). It describes the code on `main` today. Planned work is marked as planned.
+This is the source of truth for how Fidant moves a file or a shared secret and why no infrastructure can read it, except through a peer-to-peer link that Fidant emails (see "Emailed links"). It describes the code on `main` today. The site at fidant.se runs the `production` branch, which a maintainer moves forward to a commit on `main`'s first-parent history, so the site can run an older commit than this describes (`docs/decisions/0020-deploy-from-production.md`). Planned work is marked as planned.
 
 A change to security or data flow updates this document in the same pull request, and then the web pages that explain it (see "Keeping this true" at the end).
 
