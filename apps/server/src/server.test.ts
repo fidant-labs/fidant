@@ -37,7 +37,8 @@ for (const page of [
   "about/index",
   "how/index",
   "sv/index",
-  "sv/about/index",
+  "sv/om/index",
+  "sv/sa-fungerar-det/lamnas-kvar/index",
   "404",
   "sv/404",
 ]) {
@@ -108,7 +109,8 @@ test("public pages get their own file, whatever the browser's language, with no 
     ["/about", "about/index"],
     ["/how", "how/index"],
     ["/sv", "sv/index"],
-    ["/sv/about", "sv/about/index"],
+    ["/sv/om", "sv/om/index"],
+    ["/sv/sa-fungerar-det/lamnas-kvar", "sv/sa-fungerar-det/lamnas-kvar/index"],
   ] as const) {
     const res = await page(path, { headers: { "accept-language": "sv-SE,sv;q=0.9" } });
     assert.equal(res.status, 200, path);
@@ -163,7 +165,8 @@ test("a trailing slash and the old /technical address redirect to the page", asy
   for (const [path, location] of [
     ["/about/", "/about"],
     ["/sv/", "/sv"],
-    ["/sv/about/?q=1", "/sv/about?q=1"],
+    ["/sv/om/?q=1", "/sv/om?q=1"],
+    ["/sv/sa-fungerar-det/lamnas-kvar/", "/sv/sa-fungerar-det/lamnas-kvar"],
     ["/technical", "/how"],
     ["/technical/", "/how"],
   ] as const) {
@@ -175,7 +178,16 @@ test("a trailing slash and the old /technical address redirect to the page", asy
 });
 
 test("never redirects off the site", async () => {
-  for (const path of ["//about/", "//evil.example/", "/%2f%2fevil.example/", "/sv//about/"]) {
+  for (const path of [
+    "//about/",
+    "//evil.example/",
+    "/%2f%2fevil.example/",
+    "/sv//about/",
+    "/-/",
+    "/sv/-om/",
+    "/sv/om-/",
+    "/sv/sa--fungerar/",
+  ]) {
     const res = await rawGet(path);
     assert.notEqual(res.status, 301, path);
     assert.equal(res.headers.location, undefined, path);
