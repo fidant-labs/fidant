@@ -630,8 +630,9 @@ export function attachSignaling(
       answerCode(socket, link, "limit");
       return;
     }
-    // A refused code is never counted, and a client's own cap (5) is below the address's (10),
-    // so one client asking for codes on its own links can't lock the address out.
+    // A refused code is never counted, and a client's own cap (codesPerClient) is below the
+    // address's (codesPerRecipient), so one client asking for codes on its own links can't lock
+    // the address out.
     if (
       (last !== undefined && now - last < CODE_GAP_MS) ||
       clientTimes.length >= limits.codesPerClient ||

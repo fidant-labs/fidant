@@ -1609,8 +1609,8 @@ test("bounds the notices one IPv6 /48 can send by moving between its /64s (SIG-2
     }
     client.close();
   }
-  // Production noticesPerClient is 50; the server-wide 500 alone would let 500 through.
-  assert.ok(mails.length <= 50, `${mails.length} notices went out from one /48`);
+  // 60 notices from three /64s of one /48: noticesPerClient (50) must stop the last 10.
+  assert.equal(mails.length, 50, `${mails.length} notices went out from one /48`);
 });
 
 test("sends a recipient their code although another client asked for codes on its own links to that address (SIG-223)", {}, async (t) => {
