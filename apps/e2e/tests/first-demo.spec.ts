@@ -852,6 +852,7 @@ test.describe("through a server restart", () => {
       ) {
         if (!stalled) {
           stalled = true;
+          (globalThis as { offerStalled?: boolean }).offerStalled = true;
           return new Promise(() => {});
         }
         return Reflect.apply(native, this, args);
@@ -864,6 +865,10 @@ test.describe("through a server restart", () => {
     await expect(
       recipientRow(sender, name).getByText(`Connecting through ${name}'s link…`),
     ).toBeVisible();
+    // Restarting before the offer lands would stall the next attempt's offer instead.
+    await recipient.waitForFunction(
+      () => (globalThis as { offerStalled?: boolean }).offerStalled === true,
+    );
 
     await restartServer();
     await expect(recipient.getByRole("button", { name: "Download" })).toBeVisible({
