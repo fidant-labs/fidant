@@ -5,7 +5,9 @@ import { CHECK_ATTEMPTS } from "./check.ts";
 import { createLink, type Link } from "./link.ts";
 import {
   CHECK_DIFFERS,
+  CHECK_EXPIRED,
   CHECK_LIMIT,
+  CHECK_TIMEOUT_MS,
   CHECKSUM_MISMATCH,
   emailBound,
   findRecipient,
@@ -1026,4 +1028,21 @@ test("attempts without the check never count", () => {
   assert.equal(statusOf(state, linkId), "waiting");
   assert.equal(findRecipient(state, linkId)?.checkFailures, undefined);
   assert.equal(update(state, { type: "check-differs", linkId }).state, state);
+});
+
+test("a check that takes too long ends the attempt and counts", () => {
+  const { state: s0, linkId } = withChecked();
+  const { state } = run(s0, joined(linkId, A), { type: "channel-open", linkId });
+  const result = update(state, { type: "timeout", linkId });
+  const recipient = findRecipient(result.state, linkId);
+  assert.equal(recipient?.status, "waiting");
+  assert.equal(recipient?.error, CHECK_EXPIRED);
+  assert.equal(recipient?.checkFailures, 1);
+  assert.deepEqual(result.effects, [
+    { type: "refuse", linkId, attempt: A, reason: "drop" },
+    { type: "close", linkId },
+  ]);
+  const offered = run(state, { type: "checked", linkId }).state;
+  assert.equal(update(offered, { type: "timeout", linkId }).state, offered);
+  assert.equal(CHECK_TIMEOUT_MS, 5 * 60_000);
 });

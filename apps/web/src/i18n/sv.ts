@@ -348,6 +348,8 @@ export const sv: Messages = {
       waiting: "Du sa att det stämmer. Det skickas när mottagaren också har bekräftat.",
       differed:
         "Numren stämde inte, så inget skickades. Någon kan ha varit emellan. Länken fungerar fortfarande om du vill försöka igen.",
+      expired:
+        "Kontrollnumret bekräftades inte inom 5 minuter, så inget skickades. Länken fungerar fortfarande om du vill försöka igen.",
       limit: (times: number) =>
         `Kontrollen misslyckades ${times} gånger, så länken fungerar inte längre. Någon kan försöka ta sig in mellan er. Lägg till mottagaren igen för en ny länk.`,
     },

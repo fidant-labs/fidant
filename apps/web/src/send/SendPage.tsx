@@ -21,8 +21,9 @@
 //   one chunk (textFitsOneChunk) gets nothing: reducer `unsendable` fails the
 //   recipient's card and refuses the joiner.
 // - A peer that closes or fails before delivery → `dropped`; a data channel
-//   that has not opened SETUP_TIMEOUT_MS after the join → `timeout`. Both
-//   refuse the joiner so the server unbinds it (see sender-state.ts).
+//   that has not opened SETUP_TIMEOUT_MS after the join, or a check number
+//   not confirmed CHECK_TIMEOUT_MS after it opened → `timeout`. Both refuse
+//   the joiner so the server unbinds it (see sender-state.ts).
 // - Each connection reports its path to the server once: direct, stun or
 //   relay when the channel opens, failed on an ICE failure or a timeout. A
 //   relay path on an active attempt whose relay the sender refused
@@ -65,6 +66,7 @@ import { createLink } from "../lib/link.ts";
 import { createSenderPeer, type Peer } from "../lib/peer.ts";
 import { hashFile, sendFile } from "../lib/send-file.ts";
 import {
+  CHECK_TIMEOUT_MS,
   emailBound,
   findRecipient,
   hostedLinks,
@@ -307,6 +309,11 @@ export function SendPage({
               setChecks((all) => ({ ...all, [linkId]: { number } }));
             }
           });
+          connection.deadline = setTimeout(() => {
+            if (connectionsRef.current.get(linkId) === connection) {
+              dispatch({ type: "timeout", linkId });
+            }
+          }, CHECK_TIMEOUT_MS);
         }
         sendFile({
           channel,
@@ -318,7 +325,10 @@ export function SendPage({
           signal: connection.abort.signal,
           ...(confirm && {
             confirm,
-            onChecked: () => dispatch({ type: "checked", linkId }),
+            onChecked: () => {
+              clearTimeout(connection.deadline);
+              dispatch({ type: "checked", linkId });
+            },
           }),
           onAccepted: () => dispatch({ type: "accepted", linkId }),
           onProgress: (bytesSent) => dispatch({ type: "progress", linkId, bytesSent }),

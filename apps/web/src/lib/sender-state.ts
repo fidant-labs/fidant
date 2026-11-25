@@ -21,7 +21,7 @@
 // | receiving                      | receipt(true)  | delivered  | close              |
 // | receiving                      | receipt(false) | failed     | close              |
 // | connecting ... receiving (2)   | dropped        | waiting    | refuse drop, close |
-// | connecting                     | timeout        | waiting    | refuse drop, close |
+// | connecting, checking           | timeout        | waiting    | refuse drop, close |
 // | connecting                     | unsendable     | failed     | refuse drop, close |
 // | connecting                     | left           | waiting    | close              |
 // | connecting                     | server-lost    | waiting    | close              |
@@ -117,6 +117,10 @@
 //   numbers match (`checked`). `check-differs` returns it to "waiting" with
 //   CHECK_DIFFERS, which the next join clears; the link still works, because a
 //   misheard digit is the likely cause.
+// - `timeout` also ends a "checking" attempt that both people have not
+//   confirmed within CHECK_TIMEOUT_MS, as a failed check with CHECK_EXPIRED:
+//   someone in the middle could otherwise hold one attempt open while it
+//   makes the recipient connect again and again.
 // - Every attempt of a `check` recipient that ends in connecting or checking
 //   (dropped, timeout, left, server-lost, unsendable, a refused relay,
 //   check-differs) adds one to `checkFailures`, and nothing lowers it: someone
@@ -214,11 +218,14 @@ export type SenderUpdate = { state: SenderState; effects: SenderEffect[] };
 
 /** How long after a join the data channel may take to open before the attempt is dropped. */
 export const SETUP_TIMEOUT_MS = 20_000;
+/** How long both people have to compare the check number before the attempt ends as a failed check. */
+export const CHECK_TIMEOUT_MS = 5 * 60_000;
 
 export const CHECKSUM_MISMATCH = "The recipient's checksum did not match.";
 export const TOO_SMALL_FOR_TEXT = "The connection can't carry a text in one chunk.";
 export const CHECK_DIFFERS = "The check numbers didn't match, so nothing was sent.";
 export const CHECK_LIMIT = "The check failed too many times, so this link no longer works.";
+export const CHECK_EXPIRED = "The check number wasn't confirmed in time, so nothing was sent.";
 
 export const initialSenderState: SenderState = { recipients: [] };
 
@@ -382,6 +389,13 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
     }
     case "dropped":
     case "timeout":
+      if (action.type === "timeout" && current.status === "checking") {
+        return end(
+          state,
+          current,
+          failedCheck(current, { ...waiting(current, false), error: CHECK_EXPIRED }),
+        );
+      }
       if (action.type === "dropped" ? !isActive(current) : current.status !== "connecting") {
         return { state, effects: [] };
       }

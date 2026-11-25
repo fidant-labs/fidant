@@ -15,6 +15,7 @@ import { CHECK_ATTEMPTS } from "../lib/check.ts";
 import { formatProgress } from "../lib/format.ts";
 import {
   CHECK_DIFFERS,
+  CHECK_EXPIRED,
   CHECK_LIMIT,
   type Recipient,
   type RecipientStatus,
@@ -115,7 +116,7 @@ function RecipientRow({
   const open = status === "waiting" || status === "declined" || status === "failed";
   // A link the server may still email, or whose email binding died, is not to be shared.
   const shareable = open && !unmarked(recipient) && !unbound && !recipient.locked;
-  const checkFailed = error === CHECK_DIFFERS || error === CHECK_LIMIT;
+  const checkFailed = error === CHECK_DIFFERS || error === CHECK_EXPIRED || error === CHECK_LIMIT;
   const lost = open && unbound;
   const removeButton = (
     <Button
@@ -170,9 +171,11 @@ function RecipientRow({
                   ? t.secret.unsendable(name)
                   : error === CHECK_DIFFERS
                     ? t.send.check.differed
-                    : error === CHECK_LIMIT
-                      ? t.send.check.limit(CHECK_ATTEMPTS)
-                      : statusText[status](name)}
+                    : error === CHECK_EXPIRED
+                      ? t.send.check.expired
+                      : error === CHECK_LIMIT
+                        ? t.send.check.limit(CHECK_ATTEMPTS)
+                        : statusText[status](name)}
             </span>
           </p>
           {email && mail && (

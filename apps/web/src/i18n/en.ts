@@ -368,6 +368,8 @@ export const en = {
       waiting: "You said it matches. It goes once they confirm too.",
       differed:
         "The numbers didn't match, so nothing was sent. Someone may have been in between. The link still works if you want to try again.",
+      expired:
+        "The check number wasn't confirmed within 5 minutes, so nothing was sent. The link still works if you want to try again.",
       limit: (times: number) =>
         `The check failed ${times} times, so this link no longer works. Someone may be trying to get between you. Add the recipient again for a new link.`,
     },
