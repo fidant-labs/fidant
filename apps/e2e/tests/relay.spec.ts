@@ -66,7 +66,8 @@ const peerList = (page: Page, key: "iceUrls" | "peerStates" | "relayPaths") =>
 /**
  * Init script: keeps every peer connection's ICE URLs and states, and, once it connects, the type
  * and relay protocol of its selected local candidate (`relay/udp`, `host/` and so on). With a
- * `relay` transport it allows only relay candidates, from the TURN URLs for that transport.
+ * `relay` transport it allows only relay candidates, from the TURN URLs for that transport, also
+ * when the app adds the relay later through setConfiguration.
  */
 function watchPeers(relay: Transport | null) {
   delete (globalThis as { showSaveFilePicker?: unknown }).showSaveFilePicker;
@@ -75,18 +76,21 @@ function watchPeers(relay: Transport | null) {
   const states: string[] = [];
   const paths: string[] = [];
   Object.assign(globalThis, { iceUrls: urls, peerStates: states, relayPaths: paths });
+  const watched = (config: RTCConfiguration): RTCConfiguration => {
+    for (const server of config.iceServers ?? []) {
+      urls.push(...[server.urls].flat());
+    }
+    const iceServers = (config.iceServers ?? [])
+      .map((server) => ({
+        ...server,
+        urls: [server.urls].flat().filter((url) => url.endsWith(`?transport=${relay}`)),
+      }))
+      .filter((server) => server.urls.length > 0);
+    return relay ? { ...config, iceServers, iceTransportPolicy: "relay" } : config;
+  };
   globalThis.RTCPeerConnection = class extends Native {
     constructor(config: RTCConfiguration = {}) {
-      for (const server of config.iceServers ?? []) {
-        urls.push(...[server.urls].flat());
-      }
-      const iceServers = (config.iceServers ?? [])
-        .map((server) => ({
-          ...server,
-          urls: [server.urls].flat().filter((url) => url.endsWith(`?transport=${relay}`)),
-        }))
-        .filter((server) => server.urls.length > 0);
-      super(relay ? { ...config, iceServers, iceTransportPolicy: "relay" } : config);
+      super(watched(config));
       states.push(this.connectionState);
       this.addEventListener("connectionstatechange", async () => {
         states.push(this.connectionState);
@@ -99,6 +103,9 @@ function watchPeers(relay: Transport | null) {
         const local = reports.find((r) => r.id === pair?.localCandidateId);
         paths.push(`${local?.candidateType}/${local?.relayProtocol ?? ""}`);
       });
+    }
+    override setConfiguration(config: RTCConfiguration = {}) {
+      super.setConfiguration(watched(config));
     }
   };
 }
