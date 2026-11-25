@@ -729,7 +729,6 @@ export function ReceivePage({
   const kind: Kind = isText === undefined ? "unknown" : isText ? "secret" : "file";
   const panel = reachedServer ? (
     <ServerPanel
-      folded
       sees={t.server.seesRecipient}
       holds={t.server.recipientHolds(tie, emailed, kind)}
       relayed={relayed}

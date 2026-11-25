@@ -505,11 +505,8 @@ export function ServerPanel({
   viaRelay,
   emailed,
   kind,
-  folded,
 }: {
   kind: Kind;
-  /** Starts closed, under a summary that opens it. */
-  folded?: boolean;
   sees: string;
   holds: string;
   relayed: Relayed;
@@ -542,22 +539,14 @@ export function ServerPanel({
         ] as const)
       : []),
   ];
-  if (folded) {
-    return (
-      <details class="mt-10 text-[0.9rem]">
-        <summary class="cursor-pointer font-medium text-muted-foreground">
+  return (
+    <section class="mt-10 text-[0.9rem]" aria-labelledby={headingId}>
+      <details>
+        <summary id={headingId} class="cursor-pointer font-medium text-muted-foreground">
           {t.server.heading}
         </summary>
         <Facts rows={rows} />
       </details>
-    );
-  }
-  return (
-    <section class="mt-8 text-[0.9rem]" aria-labelledby={headingId}>
-      <h2 id={headingId} class="m-0 text-[1rem] font-bold">
-        {t.server.heading}
-      </h2>
-      <Facts rows={rows} />
     </section>
   );
 }

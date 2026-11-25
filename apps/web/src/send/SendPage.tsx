@@ -927,7 +927,6 @@ export function SendPage({
         </section>
 
         <ServerPanel
-          folded
           sees={t.server.seesSender}
           holds={t.server.senderHolds({
             online: !lostServer,
@@ -952,7 +951,10 @@ export function SendPage({
           data-bottom-bar
           class="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-background/80 p-4 backdrop-blur-xl"
         >
-          <p class="m-0 mx-auto flex max-w-xl items-center gap-2 text-[0.9rem] font-medium">
+          <p
+            class="m-0 mx-auto flex max-w-xl items-center gap-2 text-[0.9rem] font-medium"
+            role="status"
+          >
             {unfinished ? (
               <span
                 class="size-2 flex-none animate-pulse rounded-full bg-primary"

@@ -1,4 +1,4 @@
-// One card per recipient: status, email, connection path, progress, link, copy and remove.
+// One card per recipient (status, email, connection path, progress, link, copy and remove), and one compact row once its link has delivered.
 //
 // Only the status sentence and the email line sit in polite live regions, so
 // screen readers hear "Sending through Anna's link", "Email sent to a***@example.se"
@@ -109,9 +109,7 @@ function RecipientRow({ recipient, fileSize, statusText, onRemove }: RowProps) {
             <span class="font-medium text-foreground">{name}</span> · {t.send.delivered}
             {path && ` · ${t.connection[path === "relay" ? "relay" : "direct"].label}`}
           </span>
-          <span class="sr-only" aria-live="polite">
-            {statusText.delivered(name)}
-          </span>
+          <span class="sr-only">{statusText.delivered(name)}</span>
           {removeButton}
         </div>
       </li>
