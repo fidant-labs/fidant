@@ -944,8 +944,17 @@ test("the relay cap checks the app box's and the relay box's pooled traffic ever
   assert.equal(properties.Handler, "index.handler");
   assert.equal(properties.Timeout, 30);
   const variables = properties.Environment.Variables;
-  assert.deepEqual(Object.keys(variables).sort(), ["BOXES", "LIMIT_BYTES", "RELAYS", "STATUS_URL"]);
-  assert.equal(variables.LIMIT_BYTES, "1800000000000");
+  assert.deepEqual(Object.keys(variables).sort(), [
+    "ALLOWANCE_BYTES",
+    "BOXES",
+    "BUDGET_USD",
+    "RELAYS",
+    "STATUS_URL",
+    "USD_PER_GB",
+  ]);
+  assert.equal(variables.ALLOWANCE_BYTES, "4000000000000");
+  assert.equal(variables.BUDGET_USD, "20");
+  assert.equal(variables.USD_PER_GB, "0.09");
   assert.equal(variables.RELAYS, '["sto"]');
   assert.equal(variables.STATUS_URL, "https://fidant.se/relay-status");
   assert.deepEqual(sdkCall(variables.BOXES), [
@@ -999,19 +1008,20 @@ test("relay traffic past 80 %, the cap, and a failing cap email the alert addres
   assert.equal(alarms.length, 5);
   const byName = (name: string) => alarms.find((alarm) => alarm.AlarmName === name);
   const notify = [alertTopic(box)];
-  for (const [name, threshold] of [
-    ["Fidant relay traffic past 80 % of the monthly cap", 1_440_000_000_000],
-    ["Fidant relay stopped: monthly traffic cap reached", 1_800_000_000_000],
-    ["Fidant relay cap failing", 1],
+  for (const [name, threshold, metricName] of [
+    ["Fidant relay traffic past 80 % of the monthly cap", 3_200_000_000_000, "RelayMonthBytes"],
+    ["Fidant relay stopped: monthly traffic cap reached", 20, "RelayMonthOverageUsd"],
+    ["Fidant relay cap failing", 1, undefined],
   ] as const) {
     const alarm = byName(name);
     assert.ok(alarm, name);
     assert.equal(alarm.Threshold, threshold);
     assert.deepEqual(alarm.AlarmActions, notify);
     assert.deepEqual(alarm.OKActions, notify);
-    if (threshold !== 1) {
+    if (metricName) {
       assert.equal(alarm.Namespace, "Fidant");
-      assert.equal(alarm.MetricName, "RelayMonthBytes");
+      assert.equal(alarm.MetricName, metricName);
+      assert.equal(alarm.ComparisonOperator, "GreaterThanOrEqualToThreshold");
       assert.deepEqual(alarm.Dimensions, [{ Name: "Service", Value: "relay" }]);
       assert.equal(alarm.Statistic, "Maximum");
     }

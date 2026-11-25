@@ -8,6 +8,7 @@ import {
   metricLine,
   monthOf,
   monthStart,
+  overageLine,
   type Port,
   parseState,
   parseStatus,
@@ -17,68 +18,75 @@ import {
   statusLines,
 } from "./cap.mts";
 
-const limit = 1_800_000_000_000;
+const price = { allowanceBytes: 4_000_000_000_000, budgetUsd: 20, usdPerGb: 0.09 };
+const capOut = 4_223_000_000_000;
+const TB = 1_000_000_000_000;
+const GB = 1_000_000_000;
 
 const t = (out: number, inbound = 0) => ({ in: inbound, out });
 
-test("a fresh month under the limit leaves the ports alone", () => {
-  assert.deepEqual(decide(undefined, "2026-11", { a: t(5) }, limit), {
+test("a fresh month under the budget leaves the ports alone", () => {
+  assert.deepEqual(decide(undefined, "2026-11", { a: t(5) }, price), {
     state: { month: "2026-11", boxes: { a: t(5) }, capped: false },
     total: 5,
+    overageUsd: 0,
     ports: "keep",
   });
 });
 
 test("each box's in and out never go down within a month", () => {
   const previous = { month: "2026-11", boxes: { a: { in: 100, out: 10 } }, capped: false };
-  assert.deepEqual(decide(previous, "2026-11", { a: { in: 50, out: 20 } }, limit).state.boxes.a, {
+  assert.deepEqual(decide(previous, "2026-11", { a: { in: 50, out: 20 } }, price).state.boxes.a, {
     in: 100,
     out: 20,
   });
 });
 
 test("a replaced box's traffic still counts toward the month", () => {
-  const previous = { month: "2026-11", boxes: { old: t(1_000_000_000_000) }, capped: false };
-  const result = decide(previous, "2026-11", { new: t(900_000_000_000) }, limit);
-  assert.equal(result.total, 1_900_000_000_000);
+  const previous = { month: "2026-11", boxes: { old: t(2.2 * TB) }, capped: false };
+  const result = decide(previous, "2026-11", { new: t(2.1 * TB) }, price);
+  assert.equal(result.total, 4.3 * TB);
   assert.equal(result.ports, "capped");
-  assert.deepEqual(result.state.boxes, { old: t(1_000_000_000_000), new: t(900_000_000_000) });
+  assert.deepEqual(result.state.boxes, { old: t(2.2 * TB), new: t(2.1 * TB) });
 });
 
-test("reaching the limit caps the relay ports, and every later run caps them again", () => {
-  const first = decide(undefined, "2026-11", { a: { in: limit / 2, out: limit / 2 } }, limit);
+test("reaching the budget caps the relay ports, and every later run caps them again", () => {
+  const first = decide(undefined, "2026-11", { a: { in: 0, out: capOut } }, price);
   assert.equal(first.ports, "capped");
-  assert.equal(decide(first.state, "2026-11", { a: t(0) }, limit).ports, "capped");
+  assert.equal(decide(first.state, "2026-11", { a: t(0) }, price).ports, "capped");
 });
 
 test("a new month reopens ports the cap closed", () => {
-  const previous = { month: "2026-11", boxes: { a: t(limit) }, capped: true };
-  const result = decide(previous, "2026-12", { a: t(0) }, limit);
+  const previous = { month: "2026-11", boxes: { a: t(capOut) }, capped: true };
+  const result = decide(previous, "2026-12", { a: t(0) }, price);
   assert.equal(result.ports, "open");
   assert.deepEqual(result.state, { month: "2026-12", boxes: { a: t(0) }, capped: false });
 });
 
-test("a raised limit reopens the ports within the month", () => {
-  const previous = { month: "2026-11", boxes: { a: t(limit) }, capped: true };
-  assert.equal(decide(previous, "2026-11", { a: t(limit) }, 2 * limit).ports, "open");
+test("a raised budget reopens the ports within the month", () => {
+  const previous = { month: "2026-11", boxes: { a: t(capOut) }, capped: true };
+  assert.equal(
+    decide(previous, "2026-11", { a: t(capOut) }, { ...price, budgetUsd: 40 }).ports,
+    "open",
+  );
 });
 
-test("under the limit, ports the cap didn't close are never touched", () => {
+test("under the budget, ports the cap didn't close are never touched", () => {
   const previous = { month: "2026-11", boxes: { a: t(1) }, capped: false };
-  assert.equal(decide(previous, "2026-11", { a: t(2) }, limit).ports, "keep");
+  assert.equal(decide(previous, "2026-11", { a: t(2) }, price).ports, "keep");
 });
 
 test("every box's traffic counts toward one total, and each box keeps its own maximum", () => {
   const previous = { month: "2026-11", boxes: { a: t(100), b: t(200) }, capped: false };
-  const result = decide(previous, "2026-11", { a: t(50), b: { in: 100, out: 200 } }, limit);
+  const result = decide(previous, "2026-11", { a: t(50), b: { in: 100, out: 200 } }, price);
   assert.deepEqual(result.state.boxes, { a: t(100), b: { in: 100, out: 200 } });
   assert.equal(result.total, 400);
-  assert.equal(decide(previous, "2026-11", { a: t(limit - 200), b: t(0) }, limit).ports, "capped");
+  assert.equal(decide(previous, "2026-11", { a: t(capOut - 200), b: t(0) }, price).ports, "capped");
 });
 
-test("a state capped by hand under the limit reopens the ports", () => {
+test("a state capped by hand under the budget reopens the ports", () => {
   const previous = { month: "2026-11", boxes: { a: t(1), b: t(2) }, capped: true };
-  const result = decide(previous, "2026-11", { a: t(1), b: t(2) }, limit);
+  const result = decide(previous, "2026-11", { a: t(1), b: t(2) }, price);
   assert.equal(result.ports, "open");
   assert.equal(result.state.capped, false);
 });
@@ -93,23 +101,84 @@ test("a state from before in and out were kept apart is read and migrated", () =
   });
 });
 
+const cost = (inbound: number, out: number, counts = [t(out, inbound)]) =>
+  decide(undefined, "2026-11", Object.fromEntries(counts.map((c, i) => [`b${i}`, c])), price);
+
+test("criterion 1: 10 TB in and no traffic out cost nothing and keep the ports", () => {
+  const result = cost(0, 0, [t(0, 5 * TB), t(0, 5 * TB)]);
+  assert.equal(result.overageUsd, 0);
+  assert.equal(result.ports, "keep");
+});
+
+test("criterion 2: 10 TB in and 100 GB out cost 9 USD and keep the ports", () => {
+  const result = cost(10 * TB, 100 * GB);
+  assert.equal(result.overageUsd.toFixed(6), "9.000000");
+  assert.equal(result.ports, "keep");
+});
+
+test("criterion 3: 4.23 TB out costs 20.7 USD and caps, 4.2 TB costs 18 USD and keeps", () => {
+  const over = cost(0, 4.23 * TB);
+  assert.equal(over.overageUsd.toFixed(6), "20.700000");
+  assert.equal(over.ports, "capped");
+  assert.equal(decide(over.state, "2026-11", { b0: t(4.23 * TB) }, price).ports, "capped");
+  const under = cost(0, 4.2 * TB);
+  assert.equal(under.overageUsd.toFixed(6), "18.000000");
+  assert.equal(under.ports, "keep");
+});
+
+test("criterion 4: the estimate matches AWS pricing example 2 (4 TB pool, 2.2 TB in, 2.1 TB out)", () => {
+  assert.equal(cost(2.2 * TB, 2.1 * TB).overageUsd.toFixed(6), (0.3 * 1000 * 0.09).toFixed(6));
+});
+
+test("criterion 4: the estimate stays above the bill in AWS FAQ example 1 (1 TB pool, 600 GB in, 700 GB out)", () => {
+  const pool = { allowanceBytes: TB, budgetUsd: 20, usdPerGb: 0.09 };
+  const result = decide(undefined, "2026-11", { a: t(700 * GB, 600 * GB) }, pool);
+  assert.equal(result.overageUsd.toFixed(6), (300 * 0.09).toFixed(6));
+  assert.ok(result.overageUsd > 100 * 0.09);
+});
+
+test("criterion 5: the estimate is never more than outbound traffic at the overage price", () => {
+  for (const inbound of [0, 1 * TB, 4 * TB, 10 * TB]) {
+    for (const out of [0, 100 * GB, 2 * TB, 4 * TB, 5 * TB, 20 * TB]) {
+      const { overageUsd } = cost(inbound, out);
+      assert.ok(overageUsd >= 0);
+      assert.ok(overageUsd <= (out / 1e9) * 0.09 + 1e-9, `${inbound} ${out}`);
+    }
+  }
+});
+
+test("criterion 12: an old-shape state capped by the byte limit reopens both boxes", async () => {
+  const state = JSON.stringify({
+    month: "2026-11",
+    boxes: { "box-1": 1_000_000_000_000, "relay-1": 900_000_000_000 },
+    capped: true,
+  });
+  const { deps, args } = fake({ state, bytes: 1 });
+  await runCap(deps, config, now);
+  assert.deepEqual(args.putPorts, [
+    ["box-1", open],
+    ["relay-1", relayOpen],
+  ]);
+  assert.equal(JSON.parse(args.writeState[0]?.[0] as string).capped, false);
+});
+
 test("a fresh read replaces an old number, even a smaller one", () => {
   const previous = { month: "2026-11", boxes: { a: 900 }, capped: false };
-  const result = decide(previous, "2026-11", { a: { in: 100, out: 200 } }, limit);
+  const result = decide(previous, "2026-11", { a: { in: 100, out: 200 } }, price);
   assert.deepEqual(result.state.boxes, { a: { in: 100, out: 200 } });
   assert.equal(result.total, 300);
 });
 
 test("an old number for a box not in this run is kept as outbound", () => {
   const previous = { month: "2026-11", boxes: { gone: 900, a: 5 }, capped: false };
-  const result = decide(previous, "2026-11", { a: { in: 1, out: 2 } }, limit);
+  const result = decide(previous, "2026-11", { a: { in: 1, out: 2 } }, price);
   assert.deepEqual(result.state.boxes, { gone: { in: 0, out: 900 }, a: { in: 1, out: 2 } });
   assert.equal(result.total, 903);
 });
 
 test("an old state from an earlier month is dropped", () => {
-  const previous = { month: "2026-10", boxes: { a: limit }, capped: true };
-  const result = decide(previous, "2026-11", { a: t(1) }, limit);
+  const previous = { month: "2026-10", boxes: { a: capOut }, capped: true };
+  const result = decide(previous, "2026-11", { a: t(1) }, price);
   assert.deepEqual(result.state.boxes, { a: t(1) });
   assert.equal(result.ports, "open");
 });
@@ -158,17 +227,33 @@ test("config comes from the environment and refuses to run without it", () => {
   assert.throws(() => configFromEnv({}), /BOXES/);
   const env = {
     BOXES: JSON.stringify(boxes),
-    LIMIT_BYTES: "1800000000000",
+    ALLOWANCE_BYTES: "4000000000000",
+    BUDGET_USD: "20",
+    USD_PER_GB: "0.09",
     RELAYS: '["sto"]',
     STATUS_URL: "https://fidant.se/relay-status",
   };
   assert.deepEqual(configFromEnv(env), {
     boxes,
-    limitBytes: 1_800_000_000_000,
+    allowanceBytes: 4_000_000_000_000,
+    budgetUsd: 20,
+    usdPerGb: 0.09,
     relays: ["sto"],
     statusUrl: "https://fidant.se/relay-status",
   });
-  assert.throws(() => configFromEnv({ ...env, LIMIT_BYTES: "abc" }));
+  for (const name of ["ALLOWANCE_BYTES", "BUDGET_USD", "USD_PER_GB"]) {
+    assert.equal(
+      configFromEnv({ ...env, [name]: "1.5" })[
+        { ALLOWANCE_BYTES: "allowanceBytes", BUDGET_USD: "budgetUsd", USD_PER_GB: "usdPerGb" }[
+          name
+        ] as "budgetUsd"
+      ],
+      1.5,
+    );
+    for (const bad of [undefined, "", "abc", "0", "0.0", "-1", "1e3", "1.", ".5", "1,5"]) {
+      assert.throws(() => configFromEnv({ ...env, [name]: bad }), new RegExp(name));
+    }
+  }
   assert.throws(() => configFromEnv({ ...env, RELAYS: '"sto"' }), /RELAYS/);
   assert.throws(() => configFromEnv({ ...env, RELAYS: '[""]' }), /RELAYS/);
   assert.throws(() => configFromEnv({ ...env, STATUS_URL: "http://fidant.se/relay-status" }));
@@ -200,9 +285,27 @@ test("the month total is logged in CloudWatch embedded metric format", () => {
   });
 });
 
+test("the overage cost is logged as RelayMonthOverageUsd with the month total's dimensions", () => {
+  const stamp = new Date("2026-11-24T12:00:00Z");
+  assert.deepEqual(JSON.parse(overageLine(1.5, stamp)), {
+    _aws: {
+      Timestamp: stamp.getTime(),
+      CloudWatchMetrics: [
+        {
+          Namespace: "Fidant",
+          Dimensions: [["Service"]],
+          Metrics: [{ Name: "RelayMonthOverageUsd", Unit: "None" }],
+        },
+      ],
+    },
+    Service: "relay",
+    RelayMonthOverageUsd: 1.5,
+  });
+});
+
 const config: CapConfig = {
   boxes,
-  limitBytes: limit,
+  ...price,
   relays: ["sto"],
   statusUrl: "https://fidant.se/relay-status",
 };
@@ -219,7 +322,7 @@ function fake(over: Partial<CapDeps> & { bytes?: number; state?: string } = {}) 
     async boxTraffic(...a) {
       calls.push("boxTraffic");
       args.boxTraffic.push(a);
-      return t(over.bytes ?? limit);
+      return t(over.bytes ?? capOut);
     },
     async readState() {
       calls.push("readState");
@@ -261,16 +364,17 @@ test("a run sums the month so far over every box, caps each box's ports, then sa
     "putPorts",
     "writeState",
     "log",
+    "log",
   ]);
   assert.deepEqual(JSON.parse(args.writeState[0]?.[0] as string), {
     month: "2026-11",
-    boxes: { "box-1": t(limit), "relay-1": t(limit) },
+    boxes: { "box-1": t(capOut), "relay-1": t(capOut) },
     capped: true,
   });
 });
 
 test("a run in a new month reopens every box's ports with its full list", async () => {
-  const state = JSON.stringify({ month: "2026-10", boxes: { "box-1": t(limit) }, capped: true });
+  const state = JSON.stringify({ month: "2026-10", boxes: { "box-1": t(capOut) }, capped: true });
   const { deps, args } = fake({ state, bytes: 0 });
   await runCap(deps, config, now);
   assert.deepEqual(args.putPorts, [
@@ -279,7 +383,7 @@ test("a run in a new month reopens every box's ports with its full list", async 
   ]);
 });
 
-test("a run after capped is set to true by hand under the limit opens both boxes and saves capped false", async () => {
+test("a run after capped is set to true by hand under the budget opens both boxes and saves capped false", async () => {
   const state = JSON.stringify({
     month: "2026-11",
     boxes: { "box-1": t(5), "relay-1": t(7) },
@@ -298,7 +402,7 @@ test("a run after capped is set to true by hand under the limit opens both boxes
   });
 });
 
-test("a run under the limit changes no ports", async () => {
+test("a run under the budget changes no ports", async () => {
   const { deps, args } = fake({ bytes: 1 });
   await runCap(deps, config, now);
   assert.equal(args.putPorts.length, 0);
@@ -311,7 +415,7 @@ test("a failed metrics read saves nothing", async () => {
       if (box === "relay-1") {
         throw new Error("metrics down");
       }
-      return t(limit);
+      return t(capOut);
     },
   });
   await assert.rejects(runCap(deps, config, now));

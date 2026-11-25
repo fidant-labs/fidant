@@ -16,10 +16,13 @@ export type StoredState = {
 export type BoxPorts = { box: string; openPorts: Port[]; cappedPorts: Port[] };
 export type CapConfig = {
   boxes: BoxPorts[];
-  limitBytes: number;
+  allowanceBytes: number;
+  budgetUsd: number;
+  usdPerGb: number;
   relays: string[];
   statusUrl: string;
 };
+export type Pricing = { allowanceBytes: number; budgetUsd: number; usdPerGb: number };
 export type RelayStatus = { id: string; up: boolean }[];
 export type CapDeps = {
   boxTraffic(box: string, start: Date, end: Date): Promise<Traffic>;
@@ -83,8 +86,8 @@ export function decide(
   previous: StoredState | undefined,
   month: string,
   counts: Record<string, Traffic>,
-  limitBytes: number,
-): { state: CapState; total: number; ports: "keep" | "open" | "capped" } {
+  pricing: Pricing,
+): { state: CapState; total: number; overageUsd: number; ports: "keep" | "open" | "capped" } {
   const boxes: Record<string, Traffic> = {};
   if (previous?.month === month) {
     for (const [box, count] of Object.entries(previous.boxes)) {
@@ -103,9 +106,12 @@ export function decide(
     };
   }
   const total = Object.values(boxes).reduce((sum, t) => sum + t.in + t.out, 0);
-  const capped = total >= limitBytes;
+  const out = Object.values(boxes).reduce((sum, t) => sum + t.out, 0);
+  const overageBytes = Math.min(out, Math.max(0, total - pricing.allowanceBytes));
+  const overageUsd = (overageBytes / 1e9) * pricing.usdPerGb;
+  const capped = overageUsd >= pricing.budgetUsd;
   const ports = capped ? "capped" : previous?.capped ? "open" : "keep";
-  return { state: { month, boxes, capped }, total, ports };
+  return { state: { month, boxes, capped }, total, overageUsd, ports };
 }
 
 function boxList(json: string): BoxPorts[] {
@@ -135,12 +141,19 @@ function required(env: Record<string, string | undefined>, name: string): string
   return value;
 }
 
+function positive(env: Record<string, string | undefined>, name: string): number {
+  const value = required(env, name);
+  if (!/^\d+(\.\d+)?$/.test(value) || Number(value) <= 0) {
+    throw new Error(`${name} must be a positive number`);
+  }
+  return Number(value);
+}
+
 export function configFromEnv(env: Record<string, string | undefined>): CapConfig {
   const boxes = boxList(required(env, "BOXES"));
-  const limit = required(env, "LIMIT_BYTES");
-  if (!/^[1-9]\d*$/.test(limit)) {
-    throw new Error("LIMIT_BYTES must be a positive integer");
-  }
+  const allowanceBytes = positive(env, "ALLOWANCE_BYTES");
+  const budgetUsd = positive(env, "BUDGET_USD");
+  const usdPerGb = positive(env, "USD_PER_GB");
   const relays = JSON.parse(required(env, "RELAYS"));
   if (!Array.isArray(relays) || !relays.every((id) => typeof id === "string" && id !== "")) {
     throw new Error("RELAYS must be an array of relay ids");
@@ -149,7 +162,7 @@ export function configFromEnv(env: Record<string, string | undefined>): CapConfi
   if (URL.parse(statusUrl)?.protocol !== "https:") {
     throw new Error("STATUS_URL must be an https URL");
   }
-  return { boxes, limitBytes: Number(limit), relays, statusUrl };
+  return { boxes, allowanceBytes, budgetUsd, usdPerGb, relays, statusUrl };
 }
 
 function metric(
@@ -177,6 +190,10 @@ function metric(
 
 export function metricLine(total: number, now: Date): string {
   return metric({ Service: "relay" }, "RelayMonthBytes", total, "Bytes", now);
+}
+
+export function overageLine(overageUsd: number, now: Date): string {
+  return metric({ Service: "relay" }, "RelayMonthOverageUsd", overageUsd, "None", now);
 }
 
 export function parseStatus(
@@ -260,7 +277,7 @@ export async function runCap(deps: CapDeps, config: CapConfig, now: Date): Promi
   for (const { box } of config.boxes) {
     counts[box] = await deps.boxTraffic(box, monthStart(now), now);
   }
-  const { state, total, ports } = decide(previous, monthOf(now), counts, config.limitBytes);
+  const { state, total, overageUsd, ports } = decide(previous, monthOf(now), counts, config);
   if (ports !== "keep") {
     for (const { box, openPorts, cappedPorts } of config.boxes) {
       await deps.putPorts(box, ports === "capped" ? cappedPorts : openPorts);
@@ -268,6 +285,7 @@ export async function runCap(deps: CapDeps, config: CapConfig, now: Date): Promi
   }
   await deps.writeState(JSON.stringify(state));
   deps.log(metricLine(total, now));
+  deps.log(overageLine(overageUsd, now));
 }
 
 export async function runOnce(
