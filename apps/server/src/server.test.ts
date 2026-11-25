@@ -72,7 +72,7 @@ function rawGet(
   });
 }
 
-test("serves index.html with security headers", async () => {
+test("serves the front page with security headers", async () => {
   const res = await fetch(`${base}/`);
   assert.equal(res.status, 200);
   assert.equal(res.headers.get("content-type"), "text/html; charset=utf-8");
@@ -190,7 +190,7 @@ test("caches hashed assets for a year and revalidates everything else", async ()
     ["/", 200],
     ["/r/abc", 200],
     ["/favicon.svg", 200],
-    ["/assets/..%2findex.html", 200],
+    ["/assets/..%2findex.html", 404],
     ["/assets/nope", 404],
   ] as const) {
     const res = await rawGet(path);
@@ -200,6 +200,48 @@ test("caches hashed assets for a year and revalidates everything else", async ()
   const missing = await rawGet("/assets/missing.js");
   assert.equal(missing.status, 404);
   assert.equal(missing.headers["cache-control"], undefined);
+});
+
+test("never serves the build's own HTML files directly", async () => {
+  for (const path of [
+    "/index.html",
+    "/index.HTML",
+    "/index.receive.en.html",
+    "/pages/about/index.html",
+    "/pages/404.html",
+    "/pages/404.HTML",
+  ]) {
+    const res = await rawGet(path);
+    assert.equal(res.status, 404, path);
+    assert.match(res.body, /<title>404<\/title>/, path);
+  }
+});
+
+test("a receive link gets the receive copy even when its last segment has a dot", async () => {
+  const res = await rawGet("/r/a.b");
+  assert.equal(res.status, 200);
+  assert.match(res.body, /receive\.en/);
+  assert.equal(res.headers["x-robots-tag"], "noindex");
+});
+
+test("a target starting with // is a path, not a host", async () => {
+  const res = await rawGet("//x/about");
+  assert.equal(res.status, 404);
+  assert.match(res.body, /<title>404<\/title>/);
+  assert.equal(res.headers.location, undefined);
+});
+
+test("serves an absolute-form target by its path and refuses one that is not http(s)", async () => {
+  const about = await rawGet("http://example.com/about");
+  assert.equal(about.status, 200);
+  const slashes = await rawGet("http://example.com//x/about");
+  assert.equal(slashes.status, 404);
+  assert.equal(slashes.headers.location, undefined);
+  for (const target of ["ws://x/about", "file:///about", "*"]) {
+    const res = await rawGet(target);
+    assert.equal(res.status, 400, target);
+    assert.ok(res.headers["content-security-policy"], target);
+  }
 });
 
 test("refuses paths outside the web root", async () => {

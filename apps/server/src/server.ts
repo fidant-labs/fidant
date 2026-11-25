@@ -78,7 +78,14 @@ export function serveStatic(root: string) {
     let url: URL;
     let pathname: string;
     try {
-      url = new URL(req.url ?? "/", "https://localhost");
+      const target = req.url ?? "/";
+      const parsed = target.startsWith("/")
+        ? new URL(`https://localhost${target}`)
+        : new URL(target);
+      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+        throw new Error("not an http target");
+      }
+      url = parsed;
       pathname = decodeURIComponent(url.pathname);
     } catch {
       res.writeHead(400, securityHeaders).end();
@@ -89,10 +96,6 @@ export function serveStatic(root: string) {
       res.writeHead(404, securityHeaders).end();
       return;
     }
-    if (extname(file)) {
-      await send(res, 200, file);
-      return;
-    }
     if (pathname.startsWith("/r/")) {
       // Malformed link IDs get the receive page too, which says the link is broken.
       const lang = /^sv\b/i.test(req.headers["accept-language"] ?? "") ? "sv" : "en";
@@ -100,6 +103,11 @@ export function serveStatic(root: string) {
         vary: "accept-language",
         "x-robots-tag": "noindex",
       });
+      return;
+    }
+    const ext = extname(file).toLowerCase();
+    if (ext && ext !== ".html") {
+      await send(res, 200, file);
       return;
     }
     if (pagePath.test(pathname)) {
