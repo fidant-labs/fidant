@@ -82,6 +82,9 @@ export const ICONS = {
       <path d="M16 12h.01" />
     </>
   ),
+  link: (
+    <path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" />
+  ),
   eye: (
     <>
       <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
@@ -136,8 +139,7 @@ export type Route =
   | "receive"
   | "about"
   | "terms"
-  | "security"
-  | "technical";
+  | "security";
 
 /** Changes the page without reloading it, so a transfer held in memory survives. */
 export function navigate(href: string) {
@@ -611,4 +613,22 @@ export function useCopyNote() {
   };
 
   return { note, copy };
+}
+
+/** A section's [text, href] link, on its own line. */
+export function SectionLink({ link: [text, href] }: { link: readonly [string, string] }) {
+  return (
+    <p>
+      {/* Same-site links navigate in place, so a send open in another page survives. */}
+      {href.startsWith("/") ? (
+        <Link href={href} class="font-medium underline underline-offset-4">
+          {text}
+        </Link>
+      ) : (
+        <a href={href} class="font-medium underline underline-offset-4">
+          {text}
+        </a>
+      )}
+    </p>
+  );
 }

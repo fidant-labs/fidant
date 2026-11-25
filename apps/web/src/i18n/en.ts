@@ -97,7 +97,6 @@ export const en = {
     about: "About – Fidant",
     terms: "Terms of use – Fidant",
     security: "Security – Fidant",
-    technical: "Technical description – Fidant",
   },
   openTransfer: {
     send: "A file transfer is still open in this tab.",
@@ -189,16 +188,78 @@ export const en = {
         ],
       },
       never: {
-        heading: "What we never see",
+        heading: "What is left behind",
         body: [
-          "Not your file. Not its name. Not the key that unlocks it, unless you ask us to email the link.",
-          "That goes for our server and our relay. Our relay never sees the key at all.",
+          "We never see your file, its name or the key that unlocks it, unless you ask us to email the link. Our relay never sees the key at all.",
+          "What our server and relay do see, they keep in memory or in short logs. The two browsers keep a few traces too, and the recipient keeps the file.",
+        ],
+      },
+      encryption: {
+        heading: "It is locked twice",
+        body: [
+          "Your browser locks the file with a key that comes from the link. Without the link, nobody can unlock it.",
+          "The connection between the two browsers is locked as well, so the file is locked twice on its way.",
+        ],
+      },
+      transfer: {
+        heading: "It goes in small numbered pieces",
+        body: [
+          "Your browser sends the file in pieces of the same size, each locked and numbered.",
+          "No piece is sent until the recipient has said yes to the file.",
+        ],
+      },
+      verification: {
+        heading: "The recipient's browser checks it",
+        body: [
+          "When the last piece has arrived, the recipient's browser checks that the file is exactly the one you sent.",
+          "If anything is missing or changed, it throws the file away. You see that it arrived only when the check has passed.",
+        ],
+      },
+      masking: {
+        heading: "Its size is blurred",
+        body: [
+          "Anyone watching the traffic can see roughly how much is sent, but not the exact size of your file.",
+          "A shared secret always looks the same size, however long it is.",
+        ],
+      },
+      protection: {
+        heading: "What protects you, and what doesn't",
+        body: [
+          "Each risk, and what in Fidant stands against it.",
+          "And the risks Fidant can't protect you from, such as someone else getting hold of the link.",
+        ],
+      },
+      tech: {
+        heading: "The words, explained",
+        body: [
+          "Fidant is built on WebRTC, the technology browsers use for video calls. This page explains it and the other technical words on these pages, such as STUN and TURN.",
         ],
       },
     },
     more: "Want the details? The privacy page says exactly what our server sees and what it logs.",
     moreLink: "Read the privacy page",
-    techLink: "Read the technical description",
+    readMore: "Read more",
+    steps: "Steps",
+    overview: "Overview",
+    next: "Next",
+    copyLink: "Copy link to this part",
+    copied: "Link copied",
+    copyFailed: "Couldn't copy the link. Copy it from the address bar instead.",
+    /** Short names for the steps in the side menu. */
+    nav: {
+      stays: "File",
+      encryption: "Encryption",
+      link: "Link",
+      open: "Connecting",
+      direct: "Direct",
+      relay: "Relay",
+      transfer: "Transfer",
+      verification: "Verification",
+      masking: "Masking",
+      never: "Traces",
+      protection: "Protection",
+      tech: "Words",
+    },
   },
   insecure: {
     title: "This page needs a secure connection",
@@ -731,7 +792,7 @@ export const en = {
           "The file goes directly between the two browsers. If a network blocks that, it passes through our relay instead, still encrypted. Our server only passes on a few small setup messages, which are encrypted so it can't read them, except for a link it emailed, whose key it had.",
           "The recipient's browser checks the file's SHA-256 checksum, so a file that was changed or damaged on the way is not saved.",
         ],
-        link: ["The technical description", "/technical"],
+        link: ["How it works, step by step", "/how"],
       },
       {
         heading: "What it doesn't protect against",
@@ -758,10 +819,8 @@ export const en = {
   },
   // A reader's version of docs/how-fidant-works.md, the source of truth. Change both together.
   technical: {
-    title: "Technical description",
-    lede: "How Fidant works under the hood, for readers who want to check it: the keys, the encryption, how the file travels, what our servers see and what Fidant doesn't protect against. The How it works page tells the same story without the technical terms.",
-    sections: [
-      {
+    sections: {
+      parts: {
         heading: "The parts",
         body: [
           "Fidant has three parts. The web app runs in the sender's and the recipient's browsers and does all the encryption. Our server, in Stockholm, serves the web app and passes setup messages between the two browsers over a WebSocket. Our relay, on the same machine, tells browsers their public address (STUN) and carries encrypted traffic when two browsers can't reach each other directly (TURN). If a sender asks us to email a link, our server also sends emails through a mail service.",
@@ -770,7 +829,7 @@ export const en = {
         ],
         link: ["The code on GitHub", "https://github.com/sigill-labs/sigill"],
       },
-      {
+      link: {
         heading: "The link",
         body: [
           "For each recipient, the sender's browser creates a link of the form https://fidant.se/r/<link ID>#<secret>. The link ID is 16 random bytes and the secret 32 random bytes, both from the browser's cryptographic random number generator.",
@@ -778,7 +837,7 @@ export const en = {
           "Every recipient gets their own link ID and secret, so one recipient's link says nothing about another's.",
         ],
       },
-      {
+      keys: {
         heading: "Keys",
         body: [
           "Two keys are derived from the secret with HKDF-SHA-256. Both are AES-256-GCM keys that the browser marks as non-extractable: the page can use them, but can't read them out.",
@@ -786,7 +845,7 @@ export const en = {
           "The file key encrypts every frame between the browsers except the first, INIT, which carries only the random transfer ID. Its salt is a random transfer ID that the sender picks again for every attempt, so a retried transfer never reuses a key and nonce pair.",
         ],
       },
-      {
+      signal: {
         heading: "Connecting the two browsers",
         body: [
           "The sender's page opens a WebSocket to our server and registers its link IDs. When the recipient opens their link, their page joins with the link ID and a random attempt ID, new for each page load and each retry. The server pairs at most one recipient page with a link at a time and tells both sides.",
@@ -795,14 +854,14 @@ export const en = {
           "If the connection to our server drops, both pages try to reconnect by themselves. The sender's page registers its links again, except links we emailed: our server forgot those with the old connection, so they stop working and the sender's page says so. A recipient who was still connecting tries again a few times before giving up. A transfer that has already started doesn't need our server and carries on.",
         ],
       },
-      {
+      layers: {
         heading: "Two layers of encryption",
         body: [
           "WebRTC encrypts the connection between the browsers with DTLS. Fidant doesn't rely on that alone: every frame after INIT is also encrypted with AES-256-GCM under the file key, which only the two browsers have. For a link we email, our server had the link's secret, which the file key comes from.",
           "Each frame starts with a 10-byte header with its version, kind and sequence number. The header is authenticated with the frame, and the nonce is built from the direction and the sequence number, so the two directions never share a nonce. A browser accepts only the next sequence number, so a dropped, reordered, repeated or altered frame stops the transfer.",
         ],
       },
-      {
+      frames: {
         heading: "The transfer, frame by frame",
         body: [
           "When the sender chooses the file, their browser computes its SHA-256 checksum.",
@@ -815,7 +874,7 @@ export const en = {
           "RECEIPT: the checksum the recipient computed from what arrived. The sender counts the file as delivered only when it matches.",
         ],
       },
-      {
+      check: {
         heading: "Checking the file",
         body: [
           "The recipient's browser hashes the file as it arrives, and checks the size, the number of chunks, the padding and the checksum against END. Only when everything matches is the file kept. Any other ending, such as a frame that fails to decrypt or a connection that closes early, throws away what was written.",
@@ -823,7 +882,7 @@ export const en = {
           "Names with control characters, line separators or the Unicode characters that override or isolate text direction are refused, so a name ending in .exe can't be made to look like one ending in .pdf.",
         ],
       },
-      {
+      padding: {
         heading: "Hiding the exact size",
         body: [
           "Anyone who can see the encrypted traffic, such as the networks on the way or our relay, sees how big the frames are. So the size is rounded up with the Padmé scheme, which adds at most 12 %, and then to whole chunks. Every chunk frame has the same size, and the padding is zeros that the recipient checks.",
@@ -831,7 +890,32 @@ export const en = {
           "A shared secret is at most 32 KiB, and every shared secret is padded to exactly one chunk. The app enforces this: if a connection only allows messages too small for a 32 KiB chunk, nothing is sent over it, and the sender sees that the secret wasn't sent. With every browser we tested in November 2026 (Chromium, Firefox and WebKit), the chunk is 48 KiB. So every shared secret looks the same on the wire, whatever its length, and the same as any file of up to 48 KiB.",
         ],
       },
-      {
+      travel: {
+        heading: "How the file travels",
+        body: [
+          "WebRTC tries the direct routes first: over the local network, or through each side's public address, which the browser learns from our STUN service. The file then goes straight between the browsers. The sender's page shows which route each connection took.",
+          "If no direct route works, which is common on mobile data and office networks, the traffic goes through our TURN relay in Stockholm. The relay forwards encrypted packets. It can't decrypt them and doesn't store them.",
+          "To use the relay a browser needs credentials, which our server creates for each pairing and gives only to the two paired pages. They expire after 5 minutes. Browsers reach the relay over UDP, or over TLS on port 443 where a network allows only web traffic. The relay forwards only over UDP, and only from its own address. It refuses to forward to other machines on private or internal networks (with one accepted exception: the relay's own box, see decision 0007), and limits how many relayed connections run at once.",
+          "On every route, each browser sees the other's IP address, like on a video call.",
+        ],
+      },
+      norelay: {
+        heading: "Refusing the relay",
+        body: [
+          "The sender can untick \"Allow our relay if a direct connection isn't possible\". Our server then gives that send no relay credentials, only the STUN address, so an unmodified browser can't use the relay. As a backstop, if the sender's browser still sees a relayed connection, it ends it. File data only flows after the recipient accepts, so in practice that happens before any of it has passed.",
+          "The limit: a modified recipient can still send its side through our relay with credentials from another pairing, or through any public relay. That recipient has the key anyway. The choice decides which infrastructure carries the encrypted traffic, not who can read the file.",
+        ],
+      },
+      recipients: {
+        heading: "Several recipients and one-time links",
+        body: [
+          "One send can go to up to 256 people. Each has their own link, key, connection and transfer.",
+          "A link counts as used only once the recipient's RECEIPT matches. After that it is refused. A link that is already open in one tab is refused in another.",
+          "Until then the link can be opened again: after a decline, a dropped connection or a failed check. Every new attempt has a new transfer ID and so a new file key.",
+          "Nothing is stored, so a link works only while the sender's page is open. When it closes, our server forgets its links within a minute.",
+        ],
+      },
+      secret: {
         heading: "Sharing a secret",
         body: [
           "The Share a secret page sends a secret the sender types or pastes the same way as a file: the same keys, frames, checks and one-time links. Nothing is stored, so the sender's page must stay open until each recipient has the shared secret.",
@@ -842,32 +926,7 @@ export const en = {
           "Our server and relay handle a shared secret like any file. When the Share a secret page is loaded from our server, by typing its address, reloading or following a link, our server can see that someone opened it. The page then opens a signaling connection like every sender page, and moving to it inside the app opens one too. The server never gets the shared secret or its length, and a connection doesn't say which page opened it, but after a full load the server can tie the connection that follows from the same address to the visit and infer that this visitor shares a secret and with how many links. A full load of any other page can give away that the visitor shares a secret too. Each sender page connects when it is first shown and stays connected while the tab is open, so two sender connections open at once from the same address, with no page load between them, most likely mean the visitor opened both the Send a file page and the Share a secret page in one tab. After a full load of the Send a file page, the second connection comes from the Share a secret page. Page visits aren't logged.",
         ],
       },
-      {
-        heading: "How the file travels",
-        body: [
-          "WebRTC tries the direct routes first: over the local network, or through each side's public address, which the browser learns from our STUN service. The file then goes straight between the browsers. The sender's page shows which route each connection took.",
-          "If no direct route works, which is common on mobile data and office networks, the traffic goes through our TURN relay in Stockholm. The relay forwards encrypted packets. It can't decrypt them and doesn't store them.",
-          "To use the relay a browser needs credentials, which our server creates for each pairing and gives only to the two paired pages. They expire after 5 minutes. Browsers reach the relay over UDP, or over TLS on port 443 where a network allows only web traffic. The relay forwards only over UDP, and only from its own address. It refuses to forward to other machines on private or internal networks (with one accepted exception: the relay's own box, see decision 0007), and limits how many relayed connections run at once.",
-          "On every route, each browser sees the other's IP address, like on a video call.",
-        ],
-      },
-      {
-        heading: "Refusing the relay",
-        body: [
-          "The sender can untick \"Allow our relay if a direct connection isn't possible\". Our server then gives that send no relay credentials, only the STUN address, so an unmodified browser can't use the relay. As a backstop, if the sender's browser still sees a relayed connection, it ends it. File data only flows after the recipient accepts, so in practice that happens before any of it has passed.",
-          "The limit: a modified recipient can still send its side through our relay with credentials from another pairing, or through any public relay. That recipient has the key anyway. The choice decides which infrastructure carries the encrypted traffic, not who can read the file.",
-        ],
-      },
-      {
-        heading: "Several recipients and one-time links",
-        body: [
-          "One send can go to up to 256 people. Each has their own link, key, connection and transfer.",
-          "A link counts as used only once the recipient's RECEIPT matches. After that it is refused. A link that is already open in one tab is refused in another.",
-          "Until then the link can be opened again: after a decline, a dropped connection or a failed check. Every new attempt has a new transfer ID and so a new file key.",
-          "Nothing is stored, so a link works only while the sender's page is open. When it closes, our server forgets its links within a minute.",
-        ],
-      },
-      {
+      email: {
         heading: "Emailed links",
         body: [
           "Whoever sends a file or shares a secret can give a recipient's email address. Their page then sends our server one message with the link ID, the address, the link's secret, the name the sender typed and the page's language. This is the one case where a link's secret leaves the browser.",
@@ -877,7 +936,15 @@ export const en = {
           "The catch: the key is in the email. Our server had it, our mail service and anyone who reads the email on its way can see it, and it stays in the recipient's mailbox. The code stops a forwarded link or a mail scanner from receiving the file or the shared secret, but not someone who can read that mailbox. And because our server had the key, it could put itself between the two browsers for that link. Check words that both screens show, which are planned, will let you catch that. If you don't want any of this, leave the email address empty and send the link yourself.",
         ],
       },
-      {
+      site: {
+        heading: "The site itself",
+        body: [
+          "The site is served only over HTTPS, and browsers are told never to use plain HTTP for it. Sending and receiving refuse to run without a secure connection.",
+          "A Content Security Policy lets the pages load code, styles, fonts and connections only from our own site, and stops other sites from showing them in a frame. There are no cookies, no third-party scripts and no trackers.",
+          "The setup WebSocket refuses connections opened from other sites, and limits protect the server from overload: connections in total and per address, messages per connection, links per sender, the size of each setup message, and the emails and codes described above.",
+        ],
+      },
+      seen: {
         heading: "What our server and relay see and keep",
         body: [
           "Our server sees each page's IP address and browser details, the link IDs, the sender's relay choice, the connection path the sender reports for each attempt (direct, STUN, relay or failed), whether a link was already used, when each side connects and disconnects, and the encrypted setup messages and their sizes. It never sees the file, its name, its type or its exact size, or a shared secret or its length. It never sees a link's secret or the keys and can't read the setup messages, except for a link we email: then it gets that link's secret once to write the email, along with the recipient's email address and the sender's typed name. It keeps what it knows in memory only, and forgets a page within a minute after it disconnects. The exceptions are an emailed link's address, codes and tokens, which stay until the sender's page lets the link go, and the email counts, which last an hour.",
@@ -886,15 +953,7 @@ export const en = {
         ],
         link: ["Every log field, on the privacy page", "/privacy"],
       },
-      {
-        heading: "The site itself",
-        body: [
-          "The site is served only over HTTPS, and browsers are told never to use plain HTTP for it. Sending and receiving refuse to run without a secure connection.",
-          "A Content Security Policy lets the pages load code, styles, fonts and connections only from our own site, and stops other sites from showing them in a frame. There are no cookies, no third-party scripts and no trackers.",
-          "The setup WebSocket refuses connections opened from other sites, and limits protect the server from overload: connections in total and per address, messages per connection, links per sender, the size of each setup message, and the emails and codes described above.",
-        ],
-      },
-      {
+      limits: {
         heading: "What it doesn't protect against",
         body: [
           "The link is the key. Anyone who gets a link can open the file or shared secret behind it until the link has been used. A link we email also needs a code sent to the same address, so anyone who can read that mailbox can open it. Send each link only to the person it is for, over a channel you trust.",
@@ -907,18 +966,309 @@ export const en = {
           "Fidant has not been independently audited yet.",
         ],
       },
-      {
+      planned: {
         heading: "Planned: verified transfers",
         body: [
           "Not built yet. The plan: the recipient signs a receipt with BankID before they can open the file, and the receipt names the file. The file key is split, and our server releases its half only after the receipt is signed. Events go into an audit log that makes tampering visible, anchored with trusted timestamps.",
-          "When it ships, this page will describe it.",
+          "When it ships, this page will describe it as a new mode.",
         ],
         link: [
           "The design records on GitHub",
           "https://github.com/sigill-labs/sigill/tree/main/docs/decisions",
         ],
       },
-    ] as Sections,
+      sender: {
+        heading: "Traces in the sender's browser",
+        body: [
+          "The file is read from your disk and copied nowhere else. The links, the keys and the transfers exist only in the page's memory, and go when it closes.",
+          "A shared secret is typed into a text box. A browser can save what is in a text box with its session, to restore it after a crash or a reopened tab.",
+          "If you copy a link, it is on your clipboard. Fidant itself saves only your choice of language and theme in the browser.",
+        ],
+      },
+      recipient: {
+        heading: "Traces in the recipient's browser",
+        body: [
+          "The file is where the recipient saved it: Chrome and Edge write it to the place the recipient chose, and other browsers to their downloads. A shared secret is only in the page's memory, until the recipient copies it. Then it is on their clipboard too, where clipboard history, clipboard sync and other apps can read it.",
+          "The link, with its key, stays in the browser's history like any address. A link is refused once its file has been delivered, and works only while the sender's page is open.",
+          "For a link we email, the token that the right code gets is kept in that browser tab until the tab closes. Fidant itself saves only the choice of language and theme.",
+        ],
+      },
+    } satisfies Record<string, Section>,
+    modes: {
+      send: {
+        heading: "What is sent",
+        items: {
+          file: {
+            heading: "A file",
+            body: "Any file. Its name, size and type travel encrypted, and the recipient sees them and chooses to download it or decline.",
+          },
+          secret: {
+            heading: "A shared secret",
+            body: "Up to 10,000 characters the sender types or pastes, such as a password. It travels like a file, padded to a fixed size, and the recipient's page shows it as text and never downloads it.",
+          },
+        },
+      },
+      link: {
+        heading: "How the link reaches the recipient",
+        items: {
+          link: {
+            heading: "The sender passes it on",
+            body: "The sender copies each link and sends it themselves, for example by chat or email. The key in the link never reaches our server.",
+          },
+          emailed: {
+            heading: "We email it",
+            body: "The sender gives an email address and our server emails the link. The recipient also needs a code sent to that address. Our server and the mail service then see that link's key.",
+          },
+        },
+      },
+      route: {
+        heading: "The route the traffic takes",
+        items: {
+          local: {
+            heading: "Direct, on the same network",
+            body: "When both browsers are on the same local network, they connect over their local addresses. The file goes straight between them, and our server and relay see none of it. Each browser still asks our STUN service for its public address, which shows it that IP address, and if you allow the relay, it sees both IP addresses.",
+          },
+          stun: {
+            heading: "Direct, through public addresses",
+            body: "Each browser asks our STUN service for its public address, which shows our STUN service that IP address and nothing else. The file then goes straight between the browsers over the internet. If you allow the relay, it still sees both IP addresses.",
+          },
+          relay: {
+            heading: "Through our relay",
+            body: "When no direct route works, the encrypted traffic goes through our TURN relay in Stockholm, over UDP or over TLS on port 443. The relay forwards packets it can't decrypt and doesn't store them.",
+          },
+          norelay: {
+            heading: "Relay refused",
+            body: "The sender can refuse our relay for a send. Our server then gives no relay credentials, and a connection with no direct route fails.",
+          },
+        },
+      },
+    },
+    glossary: {
+      webrtc: [
+        "WebRTC",
+        "The technology built into every modern browser for connecting two browsers directly, best known from video calls. Fidant uses it to carry the file between the browsers. The words below are its parts, and the ones Fidant adds.",
+      ],
+      signaling: [
+        "Signaling",
+        "Passing the setup messages between two browsers before they can reach each other. WebRTC leaves this to the app. Fidant passes them through our server, encrypted so the server can't read or change them, except for a link we email.",
+      ],
+      websocket: [
+        "WebSocket",
+        "A lasting two-way connection between a page and a server. Fidant's pages keep one open to our server to pass the setup messages.",
+      ],
+      sdp: [
+        "Offer and answer",
+        "The setup messages that describe each side of a WebRTC connection, including the fingerprint of its DTLS certificate. The sender's browser makes the offer and the recipient's browser the answer.",
+      ],
+      ice: [
+        "Candidates",
+        "The addresses at which a browser might be reached: on the local network, its public address, or an address on a relay. The two browsers swap candidates and try pairs of them until one works.",
+      ],
+      stun: [
+        "STUN",
+        "A service that tells a browser its public address, the address the internet sees it from behind a router. Our STUN service runs on the same machine as our relay.",
+      ],
+      turn: [
+        "TURN",
+        "A relay that forwards the traffic between two browsers that can't reach each other directly. Our relay is a TURN server. It forwards encrypted packets that it can't read.",
+      ],
+      dtls: [
+        "DTLS",
+        "The encryption WebRTC always puts on the connection between two browsers, much like the TLS that HTTPS uses. Each browser checks the other's certificate against the fingerprint in the offer or answer.",
+      ],
+      channel: [
+        "Data channel",
+        "A WebRTC connection that carries data instead of sound and video. Fidant sends its frames over one.",
+      ],
+      aes: [
+        "AES-256-GCM",
+        "The encryption Fidant adds on top of DTLS, with a 256-bit key. It also detects any change to what it encrypted.",
+      ],
+      hkdf: [
+        "HKDF-SHA-256",
+        "A standard way to derive several keys from one secret. Fidant derives the signal key and the file key from the secret in the link.",
+      ],
+      sha: [
+        "SHA-256",
+        "A checksum: any change to a file, however small, gives a completely different value. The recipient's browser compares the file's checksum with the sender's.",
+      ],
+      nonce: [
+        "Nonce",
+        "A number that must never be used twice with the same key. Fidant builds it from the direction and the frame's sequence number.",
+      ],
+      fragment: [
+        "Fragment",
+        "The part of an address after the # sign. Browsers don't send it to servers, so that is where the link keeps its secret.",
+      ],
+      padme: [
+        "Padmé",
+        "A way to round a size up so that it shows only roughly. It adds at most 12 %.",
+      ],
+      hmac: [
+        "HMAC",
+        "A checksum made with a key. Our server keeps the email and IP addresses it counts for its limits only as HMACs, with a random key that exists only in its memory.",
+      ],
+    },
+    linkRisks: {
+      heading: "Who can see the key",
+      body: ["How the link reaches the recipient decides who else can see the key in it."],
+      columns: ["How the link travels", "Who else can see the key", "What limits the risk"],
+      rows: [
+        [
+          "The sender passes it on",
+          "Anyone who can read the channel the sender uses, such as the chat or email service.",
+          "The link works only until its file is delivered, and only while the sender's page is open. Send each link only to the person it is for, over a channel you trust.",
+        ],
+        [
+          "We email it",
+          "Our server while it sends the email, our mail service, anyone who reads the email on its way, the recipient's mailbox provider, and anyone who can read that mailbox.",
+          "The recipient's browser connects only after a 6-digit code sent to the same address, which works for 10 minutes and 5 tries. Until check words exist, our server could put itself between the two browsers for that link.",
+        ],
+      ],
+    },
+    protect: {
+      heading: "How Fidant protects you",
+      body: [
+        "Each risk, and what in Fidant stands against it. The sections above explain each part.",
+      ],
+      columns: ["The risk", "What Fidant does"],
+      rows: [
+        [
+          "Our server or our host reads the file",
+          "The file is encrypted in your browser with a key from the part of the link after #, which browsers never send to a server. Only someone with the link can decrypt it. The exception is a link we email, whose key our server and the mail service see. All of this rests on the code we serve being the published code (see What it doesn't protect against).",
+        ],
+        [
+          "Our server puts itself between the two browsers",
+          "The setup messages are encrypted and bound to their link, attempt and direction. They carry the fingerprints of the WebRTC encryption, which the server therefore can't swap for its own. For a link we email, the server had the key, so this holds only once check words exist (planned).",
+        ],
+        [
+          "The networks on the way or our relay read the traffic",
+          "Two layers of encryption: WebRTC's DTLS, and AES-256-GCM under a file key only the two browsers have, new for every attempt. For a link we email, our server could also get the file key by putting itself in the middle (see above).",
+        ],
+        [
+          "The traffic gives away the file name, the exact size or a secret's length",
+          "Name, type and size travel only encrypted, in a frame of fixed size. A file is padded so its size shows only roughly, and every shared secret is padded to the same single chunk.",
+        ],
+        [
+          "A piece of the file is changed, dropped, repeated or reordered",
+          "Every frame is authenticated and numbered, and the recipient checks the size and the SHA-256 checksum. Anything else stops the transfer and throws away what was written.",
+        ],
+        [
+          "A link is opened twice, or by someone else after delivery",
+          "A link is refused once its file is delivered, and in a second tab while it is open in one.",
+        ],
+        [
+          "An emailed link is forwarded or fetched by a mail scanner",
+          "The recipient's browser connects only after a 6-digit code sent to the same address. A code works for 10 minutes and 5 wrong tries end it.",
+        ],
+        [
+          "A file disguised by its name, or one that runs as a page",
+          "Names that hide their real ending with text direction characters are refused, and downloads are always plain binary data.",
+        ],
+        [
+          "A shared secret lingers in the browser",
+          "On the recipient's side it is never downloaded or put in a form field, and translation is off. The sender's text box tells the browser to keep spelling, autocomplete, writing suggestions and translation off it. It still lingers in two ways: a browser can save the sender's text box with its session, and a copied secret stays on the clipboard (see What it doesn't protect against).",
+        ],
+        [
+          "Data left behind on our machines",
+          "No accounts, database or file storage. The server holds what it knows only in memory and forgets a page within a minute after it disconnects, apart from scrambled counts of emails and codes, which it keeps for an hour. Logs have fixed fields, never names, email addresses, codes, keys, file data or IP addresses, and are deleted after 30 days.",
+        ],
+        [
+          "Tracking, or code from other sites",
+          "HTTPS only, no cookies, no third-party scripts or trackers, and a Content Security Policy that allows code only from our own site.",
+        ],
+        [
+          "You don't want your traffic through our relay",
+          "Untick the relay for that send. Our server then gives no relay credentials, and the sender's browser ends a relayed connection.",
+        ],
+      ],
+    },
+    data: {
+      heading: "Step by step",
+      body: [
+        "The same, for each step of a transfer: what our server sees, keeps and logs, and what our relay sees. A shared secret goes through the same steps as a file.",
+      ],
+      columns: ["Step", "Our server sees", "Our server keeps", "Our server logs", "Our relay"],
+      rows: [
+        [
+          "You open the site",
+          "Your IP address and browser details, like any website.",
+          "Nothing. A send page also opens a connection to our server, which it holds in memory while the page is open.",
+          "Nothing.",
+          "Nothing.",
+        ],
+        [
+          "You choose the file or type the secret, and add recipients",
+          "Nothing. Your browser reads the file, computes its checksum and makes the links on its own.",
+          "Nothing.",
+          "Nothing.",
+          "Nothing.",
+        ],
+        [
+          "Your page registers its links",
+          "The link IDs, your relay choice and your IP address.",
+          "The link IDs and your relay choice, in memory, while your page is open.",
+          "That a sender registered, and how many links.",
+          "Nothing.",
+        ],
+        [
+          "You ask us to email a link",
+          "The recipient's email address, the link's secret, the name you typed and the page's language. The mail service gets the email with the link.",
+          "The address, the language and a random value while your page has the link. The secret and your name only until the email is sent or fails. Counts of emails per scrambled email address and per scrambled IP address, for an hour.",
+          "Whether the email was sent, with the first 6 characters of the link ID.",
+          "Nothing.",
+        ],
+        [
+          "A recipient on an emailed link enters the code",
+          "The value from the link and the code typed.",
+          "The latest code with its expiry and tries, and the token a right code gets, while your page has the link. A count of codes per scrambled email address, for an hour.",
+          "Each code sent or refused and why, and a right code, with the first 6 characters of the link ID.",
+          "Nothing.",
+        ],
+        [
+          "A recipient opens their link",
+          "The link ID, a random attempt ID, and the recipient's IP address and browser details.",
+          "Which recipient page is paired with which link, in memory.",
+          "That a recipient joined or was refused and why, with the first 6 characters of the link ID.",
+          "Nothing yet. If you allow the relay, our server gives the two pages credentials for it that expire after 5 minutes.",
+        ],
+        [
+          "The browsers set up the connection",
+          "Encrypted setup messages and their sizes. It can't read them, except for a link we emailed.",
+          "Nothing. It passes them on.",
+          "Each message's size, with the first 6 characters of the link ID.",
+          "Each browser's IP address, when it asks for its public address (STUN). If you allow the relay, each browser also reserves a relay address, so the relay sees both IP addresses even when a direct route wins.",
+        ],
+        [
+          "The file or secret travels",
+          "Nothing of it. Your page reports the route: direct, STUN, relay or failed.",
+          "Nothing.",
+          "The route.",
+          "On the relay route, the encrypted packets, which it forwards and doesn't store. Both IP addresses whenever you allow the relay.",
+        ],
+        [
+          "The recipient confirms delivery",
+          "Nothing. The receipt goes between the browsers. If the link is opened again, your page refuses it as used.",
+          "Nothing.",
+          'A later refusal, with the reason "used".',
+          "Nothing.",
+        ],
+        [
+          "A page closes",
+          "That the page disconnected.",
+          "Nothing about that page, within a minute. When your page closes, an emailed link's address, codes and tokens go too.",
+          "That a sender left and how many links it had, or that a recipient left, with the first 6 characters of the link ID.",
+          "Nothing.",
+        ],
+        [
+          "Afterwards",
+          "Nothing.",
+          "Only the scrambled counts of emails and codes, for up to an hour.",
+          "Log lines are deleted after 30 days.",
+          "No log. Only to fix a fault or stop abuse do we turn one on, with connection times, IP addresses and data volumes, for at most 7 days.",
+        ],
+      ],
+    },
   },
   privacy: {
     title: "Privacy",
@@ -1013,8 +1363,9 @@ export const en = {
 
 export type Messages = typeof en;
 /** A text page: each section a heading, paragraphs and an optional [text, href] link. */
-export type Sections = ReadonlyArray<{
+export type Section = {
   heading: string;
   body: readonly string[];
   link?: readonly [string, string];
-}>;
+};
+export type Sections = ReadonlyArray<Section>;
