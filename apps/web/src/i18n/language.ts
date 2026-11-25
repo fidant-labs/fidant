@@ -67,7 +67,7 @@ const ENGLISH_PATHS: Readonly<Record<string, string>> = Object.fromEntries(
   Object.entries(SWEDISH_PATHS).map(([english, swedish]) => [swedish, english]),
 );
 
-const withoutSlash = (path: string) => (path.length > 1 ? path.replace(/\/$/, "") : path);
+const withoutSlash = (path: string) => (/[^/]\/$/.test(path) ? path.slice(0, -1) : path);
 
 /** The English path of a page: /sv/sakerhet is /security, /sv is /. Any other path comes back unchanged. */
 export function barePath(path: string): string {

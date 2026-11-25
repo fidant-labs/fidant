@@ -32,6 +32,9 @@ test("a path that is no page keeps its address in both languages", () => {
     "/no-such-page",
     "/svenska",
     "/sv//x",
+    "//",
+    "/sv//",
+    "/sv//#a",
     "/r/abc",
     "/sv/r/abc",
   ]) {
