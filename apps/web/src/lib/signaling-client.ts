@@ -14,6 +14,7 @@
 // does not.
 
 import { type ClientMessage, parseServerMessage, type ServerMessage } from "@sigill/protocol";
+import { signalingUrl } from "./signaling-list.ts";
 
 export type SignalingClose = {
   /** WebSocket close code (1006 when the connection dropped). */
@@ -35,9 +36,14 @@ export type SignalingClient = {
   close(): void;
 };
 
-/** The signaling endpoint on the server that served this page. */
+declare const __SIGNALING_URL__: string | undefined;
+
+/** The signaling endpoint the build named, else the one on the server that served this page. */
 export function defaultSignalingUrl(): string {
-  return `wss://${location.host}/signal`;
+  return signalingUrl(
+    typeof __SIGNALING_URL__ === "string" ? __SIGNALING_URL__ : undefined,
+    location.host,
+  );
 }
 
 const RETRY_BASE_MS = 1000;

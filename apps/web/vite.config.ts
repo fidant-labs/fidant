@@ -1,10 +1,16 @@
+import { readFileSync } from "node:fs";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
 import { previewPage } from "./src/i18n/preview.ts";
+import { signalingUrlFrom } from "./src/lib/signaling-list.ts";
+
+const signalsFile = process.env.SIGNALS_FILE;
+const signalingUrl = signalsFile ? signalingUrlFrom(readFileSync(signalsFile, "utf8")) : "";
 
 const latinGeist = /^assets\/geist-latin-wght-normal-[\w-]+\.woff2$/;
 
 export default defineConfig({
+  define: { __SIGNALING_URL__: JSON.stringify(signalingUrl) },
   plugins: [
     tailwindcss(),
     {
