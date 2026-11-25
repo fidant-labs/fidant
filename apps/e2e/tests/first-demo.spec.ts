@@ -14,7 +14,7 @@ import {
   type Observed,
   recipientRow,
 } from "../src/fixtures.ts";
-import { commitTo, interpose, signalsOf, tamperSignal } from "../src/interpose.ts";
+import { commitTo, interpose, type Signal, signalsOf, tamperSignal } from "../src/interpose.ts";
 import { base32Token, type CanaryFile, type SeededRandom } from "../src/leaks/canary.ts";
 import type { Allowed } from "../src/leaks/needles.ts";
 import { type Message, mailTo } from "../src/mail.ts";
@@ -824,7 +824,7 @@ test.describe("a hostile path", () => {
     );
     const name = makeName(leaks, canary, "Anna");
     const to = addressFor(canary, "Anna");
-    const emailed = await addEmailed(leaks, sender, name, to);
+    const emailed = await addEmailed(leaks, sender, name, to, "", true);
     middle.start(emailed.link);
     const recipient = await demo.open("recipient");
     await middle.takeOver(recipient, "recipient");
@@ -832,7 +832,7 @@ test.describe("a hostile path", () => {
     await enterCode(recipient, await requestCode(recipient, to));
 
     const card = recipientRow(sender, name);
-    const number = /^\d{3} \d{3}$/;
+    const number = NUMBER;
     await expect(
       card.getByText(`Ask ${name} to read the number on their screen. Does it match?`),
     ).toBeVisible({ timeout: 30_000 });
@@ -849,7 +849,7 @@ test.describe("a hostile path", () => {
     await card.getByRole("button", { name: "It differs" }).click();
     await expect(card.getByText("The numbers didn't match, so nothing was sent.")).toBeVisible();
     await expect(
-      recipient.getByText("The numbers didn't match, so nothing was received."),
+      recipient.getByRole("heading", { name: "The numbers didn't match" }),
     ).toBeVisible();
     for (const page of [sender, recipient]) {
       await expect(page.getByRole("button", { name: "Download" })).toHaveCount(0);
