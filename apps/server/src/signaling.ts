@@ -193,10 +193,10 @@ export function clientAddress(
   return isIP(ip) === 6 ? prefix64(ip) : ip;
 }
 
-/** True if the request has no Origin header or one whose host matches the Host header. */
-function sameOrigin(req: IncomingMessage): boolean {
+/** True if the request has no Origin header, one whose host matches the Host header, or exactly `siteOrigin`. */
+function sameOrigin(req: IncomingMessage, siteOrigin: string | undefined): boolean {
   const origin = req.headers.origin;
-  if (origin === undefined) {
+  if (origin === undefined || origin === siteOrigin) {
     return true;
   }
   try {
@@ -218,6 +218,8 @@ export function attachSignaling(
     mail?: { send: Mailer; origin: string } | undefined;
     /** Peers in these ranges are trusted to write X-Forwarded-For, as a loopback peer is. */
     proxies?: BlockList | undefined;
+    /** The one other Origin, exactly as browsers send it, that may open a signaling socket. */
+    siteOrigin?: string | undefined;
   },
 ): { close(): void } {
   const { log, iceServers = () => [], mail } = options;
@@ -264,7 +266,7 @@ export function attachSignaling(
       rejectUpgrade(socket, 404);
       return;
     }
-    if (!sameOrigin(req)) {
+    if (!sameOrigin(req, options.siteOrigin)) {
       log("upgrade-rejected", { reason: "origin" });
       rejectUpgrade(socket, 403);
       return;

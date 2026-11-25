@@ -564,7 +564,7 @@ test("trusts X-Forwarded-For from a configured range and from no other peer", ()
 async function limitedServer(
   t: { after(fn: () => void): void },
   limits: { sockets?: number; socketsPerAddress?: number },
-  extra: { host?: string; proxies?: BlockList } = {},
+  extra: { host?: string; proxies?: BlockList; siteOrigin?: string } = {},
 ): Promise<{ host: string; port: number; server: Server }> {
   const host = extra.host ?? "127.0.0.1";
   const limited = createServer();
@@ -572,6 +572,7 @@ async function limitedServer(
     log: () => {},
     limits,
     proxies: extra.proxies,
+    siteOrigin: extra.siteOrigin,
   });
   t.after(() => {
     limitedSignaling.close();
@@ -580,6 +581,25 @@ async function limitedServer(
   await new Promise<void>((done) => limited.listen(0, host, done));
   return { host, port: (limited.address() as AddressInfo).port, server: limited };
 }
+
+test("also accepts upgrades from the configured site origin", async (t) => {
+  const site = await limitedServer(t, {}, { siteOrigin: "https://fidant.se" });
+  const ok = (origin?: string) => upgradeStatus("/signal", origin ? { origin } : {}, site);
+  assert.equal(await ok(), 101);
+  assert.equal(await ok("https://fidant.se"), 101);
+  assert.equal(await ok(`http://127.0.0.1:${site.port}`), 101);
+  for (const origin of [
+    "http://fidant.se",
+    "https://fidant.se.evil.example",
+    "https://fidant.se:8443",
+    "https://www.fidant.se",
+    "https://evil.example",
+    "null",
+  ]) {
+    assert.equal(await ok(origin), 403, origin);
+  }
+  assert.equal(await upgradeStatus("/signal", { origin: "https://fidant.se" }), 403);
+});
 
 test("counts a socket behind a configured proxy against the forwarded address", async (t) => {
   const lan = Object.values(networkInterfaces())
