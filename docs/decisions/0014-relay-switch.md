@@ -6,6 +6,8 @@
 
 ## Context
 
+In this record, 0013 is `docs/decisions/0013-relay-service.md`.
+
 - 0013 built the Stockholm relay box, `fidant-relay-sto-<hash>`, from `apps/infra/relay/install.sh`. It asks `https://fidant.se/relay-secret/sto` for its secret every minute. Until SIG-153 nothing serves that path, so the relay box has no secret, answers STUN and refuses every TURN allocation. Every relayed transfer goes through the app box's coturn at `turn.fidant.se` (0007).
 - 0013 fixed the hand-out's contract: the body is the relay's secret, sealed to the relay's public key with RSA-OAEP. It left the app's side to SIG-153: where the trusted public keys live, where each relay's secret comes from, when the app offers a relay, and moving 0011's cap to the relay box.
 - The app box's user data sets the app's environment once, through the drop-in `turn.conf` (0007). A change to the user data replaces the box (0007, 0013). SIG-153 must replace neither box.
@@ -86,6 +88,7 @@ The app offers the relays in a committed relay list, `apps/server/relays.json`, 
 - The server reads the list at startup. A list that doesn't parse stops the server, with a message that names the entry only by its position. `sigill-deploy` then keeps the old release and writes `/opt/sigill/failed-<sha>`. A unit test parses the committed list, so `pnpm check` keeps a bad one from merging.
 - The committed list holds `sto`, with `stun:sto.relay.fidant.se:3478`, `turn:sto.relay.fidant.se:3478?transport=udp` and `turns:sto.relay.fidant.se:443?transport=tcp`, and the relay box's 3072-bit key. A test pins the key's SPKI SHA-256.
 - A name and a location are left out until something reads them.
+- In SIG-153's pull request the list stays `[]` until the commit that adds `sto`, so every commit before it leaves production unchanged.
 - `apps/server/relays.json` is in the `sensitive-paths` ruleset, so a change to it needs an approval from the `maintainers` team, as 0013 asked before the first key. Agents never change rulesets, so a maintainer added the path.
 
 ### How the server finds the relay list
@@ -251,6 +254,7 @@ grep -qx 'Environment=RELAYS_FILE=' /etc/systemd/system/sigill.service.d/relays-
 - Pairings then get the `turn.fidant.se` URLs only if `turn.conf` exists (0007). On the app box, `test -s /etc/systemd/system/sigill.service.d/turn.conf && echo turn` must print `turn`. In Chrome, `chrome://webrtc-internals` on a page that has paired lists the ICE server URLs: they name `turn.fidant.se` and not `sto.relay.fidant.se`. Without `turn.conf` the app hands out no ICE servers.
 - Relayed transfers in progress through `sto` keep running, because coturn keeps live allocations (0013).
 - The drop-in stays through deploys and reboots.
+- While the list is off, `/relay-status` lists no `sto`, which the Lambda counts as down. So "Fidant relay sto unavailable" goes to ALARM within about 10 minutes, and back to OK once the list is on and `sto` is up. That alarm is expected.
 
 To turn the relay list on again:
 
@@ -264,6 +268,7 @@ rm /etc/systemd/system/sigill.service.d/relays-off.conf && systemctl daemon-relo
 
 - Commit `[]` to `apps/server/relays.json` in a pull request. It needs an approval from the `maintainers` team.
 - The app box deploys it within a few minutes of the merge. Then `curl -s https://fidant.se/relay-status; echo` must print exactly `[]`.
+- "Fidant relay sto unavailable" then goes to ALARM and stays there, as under "Turn the relay list off at once", until the list holds `sto` again and `sto` is up.
 
 ### New secrets for every relay
 
@@ -296,6 +301,7 @@ grep -qF '<third line of the new relay.pub>' /opt/sigill/current/apps/server/rel
 ```
 
 - Then check the status as under "New secrets for every relay".
+- The relay box keeps the old secret as `previous` for 24 hours, and whoever holds the leaked key has read it from the hand-out. So go on with 0013's "A leaked secret" on the relay box, as under "New secrets for every relay".
 - A plain rebuild, where the old box and its key are destroyed, needs neither.
 
 ### Live cap check

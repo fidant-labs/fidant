@@ -16,7 +16,7 @@ A change to security or data flow updates this document in the same pull request
 | Shared protocol       | `packages/protocol`                                                                       | Signaling message types, parsers and limits used by both the server and the web app.                                                                                                                       |
 | Mail service          | SMTP, from `apps/server/src/mail.ts`                                                      | Delivers the emails the server sends for emailed links. Mailpit locally; see "Emailed links" for production.                                                                                               |
 
-The box is an AWS Lightsail instance in Stockholm (eu-north-1), and so is the relay box. There are no accounts, no file storage and no database of people or transfers. The server holds what it knows about pages and transfers only in memory. On disk it keeps one secret, the relay master, and the relay box keeps its own secrets in a small database file (see "The relay box").
+The box is an AWS Lightsail instance in Stockholm (eu-north-1), and so is the relay box. There are no accounts, no file storage and no database of people or transfers. The server holds what it knows about pages and transfers only in memory. Among the secrets it keeps on disk is the relay master, and the relay box keeps its own secrets in a small database file (see "The relay box").
 
 ## Modes
 

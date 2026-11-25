@@ -785,7 +785,7 @@ export const sv: Messages = {
         heading: "Delarna",
         body: [
           "Fidant har tre delar. Webbappen körs i avsändarens och mottagarens webbläsare och sköter all kryptering. Vår server i Stockholm levererar webbappen och skickar vidare meddelanden för att koppla upp de två webbläsarna, över en WebSocket. Vårt relä, på en egen maskin i Stockholm, talar om för webbläsare vilken offentlig adress de har (STUN) och för vidare krypterad trafik när två webbläsare inte når varandra direkt (TURN). Om en avsändare ber oss mejla en länk skickar vår server också mejl via en e-posttjänst.",
-          "Det finns inga konton, ingen fillagring och ingen databas över personer eller överföringar. Servern har det den vet om sidor och överföringar bara i minnet. På disk har servern en hemlighet för reläet, och reläet har sin nuvarande och sin förra hemlighet i en liten databasfil.",
+          "Det finns inga konton, ingen fillagring och ingen databas över personer eller överföringar. Servern har det den vet om sidor och överföringar bara i minnet. På disk har servern egna hemligheter, bland dem den som reläets hemlighet kommer från, och reläet har sin nuvarande och sin förra hemlighet i en liten databasfil.",
           "Allt är öppen källkod, så varje påstående på den här sidan går att kontrollera mot koden.",
         ],
         link: ["Koden på GitHub", "https://github.com/sigill-labs/sigill"],
@@ -1130,7 +1130,7 @@ export const sv: Messages = {
         ],
         [
           "Data som blir kvar på våra maskiner",
-          "Inga konton, ingen fillagring och ingen databas över personer eller överföringar. Servern har det den vet om sidor bara i minnet och glömmer en sida inom en minut efter att den kopplat ner, utom förvrängda antal mejl och koder, som den sparar i en timme. Utöver loggarna har den bara en hemlighet för reläet på disk. Loggarna har fasta fält, aldrig namn, e-postadresser, koder, nycklar, filinnehåll eller IP-adresser, och raderas efter 30 dagar. Reläet sparar bara sina egna hemligheter och, i ungefär fem veckor, adresserna som når det medan dess certifikat förnyas.",
+          "Inga konton, ingen fillagring och ingen databas över personer eller överföringar. Servern har det den vet om sidor bara i minnet och glömmer en sida inom en minut efter att den kopplat ner, utom förvrängda antal mejl och koder, som den sparar i en timme. Loggarna har fasta fält, aldrig namn, e-postadresser, koder, nycklar, filinnehåll eller IP-adresser, och raderas efter 30 dagar. Reläet för som standard ingen logg över trafiken. Medan det förnyar sitt certifikat loggar det i ungefär fem veckor adresserna som når det på port 80, aldrig webbläsarnas.",
         ],
         [
           "Spårning, eller kod från andra webbplatser",

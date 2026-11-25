@@ -826,7 +826,7 @@ export const en = {
         heading: "The parts",
         body: [
           "Fidant has three parts. The web app runs in the sender's and the recipient's browsers and does all the encryption. Our server, in Stockholm, serves the web app and passes setup messages between the two browsers over a WebSocket. Our relay, on a machine of its own in Stockholm, tells browsers their public address (STUN) and carries encrypted traffic when two browsers can't reach each other directly (TURN). If a sender asks us to email a link, our server also sends emails through a mail service.",
-          "There are no accounts, no file storage and no database of people or transfers. The server holds what it knows about pages and transfers only in memory. On disk the server keeps one secret for the relay, and the relay keeps its current and previous secret in a small database file.",
+          "There are no accounts, no file storage and no database of people or transfers. The server holds what it knows about pages and transfers only in memory. On disk the server keeps secrets of its own, among them the one the relay's secret comes from, and the relay keeps its current and previous secret in a small database file.",
           "All of it is open source, so every statement on this page can be checked against the code.",
         ],
         link: ["The code on GitHub", "https://github.com/sigill-labs/sigill"],
@@ -1173,7 +1173,7 @@ export const en = {
         ],
         [
           "Data left behind on our machines",
-          "No accounts, file storage or database of people or transfers. The server holds what it knows about pages only in memory and forgets a page within a minute after it disconnects, apart from scrambled counts of emails and codes, which it keeps for an hour. Apart from its logs, it keeps only a secret for the relay on disk. Its logs have fixed fields, never names, email addresses, codes, keys, file data or IP addresses, and are deleted after 30 days. The relay keeps only its own secrets and, for about five weeks, the addresses that reach it while its certificate renews.",
+          "No accounts, file storage or database of people or transfers. The server holds what it knows about pages only in memory and forgets a page within a minute after it disconnects, apart from scrambled counts of emails and codes, which it keeps for an hour. Its logs have fixed fields, never names, email addresses, codes, keys, file data or IP addresses, and are deleted after 30 days. The relay keeps no log of the traffic by default. While it renews its certificate, it logs the addresses that reach it on port 80, never browsers', for about five weeks.",
         ],
         [
           "Tracking, or code from other sites",
