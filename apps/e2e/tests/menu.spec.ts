@@ -126,3 +126,27 @@ test("the theme menu sets System, Light and Dark, and the choice survives a relo
     }
   }
 });
+
+for (const [locale, lang, headings] of [
+  ["en-GB", "en", { security: "Security", about: "About Fidant", terms: "Terms of use" }],
+  ["sv-SE", "sv", { security: "Säkerhet", about: "Om Fidant", terms: "Användarvillkor" }],
+] as const) {
+  test.describe(`in ${locale}`, () => {
+    test.use({ locale, viewport: { width: 360, height: 800 } });
+
+    test("the info pages open in the browser's language and fit a phone screen", async ({
+      page,
+    }) => {
+      for (const [path, heading] of Object.entries(headings)) {
+        await page.goto(`/${path}`);
+        await expect(page.locator("main h1")).toHaveText(heading);
+        await expect(page.locator("html")).toHaveAttribute("lang", lang);
+        const width = await page.evaluate(async () => {
+          await document.fonts.ready;
+          return document.documentElement.scrollWidth;
+        });
+        expect(width, path).toBeLessThanOrEqual(360);
+      }
+    });
+  });
+}

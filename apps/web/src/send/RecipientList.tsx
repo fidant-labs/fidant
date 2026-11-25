@@ -109,8 +109,20 @@ function RecipientRow({
   onCheck,
   full,
 }: RowProps) {
-  const { name, url, status, bytesSent, linkId, path, noRelay, error, email, mail, unbound } =
-    recipient;
+  const {
+    name,
+    url,
+    status,
+    bytesSent,
+    linkId,
+    path,
+    noRelay,
+    noConnect,
+    error,
+    email,
+    mail,
+    unbound,
+  } = recipient;
   const { t, lang } = useI18n();
   const { note, copy } = useCopyNote();
 
@@ -118,6 +130,7 @@ function RecipientRow({
   // A link the server may still email, or whose email binding died, is not to be shared.
   const shareable = open && !unmarked(recipient) && !unbound && !recipient.locked;
   const checkFailed = error === CHECK_DIFFERS || error === CHECK_EXPIRED || error === CHECK_LIMIT;
+  const blocked = noRelay || noConnect;
   const lost = open && unbound;
   const removeButton = (
     <Button
@@ -167,23 +180,25 @@ function RecipientRow({
           <p
             data-status={linkId}
             tabIndex={-1}
-            class={`mt-1 mb-0 flex items-center gap-1.5 text-[0.9rem] wrap-anywhere outline-none ${noRelay || checkFailed ? "text-destructive" : (STATUS_COLOR[status] ?? "")}`}
+            class={`mt-1 mb-0 flex items-center gap-1.5 text-[0.9rem] wrap-anywhere outline-none ${blocked || checkFailed ? "text-destructive" : (STATUS_COLOR[status] ?? "")}`}
             aria-live="polite"
           >
-            {(status === "failed" || noRelay || checkFailed) && <Icon name="alert" />}
-            {status === "declined" && !noRelay && <Icon name="declined" />}
+            {(status === "failed" || blocked || checkFailed) && <Icon name="alert" />}
+            {status === "declined" && !blocked && <Icon name="declined" />}
             <span>
               {noRelay
                 ? t.send.noRelay(name)
-                : error === TOO_SMALL_FOR_TEXT
-                  ? t.secret.unsendable(name)
-                  : error === CHECK_DIFFERS
-                    ? t.send.check.differed
-                    : error === CHECK_EXPIRED
-                      ? t.send.check.expired
-                      : error === CHECK_LIMIT
-                        ? t.send.check.limit(CHECK_ATTEMPTS)
-                        : statusText[status](name)}
+                : noConnect
+                  ? t.send.noConnect(name)
+                  : error === TOO_SMALL_FOR_TEXT
+                    ? t.secret.unsendable(name)
+                    : error === CHECK_DIFFERS
+                      ? t.send.check.differed
+                      : error === CHECK_EXPIRED
+                        ? t.send.check.expired
+                        : error === CHECK_LIMIT
+                          ? t.send.check.limit(CHECK_ATTEMPTS)
+                          : statusText[status](name)}
             </span>
           </p>
           {email && mail && (
