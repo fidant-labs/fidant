@@ -47,7 +47,7 @@ const NAMED: ReadonlyArray<Route> = [
   "security",
 ];
 
-/** The route of a path without its /sv prefix. */
+/** The route of a page's English path, as barePath returns it. */
 function routeOf(path: string): Route {
   const named = NAMED.find((name) => new RegExp(`^/${name}/?$`).test(path));
   if (named) {

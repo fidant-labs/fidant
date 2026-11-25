@@ -31,7 +31,7 @@ const securityHeaders = {
 };
 
 /** Lowercase segments only, so a redirect built from it can never name another host. */
-const pagePath = /^(?:\/[a-z]+)*\/?$/;
+const pagePath = /^(?:\/[a-z]+(?:-[a-z]+)*)*\/?$/;
 const moved: Record<string, string> = { "/technical": "/how" };
 
 /** Where the build puts a page: pages/index.html for /, pages/<path>/index.html for the rest. */
