@@ -126,6 +126,7 @@ export const en = {
         "When they open it, the file goes from your browser to theirs, encrypted the whole way.",
       ],
     ] as ReadonlyArray<readonly [string, string]>,
+    serverHeading: "What our server knows",
     neverHeading: "Our server never gets",
     seesHeading: "Our server only sees",
     relayNote:
@@ -1243,44 +1244,8 @@ export const en = {
   },
   privacy: {
     title: "Privacy",
-    lede: "Your file goes from your browser to the browser of the person you send it to, directly when your networks allow it and otherwise through our relay. It's locked before it leaves your computer, and only the person with the link can unlock it. We never get the file, its name or a secret you share, and never the key unless you ask us to email the link.",
-    howHeading: "How sending works",
-    // [bold, rest]: the bold part opens each step.
-    steps: [
-      [
-        "You pick a file and add the people to send it to.",
-        "The file stays on your computer. Nothing is uploaded.",
-      ],
-      [
-        "You get one link per person.",
-        "Each link holds the key that unlocks the file. You send the link yourself, for example by email or chat, or we email it to an address you give us. A link we email also asks for a code we send to the same address.",
-      ],
-      [
-        "They open the link while your page is still open.",
-        "Our server helps the two browsers find each other, like an operator connecting a phone call.",
-      ],
-      ["They see the file name and size and choose to download it, or decline.", ""],
-      [
-        "The file goes from your computer to theirs, locked the whole way.",
-        "It goes directly when your networks allow it, otherwise through our relay. Their browser unlocks it and checks that it is exactly the file you sent.",
-      ],
-    ] as ReadonlyArray<readonly [string, string]>,
-    keepOpen:
-      "Because the file is never stored anywhere, keep your page open until everyone has downloaded it.",
-    travelHeading: "How the file travels",
-    lockedBox:
-      "Think of it as handing someone a locked box in person. There is no post office in between that holds on to it, and only someone with the key can open it.",
-    // [before, after] a bold "#".
-    keyPart: [
-      "The key is the last part of the link, after the ",
-      " sign. Browsers never send that part to any website, ours included. That is why we can't unlock your file even if we wanted to. The exception is a link you ask us to email: your browser gives its key to our server once, to put in the email, and we don't store or log it.",
-    ] as readonly [string, string],
-    direct:
-      "Because the two browsers connect directly, each can see the other's network address (IP address), the same as on a video call. If a network blocks that, the file passes through our relay instead, still locked. The relay then sees both IP addresses and roughly how big the file is, and can't unlock it.",
-    linkWarning:
-      "Anyone who has the link can open the file. A link we email also needs a code we send to the same address, so anyone who can read that mailbox can open it. Send each link only to the person it is for.",
-    serverHeading: "What our server knows",
-    neverHeading: "Never",
+    lede: "We never get your file or shared secret, its name, or the key that unlocks it, unless you ask us to email the link. Below is everything we do see and keep, and for how long.",
+    neverHeading: "What we never get",
     never: [
       ["Your file", "Not the contents, not the file name, not its size or type."],
       [
@@ -1296,7 +1261,7 @@ export const en = {
         "Not the names you give the people you send to. Your own name reaches us only if you ask us to email a link: it goes in that email, and we don't keep it.",
       ],
     ] as ReadonlyArray<readonly [string, string]>,
-    seesHeading: "Only what it needs to connect you or email a link",
+    seesHeading: "What our server sees, and only to connect you or email a link",
     sees: [
       [
         "Your IP address and browser details",
@@ -1319,16 +1284,37 @@ export const en = {
         "If you ask us to email a link, your browser sends our server the recipient's email address, the link with its key, and your name. We keep the key and your name only until the email has gone. We keep the address in memory while your page is open, so we can email the recipient a code when they open the link. We also keep the latest code and which browser tabs entered the right one. We never log the address or write it to disk. Our mail service, Amazon SES, delivers the emails, and bounces go only to it, never to a mailbox of ours. Amazon SES keeps an email with a link, and so the key and your name, only until it is delivered: if the recipient's mail server doesn't accept it at once, Amazon SES tries again for at most 15 minutes and then drops it. An address that bounces as undeliverable goes on a list that Amazon SES keeps for all its customers, for up to 14 days, so that nobody sends it more mail. We can't turn that list off.",
       ],
       [
-        "Counts of emails",
-        "To limit how many emails anyone can send, we count the emails sent to each address and the emails each IP address asks us to send, for an hour. We keep each count under a scrambled form of the address (an HMAC), never the address itself.",
+        "Counts of emails and codes",
+        "To limit how many emails anyone can send, we count the emails and codes sent to each address and the emails each IP address asks us to send, for an hour. We keep each count under a scrambled form of the address (an HMAC), never the address itself.",
       ],
     ] as ReadonlyArray<readonly [string, string]>,
     keepHeading: "What we keep",
-    keep: "We have no accounts, no database, no cookies and no tracking. Apart from the log lines below, a relay log while we fix a fault or stop abuse, the email counts above, which last an hour, and our mail service's list of bounced addresses, nothing is kept once the sender's page is closed, within 2 minutes at most.",
+    keep: "We have no accounts, no database, no cookies and no tracking. Apart from the log lines below, a relay log while we fix a fault or stop abuse, the email and code counts above, which last an hour, and our mail service's list of bounced addresses, nothing is kept once the sender's page is closed, within 2 minutes at most.",
     logFields,
     logRetention: "Log lines are deleted after 30 days.",
     relayLog:
       "Our relay, which carries the locked file when two browsers can't connect directly, keeps no log. Only to fix a fault or stop abuse do we turn one on. It then records, for each relayed connection, both IP addresses and ports, when it started and ended, and how much data passed through. Never names, keys or file data. We turn it off and delete it within 7 days.",
+    limitsHeading: "What we can't protect you from",
+    limits: [
+      "Anyone who has the link can open the file. A link we email also needs a code we send to the same address, so anyone who can read that mailbox can open it. Send each link only to the person it is for.",
+      "Your browser runs the code our server sends it. A server that sent different code could read files. The code is public, but browsers can't yet check that what they got matches it.",
+      "The other browser sees your IP address, as on a video call. If you allow our relay, it sees both IP addresses.",
+    ],
+    limitsLink: ["Every risk, and what Fidant does about it", "/how/protection"] as readonly [
+      string,
+      string,
+    ],
+    checkHeading: "Check it yourself",
+    check:
+      "This page is the short version. How it works explains every step, and every claim here can be checked against the public code.",
+    checkLinks: [
+      ["How it works, step by step", "/how"],
+      ["What is seen and kept at each step", "/how/traces"],
+      ["The code on GitHub", "https://github.com/sigill-labs/sigill"],
+    ] as ReadonlyArray<readonly [string, string]>,
+    contactHeading: "Contact",
+    contact:
+      "Fidant is an open-source project, and no company or person is responsible for it yet. Questions about privacy and your data go to",
   },
 };
 

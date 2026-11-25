@@ -1,14 +1,13 @@
-import { Alert, AlertDescription } from "#components/ui/alert";
 import { Card, CardContent } from "#components/ui/card";
 import { useI18n } from "../i18n/I18n.tsx";
-import { lede, Page } from "../ui.tsx";
+import { lede, Page, SectionLink } from "../ui.tsx";
 
 const section = "mt-10";
 const h2 = "mb-3 text-[1.25rem] font-bold";
-const h3 = "mt-6 mb-2 font-bold";
 
-// Written for people who aren't technical. Keep every sentence true of what the
-// code does today: `server` in the dictionaries and apps/server/src/signaling.ts are the source.
+// The privacy notice: short and plain, for people who aren't technical. The explaining lives on the
+// /how pages. Keep every sentence true of what the code does today: `server` in the dictionaries
+// and apps/server/src/signaling.ts are the source.
 // The text lives in i18n/en.ts and i18n/sv.ts under `privacy`.
 
 function Facts({ rows }: { rows: ReadonlyArray<readonly [string, string]> }) {
@@ -36,46 +35,24 @@ export function PrivacyPage() {
       <h1>{p.title}</h1>
       <p class={lede}>{p.lede}</p>
 
-      <section class={section} aria-labelledby="how-heading">
-        <h2 class={h2} id="how-heading">
-          {p.howHeading}
+      <section class={section} aria-labelledby="never-heading">
+        <h2 class={h2} id="never-heading">
+          {p.neverHeading}
         </h2>
-        <ol class="list-decimal pl-6 [&>li]:my-2.5">
-          {p.steps.map(([bold, rest]) => (
-            <li key={bold}>
-              <strong>{bold}</strong>
-              {rest && ` ${rest}`}
-            </li>
-          ))}
-        </ol>
-        <p>{p.keepOpen}</p>
-      </section>
-
-      <section class={section} aria-labelledby="travel-heading">
-        <h2 class={h2} id="travel-heading">
-          {p.travelHeading}
-        </h2>
-        <p>{p.lockedBox}</p>
-        <p>
-          {p.keyPart[0]}
-          <strong>#</strong>
-          {p.keyPart[1]}
-        </p>
-        <p>{p.direct}</p>
-        <Alert role="note" className="my-4">
-          <AlertDescription>{p.linkWarning}</AlertDescription>
-        </Alert>
-      </section>
-
-      <section class={section} aria-labelledby="server-heading">
-        <h2 class={h2} id="server-heading">
-          {p.serverHeading}
-        </h2>
-        <h3 class={h3}>{p.neverHeading}</h3>
         <Facts rows={p.never} />
-        <h3 class={h3}>{p.seesHeading}</h3>
+      </section>
+
+      <section class={section} aria-labelledby="sees-heading">
+        <h2 class={h2} id="sees-heading">
+          {p.seesHeading}
+        </h2>
         <Facts rows={p.sees} />
-        <h3 class={h3}>{p.keepHeading}</h3>
+      </section>
+
+      <section class={section} aria-labelledby="keep-heading">
+        <h2 class={h2} id="keep-heading">
+          {p.keepHeading}
+        </h2>
         <p>{p.keep}</p>
         <Facts
           rows={Object.values(p.logFields).map(([what, why]) => [
@@ -85,6 +62,41 @@ export function PrivacyPage() {
         />
         <p class="mt-4">{p.logRetention}</p>
         <p class="mt-4">{p.relayLog}</p>
+      </section>
+
+      <section class={section} aria-labelledby="limits-heading">
+        <h2 class={h2} id="limits-heading">
+          {p.limitsHeading}
+        </h2>
+        <ul class="list-disc pl-6 [&>li]:my-2.5">
+          {p.limits.map((limit) => (
+            <li key={limit}>{limit}</li>
+          ))}
+        </ul>
+        <SectionLink link={p.limitsLink} />
+      </section>
+
+      <section class={section} aria-labelledby="check-heading">
+        <h2 class={h2} id="check-heading">
+          {p.checkHeading}
+        </h2>
+        <p>{p.check}</p>
+        {p.checkLinks.map((link) => (
+          <SectionLink key={link[1]} link={link} />
+        ))}
+      </section>
+
+      <section class={section} aria-labelledby="contact-heading">
+        <h2 class={h2} id="contact-heading">
+          {p.contactHeading}
+        </h2>
+        <p>
+          {p.contact}{" "}
+          <a href="mailto:privacy@fidant.se" class="font-medium underline underline-offset-4">
+            privacy@fidant.se
+          </a>
+          .
+        </p>
       </section>
     </Page>
   );

@@ -105,7 +105,7 @@ export function LandingPage() {
         </ol>
       </section>
 
-      <section class="mt-24 grid gap-10 sm:grid-cols-2" aria-label={p.serverHeading}>
+      <section class="mt-24 grid gap-10 sm:grid-cols-2" aria-label={l.serverHeading}>
         <Terms heading={l.neverHeading} rows={p.never} />
         <Terms heading={l.seesHeading} rows={p.sees} />
         <p class="text-muted-foreground sm:col-span-2 m-0">{l.relayNote}</p>
