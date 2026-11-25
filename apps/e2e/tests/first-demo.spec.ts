@@ -329,7 +329,7 @@ test("a sender whose connection setup fails logs why and lets the recipient try 
     recipient.getByRole("heading", { name: "Couldn't connect to the sender's computer" }),
   ).toBeVisible();
   await expect(recipient.getByRole("button", { name: "Try again" })).toBeVisible();
-  await expect(recipient.getByText("This link is open somewhere else")).toHaveCount(0);
+  await expect(recipient.getByText("This link is busy")).toHaveCount(0);
 });
 
 test("a declined offer shows as declined, and the link can be reopened", async ({
