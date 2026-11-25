@@ -17,6 +17,12 @@ export function signalName(id: string): string {
 }
 
 export const imageRepository = "fidant-signal";
+export const signalCluster = "fidant";
+export const signalService = "fidant-signal";
+
+export function pagesBucket(account: string): string {
+  return `fidant-pages-${account}`;
+}
 
 export type DnsRecord = { name: string; value: string };
 

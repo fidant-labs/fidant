@@ -143,18 +143,37 @@ function ciTemplate(currentAccount: string): Template {
   return Template.fromStack(stack as Stack);
 }
 
+function roleNamed(ci: Template, roleName: string) {
+  const [role, ...others] = Object.entries(
+    ci.findResources("AWS::IAM::Role", { Properties: { RoleName: roleName } }),
+  );
+  assert.ok(role && others.length === 0, roleName);
+  return role;
+}
+
+function roleStatements(ci: Template, roleId: string) {
+  const policies = Object.values(ci.findResources("AWS::IAM::Policy")).filter((policy) =>
+    policy.Properties.Roles.some((role: { Ref: string }) => role.Ref === roleId),
+  );
+  assert.equal(policies.length, 1, roleId);
+  assert.deepEqual(policies[0]?.Properties.Roles, [{ Ref: roleId }]);
+  return policies[0]?.Properties.PolicyDocument.Statement;
+}
+
 test("only this repository's production environment can assume the CI role", () => {
-  for (const currentAccount of [dnsAccount, pocAccount]) {
+  for (const [currentAccount, roles] of [
+    [dnsAccount, 1],
+    [pocAccount, 2],
+  ] as const) {
     const ci = ciTemplate(currentAccount);
-    ci.resourceCountIs("AWS::IAM::Role", 1);
+    ci.resourceCountIs("AWS::IAM::Role", roles);
     ci.hasResourceProperties("AWS::IAM::OIDCProvider", {
       Url: "https://token.actions.githubusercontent.com",
       ClientIdList: ["sts.amazonaws.com"],
     });
     const [providerId] = Object.keys(ci.findResources("AWS::IAM::OIDCProvider"));
-    const [role] = Object.values(ci.findResources("AWS::IAM::Role"));
-    assert.equal(role?.Properties.RoleName, "fidant-ci-deploy");
-    assert.deepEqual(role?.Properties.AssumeRolePolicyDocument.Statement, [
+    const [, role] = roleNamed(ci, "fidant-ci-deploy");
+    assert.deepEqual(role.Properties.AssumeRolePolicyDocument.Statement, [
       {
         Action: "sts:AssumeRoleWithWebIdentity",
         Effect: "Allow",
@@ -173,16 +192,79 @@ test("only this repository's production environment can assume the CI role", () 
 
 test("the CI role may only assume its own account's CDK bootstrap roles", () => {
   const ci = ciTemplate(pocAccount);
-  const [role] = Object.values(ci.findResources("AWS::IAM::Role"));
-  assert.equal(role?.Properties.ManagedPolicyArns, undefined);
-  assert.equal(role?.Properties.Policies, undefined);
-  const policies = Object.values(ci.findResources("AWS::IAM::Policy"));
-  assert.equal(policies.length, 1);
-  assert.deepEqual(policies[0]?.Properties.PolicyDocument.Statement, [
+  const [roleId, role] = roleNamed(ci, "fidant-ci-deploy");
+  assert.equal(role.Properties.ManagedPolicyArns, undefined);
+  assert.equal(role.Properties.Policies, undefined);
+  assert.deepEqual(roleStatements(ci, roleId), [
     {
       Action: "sts:AssumeRole",
       Effect: "Allow",
       Resource: `arn:aws:iam::${pocAccount}:role/cdk-hnb659fds-*`,
+    },
+  ]);
+});
+
+test("only the app environment can assume the release role, which only fidant-poc has", () => {
+  assert.doesNotMatch(JSON.stringify(ciTemplate(dnsAccount).toJSON()), /fidant-release|:app"/);
+  const ci = ciTemplate(pocAccount);
+  ci.resourceCountIs("AWS::IAM::ManagedPolicy", 0);
+  const [providerId] = Object.keys(ci.findResources("AWS::IAM::OIDCProvider"));
+  const [, role] = roleNamed(ci, "fidant-release");
+  assert.deepEqual(role.Properties, {
+    RoleName: "fidant-release",
+    AssumeRolePolicyDocument: {
+      Version: "2012-10-17",
+      Statement: [
+        {
+          Action: "sts:AssumeRoleWithWebIdentity",
+          Effect: "Allow",
+          Principal: { Federated: { Ref: providerId } },
+          Condition: {
+            StringEquals: {
+              "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+              "token.actions.githubusercontent.com:sub":
+                "repo:sigill-labs@360211033/sigill@1468787132:environment:app",
+            },
+          },
+        },
+      ],
+    },
+  });
+});
+
+test("the release role may only push the one image, move its tags, redeploy the one service and write the one bucket", () => {
+  const ci = ciTemplate(pocAccount);
+  const [roleId] = roleNamed(ci, "fidant-release");
+  assert.deepEqual(roleStatements(ci, roleId), [
+    { Action: "ecr:GetAuthorizationToken", Effect: "Allow", Resource: "*" },
+    {
+      Action: [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:InitiateLayerUpload",
+        "ecr:UploadLayerPart",
+        "ecr:CompleteLayerUpload",
+        "ecr:PutImage",
+        "ecr:BatchGetImage",
+      ],
+      Effect: "Allow",
+      Resource: `arn:aws:ecr:eu-north-1:${pocAccount}:repository/fidant-signal`,
+    },
+    {
+      Action: ["ecs:DescribeServices", "ecs:UpdateService"],
+      Effect: "Allow",
+      Resource: `arn:aws:ecs:eu-north-1:${pocAccount}:service/fidant/fidant-signal`,
+    },
+    {
+      Action: "ecs:UpdateService",
+      Effect: "Deny",
+      Resource: "*",
+      Condition: { StringEquals: { "ecs:enable-execute-command": "true" } },
+    },
+    {
+      Action: "s3:PutObject",
+      Effect: "Allow",
+      Resource: `arn:aws:s3:::fidant-pages-${pocAccount}/*`,
+      Condition: { StringEquals: { "s3:ResourceAccount": pocAccount } },
     },
   ]);
 });

@@ -44,7 +44,7 @@ export function addStacks(app: App, env: Record<string, string | undefined>): vo
       alertEmail,
     });
   } else if (account === pocAccount) {
-    new CiStack(app, "FidantCi", { env: { account, region: "eu-north-1" } });
+    new CiStack(app, "FidantCi", { env: { account, region: "eu-north-1" }, release: true });
     new BoxStack(app, "FidantApp", { env: { account, region: "eu-north-1" }, alertEmail });
     new CertsStack(app, "FidantPagesCerts", {
       env: { account, region: "us-east-1" },

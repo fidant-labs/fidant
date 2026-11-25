@@ -1,11 +1,14 @@
 import { Stack, type StackProps } from "aws-cdk-lib";
 import * as iam from "aws-cdk-lib/aws-iam";
 import type { Construct } from "constructs";
+import { imageRepository, pagesBucket, signalCluster, signalService } from "./config.ts";
 
 const issuer = "token.actions.githubusercontent.com";
 
+export type CiStackProps = StackProps & { release?: boolean };
+
 export class CiStack extends Stack {
-  constructor(scope: Construct, id: string, props: StackProps) {
+  constructor(scope: Construct, id: string, props: CiStackProps) {
     super(scope, id, props);
 
     const github = new iam.OidcProviderNative(this, "GitHub", {
@@ -30,5 +33,52 @@ export class CiStack extends Stack {
         resources: [`arn:aws:iam::${this.account}:role/cdk-hnb659fds-*`],
       }),
     );
+
+    if (props.release) {
+      const release = new iam.Role(this, "Release", {
+        roleName: "fidant-release",
+        assumedBy: new iam.WebIdentityPrincipal(github.oidcProviderArn, {
+          StringEquals: {
+            [`${issuer}:aud`]: "sts.amazonaws.com",
+            [`${issuer}:sub`]: "repo:sigill-labs@360211033/sigill@1468787132:environment:app",
+          },
+        }),
+      });
+      for (const statement of [
+        // ECR's GetAuthorizationToken takes no resource ARN, so only "*" matches it.
+        new iam.PolicyStatement({ actions: ["ecr:GetAuthorizationToken"], resources: ["*"] }),
+        new iam.PolicyStatement({
+          actions: [
+            "ecr:BatchCheckLayerAvailability",
+            "ecr:InitiateLayerUpload",
+            "ecr:UploadLayerPart",
+            "ecr:CompleteLayerUpload",
+            "ecr:PutImage",
+            "ecr:BatchGetImage",
+          ],
+          resources: [`arn:aws:ecr:${this.region}:${this.account}:repository/${imageRepository}`],
+        }),
+        new iam.PolicyStatement({
+          actions: ["ecs:DescribeServices", "ecs:UpdateService"],
+          resources: [
+            `arn:aws:ecs:${this.region}:${this.account}:service/${signalCluster}/${signalService}`,
+          ],
+        }),
+        new iam.PolicyStatement({
+          // A Deny on "true" holds whether or not the request carries the key.
+          effect: iam.Effect.DENY,
+          actions: ["ecs:UpdateService"],
+          resources: ["*"],
+          conditions: { StringEquals: { "ecs:enable-execute-command": "true" } },
+        }),
+        new iam.PolicyStatement({
+          actions: ["s3:PutObject"],
+          resources: [`arn:aws:s3:::${pagesBucket(this.account)}/*`],
+          conditions: { StringEquals: { "s3:ResourceAccount": this.account } },
+        }),
+      ]) {
+        release.addToPolicy(statement);
+      }
+    }
   }
 }
