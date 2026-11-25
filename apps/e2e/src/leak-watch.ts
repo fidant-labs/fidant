@@ -38,9 +38,11 @@ export interface Leaks {
    */
   watch(file: CanaryFile, label?: string): CanaryFile;
   /**
-   * Watches a key: raw bytes, or text such as a fragment secret (searched as text and bytes).
-   * `allowed` names where an emailed link's secret, value or token may appear (decision 0012);
-   * its SHA-256 stays allowed nowhere.
+   * Watches a key: raw bytes, or text such as a fragment secret, searched as text and as every
+   * byte value its hex, base64url or base64 decodes to. Each byte value, and each text form of
+   * the key (as given, base64url, base64, hex) with and without a leading `#`, is also searched
+   * as its SHA-256. `allowed` names where an emailed link's secret, value or token may appear
+   * (decision 0012); every SHA-256 stays allowed nowhere.
    */
   watchKey(
     label: string,
