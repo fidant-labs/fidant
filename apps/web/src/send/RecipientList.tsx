@@ -237,7 +237,7 @@ function RecipientRow({
                     </>
                   )
                 : null}
-              <p class="m-0 text-[0.9rem] text-muted-foreground" role="status">
+              <p class="m-0 text-[0.9rem] text-muted-foreground empty:sr-only" role="status">
                 {check?.said && t.send.check.waiting}
               </p>
             </div>

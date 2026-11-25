@@ -225,7 +225,13 @@ export function SendPage({
       return;
     }
     connectionsRef.current.delete(linkId);
-    setChecks(({ [linkId]: _closed, ...rest }) => rest);
+    setChecks((all) => {
+      if (!Object.hasOwn(all, linkId)) {
+        return all;
+      }
+      const { [linkId]: _closed, ...rest } = all;
+      return rest;
+    });
     clearTimeout(connection.deadline);
     connection.abort.abort(new Error("connection closed"));
     connection.peer?.close();
