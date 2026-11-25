@@ -110,8 +110,52 @@ const REHOST_AFTER_MS = 5000;
 const field = "flex flex-1 flex-col gap-1";
 const fieldError = "mt-1 mb-0 text-destructive";
 const hint = "text-[0.9rem] text-muted-foreground";
+const stepLabel = "m-0 mb-1 text-[0.85rem] font-medium text-muted-foreground";
+const GLIDE_MS = 450;
 
-export function SendPage({ kind }: { kind: "file" | "text" }) {
+/** Scrolls the window to `el` with an ease-in-out curve; stops if the user scrolls, jumps if they prefer less motion. */
+function glideTo(el: HTMLElement) {
+  const offset = parseFloat(getComputedStyle(el).scrollMarginTop) || 0;
+  const goal = () => el.getBoundingClientRect().top + scrollY - offset;
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    scrollTo({ top: goal(), behavior: "instant" });
+    return;
+  }
+  const from = scrollY;
+  const start = performance.now();
+  let stopped = false;
+  const stop = () => {
+    stopped = true;
+  };
+  const events = ["wheel", "touchstart", "keydown"] as const;
+  for (const name of events) {
+    addEventListener(name, stop, { once: true, passive: true });
+  }
+  const step = (now: number) => {
+    const t = Math.min((now - start) / GLIDE_MS, 1);
+    const eased = t < 0.5 ? 4 * t ** 3 : 1 - (-2 * t + 2) ** 3 / 2;
+    if (!stopped) {
+      scrollTo({ top: from + (goal() - from) * eased, behavior: "instant" });
+    }
+    if (t < 1 && !stopped) {
+      requestAnimationFrame(step);
+    } else {
+      for (const name of events) {
+        removeEventListener(name, stop);
+      }
+    }
+  };
+  requestAnimationFrame(step);
+}
+
+export function SendPage({
+  kind,
+  onUnfinished,
+}: {
+  kind: "file" | "text";
+  /** Told whether any recipient is still unfinished, the same test that guards closing the tab. */
+  onUnfinished(unfinished: boolean): void;
+}) {
   const { t, lang } = useI18n();
   const text = kind === "text";
   // Both kinds can be mounted at once, so the text page prefixes its element IDs.
@@ -132,8 +176,10 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
   const [from, setFrom] = useState("");
   const [fromError, setFromError] = useState<ErrorOf<"fromError">>("");
   const [allowRelay, setAllowRelay] = useState(true);
-  const [step, setStep] = useState<"file" | "recipients">("file");
   const [textLength, setTextLength] = useState(0);
+  const [more, setMore] = useState(false);
+  const [typed, setTyped] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
 
   // Mutable state used from network callbacks, outside render.
   const senderRef = useRef<SenderState>(initialSenderState);
@@ -441,6 +487,9 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
       input.value = "";
     }
     prepare(fits ? chosen : undefined);
+    if (fits && chosen) {
+      goToRecipients();
+    }
   };
 
   const onAdd = (event: Event) => {
@@ -499,6 +548,8 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
       }
     }
     form.reset();
+    setMore(false);
+    setTyped(false);
     setEmailFilled(false);
     input.focus();
   };
@@ -508,11 +559,16 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
     const index = list.findIndex((r) => r.linkId === linkId);
     const neighbour = list[index + 1] ?? list[index - 1];
     dispatchRef.current({ type: "remove", linkId });
-    // The removed card held focus; keep the keyboard user in the list once it has re-rendered.
+    // The removed card held focus; refocus after the re-render.
     requestAnimationFrame(() => {
-      const target = neighbour
+      const button = neighbour
         ? document.querySelector<HTMLElement>(`[data-remove="${neighbour.linkId}"]`)
-        : document.getElementById(id("recipient-name"));
+        : null;
+      const target =
+        button && !button.closest("details:not([open])")
+          ? button
+          : (document.getElementById(id("recipient-name")) ??
+            document.getElementById(id("done-title")));
       target?.focus();
     });
   };
@@ -525,83 +581,128 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
   const connected = sender.recipients.filter(isActive).length;
   const emailed = sender.recipients.filter(emailBound);
   const unfinished = sender.recipients.some((r) => r.status !== "delivered");
+  useEffect(() => onUnfinished(unfinished), [onUnfinished, unfinished]);
+  const delivered = sender.recipients.filter((r) => r.status === "delivered").length;
+  const allDone = hasRecipients && !unfinished;
+  const finished = allDone && !more && !typed;
+  // Read during render: once effects run, a remounted form or list no longer holds focus.
+  const sectionHadFocus = !!document
+    .getElementById(id("recipients"))
+    ?.contains(document.activeElement);
+  useEffect(() => {
+    if (!finished) {
+      return;
+    }
+    setEmailFilled(false);
+    setNameError("");
+    setEmailError(false);
+    const active = document.activeElement;
+    if (sectionHadFocus && (!active || active === document.body)) {
+      document.getElementById(id("done-title"))?.focus();
+    }
+  }, [finished]);
+  const barText = unfinished
+    ? t.send.sendingBar(delivered, sender.recipients.length)
+    : text
+      ? t.secret.allDone
+      : t.send.allDone;
+  const recipientList = (full: boolean) => (
+    <RecipientList
+      recipients={sender.recipients}
+      fileSize={file?.size ?? 0}
+      statusText={text ? { ...t.send.status, ...t.secret.status } : t.send.status}
+      summary={(text ? t.secret : t.send).summary}
+      onRemove={onRemove}
+      full={full}
+    />
+  );
 
-  // Phones show one panel at a time: the file or text first, then recipients after "Continue".
-  const showRecipients = () => {
-    setStep("recipients");
-    requestAnimationFrame(() => document.getElementById(id("recipients-heading"))?.focus());
-  };
-  const showFile = () => {
-    setStep("file");
-    requestAnimationFrame(() => document.getElementById(id("continue"))?.focus());
-  };
+  const goToRecipients = () =>
+    requestAnimationFrame(() => {
+      const target = document.getElementById(id("recipients"));
+      if (target) {
+        glideTo(target);
+      }
+      document.getElementById(id("from"))?.focus({ preventScroll: true });
+    });
 
   return (
-    <Page wide>
-      <div class="pb-24 lg:grid lg:grid-cols-[minmax(0,1fr)_26rem] lg:items-start lg:gap-10 lg:pb-0">
-        <section
-          class={step === "recipients" ? "max-lg:hidden" : ""}
-          aria-labelledby={id("send-title")}
-        >
-          <h1 id={id("send-title")}>{text ? t.menu.secret : t.send.title}</h1>
-          <p class={lede}>{text ? t.secret.lede : t.send.lede}</p>
+    <Page>
+      <section aria-labelledby={id("send-title")}>
+        <p class={stepLabel}>{t.send.step(1)}</p>
+        <h1 id={id("send-title")} class="mt-0">
+          {text ? t.menu.secret : t.send.title}
+        </h1>
+        <p class={lede}>{text ? t.secret.lede : t.send.lede}</p>
 
-          {isLocalhost && (
-            <Alert role="note" className="my-4">
-              <AlertDescription>{t.send.localhost}</AlertDescription>
-            </Alert>
-          )}
-          {lostServer && (
-            <Alert variant="destructive" className="my-4">
-              <AlertDescription>{text ? t.secret.lostServer : t.send.lostServer}</AlertDescription>
-            </Alert>
-          )}
-
-          {text && (
-            <div class={`my-4 ${field}`}>
-              <Label htmlFor="secret-text">{t.secret.label}</Label>
-              <textarea
-                id="secret-text"
-                class="w-full min-w-0 resize-y rounded-lg border border-input bg-transparent px-2.5 py-2 font-mono text-base transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30 dark:disabled:bg-input/80 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40"
-                rows={6}
-                spellcheck={false}
-                translate={false}
-                autocomplete="off"
-                writingsuggestions="false"
-                // camelCase so Preact sets the attribute; the autocorrect property is a boolean in WebKit and Firefox.
-                autoCorrect="off"
-                autocapitalize="off"
-                disabled={hasRecipients}
-                onInput={(event) => {
-                  const value = event.currentTarget.value;
-                  setTextLength(value.length);
-                  prepare(textFile(value));
-                }}
-                aria-invalid={tooLong ? "true" : "false"}
-                aria-describedby={
-                  tooLong ? "secret-text-error secret-text-hint" : "secret-text-hint"
-                }
-              />
-              <p id="secret-text-hint" class={`m-0 ${hint}`}>
-                {t.secret.hint(MAX_TEXT_LENGTH)}
-              </p>
-              {/* Always rendered so the status is announced; the count stays outside it so each key isn't read out. */}
-              <p id="secret-text-error" class={tooLong ? fieldError : "-mt-1 mb-0"}>
-                {tooLong && `${t.secret.count(textLength, MAX_TEXT_LENGTH)} `}
-                <span role="status">{tooLong && t.secret.tooLong}</span>
-              </p>
-            </div>
-          )}
-          {!text && !hasRecipients && (
-            <div class="group relative my-4 rounded-2xl border-2 border-dashed border-border bg-card transition-colors focus-within:outline-3 focus-within:outline-offset-2 focus-within:outline-primary hover:border-foreground/40 hover:bg-muted/40">
-              <input
-                id="file"
-                type="file"
-                class="absolute inset-0 size-full cursor-pointer opacity-0"
-                onChange={onFileChange}
-                aria-invalid={fileError ? "true" : "false"}
-                aria-describedby={fileError ? "file-error" : undefined}
-              />
+        {isLocalhost && (
+          <Alert role="note" className="my-4">
+            <AlertDescription>{t.send.localhost}</AlertDescription>
+          </Alert>
+        )}
+        {text && (
+          <div class={`my-4 ${field}`}>
+            <Label htmlFor="secret-text">{t.secret.label}</Label>
+            <textarea
+              id="secret-text"
+              class="w-full min-w-0 resize-y rounded-lg border border-input bg-transparent px-2.5 py-2 font-mono text-base transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30 dark:disabled:bg-input/80 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40"
+              rows={6}
+              spellcheck={false}
+              translate={false}
+              autocomplete="off"
+              writingsuggestions="false"
+              // camelCase so Preact sets the attribute; the autocorrect property is a boolean in WebKit and Firefox.
+              autoCorrect="off"
+              autocapitalize="off"
+              disabled={hasRecipients}
+              onInput={(event) => {
+                const value = event.currentTarget.value;
+                setTextLength(value.length);
+                prepare(textFile(value));
+              }}
+              aria-invalid={tooLong ? "true" : "false"}
+              aria-describedby={tooLong ? "secret-text-error secret-text-hint" : "secret-text-hint"}
+            />
+            <p id="secret-text-hint" class={`m-0 ${hint}`}>
+              {t.secret.hint(MAX_TEXT_LENGTH)}
+            </p>
+            {/* Always rendered so the status is announced; the count stays outside it so each key isn't read out. */}
+            <p id="secret-text-error" class={tooLong ? fieldError : "-mt-1 mb-0"}>
+              {tooLong && `${t.secret.count(textLength, MAX_TEXT_LENGTH)} `}
+              <span role="status">{tooLong && t.secret.tooLong}</span>
+            </p>
+            <Button
+              type="button"
+              className="mt-2 self-start"
+              disabled={!file || tooLong}
+              onClick={goToRecipients}
+            >
+              {t.send.continue}
+            </Button>
+          </div>
+        )}
+        {!text && !hasRecipients && (
+          <div
+            class={`group relative my-4 rounded-2xl border-2 ${file ? "border-solid" : "border-dashed"} border-border bg-card transition-colors focus-within:outline-3 focus-within:outline-offset-2 focus-within:outline-primary hover:border-foreground/40 hover:bg-muted/40`}
+          >
+            <input
+              id="file"
+              type="file"
+              class="absolute inset-0 size-full cursor-pointer opacity-0"
+              onChange={onFileChange}
+              aria-invalid={fileError ? "true" : "false"}
+              aria-describedby={fileError ? "file-error" : undefined}
+            />
+            {file ? (
+              <label for="file" class="flex items-center gap-3 px-4 py-4">
+                <Icon name="file" class="size-8 flex-none text-muted-foreground" />
+                <span class="min-w-0 flex-1">
+                  <span class="block font-semibold wrap-anywhere">{file.name}</span>
+                  <span class="block text-muted-foreground">{formatBytes(file.size, lang)}</span>
+                </span>
+                <span class="font-medium underline underline-offset-4">{t.send.change}</span>
+              </label>
+            ) : (
               <label
                 for="file"
                 class="flex flex-col items-center gap-3 px-4 py-14 text-center text-muted-foreground lg:py-20"
@@ -610,91 +711,223 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
                   <Icon name="file" class="size-7" />
                 </span>
                 <span>
-                  <strong class="text-foreground">
-                    {file ? t.send.chooseOther : t.send.chooseFile}
-                  </strong>{" "}
-                  {t.send.orDrop}
+                  <strong class="text-foreground">{t.send.chooseFile}</strong> {t.send.orDrop}
                 </span>
               </label>
-            </div>
-          )}
-          {fileError && (
-            <p id="file-error" class={fieldError}>
-              {t.send.fileError[fileError]}
-            </p>
-          )}
-          {file && !text && (
-            <>
-              <h2 class="mt-6 mb-0 text-[1rem] font-bold">{t.send.fileHeading}</h2>
-              <FileCard name={file.name} size={formatBytes(file.size, lang)} />
-              {hash.status === "preparing" && (
-                <p class="text-muted-foreground" role="status">
-                  {t.send.preparing}
-                </p>
-              )}
-              {hash.status === "failed" && (
-                <p class={fieldError} role="alert">
-                  {t.send.readFailed}
-                </p>
-              )}
-              <TechDetails
-                rows={[
-                  [t.common.size, t.format.bytes(file.size)],
-                  [t.common.type, file.type || t.common.typeMissing],
-                  [
-                    "SHA-256",
-                    hash.status === "ready" ? <code>{hash.hex}</code> : t.send.hashPending,
-                  ],
-                ]}
-              />
-            </>
-          )}
-          {hasRecipients && <p class={hint}>{text ? t.secret.locked : t.send.locked}</p>}
-        </section>
-
-        <aside
-          class={`${step === "file" ? "max-lg:hidden" : "max-lg:animate-in max-lg:slide-in-from-right-8 max-lg:fade-in"} lg:sticky lg:top-24 lg:rounded-2xl lg:border lg:border-border lg:bg-card lg:p-6`}
-          aria-labelledby={id("recipients-heading")}
-        >
-          <Button type="button" variant="ghost" className="mb-4 -ml-3 lg:hidden" onClick={showFile}>
-            ← {text ? t.secret.back : t.send.back}
-          </Button>
-          <h2 id={id("recipients-heading")} tabIndex={-1} class="m-0 mb-4 text-[1.25rem] font-bold">
-            {t.send.recipientsHeading}
-          </h2>
-
-          <div class={field}>
-            <Label htmlFor={id("from")}>
-              {t.send.fromLabel}{" "}
-              <span class="font-normal text-muted-foreground">{t.send.optional}</span>
-            </Label>
-            <Input
-              id={id("from")}
-              type="text"
-              autoComplete="name"
-              maxLength={MAX_FROM_LENGTH}
-              value={from}
-              onInput={(event) => {
-                setFrom(event.currentTarget.value);
-                setFromError("");
-              }}
-              disabled={hasRecipients}
-              aria-invalid={fromError ? "true" : "false"}
-              aria-describedby={
-                fromError ? `${id("from-error")} ${id("from-hint")}` : id("from-hint")
-              }
-            />
-            {fromError && (
-              <p id={id("from-error")} class={fieldError}>
-                {t.send.fromError[fromError]}
+            )}
+          </div>
+        )}
+        {fileError && (
+          <p id="file-error" class={fieldError}>
+            {t.send.fileError[fileError]}
+          </p>
+        )}
+        {file && !text && (
+          <>
+            {hasRecipients && <FileCard name={file.name} size={formatBytes(file.size, lang)} />}
+            {hash.status === "preparing" && (
+              <p class="text-muted-foreground" role="status">
+                {t.send.preparing}
               </p>
             )}
-            <p id={id("from-hint")} class={`m-0 ${hint}`}>
-              {t.send.fromHint}
-              {mail && ` ${t.send.fromHintEmail}`}
-            </p>
-          </div>
+            {hash.status === "failed" && (
+              <p class={fieldError} role="alert">
+                {t.send.readFailed}
+              </p>
+            )}
+            <TechDetails
+              rows={[
+                [t.common.size, t.format.bytes(file.size)],
+                [t.common.type, file.type || t.common.typeMissing],
+                ["SHA-256", hash.status === "ready" ? <code>{hash.hex}</code> : t.send.hashPending],
+              ]}
+            />
+          </>
+        )}
+        {hasRecipients && <p class={hint}>{text ? t.secret.locked : t.send.locked}</p>}
+      </section>
 
+      <section
+        id={id("recipients")}
+        class="mt-12 scroll-mt-24 border-t border-border pt-8"
+        aria-labelledby={id("recipients-heading")}
+      >
+        <p class={stepLabel}>{t.send.step(2)}</p>
+        <h2 id={id("recipients-heading")} class="m-0 text-[1.75rem] font-bold">
+          {t.send.peopleHeading}
+        </h2>
+        <p class="mt-1 mb-6 text-muted-foreground wrap-anywhere">
+          {text ? t.secret.label : file && `${file.name} · ${formatBytes(file.size, lang)}`}
+          {finished && from.trim() && ` · ${t.send.fromSummary(from.trim())}`}
+        </p>
+        {lostServer && (
+          <Alert variant="destructive" className="my-4">
+            <AlertDescription>{text ? t.secret.lostServer : t.send.lostServer}</AlertDescription>
+          </Alert>
+        )}
+
+        {finished && (
+          <div class="mb-6 rounded-2xl border-2 border-primary p-6">
+            <div class="flex items-center gap-3">
+              <span class="inline-flex size-10 flex-none items-center justify-center rounded-full bg-primary text-primary-foreground">
+                <Icon name="check" class="size-6" />
+              </span>
+              <h3 id={id("done-title")} tabIndex={-1} class="m-0 text-[1.35rem] font-bold">
+                {t.send.doneTitle}
+              </h3>
+            </div>
+            <p class="mt-3 mb-0">
+              {sender.recipients.length === 1
+                ? (text ? t.secret : t.send).doneOne(sender.recipients[0]?.name ?? "")
+                : (text ? t.secret : t.send).doneMany(sender.recipients.length)}{" "}
+              {t.send.closeTab}
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              className="mt-4"
+              onClick={() => {
+                setMore(true);
+                requestAnimationFrame(() => document.getElementById(id("recipient-name"))?.focus());
+              }}
+            >
+              {t.send.sendMore}
+            </Button>
+          </div>
+        )}
+        {!finished && (
+          <>
+            <div class={field}>
+              <Label htmlFor={id("from")}>
+                {t.send.fromLabel}{" "}
+                <span class="font-normal text-muted-foreground">{t.send.optional}</span>
+              </Label>
+              <Input
+                id={id("from")}
+                type="text"
+                autoComplete="name"
+                maxLength={MAX_FROM_LENGTH}
+                value={from}
+                onInput={(event) => {
+                  setFrom(event.currentTarget.value);
+                  setFromError("");
+                }}
+                disabled={hasRecipients}
+                aria-invalid={fromError ? "true" : "false"}
+                aria-describedby={
+                  fromError ? `${id("from-error")} ${id("from-hint")}` : id("from-hint")
+                }
+              />
+              {fromError && (
+                <p id={id("from-error")} class={fieldError}>
+                  {t.send.fromError[fromError]}
+                </p>
+              )}
+              <p id={id("from-hint")} class={`m-0 ${hint}`}>
+                {t.send.fromHint}
+                {mail && ` ${t.send.fromHintEmail}`}
+              </p>
+            </div>
+            <form
+              class="mt-6 flex flex-wrap items-end gap-2"
+              ref={formRef}
+              onSubmit={onAdd}
+              onInput={(event) =>
+                setTyped(
+                  Array.from(event.currentTarget.elements).some(
+                    (el) => el instanceof HTMLInputElement && el.value.trim() !== "",
+                  ),
+                )
+              }
+              // A held Enter that started on the last Remove button lands here and would submit an empty name.
+              onKeyDown={(event) => {
+                if (event.repeat && event.key === "Enter") {
+                  event.preventDefault();
+                }
+              }}
+              noValidate
+            >
+              <div class={field}>
+                <Label htmlFor={id("recipient-name")}>{t.send.recipientLabel}</Label>
+                <Input
+                  id={id("recipient-name")}
+                  name="name"
+                  type="text"
+                  placeholder={t.send.recipientPlaceholder}
+                  autoComplete="off"
+                  maxLength={100}
+                  disabled={!file || full}
+                  onInput={() => setNameError("")}
+                  aria-invalid={nameError ? "true" : "false"}
+                  aria-describedby={
+                    nameError ? `${id("name-error")} ${id("recipient-hint")}` : id("recipient-hint")
+                  }
+                />
+              </div>
+              {mail && (
+                <div class="flex basis-full flex-col gap-1">
+                  <Label htmlFor={id("recipient-email")}>
+                    {t.send.emailLabel}{" "}
+                    <span class="font-normal text-muted-foreground">{t.send.optional}</span>
+                  </Label>
+                  <Input
+                    id={id("recipient-email")}
+                    name="email"
+                    type="email"
+                    autoComplete="off"
+                    maxLength={MAX_ADDRESS}
+                    disabled={!file || full}
+                    onInput={(event) => {
+                      setEmailFilled(event.currentTarget.value.trim() !== "");
+                      setEmailError(false);
+                    }}
+                    aria-invalid={emailError ? "true" : "false"}
+                    aria-describedby={
+                      emailError ? `${id("email-error")} ${id("email-notice")}` : id("email-notice")
+                    }
+                  />
+                  {emailError && (
+                    <p id={id("email-error")} class={fieldError}>
+                      {t.send.emailError}
+                    </p>
+                  )}
+                  <p id={id("email-notice")} class={`m-0 ${hint}`} aria-live="polite">
+                    {emailFilled && (text ? t.secret.emailNotice : t.send.emailNotice)}
+                  </p>
+                </div>
+              )}
+              <Button type="submit" disabled={!file || full}>
+                {emailFilled ? t.send.addEmail : t.send.add}
+              </Button>
+            </form>
+            {nameError && (
+              <p id={id("name-error")} class={fieldError}>
+                {t.send.nameError[nameError]}
+              </p>
+            )}
+            <p id={id("recipient-hint")} class={hint}>
+              {!file
+                ? text
+                  ? tooLong
+                    ? t.secret.tooLong
+                    : t.secret.first
+                  : t.send.fileFirst
+                : full
+                  ? t.send.full(MAX_LINKS)
+                  : t.send.oneLinkEach}
+            </p>
+          </>
+        )}
+        {finished ? (
+          <details class="mt-2">
+            <summary class="cursor-pointer text-muted-foreground">{t.send.showDetails}</summary>
+            {recipientList(true)}
+          </details>
+        ) : (
+          recipientList(false)
+        )}
+        <details class="mt-6 text-[0.9rem]">
+          <summary class="cursor-pointer text-muted-foreground">{t.send.connectionOptions}</summary>
           <Label className="mt-4 items-start leading-snug font-normal">
             <input
               type="checkbox"
@@ -708,133 +941,51 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
             />
             {t.send.allowRelay}
           </Label>
+        </details>
+      </section>
 
-          <form
-            class="mt-6 flex flex-wrap items-end gap-2"
-            onSubmit={onAdd}
-            // A held Enter that started on the last Remove button lands here and would submit an empty name.
-            onKeyDown={(event) => {
-              if (event.repeat && event.key === "Enter") {
-                event.preventDefault();
-              }
-            }}
-            noValidate
-          >
-            <div class={field}>
-              <Label htmlFor={id("recipient-name")}>{t.send.recipientLabel}</Label>
-              <Input
-                id={id("recipient-name")}
-                name="name"
-                type="text"
-                placeholder={t.send.recipientPlaceholder}
-                autoComplete="off"
-                maxLength={100}
-                disabled={!file || full}
-                onInput={() => setNameError("")}
-                aria-invalid={nameError ? "true" : "false"}
-                aria-describedby={
-                  nameError ? `${id("name-error")} ${id("recipient-hint")}` : id("recipient-hint")
-                }
-              />
-            </div>
-            {mail && (
-              <div class="flex basis-full flex-col gap-1">
-                <Label htmlFor={id("recipient-email")}>
-                  {t.send.emailLabel}{" "}
-                  <span class="font-normal text-muted-foreground">{t.send.optional}</span>
-                </Label>
-                <Input
-                  id={id("recipient-email")}
-                  name="email"
-                  type="email"
-                  autoComplete="off"
-                  maxLength={MAX_ADDRESS}
-                  disabled={!file || full}
-                  onInput={(event) => {
-                    setEmailFilled(event.currentTarget.value.trim() !== "");
-                    setEmailError(false);
-                  }}
-                  aria-invalid={emailError ? "true" : "false"}
-                  aria-describedby={
-                    emailError ? `${id("email-error")} ${id("email-notice")}` : id("email-notice")
-                  }
-                />
-                {emailError && (
-                  <p id={id("email-error")} class={fieldError}>
-                    {t.send.emailError}
-                  </p>
-                )}
-                <p id={id("email-notice")} class={`m-0 ${hint}`} aria-live="polite">
-                  {emailFilled && (text ? t.secret.emailNotice : t.send.emailNotice)}
-                </p>
-              </div>
-            )}
-            <Button type="submit" disabled={!file || full}>
-              {t.send.add}
-            </Button>
-          </form>
-          {nameError && (
-            <p id={id("name-error")} class={fieldError}>
-              {t.send.nameError[nameError]}
-            </p>
-          )}
-          <p id={id("recipient-hint")} class={hint}>
-            {!file
-              ? text
-                ? tooLong
-                  ? t.secret.tooLong
-                  : t.secret.first
-                : t.send.fileFirst
-              : full
-                ? t.send.full(MAX_LINKS)
-                : t.send.oneLinkEach}
-          </p>
-          <RecipientList
-            recipients={sender.recipients}
-            fileSize={file?.size ?? 0}
-            statusText={text ? { ...t.send.status, ...t.secret.status } : t.send.status}
-            onRemove={onRemove}
-          />
-          {unfinished && <p class={hint}>{text ? t.secret.keepOpen : t.send.keepOpen}</p>}
-        </aside>
-      </div>
+      <ServerPanel
+        sees={t.server.seesSender}
+        holds={t.server.senderHolds({
+          online: !lostServer,
+          links: hostedLinks(sender).length,
+          connected,
+          relay: allowRelay,
+          emailed: emailed.length,
+          sending: emailed.filter((r) => r.mail === "sending").length,
+          mailed,
+          kind: text ? "secret" : "file",
+        })}
+        relayed={relayed}
+        afterwards={t.server.senderAfterwards(!lostServer, mailed)}
+        viaRelay={viaRelay}
+        emailed={mailed}
+        kind={text ? "secret" : "file"}
+      />
 
-      <div class={step === "recipients" ? "max-lg:hidden" : ""}>
-        <ServerPanel
-          sees={t.server.seesSender}
-          holds={t.server.senderHolds({
-            online: !lostServer,
-            links: hostedLinks(sender).length,
-            connected,
-            relay: allowRelay,
-            emailed: emailed.length,
-            sending: emailed.filter((r) => r.mail === "sending").length,
-            mailed,
-            kind: text ? "secret" : "file",
-          })}
-          relayed={relayed}
-          afterwards={t.server.senderAfterwards(!lostServer, mailed)}
-          viaRelay={viaRelay}
-          emailed={mailed}
-          kind={text ? "secret" : "file"}
-        />
-      </div>
-
-      {step === "file" && (
+      <p class="sr-only" role="status">
+        {hasRecipients && barText}
+      </p>
+      {hasRecipients && (
         <div
           data-bottom-bar
-          class="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-background/80 p-4 backdrop-blur-xl lg:hidden"
+          data-page-bar
+          class="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-background/80 p-4 backdrop-blur-xl"
         >
-          <Button
-            id={id("continue")}
-            type="button"
-            size="lg"
-            className="h-12 w-full text-base"
-            disabled={!file}
-            onClick={showRecipients}
+          <p
+            class="m-0 mx-auto flex max-w-xl items-center gap-2 text-[0.9rem] font-medium"
+            aria-hidden="true"
           >
-            {t.send.continue}
-          </Button>
+            {unfinished ? (
+              <span
+                class="size-2 flex-none animate-pulse rounded-full bg-primary"
+                aria-hidden="true"
+              />
+            ) : (
+              <Icon name="check" class="size-4 flex-none" />
+            )}
+            {barText}
+          </p>
         </div>
       )}
     </Page>

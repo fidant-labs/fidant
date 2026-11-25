@@ -14,6 +14,12 @@ import type { Kind, Relayed } from "./lib/server-facts.ts";
 import type { Theme } from "./theme.ts";
 
 export const ICONS = {
+  phone: (
+    <>
+      <rect x="7" y="2.5" width="10" height="19" rx="2" />
+      <path d="M11 18.5h2" />
+    </>
+  ),
   computer: (
     <>
       <rect x="4" y="4.5" width="16" height="11" rx="1.5" />
@@ -76,6 +82,9 @@ export const ICONS = {
       <path d="M16 12h.01" />
     </>
   ),
+  link: (
+    <path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" />
+  ),
   eye: (
     <>
       <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
@@ -85,6 +94,16 @@ export const ICONS = {
 };
 
 type IconName = keyof typeof ICONS;
+
+/** A green dot with a ring that keeps expanding, for a transfer still open. Decorative. */
+export function LiveDot() {
+  return (
+    <span class="relative flex size-2.5 flex-none" aria-hidden="true">
+      <span class="absolute inline-flex size-full animate-ping rounded-full bg-emerald-500 opacity-75 motion-reduce:hidden" />
+      <span class="relative inline-flex size-2.5 rounded-full bg-emerald-500" />
+    </span>
+  );
+}
 
 /** Decorative: the text next to an icon always carries its meaning. */
 export function Icon({ name, class: cls }: { name: IconName; class?: string }) {
@@ -120,8 +139,7 @@ export type Route =
   | "receive"
   | "about"
   | "terms"
-  | "security"
-  | "technical";
+  | "security";
 
 /** Changes the page without reloading it, so a transfer held in memory survives. */
 export function navigate(href: string) {
@@ -133,8 +151,13 @@ export function navigate(href: string) {
 /** A link that navigates inside the app; modified clicks (new tab, new window) keep the browser default. */
 export function Link({
   href,
+  to,
   ...props
-}: AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) {
+}: AnchorHTMLAttributes<HTMLAnchorElement> & {
+  href: string;
+  /** Where a plain click goes, when that must differ from what the page shows in `href`. */
+  to?: string | undefined;
+}) {
   return (
     <a
       {...props}
@@ -150,7 +173,7 @@ export function Link({
           return;
         }
         event.preventDefault();
-        navigate(href);
+        navigate(to ?? href);
       }}
     />
   );
@@ -222,7 +245,14 @@ function Choice<T extends string>({
   );
 }
 
-export function Header({ current }: { current: Route }) {
+export function Header({
+  current,
+  open,
+}: {
+  current: Route;
+  /** Pages that still hold an unfinished transfer. */
+  open: { send: boolean; secret: boolean };
+}) {
   const { t } = useI18n();
   return (
     <header class="fixed inset-x-0 top-0 z-50 border-b border-border/60 bg-background/70 backdrop-blur-xl backdrop-saturate-150">
@@ -258,6 +288,7 @@ export function Header({ current }: { current: Route }) {
                   class={`${buttonVariants({ variant: section === current ? "secondary" : "ghost" })} max-sm:px-1 max-sm:text-[0.8125rem]`}
                 >
                   {t.menu[section]}
+                  {(section === "send" || section === "secret") && open[section] && <LiveDot />}
                 </Link>
               </li>
             ))}
@@ -334,10 +365,19 @@ export function Footer({ theme, onTheme }: { theme: Theme; onTheme(next: Theme):
   );
 }
 
-/** Page content under the fixed header; `wide` for layouts with side panels. */
-export function Page({ children, wide }: { children: ComponentChildren; wide?: boolean }) {
+/** Page content under the fixed header. */
+export function Page({
+  children,
+  tall,
+}: {
+  children: ComponentChildren;
+  /** At least a screen high, so only the top of the footer shows. */
+  tall?: boolean;
+}) {
   return (
-    <main class={`mx-auto px-4 pt-24 pb-16 ${wide ? "max-w-6xl" : "max-w-xl"}`}>{children}</main>
+    <main class={`mx-auto px-4 pt-24 pb-16 max-w-xl ${tall ? "min-h-[calc(100dvh-4.5rem)]" : ""}`}>
+      {children}
+    </main>
   );
 }
 
@@ -400,11 +440,18 @@ export function FileCard({ name, size }: { name: string; size: string }) {
   );
 }
 
-function Facts({ rows }: { rows: ReadonlyArray<readonly [string, ComponentChildren]> }) {
+function Facts({
+  rows,
+  inline,
+}: {
+  rows: ReadonlyArray<readonly [string, ComponentChildren]>;
+  /** Short values share a line; a value too wide for what is left starts a new one. */
+  inline?: boolean;
+}) {
   return (
-    <dl class="mt-3 grid gap-2">
+    <dl class={inline ? "mt-3 flex flex-wrap gap-x-10 gap-y-2" : "mt-3 grid gap-2"}>
       {rows.map(([term, value]) => (
-        <div key={term}>
+        <div key={term} class={inline ? "max-w-full min-w-0" : undefined}>
           <dt class="text-muted-foreground">{term}</dt>
           <dd class="m-0 wrap-anywhere">{value}</dd>
         </div>
@@ -422,7 +469,7 @@ export function TechDetails({
   return (
     <details class="mt-8 text-[0.9rem] [&_code]:text-[0.85rem]">
       <summary class="cursor-pointer text-muted-foreground">{t.common.techDetails}</summary>
-      <Facts rows={rows} />
+      <Facts rows={rows} inline />
     </details>
   );
 }
@@ -491,11 +538,13 @@ export function ServerPanel({
       : []),
   ];
   return (
-    <section class="mt-8 text-[0.9rem]" aria-labelledby={headingId}>
-      <h2 id={headingId} class="m-0 text-[1rem] font-bold">
-        {t.server.heading}
-      </h2>
-      <Facts rows={rows} />
+    <section class="mt-10 text-[0.9rem]" aria-labelledby={headingId}>
+      <details>
+        <summary id={headingId} class="cursor-pointer font-medium text-muted-foreground">
+          {t.server.heading}
+        </summary>
+        <Facts rows={rows} />
+      </details>
     </section>
   );
 }
@@ -510,6 +559,29 @@ export function Problem({ title, body }: { title: string; body: string }) {
       </AlertTitle>
       <AlertDescription>{body}</AlertDescription>
     </Alert>
+  );
+}
+
+/** Shows `active` in place of `idle` without the width changing: both share one grid cell and the hidden one keeps its space. */
+export function SwapLabel({
+  idle,
+  active,
+  on,
+}: {
+  idle: ComponentChildren;
+  active: ComponentChildren;
+  on: boolean;
+}) {
+  return (
+    <span class="grid justify-items-center">
+      <span class={`col-start-1 row-start-1 ${on ? "invisible" : ""}`}>{idle}</span>
+      <span
+        class={`col-start-1 row-start-1 inline-flex items-center gap-1.5 ${on ? "" : "invisible"}`}
+      >
+        <Icon name="check" class="size-4" />
+        {active}
+      </span>
+    </span>
   );
 }
 
@@ -541,4 +613,22 @@ export function useCopyNote() {
   };
 
   return { note, copy };
+}
+
+/** A section's [text, href] link, on its own line. */
+export function SectionLink({ link: [text, href] }: { link: readonly [string, string] }) {
+  return (
+    <p>
+      {/* Same-site links navigate in place, so a send open in another page survives. */}
+      {href.startsWith("/") ? (
+        <Link href={href} class="font-medium underline underline-offset-4">
+          {text}
+        </Link>
+      ) : (
+        <a href={href} class="font-medium underline underline-offset-4">
+          {text}
+        </a>
+      )}
+    </p>
+  );
 }

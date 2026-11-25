@@ -118,7 +118,7 @@ async function openSender(
 /** Adds a recipient on the sender page and returns their link, with its secret watched. */
 async function addRecipient(leaks: Leaks, sender: Page, name: string): Promise<string> {
   await sender.getByLabel("Who is it for?").fill(name);
-  await sender.getByRole("button", { name: "Add", exact: true }).click();
+  await sender.getByRole("button", { name: "Create link", exact: true }).click();
   const link = (await sender.getByLabel(`Link for ${name}`, { exact: true }).textContent()) ?? "";
   const secret = new URL(link).hash.slice(1);
   expect(secret, `link secret for ${name}`).toMatch(/^[A-Za-z0-9_-]{43}$/);
@@ -158,7 +158,7 @@ async function receive(
   if (from) {
     await expect(page.getByText(from)).toHaveCount(0);
   }
-  const again = page.waitForEvent("download");
+  const again = page.waitForEvent("download", { timeout: 60_000 });
   await page.getByRole("link", { name: "Save file" }).click();
   expect((await again).suggestedFilename()).toBe(file.name);
   return { page, bytes };
@@ -200,8 +200,9 @@ test("delivers a file to two recipients with a verified checksum", async ({
   }
 
   for (const name of names) {
-    await expect(delivered(sender, name)).toBeVisible();
+    await expect(delivered(sender, name)).toBeAttached();
   }
+  await sender.getByText("Show details", { exact: true }).click();
   const cards = names.map((name) => recipientRow(sender, name));
   for (const scope of [...cards, ...received.map(({ page }) => page)]) {
     await expect(scope.getByText("Direct connection", { exact: true })).toBeVisible();
@@ -237,7 +238,7 @@ test("refuses used, unknown and malformed links", async ({ demo, leaks, canary, 
 
   const first = await receive(demo, "recipient", link, file, "100 KB");
   expect(sha256Hex(first.bytes)).toBe(sha256Hex(file.bytes));
-  await expect(delivered(sender, name)).toBeVisible();
+  await expect(delivered(sender, name)).toBeAttached();
   await first.page.context().close();
 
   const reopened = await demo.open("reopened");
@@ -431,7 +432,7 @@ test("the sender's name must fit with the file name, and stray drops are ignored
   expect(await cancelled("#recipient-name", someFile)).toEqual([true, true]);
   const name = makeName(leaks, canary, "Anna");
   await page.getByLabel("Who is it for?").fill(name);
-  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByRole("button", { name: "Create link", exact: true }).click();
   await expect(page.getByText("Your name and the file name are too long together")).toBeVisible();
   await expect(page.getByRole("list", { name: "Recipients" })).toHaveCount(0);
 
@@ -512,7 +513,7 @@ test("the Why? link to /how keeps a transfer alive on both pages", async ({
   });
   const bytes = await readFile(await (await downloading).path());
   expect(sha256Hex(bytes)).toBe(sha256Hex(file.bytes));
-  await expect(delivered(sender, name)).toBeVisible();
+  await expect(delivered(sender, name)).toBeAttached();
 });
 
 test("a lost sender says whether the file may have been saved", async ({ demo, leaks, canary }) => {
@@ -697,7 +698,9 @@ test.describe("a hostile path", () => {
       const recipient = await demo.open("recipient");
       const refused = expectRefusal(recipient);
       await recipient.goto(link);
-      await recipient.getByRole("button", { name: "Download" }).click();
+      const downloadButton = recipient.getByRole("button", { name: "Download" });
+      await expect(downloadButton).toBeVisible({ timeout: 30_000 });
+      await downloadButton.click();
       await refused(sender, name);
     });
   }
@@ -717,7 +720,9 @@ test.describe("a hostile path", () => {
     // Attempt 1 is recorded, and the sender closes the channel instead of sending END.
     const recipient = await demo.open("recipient");
     await recipient.goto(link);
-    await recipient.getByRole("button", { name: "Download" }).click();
+    const downloadButton = recipient.getByRole("button", { name: "Download" });
+    await expect(downloadButton).toBeVisible({ timeout: 30_000 });
+    await downloadButton.click();
     await expect(recipient.getByText("The connection to the sender was lost")).toBeVisible();
 
     // Attempt 2 is the same link and tab: a fresh transferId, attempt 1's frames. Its META fails to open, so there is no offer to download.
@@ -827,7 +832,7 @@ test.describe("through a server restart", () => {
 
     const { bytes } = await receive(demo, "recipient", link, file, "100 KB", "", sender);
     expect(sha256Hex(bytes)).toBe(sha256Hex(file.bytes));
-    await expect(delivered(sender, name)).toBeVisible();
+    await expect(delivered(sender, name)).toBeAttached();
     expect(navigations).toBe(0);
     await expect(lost(sender)).toHaveCount(0);
   });
@@ -848,7 +853,7 @@ test.describe("through a server restart", () => {
     await restartServer();
     const bytes = await download(recipient, file);
     expect(sha256Hex(bytes)).toBe(sha256Hex(file.bytes));
-    await expect(delivered(sender, name)).toBeVisible();
+    await expect(delivered(sender, name)).toBeAttached();
   });
 
   test("a recipient still connecting gets the file after the restart", async ({
@@ -890,7 +895,7 @@ test.describe("through a server restart", () => {
     });
     const bytes = await download(recipient, file);
     expect(sha256Hex(bytes)).toBe(sha256Hex(file.bytes));
-    await expect(delivered(sender, name)).toBeVisible();
+    await expect(delivered(sender, name)).toBeAttached();
   });
 });
 
@@ -921,7 +926,7 @@ async function addEmailed(
 ): Promise<Emailed> {
   await sender.getByLabel("Who is it for?").fill(name);
   await sender.getByLabel("Their email address").fill(to);
-  await sender.getByRole("button", { name: "Add", exact: true }).click();
+  await sender.getByRole("button", { name: "Create and email link", exact: true }).click();
   await expect(
     recipientRow(sender, name).getByText(`Email sent to ${maskAddress(to)}`),
   ).toBeVisible();
@@ -1103,7 +1108,8 @@ test.describe("emailed links", () => {
 
     const bytes = await download(recipient, file);
     expect(sha256Hex(bytes)).toBe(sha256Hex(file.bytes));
-    await expect(delivered(sender, name)).toBeVisible();
+    await expect(delivered(sender, name)).toBeAttached();
+    await sender.getByText("Show details", { exact: true }).click();
     await expect(verified).toBeVisible();
 
     // A reload joins with the tab's token, without a new code, and the sender refuses a used link.
@@ -1267,7 +1273,7 @@ test.describe("emailed links", () => {
     await expect(
       recipient.getByRole("region", { name: "The secret", exact: true }),
     ).toHaveJSProperty("textContent", text);
-    await expect(delivered(sender, name)).toBeVisible();
+    await expect(delivered(sender, name)).toBeAttached();
   });
 });
 

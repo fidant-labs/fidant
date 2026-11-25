@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { displayName, formatBytes, formatProgress, toHex } from "./format.ts";
+import {
+  displayName,
+  etaTracker,
+  formatBytes,
+  formatProgress,
+  formatTimeLeft,
+  toHex,
+} from "./format.ts";
 
 test("displayName drops names with nothing visible to show", () => {
   assert.equal(displayName("  Åsa Öberg "), "Åsa Öberg");
@@ -40,4 +47,21 @@ test("formatBytes and formatProgress in Swedish", () => {
   assert.equal(formatBytes(123_456_789, "sv"), "123 MB");
   // Intl puts a no-break space before the Swedish percent sign.
   assert.equal(formatProgress(1_100_000, 2_400_000, "sv"), "45\u00a0% · 1,1 MB av 2,4 MB");
+});
+
+test("etaTracker waits for the warm-up, then uses the rate over its window", () => {
+  const left = etaTracker(10_000_000, 3000, 4000);
+  assert.equal(left(0, 0), undefined);
+  assert.equal(left(2000, 1_000_000), undefined);
+  assert.equal(left(4000, 4_000_000), 6);
+  // After a stall the window has forgotten the fast part, so the estimate grows.
+  assert.ok((left(8000, 4_100_000) ?? 0) > 60);
+});
+
+test("formatTimeLeft rounds to steps that don't flicker", () => {
+  assert.equal(formatTimeLeft(2, "en"), "About 5 seconds left");
+  assert.equal(formatTimeLeft(41, "en"), "About 40 seconds left");
+  assert.equal(formatTimeLeft(56, "en"), "About 1 minute left");
+  assert.equal(formatTimeLeft(150, "sv"), "Ungefär 3 minuter kvar");
+  assert.equal(formatTimeLeft(7200, "sv"), "Ungefär 2 timmar kvar");
 });

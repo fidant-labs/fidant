@@ -25,6 +25,9 @@ export default defineConfig({
   use: {
     // Set by global setup once the stack is running. Workers start later and inherit it.
     baseURL: process.env.SIGILL_E2E_BASE_URL,
+    // A missing element fails within seconds instead of at the test timeout.
+    actionTimeout: 5_000,
+    navigationTimeout: 15_000,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     ignoreHTTPSErrors: true,
