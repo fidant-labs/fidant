@@ -467,3 +467,49 @@ test("hands the first relay up's ICE servers, with its own credentials, in joine
     server.close();
   }
 });
+
+test("without a web root, serves the relay routes and 404 for every other path", async (t) => {
+  const bare = await startServer({
+    port: 0,
+    root: undefined,
+    certDir: join(dir, "bare-certs"),
+    hosts: ["localhost"],
+  });
+  t.after(() => bare.close());
+  const { port } = bare.address() as AddressInfo;
+  const ask = (method: string, path: string) =>
+    new Promise<{ status: number; headers: IncomingHttpHeaders; body: string }>((done, fail) => {
+      httpsRequest({ host: "localhost", port, path, method, rejectUnauthorized: false }, (res) => {
+        let body = "";
+        res.on("data", (chunk) => {
+          body += chunk;
+        });
+        res.on("end", () => done({ status: res.statusCode ?? 0, headers: res.headers, body }));
+      })
+        .on("error", fail)
+        .end();
+    });
+  const status = await ask("GET", "/relay-status");
+  assert.equal(status.status, 200);
+  assert.equal(status.body, "[]");
+  const home = await ask("GET", "/");
+  assert.equal(home.status, 404);
+  assert.equal(home.body, "");
+  assert.ok(home.headers["content-security-policy"]);
+  for (const [method, path] of [
+    ["GET", "/index.html"],
+    ["GET", "/assets/app.js"],
+    ["GET", "/r/anything"],
+    ["HEAD", "/"],
+    ["POST", "/"],
+  ] as const) {
+    assert.equal((await ask(method, path)).status, 404, `${method} ${path}`);
+  }
+  assert.equal((await ask("POST", "/relay-status")).status, 405);
+  const socket = new WsClient(`wss://localhost:${port}/signal`, { rejectUnauthorized: false });
+  t.after(() => socket.terminate());
+  const first = await new Promise<string>((done, fail) => {
+    socket.once("message", (data) => done(String(data))).once("error", fail);
+  });
+  assert.equal(parseServerMessage(first)?.t, "hello");
+});
