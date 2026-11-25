@@ -88,7 +88,7 @@ importers:
         version: 0.5.2
       preact:
         specifier: ^11.2.0
-        version: 11.2.0
+        version: 11.2.0(preact-render-to-string@6.8.3)
       radix-ui:
         specifier: ^1.8.1
         version: 1.8.1(@preact/compat@18.3.2(preact@11.2.0))(@preact/compat@18.3.2(preact@11.2.0))
@@ -108,6 +108,9 @@ importers:
       '@types/node':
         specifier: ^26.6.6
         version: 26.6.6
+      preact-render-to-string:
+        specifier: ^6.8.3
+        version: 6.8.3(preact@11.2.0)
       shadcn:
         specifier: ^4.23.0
         version: 4.23.0
@@ -3018,6 +3021,11 @@ packages:
     resolution: {integrity: sha512-C+y9x90UElAddDZmV4qOx9W53B61PO7cIqWz2dQsWlwswuq4mr8NEwytdGKboYbQlGZ3awrkTeNvcZiZNHnQ8A==}
     engines: {node: '>=20'}
 
+  preact-render-to-string@6.8.3:
+    resolution: {integrity: sha512-yg04edGH7f5yfBUV4uyL2brzPB3e26AimLO5WNfUtwoCv8LBJ7Z+dElG8P5v+o8UqMUM6kZhnn4I/HEXNyP0ZQ==}
+    peerDependencies:
+      preact: '>=10 || >= 11.0.0-0'
+
   preact@11.2.0:
     resolution: {integrity: sha512-/HfHI/7N84e6GrWBJ3J280z3mLaRJiDcSvj/A+y/4AbLnND/1UlGHe1sR6oYuTGwId0nP7dqDU9OnLxMPZ7xBg==}
     peerDependencies:
@@ -4125,7 +4133,7 @@ snapshots:
 
   '@preact/compat@18.3.2(preact@11.2.0)':
     dependencies:
-      preact: 11.2.0
+      preact: 11.2.0(preact-render-to-string@6.8.3)
 
   '@puppeteer/browsers@3.2.7(proxy-agent@8.0.3)':
     dependencies:
@@ -6260,7 +6268,13 @@ snapshots:
 
   powershell-utils@0.2.1: {}
 
-  preact@11.2.0: {}
+  preact-render-to-string@6.8.3(preact@11.2.0):
+    dependencies:
+      preact: 11.2.0(preact-render-to-string@6.8.3)
+
+  preact@11.2.0(preact-render-to-string@6.8.3):
+    optionalDependencies:
+      preact-render-to-string: 6.8.3(preact@11.2.0)
 
   pretty-ms@9.3.1:
     dependencies:
