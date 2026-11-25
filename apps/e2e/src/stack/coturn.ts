@@ -174,6 +174,8 @@ export function coturnConfig(options: {
     // On loopback, every peer of the local stack is on loopback too.
     ...(loopback ? ["allow-loopback-peers"] : []),
     // ponytail: the loopback stack keeps plain TURN over TCP; TLS is covered by the networks suite.
+    // Unlike DTLS and the CLI, TLS listeners are on by default in every coturn, 4.19.2 included,
+    // so a run without TLS needs `no-tls`.
     ...(tls
       ? [`tls-listening-port=${tls.port}`, `cert=${tls.cert}`, `pkey=${tls.pkey}`]
       : ["no-tls"]),
