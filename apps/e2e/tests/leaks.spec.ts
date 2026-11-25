@@ -271,7 +271,7 @@ test.describe("the detector stays quiet on", () => {
     const link = canary.fork("link").bytes(16).toString("base64url");
     await open(page);
     await page.evaluate(
-      async ({ key, name, data, hex, hash, size, window }) => {
+      async ({ key, name, data, hex, hash, size, window, lookup }) => {
         await fetch(`/?k=${key}`);
         await fetch("/", { headers: { "x-test": name } });
         await fetch("/upload", { method: "POST", body: JSON.stringify({ data }) });
@@ -279,6 +279,7 @@ test.describe("the detector stays quiet on", () => {
         await fetch(`/?h=${hash}`);
         await fetch(`/files/${encodeURIComponent(name.normalize("NFD"))}`);
         await fetch(`/?k=${window}`);
+        await fetch(`/lookup/${lookup}`);
         await fetch("/", { headers: { "x-size": String(size) } });
         console.log(key);
       },
@@ -290,6 +291,7 @@ test.describe("the detector stays quiet on", () => {
         hash: sha256Hex(other.bytes),
         size: other.size,
         window: otherKey.bytes.subarray(5, 21).toString("base64url"),
+        lookup: sha256Hex(Buffer.from(otherKey.text)),
       },
     );
     await relay(page, link, otherKey.text);

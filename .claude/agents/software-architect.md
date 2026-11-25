@@ -11,7 +11,7 @@ Name the trade-off in every finding: what the change gains, what it gives up, an
 
 ## What to check in Sigill
 
-The system today is a pnpm monorepo: `apps/web` is a Preact client built by Vite, and `apps/server` is a dependency-free Node HTTPS server that serves the built client. Planned: browser-side encryption with WebCrypto, peer-to-peer transfer over WebRTC, BankID identity, signed receipts, a tamper-evident audit log, and DynamoDB as the one store (`docs/decisions/0004-one-store-dynamodb.md`).
+Read the Layout section of `AGENTS.md` and `docs/decisions/` for the shape of the system.
 
 - The trust boundary is the architecture. Encryption happens in the browser. Read the Invariants section of `AGENTS.md` and the decision records it names as they stand at the merge base, not in the working tree (`git show "$(git merge-base origin/main HEAD)":<path>`). Data in a place an exception allows is not a finding. The same data anywhere else, or a change that widens an exception or adds one, is. Outside those places, a design that needs the server, a relay, a database or email to see file content, file names, file metadata or keys breaks the product.
 - A design that persists, transmits or derives keys anywhere that section does not allow is a finding.

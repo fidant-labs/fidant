@@ -7,7 +7,13 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { finished } from "node:stream/promises";
 import { setTimeout as sleep } from "node:timers/promises";
-import { repoRoot, runDir, serverPidFile, serverStderrLog, serverStdoutLog } from "../paths.ts";
+import {
+  repoRoot,
+  serverPidFile,
+  serverStderrLog,
+  serverStdoutLog,
+  stackEventsLog,
+} from "../paths.ts";
 import { parsePort } from "./port.ts";
 import type { RunningService, Service } from "./service.ts";
 
@@ -42,10 +48,17 @@ export async function startServer(
     : {};
   // Settles once every server run so far has closed, so no output can arrive after stop().
   let closed = Promise.resolve();
-  const spawnChild = (port: number): ChildProcess => {
+  const spawnChild = (port: number, extra: Record<string, string> = {}): ChildProcess => {
     const child = spawn(command as string, args, {
       cwd: repoRoot,
-      env: { ...process.env, ...stackEnv, ...origin, PORT: String(port), CERT_DIR: certDir },
+      env: {
+        ...process.env,
+        ...stackEnv,
+        ...origin,
+        ...extra,
+        PORT: String(port),
+        CERT_DIR: certDir,
+      },
       stdio: ["ignore", "pipe", "pipe"],
     });
     // A restarted server appends to the same logs, so the leak checks cover both runs. stop()
@@ -58,7 +71,9 @@ export async function startServer(
     );
     return child;
   };
-  let child = spawnChild(requested);
+  // The first run skips the warm-up window, so specs see `unknown` links at once. A restarted
+  // server keeps the real window, as in production.
+  let child = spawnChild(requested, { STARTING_MS: "0" });
 
   // Backstop: if the runner exits without calling stop(), do not leave the server or its
   // certificate behind. Only synchronous work runs inside an exit handler.
@@ -69,13 +84,14 @@ export async function startServer(
   process.once("exit", cleanUpOnExit);
 
   const event = (line: string) => {
-    appendFileSync(join(runDir, "stack-events.log"), `${new Date().toISOString()} ${line}\n`);
+    appendFileSync(stackEventsLog, `${new Date().toISOString()} ${line}\n`);
     console.error(`[e2e stack] ${line}`);
   };
 
   /**
    * Once the server listens: on the local stack, publish its PID for restartServer() and, like
-   * systemd's Restart=always, start it again on the same port when something SIGTERMs it.
+   * systemd's Restart=always, start it again on the same port when something SIGTERMs it. The
+   * server handles SIGTERM and exits with code 0, so either counts as a restart.
    */
   const watch = (port: number) => {
     if (!wrapper && child.pid !== undefined) {
@@ -85,7 +101,7 @@ export async function startServer(
       if (stopped) {
         return;
       }
-      if (wrapper || signal !== "SIGTERM") {
+      if (wrapper || (signal !== "SIGTERM" && code !== 0)) {
         event(`server exited unexpectedly (code ${code}, signal ${signal})`);
         return;
       }

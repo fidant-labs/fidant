@@ -254,6 +254,14 @@ function confirmation() {
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
 
+/** Waits, for up to 5 s, until `done()` holds, then a little longer for anything that should not follow. */
+async function until(done: () => boolean) {
+  for (let i = 0; i < 250 && !done(); i++) {
+    await settle();
+  }
+  await settle();
+}
+
 /** A channel pair that records the kind of every frame, and closes like a page does after a "differs". */
 function watchedPair() {
   const kinds: number[] = [];
@@ -276,7 +284,7 @@ test("no offer before both checks", async () => {
     senderConfirm: Promise.resolve(true),
     recipientConfirm: own.promise,
   });
-  await settle();
+  await until(() => kinds.length >= 2);
   assert.deepEqual(r.offers, []);
   assert.deepEqual(kinds, [SenderKind.INIT, SenderKind.CHECK]);
   own.resolve(true);

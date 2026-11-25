@@ -101,7 +101,15 @@ export const en = {
     about: "About – Fidant",
     terms: "Terms of use – Fidant",
     security: "Security – Fidant",
+    notFound: "Page not found – Fidant",
   },
+  notFound: {
+    title: "Page not found",
+    body: "There's no page at this address. It may have moved, or the link may be mistyped.",
+    home: "Go to the front page",
+  },
+  noscript:
+    "The encryption runs in your browser, so Fidant needs JavaScript. Turn it on to send or receive a file.",
   openTransfer: {
     send: "A file transfer is still open in this tab.",
     secret: "A secret is still being shared from this tab.",
@@ -392,6 +400,8 @@ export const en = {
       failed: (name: string) =>
         `The file didn't arrive intact through ${name}'s link. The link can be opened again to retry.`,
     },
+    noConnect: (name: string) =>
+      `${name}'s link was opened but couldn't connect to your computer. The link still works if they try again.`,
     noRelay: (name: string) =>
       `${name}'s link was opened but couldn't connect directly. Allowing our relay may let it connect when they try again.`,
     /** `to` is the masked address, like a***@example.se. */
@@ -756,7 +766,6 @@ export const en = {
     license: "Open source, MIT license",
   },
   preview: {
-    title: "Private file transfer with Fidant",
     receiveTitle: "Sent to you with Fidant",
     receiveDescription:
       "Open the link to receive it. It's encrypted the whole way, and the link works only while the sender's page is open.",
@@ -890,7 +899,7 @@ export const en = {
           "This matters beyond privacy: the setup messages carry the fingerprints of WebRTC's own DTLS encryption. Because the server can't change them, it can't put itself between the two browsers. All of this rests on our server not having the key. For a link we email it had the key, so it could read and change that link's setup messages and put itself in between.",
           "That is what the check number is for. Each browser makes a new certificate for every connection, and the recipient's browser first sends a commitment to its fingerprint, a hash, before the sender's browser makes its offer. Both browsers then compute six digits from the two fingerprints of their own connection. With someone in between there are two connections, so the two screens show different numbers, and because of the commitment a party in the middle can only guess: one chance in a million per connection. The number is shown on screen only, never sent or stored.",
           "With the check number on, which it is by default for a link we email, the recipient reads their number aloud and the sender compares it. Nothing about the file is sent until both have said it matches, and “It differs” on either side stops the attempt. Once the recipient's browser has answered an offer, it connects again only when the recipient clicks Try again, and the sender's page stops offering a link after 5 attempts that ended before both confirmed, each limited to 5 minutes. The check shows that nobody sat between the two browsers. It can't show that the page code itself is honest.",
-          "If the connection to our server drops, both pages try to reconnect by themselves. The sender's page registers its links again, except links we emailed: our server forgot those with the old connection, so they stop working and the sender's page says so. A recipient who was still connecting tries again a few times before giving up. A transfer that has already started doesn't need our server and carries on.",
+          "If the connection to our server drops, both pages try to reconnect by themselves. The sender's page registers its links again, except links we emailed: our server forgot those with the old connection, so they stop working and the sender's page says so. A recipient who was still connecting tries again a few times before giving up. For a minute after our server starts, it tells a recipient whose link it doesn't know yet to wait, so the recipient keeps trying while the sender's page registers the link again. A transfer that has already started doesn't need our server and carries on.",
         ],
       },
       layers: {
@@ -942,7 +951,7 @@ export const en = {
       norelay: {
         heading: "Refusing the relay",
         body: [
-          "The sender can untick \"Allow our relay if a direct connection isn't possible\". Our server then gives that send no relay credentials, only the STUN address, so an unmodified browser can't use the relay. As a backstop, if the sender's browser still sees a relayed connection, it ends it. File data only flows after the recipient accepts, so in practice that happens before any of it has passed.",
+          "The sender can untick \"Allow our relay if a direct connection isn't possible\". Our server then gives that send no relay credentials, only the STUN address, so an unmodified browser can't use the relay. The sender's browser also enforces the choice itself: it starts the connection without relay credentials, whatever our server sends. As a backstop, if the sender's browser still sees a relayed connection, it ends it. File data only flows after the recipient accepts, so in practice that happens before any of it has passed.",
           "The limit: a modified recipient can still send its side through our relay with credentials from another pairing, or through any public relay. That recipient has the key anyway. The choice decides which infrastructure carries the encrypted traffic, not who can read the file.",
         ],
       },
@@ -1532,7 +1541,7 @@ export const en = {
     sees: [
       [
         "Your IP address and browser details",
-        "Like any website you visit. We use them only to show you this page and connect you. Our server never writes them to its logs. Our relay doesn't log them either, except while we fix a fault or stop abuse (see below).",
+        "Like any website you visit, along with which page you open, whose address names the language you chose. We use them only to show you this page and connect you. Our server never writes them to its logs. Our relay doesn't log them either, except while we fix a fault or stop abuse (see below).",
       ],
       [
         "A link ID",

@@ -55,7 +55,7 @@ function statusOf(state: SenderState, linkId: string) {
 }
 
 function joined(linkId: string, attempt: string, turn = true): SenderAction {
-  return { type: "joined", linkId, attempt, iceServers: [], turn };
+  return { type: "joined", linkId, attempt, iceServers: [], turn, allowRelay: true };
 }
 
 test("add creates a waiting recipient from a link and keeps insertion order", () => {
@@ -87,10 +87,46 @@ test("add ignores a duplicate link ID and stops at MAX_LINKS", () => {
   assert.equal(extra.state, full);
 });
 
+test("a relay refused by the sender or the server starts without TURN servers", () => {
+  // The server sends STUN and TURN URLs in one entry with the credential.
+  const mixed = {
+    urls: ["stun:127.0.0.1:3478", "turn:127.0.0.1:3478?transport=udp"],
+    username: "1700000000",
+    credential: "hmac",
+  };
+  for (const [turn, allowRelay] of [
+    [false, true],
+    [true, false],
+  ] as const) {
+    const { state: s0, linkId } = withRecipient();
+    const joined = update(s0, {
+      type: "joined",
+      linkId,
+      attempt: A,
+      iceServers: [mixed, ...TURN],
+      turn,
+      allowRelay,
+    });
+    assert.deepEqual(joined.effects, [
+      { type: "start", linkId, attempt: A, iceServers: [{ urls: ["stun:127.0.0.1:3478"] }] },
+    ]);
+    // The backstop keys on the same choice: a relay path still ends the attempt.
+    const relayed = update(joined.state, { type: "path", linkId, attempt: A, path: "relay" });
+    assert.equal(findRecipient(relayed.state, linkId)?.noRelay, true, `turn ${turn}`);
+  }
+});
+
 test("a full delivery walks waiting → connecting → offered → receiving → delivered", () => {
   const { state: s0, linkId } = withRecipient();
 
-  const s1 = update(s0, { type: "joined", linkId, attempt: A, iceServers: TURN, turn: true });
+  const s1 = update(s0, {
+    type: "joined",
+    linkId,
+    attempt: A,
+    iceServers: TURN,
+    turn: true,
+    allowRelay: true,
+  });
   assert.equal(statusOf(s1.state, linkId), "connecting");
   assert.deepEqual(s1.effects, [{ type: "start", linkId, attempt: A, iceServers: TURN }]);
   assert.equal(statusOf(s0, linkId), "waiting", "previous state not mutated");
@@ -171,6 +207,7 @@ test("a drop before delivery returns the recipient to waiting and frees the link
       ...findRecipient(s0, linkId),
       status: "waiting",
       bytesSent: 0,
+      ...(reached === "connecting" && { noConnect: true }),
     });
     assert.deepEqual(
       dropped.effects,
@@ -219,7 +256,10 @@ test("a channel that does not open in time is dropped and its joiner refused", (
   const { state: s0, linkId } = withRecipient();
   const connecting = run(s0, joined(linkId, A)).state;
   const result = update(connecting, { type: "timeout", linkId });
-  assert.deepEqual(findRecipient(result.state, linkId), findRecipient(s0, linkId));
+  assert.deepEqual(findRecipient(result.state, linkId), {
+    ...findRecipient(s0, linkId),
+    noConnect: true,
+  });
   assert.deepEqual(result.effects, [
     { type: "refuse", linkId, attempt: A, reason: "drop" },
     { type: "close", linkId },
@@ -246,7 +286,10 @@ test("left while connecting returns the recipient to waiting", () => {
   const { state: s0, linkId } = withRecipient();
   const { state } = run(s0, joined(linkId, A));
   const result = update(state, { type: "left", linkId });
-  assert.deepEqual(findRecipient(result.state, linkId), findRecipient(s0, linkId));
+  assert.deepEqual(findRecipient(result.state, linkId), {
+    ...findRecipient(s0, linkId),
+    noConnect: true,
+  });
   assert.deepEqual(result.effects, [{ type: "close", linkId }]);
 });
 
@@ -403,7 +446,7 @@ test("events that do not fit the current status are ignored", () => {
 test("path records the current attempt's path through offered, receiving and delivered", () => {
   const { state: s0, linkId } = withRecipient();
   const steps: SenderAction[] = [
-    { type: "joined", linkId, attempt: A, iceServers: TURN, turn: true },
+    { type: "joined", linkId, attempt: A, iceServers: TURN, turn: true, allowRelay: true },
     { type: "channel-open", linkId },
     { type: "accepted", linkId },
     { type: "receipt", linkId, match: true },
@@ -498,6 +541,7 @@ test("an attempt that ends while connecting under a refused relay marks the reci
       attempt: B,
       iceServers: TURN,
       turn: true,
+      allowRelay: true,
     });
     const recipient = findRecipient(rejoined.state, linkId);
     assert.equal(recipient?.status, "connecting", end);
@@ -522,6 +566,31 @@ test("noRelay is not set under an allowed relay, or once the channel opened", ()
   }
 });
 
+test("an attempt that ends while connecting under an allowed relay marks the recipient noConnect", () => {
+  for (const end of ["dropped", "timeout", "left"] as const) {
+    const { state: s0, linkId } = withRecipient();
+    const connecting = run(s0, joined(linkId, A, true)).state;
+    const ended = update(connecting, { type: end, linkId }).state;
+    assert.deepEqual(
+      findRecipient(ended, linkId),
+      { ...findRecipient(s0, linkId), noConnect: true },
+      end,
+    );
+
+    const recipient = findRecipient(update(ended, joined(linkId, B)).state, linkId);
+    assert.equal(recipient?.status, "connecting", end);
+    assert.equal(recipient && "noConnect" in recipient, false, `the join after ${end} clears it`);
+  }
+  // Not once the channel opened, and not when our own server dropped.
+  const { state: s0, linkId } = withRecipient();
+  const open = run(s0, joined(linkId, A, true), { type: "channel-open", linkId }).state;
+  const dropped = findRecipient(update(open, { type: "dropped", linkId }).state, linkId);
+  assert.equal(dropped && "noConnect" in dropped, false);
+  const connecting = run(s0, joined(linkId, A, true)).state;
+  const lost = findRecipient(update(connecting, { type: "server-lost" }).state, linkId);
+  assert.equal(lost && "noConnect" in lost, false);
+});
+
 test("a busy join keeps the relay choice of the attempt in progress", () => {
   const { state: s0, linkId } = withRecipient();
   const { state, effects } = run(s0, joined(linkId, A, false), {
@@ -530,6 +599,7 @@ test("a busy join keeps the relay choice of the attempt in progress", () => {
     attempt: B,
     iceServers: TURN,
     turn: true,
+    allowRelay: true,
   });
   assert.deepEqual(effects.at(-1), { type: "refuse", linkId, attempt: B, reason: "busy" });
   assert.equal(findRecipient(state, linkId)?.turn, false);
@@ -715,7 +785,7 @@ test("add with an email starts its mail at sending and keeps both through attemp
   const { state, effects } = run(
     added.state,
     { type: "email", linkId, status: "sent" },
-    { type: "joined", linkId, attempt: A, iceServers: [], turn: true },
+    { type: "joined", linkId, attempt: A, iceServers: [], turn: true, allowRelay: true },
     { type: "dropped", linkId },
   );
   assert.ok(effects.every((effect) => !JSON.stringify(effect).includes(email)));
@@ -932,6 +1002,24 @@ test("a failed reply without a mark leaves a plain link hosted: the fresh one fr
   for (const [state, hosted] of cases) {
     assert.ok(!emailBound(findRecipient(state, hosted.linkId) as Recipient));
     assert.deepEqual(hostedLinks(update(state, { type: "server-lost" }).state), [hosted.linkId]);
+  }
+});
+
+test("server-lost drops noConnect and noRelay from a recipient it unbinds", () => {
+  for (const turn of [true, false]) {
+    const link = createLink(ORIGIN);
+    const { state } = run(
+      initialSenderState,
+      { type: "add", link, name: "Anna", email: "anna@example.se" },
+      joined(link.linkId, A, turn),
+      { type: "dropped", linkId: link.linkId },
+    );
+    const before = findRecipient(state, link.linkId);
+    assert.ok(before && ("noConnect" in before || "noRelay" in before));
+    const after = findRecipient(update(state, { type: "server-lost" }).state, link.linkId);
+    assert.equal(after?.unbound, true);
+    assert.equal(after && "noConnect" in after, false);
+    assert.equal(after && "noRelay" in after, false);
   }
 });
 

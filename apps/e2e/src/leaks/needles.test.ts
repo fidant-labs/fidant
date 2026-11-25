@@ -131,20 +131,83 @@ test("leaves out what an empty or one-chunk file cannot check", () => {
 
 test("derives the secrets of a key given as bytes or as text", () => {
   const key = canaryKey(random);
-  assert.deepEqual(keySecrets("fragment", key.bytes), [
-    { class: "K", label: "fragment", bytes: key.bytes },
-    { class: "K", label: "fragment sha256", bytes: sha256(key.bytes) },
+  const hashes = ["base64url", "base64", "hex"].flatMap((form) => [
+    `K fragment ${form} sha256`,
+    `K fragment #${form} sha256`,
   ]);
+  assert.deepEqual(
+    keySecrets("fragment", key.bytes).map((s) => `${s.class} ${s.label}`),
+    ["K fragment", "K fragment sha256", ...hashes],
+  );
   const fromText = keySecrets("fragment", key.text, "S");
   assert.deepEqual(
     fromText.map((s) => `${s.class} ${s.label}`),
-    ["S fragment text", "S fragment text sha256", "S fragment", "S fragment sha256"],
+    [
+      "S fragment text",
+      "S fragment",
+      "S fragment sha256",
+      "S fragment text sha256",
+      "S fragment #text sha256",
+      ...hashes.slice(2).map((h) => h.replace("K", "S")),
+    ],
   );
   assert.equal(fromText[0] && "window" in fromText[0] && fromText[0].window, 20);
   const notBase64 = keySecrets("password", "correct horse battery");
   assert.deepEqual(
     notBase64.map((s) => s.label),
-    ["password text", "password text sha256"],
+    ["password text", "password text sha256", "password #text sha256"],
+  );
+});
+
+test("normalises a key in any encoding to its bytes and the hashes of its text forms", () => {
+  const key = canaryKey(random.fork("encodings"));
+  const forms = [
+    key.bytes.toString("base64url"),
+    key.bytes.toString("base64"),
+    key.bytes.toString("hex"),
+  ];
+  const expected = [key.bytes, ...forms.flatMap((text) => [text, `#${text}`])].map((data) =>
+    sha256(data).toString("hex"),
+  );
+  const given = {
+    bytes: key.bytes,
+    base64url: key.text,
+    "base64 padded": key.bytes.toString("base64"),
+    "base64 unpadded": key.bytes.toString("base64").replaceAll("=", ""),
+    "hex lowercase": key.bytes.toString("hex"),
+    "hex uppercase": key.bytes.toString("hex").toUpperCase(),
+  };
+  for (const [name, value] of Object.entries(given)) {
+    const secrets = keySecrets("k", value).filter((s): s is ByteSecret => "bytes" in s);
+    assert.ok(
+      secrets.some((s) => s.label === "k" && key.bytes.equals(s.bytes)),
+      `${name}: the bytes`,
+    );
+    const hashes = new Set(
+      secrets
+        .filter((s) => s.label.endsWith(" sha256"))
+        .map((s) => Buffer.from(s.bytes).toString("hex")),
+    );
+    assert.deepEqual(
+      expected.filter((h) => !hashes.has(h)),
+      [],
+      `${name}: the hashes`,
+    );
+    if (typeof value === "string") {
+      assert.ok(hashes.has(sha256(`#${value}`).toString("hex")), `${name}: # and the given text`);
+    }
+  }
+});
+
+test("matches the SHA-256 of # and a fragment string", () => {
+  const key = canaryKey(random);
+  const found = matches(
+    keySecrets("fragment", key.text),
+    Buffer.concat([Buffer.from("/lookup/"), sha256(`#${key.text}`)]),
+  );
+  assert.deepEqual(
+    found.map((f) => f.secret.label),
+    ["fragment #text sha256"],
   );
 });
 
@@ -232,4 +295,34 @@ test("finds 12 characters of a name token in base64 at every alignment", () => {
       }
     }
   }
+});
+
+test("finds 12 characters of an uppercased name token in base64 at every alignment", () => {
+  const file = canaryFile(random.fork("b64 upper token"), { size: 1000 });
+  const secrets = fileSecrets("file#1", file);
+  const token = file.token.toUpperCase();
+  for (const encoding of ["base64", "base64url"] as const) {
+    for (let start = 0; start + 12 <= token.length; start++) {
+      for (let shift = 0; shift < 3; shift++) {
+        const bytes = Buffer.concat([
+          random.bytes(shift),
+          Buffer.from(token.slice(start, start + 12)),
+        ]);
+        const found = matches(secrets, Buffer.from(bytes.toString(encoding).replaceAll("=", "")));
+        assert.deepEqual(
+          found.map((match) => match.secret.label),
+          ["file#1 name"],
+          `${encoding} from ${start} shift ${shift}`,
+        );
+      }
+    }
+  }
+});
+
+test("gives only case-insensitive secrets uppercase base64 forms", () => {
+  const text = "abcdefghijklmnop";
+  const upper = Buffer.from(text.toUpperCase()).toString("base64");
+  const exact: ByteSecret = { class: "M", label: "exact", bytes: Buffer.from(text) };
+  assert.equal(matches([exact], Buffer.from(upper)).length, 0);
+  assert.equal(matches([{ ...exact, caseInsensitive: true }], Buffer.from(upper)).length, 1);
 });

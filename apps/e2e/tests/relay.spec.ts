@@ -177,10 +177,7 @@ for (const transport of ["udp", "tcp"] as const) {
       const urls = await peerList(page, "iceUrls");
       expect(urls?.length).toBeGreaterThan(0);
       expect(new Set(urls)).toEqual(new Set(process.env.SIGILL_E2E_TURN_URLS?.split(",")));
-    }
-
-    // Every connection went through a relay candidate reached over the transport under test.
-    for (const page of [sender, recipient]) {
+      // Every connection went through a relay candidate reached over the transport under test.
       await expect.poll(() => peerList(page, "relayPaths")).toEqual([`relay/${transport}`]);
     }
 

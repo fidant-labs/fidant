@@ -82,7 +82,15 @@ export const sv: Messages = {
     about: "Om Fidant – Fidant",
     terms: "Användarvillkor – Fidant",
     security: "Säkerhet – Fidant",
+    notFound: "Sidan finns inte – Fidant",
   },
+  notFound: {
+    title: "Sidan finns inte",
+    body: "Det finns ingen sida på den här adressen. Den kan ha flyttats, eller så är länken felskriven.",
+    home: "Till startsidan",
+  },
+  noscript:
+    "Krypteringen sker i din webbläsare, så Fidant behöver JavaScript. Slå på det för att skicka eller ta emot en fil.",
   openTransfer: {
     send: "En filöverföring är fortfarande öppen i den här fliken.",
     secret: "En hemlighet delas fortfarande från den här fliken.",
@@ -372,6 +380,8 @@ export const sv: Messages = {
       failed: (name: string) =>
         `Filen kom inte fram oskadd via länken till ${name}. Länken kan öppnas igen för att försöka på nytt.`,
     },
+    noConnect: (name: string) =>
+      `Länken till ${name} öppnades men kunde inte ansluta till din dator. Länken fungerar fortfarande om de försöker igen.`,
     noRelay: (name: string) =>
       `Länken till ${name} öppnades men kunde inte ansluta direkt. Om du tillåter vårt relä kan den kanske ansluta när de försöker igen.`,
     mail: {
@@ -712,7 +722,6 @@ export const sv: Messages = {
     license: "Öppen källkod, MIT-licens",
   },
   preview: {
-    title: "Privat filöverföring med Fidant",
     receiveTitle: "Skickat till dig med Fidant",
     receiveDescription:
       "Öppna länken för att ta emot det. Det är krypterat hela vägen, och länken fungerar bara medan avsändarens sida är öppen.",
@@ -846,7 +855,7 @@ export const sv: Messages = {
           "Det betyder mer än integritet: meddelandena innehåller fingeravtrycken för WebRTC:s egen DTLS-kryptering. Eftersom servern inte kan ändra dem kan den inte ställa sig mellan de två webbläsarna. Allt det här bygger på att vår server inte har nyckeln. För en länk som vi mejlar har den haft nyckeln, så den skulle kunna läsa och ändra den länkens meddelanden och ställa sig emellan.",
           "Det är vad kontrollnumret är till för. Varje webbläsare gör ett nytt certifikat för varje anslutning, och mottagarens webbläsare skickar först ett åtagande för sitt fingeravtryck, en hash, innan avsändarens webbläsare gör sitt erbjudande. Båda webbläsarna räknar sedan fram sex siffror ur de två fingeravtrycken i sin egen anslutning. Med någon emellan finns det två anslutningar, så de två skärmarna visar olika nummer, och tack vare åtagandet kan den som står emellan bara gissa: en chans på miljonen per anslutning. Numret visas bara på skärmen och skickas eller sparas aldrig.",
           "När kontrollnumret är på, vilket det är som standard för en länk som vi mejlar, läser mottagaren upp sitt nummer och avsändaren jämför. Ingenting om filen skickas förrän båda har sagt att det stämmer, och ”Det skiljer sig” på någon av sidorna stoppar försöket. När mottagarens webbläsare har svarat på ett erbjudande ansluter den igen bara när mottagaren klickar på Försök igen, och avsändarens sida slutar erbjuda en länk efter 5 försök som tog slut innan båda bekräftat, vart och ett begränsat till 5 minuter. Kontrollen visar att ingen satt mellan de två webbläsarna. Den kan inte visa att själva sidans kod är ärlig.",
-          "Om anslutningen till vår server bryts försöker båda sidorna ansluta igen av sig själva. Avsändarens sida anmäler sina länkar på nytt, utom länkar som vi har mejlat: dem glömde vår server med den gamla anslutningen, så de slutar fungera och avsändarens sida säger det. En mottagare som ännu höll på att ansluta försöker igen några gånger innan den ger upp. En överföring som redan har börjat behöver inte vår server och fortsätter.",
+          "Om anslutningen till vår server bryts försöker båda sidorna ansluta igen av sig själva. Avsändarens sida anmäler sina länkar på nytt, utom länkar som vi har mejlat: dem glömde vår server med den gamla anslutningen, så de slutar fungera och avsändarens sida säger det. En mottagare som ännu höll på att ansluta försöker igen några gånger innan den ger upp. Under den första minuten efter att vår server har startat ber den en mottagare vars länk den ännu inte känner till att vänta, så att mottagaren fortsätter försöka medan avsändarens sida anmäler länken igen. En överföring som redan har börjat behöver inte vår server och fortsätter.",
         ],
       },
       layers: {
@@ -898,7 +907,7 @@ export const sv: Messages = {
       norelay: {
         heading: "Att neka reläet",
         body: [
-          'Avsändaren kan bocka ur "Tillåt vårt relä om en direkt anslutning inte går". Vår server ger då inga inloggningsuppgifter till reläet för den sändningen, bara STUN-adressen, så en omodifierad webbläsare kan inte använda reläet. Som extra skydd avslutar avsändarens webbläsare förbindelsen om den ändå ser att den går via reläet. Fildata skickas först när mottagaren har tackat ja, så i praktiken sker det innan något av den har passerat.',
+          'Avsändaren kan bocka ur "Tillåt vårt relä om en direkt anslutning inte går". Vår server ger då inga inloggningsuppgifter till reläet för den sändningen, bara STUN-adressen, så en omodifierad webbläsare kan inte använda reläet. Avsändarens webbläsare upprätthåller också själv valet: den startar förbindelsen utan inloggningsuppgifter till reläet, vad vår server än skickar. Som extra skydd avslutar avsändarens webbläsare förbindelsen om den ändå ser att den går via reläet. Fildata skickas först när mottagaren har tackat ja, så i praktiken sker det innan något av den har passerat.',
           "Gränsen: en modifierad mottagare kan ändå skicka sin del via vårt relä med uppgifter från en annan ihopkoppling, eller via vilket offentligt relä som helst. Den mottagaren har ju nyckeln ändå. Valet avgör vilken infrastruktur som bär den krypterade trafiken, inte vem som kan läsa filen.",
         ],
       },
@@ -1495,7 +1504,7 @@ export const sv: Messages = {
     sees: [
       [
         "Din IP-adress och uppgifter om din webbläsare",
-        "Som på alla webbplatser du besöker. Vi använder dem bara för att visa dig sidan och koppla ihop er. Vår server skriver aldrig in dem i sina loggar. Vårt relä loggar dem inte heller, utom medan vi åtgärdar ett fel eller stoppar missbruk (se nedan).",
+        "Som på alla webbplatser du besöker, och vilken sida du öppnar, vars adress visar vilket språk du har valt. Vi använder dem bara för att visa dig sidan och koppla ihop er. Vår server skriver aldrig in dem i sina loggar. Vårt relä loggar dem inte heller, utom medan vi åtgärdar ett fel eller stoppar missbruk (se nedan).",
       ],
       [
         "Ett länk-ID",

@@ -1,15 +1,17 @@
 import type { Page } from "@playwright/test";
-import { canaryFile, chooseFile, expect, makeName, recipientRow, test } from "../src/fixtures.ts";
+import {
+  canaryFile,
+  choose,
+  chooseFile,
+  expect,
+  makeName,
+  recipientRow,
+  test,
+} from "../src/fixtures.ts";
 
 const nav = (page: Page) => page.locator("header nav");
 
 const footer = (page: Page) => page.locator("footer");
-
-async function choose(page: Page, menu: string, option: string) {
-  await footer(page).getByRole("button", { name: menu }).click();
-  await page.getByRole("menuitemradio", { name: option }).click();
-  await expect(page.getByRole("menu")).toBeHidden();
-}
 
 for (const path of ["/privacy", "/privacy/"]) {
   test(`${path} shows the Privacy page`, async ({ page }) => {
@@ -84,11 +86,13 @@ test("the language menu switches language and the choice survives a reload", asy
   await choose(page, "Language", "Svenska");
   await expect(page.locator("main h1")).toHaveText("Integritet");
   await expect(page.locator("html")).toHaveAttribute("lang", "sv");
+  await expect(page).toHaveURL(/\/sv\/privacy$/);
   await page.reload();
   await expect(page.locator("main h1")).toHaveText("Integritet");
 
   await choose(page, "Språk", "English");
   await expect(page.locator("main h1")).toHaveText("Privacy");
+  await expect(page).toHaveURL(/\/privacy$/);
   await page.reload();
   await expect(page.locator("main h1")).toHaveText("Privacy");
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
@@ -124,3 +128,27 @@ test("the theme menu sets System, Light and Dark, and the choice survives a relo
     }
   }
 });
+
+for (const [locale, lang, headings] of [
+  ["en-GB", "en", { security: "Security", about: "About Fidant", terms: "Terms of use" }],
+  ["sv-SE", "sv", { security: "Säkerhet", about: "Om Fidant", terms: "Användarvillkor" }],
+] as const) {
+  test.describe(`in ${locale}`, () => {
+    test.use({ locale, viewport: { width: 360, height: 800 } });
+
+    test("the info pages open in the browser's language and fit a phone screen", async ({
+      page,
+    }) => {
+      for (const [path, heading] of Object.entries(headings)) {
+        await page.goto(`/${path}`);
+        await expect(page.locator("main h1")).toHaveText(heading);
+        await expect(page.locator("html")).toHaveAttribute("lang", lang);
+        const width = await page.evaluate(async () => {
+          await document.fonts.ready;
+          return document.documentElement.scrollWidth;
+        });
+        expect(width, path).toBeLessThanOrEqual(360);
+      }
+    });
+  });
+}

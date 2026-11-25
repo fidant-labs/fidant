@@ -338,7 +338,9 @@ interface Inflated {
  * Decompresses what it can, up to `min(maxInflated, room)` bytes. A stream cut short still yields
  * the bytes before the cut. A stream that would inflate past the cap yields the longest prefix of
  * it that fits, marked `limited`, so a secret early in a bomb is still found and the caller can
- * report that the rest was not scanned. Corrupt data yields nothing: it is mostly a false magic.
+ * report that the rest was not scanned. A corrupt stream yields what it decodes to before the
+ * damage, not marked: corrupt data is mostly a false magic in random bytes, so it reports no
+ * `limit` (the gap this leaves is tracked in SIG-275).
  */
 function inflate(inflater: Inflater, data: Buffer, room: number): Inflated | undefined {
   const cap = Math.min(maxInflated, room);
@@ -347,15 +349,21 @@ function inflate(inflater: Inflater, data: Buffer, room: number): Inflated | und
       maxOutputLength: Math.max(cap, 1),
       finishFlush: constants.Z_SYNC_FLUSH,
       ...(inflater === brotliDecompressSync && { finishFlush: constants.BROTLI_OPERATION_FLUSH }),
+      // Z_SYNC_FLUSH is ZSTD_e_end to zstd, which throws on a cut-off frame. ZSTD_e_flush
+      // returns every complete block that arrived.
+      ...(inflater === zstdDecompressSync && { finishFlush: constants.ZSTD_e_flush }),
     });
+  let limited = false;
+  const tooLarge = (error: unknown) => {
+    limited ||= (error as { code?: string }).code === "ERR_BUFFER_TOO_LARGE";
+  };
   try {
     return { bytes: attempt(data), limited: false };
   } catch (error) {
-    if ((error as { code?: string }).code !== "ERR_BUFFER_TOO_LARGE") {
-      return undefined;
-    }
+    tooLarge(error);
   }
-  // Output grows with the input prefix, so binary search the longest prefix that fits.
+  // Output grows with the input prefix and damage stays once reached, so binary search the
+  // longest prefix that decodes without error.
   let best: Buffer = Buffer.alloc(0);
   let low = 0;
   let high = data.length;
@@ -365,14 +373,11 @@ function inflate(inflater: Inflater, data: Buffer, room: number): Inflated | und
       best = attempt(data.subarray(0, mid));
       low = mid;
     } catch (error) {
-      if ((error as { code?: string }).code === "ERR_BUFFER_TOO_LARGE") {
-        high = mid - 1;
-      } else {
-        low = mid;
-      }
+      tooLarge(error);
+      high = mid - 1;
     }
   }
-  return { bytes: best, limited: true };
+  return { bytes: best, limited };
 }
 
 /** The deflate stream inside a gzip member, after its header (RFC 1952). */
