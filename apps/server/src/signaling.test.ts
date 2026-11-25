@@ -1516,6 +1516,7 @@ test("closes a socket that never reads once the replies queued for it pass the l
   assert.equal(count("left"), 1, `the server queued ${count("error") - before} more replies`);
 });
 
+// Guards the ws library's own limit (maxPendingAutoPongs), so a ws upgrade that drops it fails here.
 test("closes a client that floods pings and never reads the pongs", async (t) => {
   const quiet = createServer();
   const accepted: Socket[] = [];

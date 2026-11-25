@@ -704,7 +704,7 @@ export const en = {
     /** `emailed`: the link is one the server emailed. */
     afterwardsRecipient: (emailed: boolean): string =>
       emailed
-        ? "When this page disconnects, the server drops what it has about this page, within a minute at most, apart from what the code check needs: your email address and whether this tab entered the right code stay until the sender's page closes, and a scrambled count of the codes sent to your address for up to an hour. Its log lines stay."
+        ? "When this page disconnects, the server drops what it has about this page, within a minute at most, apart from what the code check needs: your email address and whether this tab entered the right code stay until the sender's page closes, and a scrambled count of the codes sent to your address and a scrambled count of the codes your IP address asked for, each for up to an hour. Its log lines stay."
         : "When this page disconnects, the server drops what it has about this page, within a minute at most. Its log lines stay.",
     logs: (kind: Kind) =>
       `What happened, like a link being opened, with ${new Intl.ListFormat("en", {
@@ -1177,7 +1177,7 @@ export const en = {
         ],
         [
           "Data left behind on our machines",
-          "No accounts, file storage or database of people or transfers. The server holds what it knows about pages only in memory and forgets a page within a minute after it disconnects, apart from scrambled counts of emails and codes, which it keeps for an hour. Its logs have fixed fields, never names, email addresses, codes, keys, file data or IP addresses, and are deleted after 30 days. The relay keeps no log of the traffic by default. While it renews its certificate, it logs the addresses that reach it on port 80, never browsers', for about five weeks.",
+          "No accounts, file storage or database of people or transfers. The server holds what it knows about pages only in memory and forgets a page within a minute after it disconnects, apart from scrambled counts of emails and codes, and two server-wide counters of send times, which it keeps for an hour. Its logs have fixed fields, never names, email addresses, codes, keys, file data or IP addresses, and are deleted after 30 days. The relay keeps no log of the traffic by default. While it renews its certificate, it logs the addresses that reach it on port 80, never browsers', for about five weeks.",
         ],
         [
           "Tracking, or code from other sites",
@@ -1276,7 +1276,7 @@ export const en = {
             ],
             [
               "email",
-              "Send times, for up to an hour, under keyed hashes (HMAC) of the recipient's address and of your IP address, to enforce limits. The token a right code gets, while your page is open.",
+              "Send times, for up to an hour, under keyed hashes (HMAC) of the recipient's address and of your IP address, and two server-wide counters, one for all emails and one for all codes, not tied to any address, to enforce limits. The token a right code gets, while your page is open.",
             ],
           ],
         },
@@ -1415,14 +1415,14 @@ export const en = {
         [
           "You ask us to email a link",
           "The recipient's email address, the link's secret, the name you typed and the page's language. The mail service gets the email with the link.",
-          "The address, the language and a random value while your page has the link. The secret and your name only until the email is sent or fails. Counts of emails per scrambled email address and per scrambled IP address, for an hour.",
+          "The address, the language and a random value while your page has the link. The secret and your name only until the email is sent or fails. Counts of emails per scrambled email address and per scrambled IP address, and a count of all emails the server sent, not tied to any address, for an hour.",
           "Whether the email was sent, with the first 6 characters of the link ID.",
           "Nothing.",
         ],
         [
           "A recipient on an emailed link enters the code",
           "The value from the link and the code typed.",
-          "The latest code with its expiry and tries, and the token a right code gets, while your page has the link. A count of codes per scrambled email address and per scrambled IP address, for an hour.",
+          "The latest code with its expiry and tries, and the token a right code gets, while your page has the link. A count of codes per scrambled email address and per scrambled IP address, and a count of all codes the server sent, not tied to any address, for an hour.",
           "Each code sent or refused and why, and a right code, with the first 6 characters of the link ID.",
           "Nothing.",
         ],
@@ -1464,7 +1464,7 @@ export const en = {
         [
           "Afterwards",
           "Nothing.",
-          "Only the scrambled counts of emails and codes, for up to an hour.",
+          "Only the scrambled counts of emails and codes, and two server-wide counters of when emails and codes were sent, not tied to any address, for up to an hour.",
           "Log lines are deleted after 30 days.",
           "No log of the traffic. Only to fix a fault or stop abuse do we turn one on, with connection times, IP addresses and data volumes, for at most 7 days. Separately, while it renews its certificate, it logs the addresses that reach it on port 80, never browsers', for about five weeks.",
         ],
@@ -1514,7 +1514,7 @@ export const en = {
       ],
       [
         "Counts of emails and codes",
-        "To limit how many emails anyone can send, we count the emails and codes sent to each address and the emails and codes each IP address asks us to send, for an hour. We keep each count under a scrambled form of the address (an HMAC), never the address itself.",
+        "To limit how many emails anyone can send, we count the emails and codes sent to each address and the emails and codes each IP address asks us to send, for an hour. We keep each per-address count under a scrambled form of the address (an HMAC), never the address itself. Two more counters, of all emails and all codes the server sent, hold only send times and are not tied to any address.",
       ],
     ] as ReadonlyArray<readonly [string, string]>,
     keepHeading: "What we keep",

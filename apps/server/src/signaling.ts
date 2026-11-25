@@ -743,11 +743,6 @@ export function attachSignaling(
         continue;
       }
       peer.alive = false;
-      // A socket that blindly answers pings but reads nothing ends here, not by piling up pings.
-      if (socket.bufferedAmount > 2 * limits.bufferedBytes) {
-        socket.terminate();
-        continue;
-      }
       socket.ping();
     }
   }, options.heartbeatMs ?? HEARTBEAT_MS);

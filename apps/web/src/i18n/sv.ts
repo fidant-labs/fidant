@@ -588,7 +588,7 @@ export const sv: Messages = {
     senderHolds: ({ online, links, connected, relay, emailed, sending, mailed, kind }) => {
       if (!online) {
         return mailed
-          ? "Bara antalet mejl den skickade åt dig, i förvrängd form och i upp till en timme, när den har märkt att anslutningen har stängts. Det tar upp till en minut om nätverket bröts."
+          ? "Bara antalet mejl den skickade åt dig, i förvrängd form, i upp till en timme, när den har märkt att anslutningen har stängts. Det tar upp till en minut om nätverket bröts."
           : "Ingenting, när den har märkt att anslutningen har stängts. Det tar upp till en minut om nätverket bröts.";
       }
       const choice = relay
@@ -659,7 +659,7 @@ export const sv: Messages = {
       }${mailed ? " Det gör också antalet mejl den skickade åt dig, i förvrängd form, i upp till en timme." : ""}`,
     afterwardsRecipient: (emailed: boolean) =>
       emailed
-        ? "När den här sidan kopplas från släpper servern det den har om sidan, inom högst en minut, utom det som kodkontrollen behöver: din e-postadress och om den här fliken har angett rätt kod finns kvar tills avsändarens sida stängs, och antalet koder som skickats till din adress, i förvrängd form, i upp till en timme. Loggraderna finns kvar."
+        ? "När den här sidan kopplas från släpper servern det den har om sidan, inom högst en minut, utom det som kodkontrollen behöver: din e-postadress och om den här fliken har angett rätt kod finns kvar tills avsändarens sida stängs, och antalet koder som skickats till din adress och antalet koder som din IP-adress har bett om, båda i förvrängd form, i upp till en timme. Loggraderna finns kvar."
         : "När den här sidan kopplas från släpper servern det den har om sidan, inom högst en minut. Loggraderna finns kvar.",
     logs: (kind: Kind) =>
       `Vad som hände, till exempel att en länk öppnades, med ${new Intl.ListFormat("sv", {
@@ -1130,7 +1130,7 @@ export const sv: Messages = {
         ],
         [
           "Data som blir kvar på våra maskiner",
-          "Inga konton, ingen fillagring och ingen databas över personer eller överföringar. Servern har det den vet om sidor bara i minnet och glömmer en sida inom en minut efter att den kopplat ner, utom förvrängda antal mejl och koder, som den sparar i en timme. Loggarna har fasta fält, aldrig namn, e-postadresser, koder, nycklar, filinnehåll eller IP-adresser, och raderas efter 30 dagar. Reläet för som standard ingen logg över trafiken. Medan det förnyar sitt certifikat loggar det i ungefär fem veckor adresserna som når det på port 80, aldrig webbläsarnas.",
+          "Inga konton, ingen fillagring och ingen databas över personer eller överföringar. Servern har det den vet om sidor bara i minnet och glömmer en sida inom en minut efter att den kopplat ner, utom förvrängda antal mejl och koder och två räknare med sändningstider för hela servern, som den sparar i en timme. Loggarna har fasta fält, aldrig namn, e-postadresser, koder, nycklar, filinnehåll eller IP-adresser, och raderas efter 30 dagar. Reläet för som standard ingen logg över trafiken. Medan det förnyar sitt certifikat loggar det i ungefär fem veckor adresserna som når det på port 80, aldrig webbläsarnas.",
         ],
         [
           "Spårning, eller kod från andra webbplatser",
@@ -1229,7 +1229,7 @@ export const sv: Messages = {
             ],
             [
               "email",
-              "Sändningstider, i upp till en timme, under nyckelstyrda hashar (HMAC) av mottagarens adress och din IP-adress, för att upprätthålla gränser. Token som en rätt kod ger, medan din sida är öppen.",
+              "Sändningstider, i upp till en timme, under nyckelstyrda hashar (HMAC) av mottagarens adress och din IP-adress, och två räknare för hela servern, en för alla mejl och en för alla koder, utan koppling till någon adress, för att upprätthålla gränser. Token som en rätt kod ger, medan din sida är öppen.",
             ],
           ],
         },
@@ -1377,14 +1377,14 @@ export const sv: Messages = {
         [
           "Du ber oss mejla en länk",
           "Mottagarens e-postadress, länkens hemlighet, namnet du skrev och sidans språk. E-posttjänsten får mejlet med länken.",
-          "Adressen, språket och ett slumpmässigt värde medan din sida har länken. Hemligheten och ditt namn bara tills mejlet har skickats eller misslyckats. Antal mejl per förvrängd e-postadress och per förvrängd IP-adress, i en timme.",
+          "Adressen, språket och ett slumpmässigt värde medan din sida har länken. Hemligheten och ditt namn bara tills mejlet har skickats eller misslyckats. Antal mejl per förvrängd e-postadress och per förvrängd IP-adress, och ett antal för alla mejl servern skickat, utan koppling till någon adress, i en timme.",
           "Om mejlet skickades, med de 6 första tecknen i länk-ID:t.",
           "Ingenting.",
         ],
         [
           "En mottagare med en mejlad länk anger koden",
           "Värdet ur länken och koden som skrevs.",
-          "Den senaste koden med dess giltighetstid och försök, och den token en rätt kod ger, medan din sida har länken. Antal koder per förvrängd e-postadress och per förvrängd IP-adress, i en timme.",
+          "Den senaste koden med dess giltighetstid och försök, och den token en rätt kod ger, medan din sida har länken. Antal koder per förvrängd e-postadress och per förvrängd IP-adress, och ett antal för alla koder servern skickat, utan koppling till någon adress, i en timme.",
           "Varje kod som skickades eller nekades och varför, och en rätt kod, med de 6 första tecknen i länk-ID:t.",
           "Ingenting.",
         ],
@@ -1426,7 +1426,7 @@ export const sv: Messages = {
         [
           "Efteråt",
           "Ingenting.",
-          "Bara de förvrängda antalen mejl och koder, i högst en timme.",
+          "Bara de förvrängda antalen mejl och koder, och två räknare för hela servern med tiderna då mejl och koder skickades, utan koppling till någon adress, i högst en timme.",
           "Loggraderna raderas efter 30 dagar.",
           "Ingen logg över trafiken. Bara för att rätta ett fel eller stoppa missbruk slår vi på en, med tider för anslutningar, IP-adresser och datamängder, i högst 7 dagar. Dessutom loggar det, medan det förnyar sitt certifikat, adresserna som når det på port 80, aldrig webbläsarnas, i ungefär fem veckor.",
         ],
@@ -1476,7 +1476,7 @@ export const sv: Messages = {
       ],
       [
         "Antal mejl och koder",
-        "För att begränsa hur många mejl någon kan skicka räknar vi under en timme mejlen och koderna till varje adress och mejlen och koderna som varje IP-adress ber oss skicka. Antalet sparas under en förvrängd form av adressen (en HMAC), aldrig under själva adressen.",
+        "För att begränsa hur många mejl någon kan skicka räknar vi under en timme mejlen och koderna till varje adress och mejlen och koderna som varje IP-adress ber oss skicka. Varje antal per adress sparas under en förvrängd form av adressen (en HMAC), aldrig under själva adressen. Två räknare till, för alla mejl och alla koder som servern skickat, innehåller bara sändningstider och har ingen koppling till någon adress.",
       ],
     ],
     keepHeading: "Vad vi sparar",

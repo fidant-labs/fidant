@@ -28,7 +28,7 @@ Option 2, with option 1 alongside it, and the count leak accepted.
 - The server sends at most 500 notices and 500 codes an hour in total (`noticesTotal`, `codesTotal`), well under the mail service's daily quota, so one source can't use the quota or the sender reputation that real users share.
 - For notices and codes, an IPv6 client counts by its /48, a site's usual allocation, not its /64. Socket limits still count by /64.
 - A client may ask for at most 5 codes an hour (`codesPerClient`). Its own limit is checked first, so codes it is refused don't count against the address.
-- A socket that has more than twice the relay limit waiting (512 KiB) is ended at the next message the server would send it or at the next heartbeat. Relays to it are still dropped from 256 KiB, so an honest reader that is only slow keeps its socket.
+- A socket that has more than twice the relay limit waiting (512 KiB) is ended at the next message the server would send it. Relays to it are still dropped from 256 KiB, so an honest reader that is only slow keeps its socket.
 - Anyone, a stranger with no link included, can use up the limits per email address or for the whole server: they can stop notices or codes to one address, or all of them, for up to an hour, and can tell that an address's notice limit was reached. We accept this. The alternative is no limit on what Fidant emails.
 
 This replaces, in 0006, "a slow reader can't make the server buffer without bound" with: a socket that stops reading is ended once 512 KiB waits for it. It replaces, in 0012, "The not-verified marker in the notice and the notice limits bound it" with: the notice limits, including the server-wide one, bound it, and anyone can use those limits up for an hour.
