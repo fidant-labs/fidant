@@ -53,6 +53,7 @@ for (const ip of ["127.0.0.1", "198.51.100.20"]) {
       `listening-ip=${ip}`,
       `relay-ip=${ip}`,
       "listening-port=40000",
+      "realm=sigill.local",
       "pidfile=/tmp/x/turnserver.pid",
       "userdb=/tmp/x/turndb",
       `log-file=${coturnLog}`,
