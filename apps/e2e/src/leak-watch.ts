@@ -1,5 +1,5 @@
 import { readFile, stat } from "node:fs/promises";
-import { join, relative } from "node:path";
+import { basename, join, relative } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import type { CanaryFile, CanaryKey } from "./leaks/canary.ts";
 import {
@@ -26,16 +26,7 @@ import { exemptTest, registerSecrets } from "./leaks/registry.ts";
 import { formatLeakReport, logViolations } from "./leaks/report.ts";
 import { type Capture, type Finding, scan } from "./leaks/scan.ts";
 import { saveMail } from "./mail.ts";
-import {
-  boxJournal,
-  boxSyslog,
-  coturnLog,
-  coturnPcap,
-  e2eDir,
-  observationsDir,
-  serverStderrLog,
-  serverStdoutLog,
-} from "./paths.ts";
+import { e2eDir, observationsDir, type RunSource, runSources, serverStdoutLog } from "./paths.ts";
 import type { Recorder } from "./recorder.ts";
 
 /** What a test uses to register its secrets and check for leaks. */
@@ -47,9 +38,11 @@ export interface Leaks {
    */
   watch(file: CanaryFile, label?: string): CanaryFile;
   /**
-   * Watches a key: raw bytes, or text such as a fragment secret (searched as text and bytes).
-   * `allowed` names where an emailed link's secret, value or token may appear (decision 0012);
-   * its SHA-256 stays allowed nowhere.
+   * Watches a key: raw bytes, or text such as a fragment secret, searched as text and as every
+   * byte value its hex, base64url or base64 decodes to. Each byte value, and each text form of
+   * the key (as given, base64url, base64, hex) with and without a leading `#`, is also searched
+   * as its SHA-256. `allowed` names where an emailed link's secret, value or token may appear
+   * (decision 0012); every SHA-256 stays allowed nowhere.
    */
   watchKey(
     label: string,
@@ -82,12 +75,6 @@ export interface Leaks {
 const point = (path: string) => relative(e2eDir, path);
 
 /**
- * The run logs, server stdout first. All get the canary scan; stdout also the allowlist check.
- * The box's files exist only once its test wrote them; a missing log reads as empty.
- */
-const logs = [serverStdoutLog, serverStderrLog, coturnLog, boxJournal, boxSyslog];
-
-/**
  * One test's leak check: its secrets, the recorders whose records it scans, and where the server
  * logs stood when the test began, so it scans only what the server wrote during the test.
  */
@@ -96,8 +83,10 @@ export class LeakWatch implements Leaks {
   recorders: ReadonlyMap<string, Recorder> = new Map();
   readonly #test: string;
   readonly #registry: string | undefined;
+  readonly #logs: string[];
+  readonly #binaries: string[];
   readonly #logStarts: number[];
-  readonly #pcapStart: number;
+  readonly #binaryStarts: number[];
   readonly #secrets: Secret[] = [];
   #files = 0;
   #expectLeaks = false;
@@ -106,22 +95,40 @@ export class LeakWatch implements Leaks {
   private constructor(
     test: string,
     registry: string | undefined,
+    logs: string[],
+    binaries: string[],
     logStarts: number[],
-    pcapStart: number,
+    binaryStarts: number[],
   ) {
     this.#test = test;
     this.#registry = registry;
+    this.#logs = logs;
+    this.#binaries = binaries;
     this.#logStarts = logStarts;
-    this.#pcapStart = pcapStart;
+    this.#binaryStarts = binaryStarts;
   }
 
   /**
    * `test` is the test's observations directory name. `registry` is the run's registry directory,
-   * where secrets are also written for the run-level sweep.
+   * where secrets are also written for the run-level sweep. `sources` are the run's logs (the one
+   * named like server stdout also gets the allowlist check) and binary captures, as `runSources`;
+   * some exist only once a test or a run wrote them, and a missing one reads as empty.
    */
-  static async start(test: string, registry: string | undefined): Promise<LeakWatch> {
-    const sizes = await Promise.all(logs.map(sizeOf));
-    return new LeakWatch(test, registry, sizes, await sizeOf(coturnPcap));
+  static async start(
+    test: string,
+    registry: string | undefined,
+    sources: readonly RunSource[] = runSources,
+  ): Promise<LeakWatch> {
+    const logs = sources.flatMap((source) => (source.read === "lines" ? [source.path] : []));
+    const binaries = sources.flatMap((source) => (source.read === "binary" ? [source.path] : []));
+    return new LeakWatch(
+      test,
+      registry,
+      logs,
+      binaries,
+      await Promise.all(logs.map(sizeOf)),
+      await Promise.all(binaries.map(sizeOf)),
+    );
   }
 
   watch(file: CanaryFile, label = `file#${++this.#files}`): CanaryFile {
@@ -161,11 +168,7 @@ export class LeakWatch implements Leaks {
 
   expectLeaks(): void {
     this.#expectLeaks = true;
-    this.exempt();
-  }
-
-  /** Keeps this test's secrets out of the run-level sweep. */
-  exempt(): void {
+    // Keeps this test's secrets out of the run-level sweep.
     if (this.#registry) {
       exemptTest(this.#registry, this.#test);
     }
@@ -224,33 +227,61 @@ export class LeakWatch implements Leaks {
       captures.push(...mailCaptures(point(path), await readFile(path)));
     }
     const slices = await Promise.all(
-      logs.map(async (path, index) =>
+      this.#logs.map(async (path, index) =>
         logSlice(await readFile(path).catch(() => Buffer.alloc(0)), this.#logStarts[index]),
       ),
     );
-    logs.forEach((path, index) => {
+    this.#logs.forEach((path, index) => {
       captures.push(...logCaptures(point(path), slices[index] as LogSlice));
     });
-    const pcap = await settledPcap();
-    if (pcap) {
-      // Binary packets, not lines: one capture of what tcpdump wrote since the test began.
-      captures.push({ point: point(coturnPcap), bytes: pcap.subarray(this.#pcapStart) });
+    for (const [index, path] of this.#binaries.entries()) {
+      const bytes = await settled(path);
+      if (bytes) {
+        // Not lines: one capture of what was written since the test began.
+        captures.push({ point: point(path), bytes: bytes.subarray(this.#binaryStarts[index]) });
+      }
     }
-    return { captures, limits, stdout: slices[0] as LogSlice };
+    const stdout = this.#logs.findIndex((path) => basename(path) === basename(serverStdoutLog));
+    if (stdout < 0) {
+      throw new Error("No log source named like server stdout, so the allowlist check can't run");
+    }
+    return { captures, limits, stdout: slices[stdout] as LogSlice };
   }
 }
 
 /**
- * The coturn packet capture once its size has stopped changing, or undefined when there is none
- * (`pnpm e2e` runs no capture). tcpdump writes each packet as it arrives, but packets still on
+ * The leak teardown: runs `watch.check()`, then `cleanUp` (which needs the mail the check saved),
+ * then throws the report, if any.
+ */
+export async function failOnLeaks(
+  watch: Pick<LeakWatch, "check">,
+  cleanUp: () => Promise<void>,
+): Promise<void> {
+  const report = await watch.check();
+  try {
+    await cleanUp();
+  } catch (error) {
+    // The leak report wins over a clean-up failure.
+    if (!report) {
+      throw error;
+    }
+  }
+  if (report) {
+    throw new Error(report);
+  }
+}
+
+/**
+ * A binary capture, such as coturn's packets, once its size has stopped changing, or undefined
+ * when there is none (`pnpm e2e` runs no packet capture). tcpdump writes each packet as it arrives, but packets still on
  * their way through the routers, and the bind mount on Docker Desktop, can lag a little.
  * ponytail: waits for 250 ms without growth, at most 2 s; a relay still busy after that is cut,
  * and the run-level sweep scans the rest.
  */
-async function settledPcap(): Promise<Buffer | undefined> {
+async function settled(path: string): Promise<Buffer | undefined> {
   let last = -1;
   for (let waited = 0; waited < 2_000; waited += 250) {
-    const size = await stat(coturnPcap).then(
+    const size = await stat(path).then(
       (stats) => stats.size,
       () => undefined,
     );
@@ -263,7 +294,7 @@ async function settledPcap(): Promise<Buffer | undefined> {
     last = size;
     await setTimeout(250);
   }
-  return readFile(coturnPcap);
+  return readFile(path);
 }
 
 async function sizeOf(path: string): Promise<number> {

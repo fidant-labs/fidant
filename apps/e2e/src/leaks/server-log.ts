@@ -2,6 +2,7 @@ import {
   CODE_RESULTS,
   CONNECTION_PATHS,
   ERROR_CODES,
+  LOG_EVENTS,
   type LogFields,
   REFUSED_REASONS,
   UPGRADE_REJECT_REASONS,
@@ -46,30 +47,11 @@ export interface LogViolation {
 }
 
 /**
- * The allowlist for today's server. Reasons, codes and paths come from @sigill/protocol, so a new enum
- * value there is allowed here too. Protocol does not export the event names (the server passes
- * them as strings to its logger), so they are listed here; a new event needs a reviewed change.
+ * The allowlist for today's server. Events, reasons, codes and paths come from @sigill/protocol, so a
+ * new enum value there is allowed here too.
  */
 export const serverLogAllowlist: LogAllowlist = {
-  events: new Set([
-    "listening",
-    "upgrade-rejected",
-    "bad-message",
-    "rate-limited",
-    "error",
-    "host",
-    "host-gone",
-    "host-closed",
-    "joined",
-    "refused",
-    "relay",
-    "relay-dropped",
-    "left",
-    "path",
-    "email",
-    "code",
-    "verified",
-  ]),
+  events: new Set<string>(LOG_EVENTS),
   // LogReason in @sigill/protocol.
   reasons: new Set<string>([
     ...REFUSED_REASONS,
