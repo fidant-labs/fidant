@@ -784,8 +784,8 @@ export const sv: Messages = {
       parts: {
         heading: "Delarna",
         body: [
-          "Fidant har tre delar. Webbappen körs i avsändarens och mottagarens webbläsare och sköter all kryptering. Vår server i Stockholm levererar webbappen och skickar vidare meddelanden för att koppla upp de två webbläsarna, över en WebSocket. Vårt relä på samma maskin talar om för webbläsare vilken offentlig adress de har (STUN) och för vidare krypterad trafik när två webbläsare inte når varandra direkt (TURN). Om en avsändare ber oss mejla en länk skickar vår server också mejl via en e-posttjänst.",
-          "Det finns inga konton, ingen databas och ingen fillagring. Servern har det den vet bara i minnet.",
+          "Fidant har tre delar. Webbappen körs i avsändarens och mottagarens webbläsare och sköter all kryptering. Vår server i Stockholm levererar webbappen och skickar vidare meddelanden för att koppla upp de två webbläsarna, över en WebSocket. Vårt relä, på en egen maskin i Stockholm, talar om för webbläsare vilken offentlig adress de har (STUN) och för vidare krypterad trafik när två webbläsare inte når varandra direkt (TURN). Om en avsändare ber oss mejla en länk skickar vår server också mejl via en e-posttjänst.",
+          "Det finns inga konton, ingen fillagring och ingen databas över personer eller överföringar. Servern har det den vet om sidor och överföringar bara i minnet. På disk har servern en hemlighet för reläet, och reläet har sin nuvarande och sin förra hemlighet i en liten databasfil.",
           "Allt är öppen källkod, så varje påstående på den här sidan går att kontrollera mot koden.",
         ],
         link: ["Koden på GitHub", "https://github.com/sigill-labs/sigill"],
@@ -856,7 +856,7 @@ export const sv: Messages = {
         body: [
           "WebRTC provar de direkta vägarna först: över det lokala nätverket, eller via varje sidas offentliga adress, som webbläsaren får veta från vår STUN-tjänst. Filen går då direkt mellan webbläsarna. Avsändarens sida visar vilken väg varje förbindelse tog.",
           "Om ingen direkt väg fungerar, vilket är vanligt på mobildata och kontorsnätverk, går trafiken via vårt TURN-relä i Stockholm. Reläet för vidare krypterade paket. Det kan inte dekryptera dem och sparar dem inte.",
-          "För att använda reläet behöver en webbläsare inloggningsuppgifter, som vår server skapar för varje ihopkoppling och bara ger till de två ihopkopplade sidorna. De slutar gälla efter 5 minuter. Webbläsare når reläet över UDP, eller över TLS på port 443 där ett nätverk bara släpper igenom webbtrafik. Reläet skickar bara vidare över UDP, och bara från sin egen adress. Det vägrar skicka till andra datorer på privata eller interna nätverk (med ett godtaget undantag: reläets egen server, se beslut 0007) och begränsar hur många anslutningar som går via det samtidigt.",
+          "För att använda reläet behöver en webbläsare inloggningsuppgifter, som vår server skapar för varje ihopkoppling och bara ger till de två ihopkopplade sidorna. De slutar gälla efter 5 minuter. Vår server kontrollerar varje minut att reläet kan föra vidare trafik och erbjuder det bara då. Reläet får hemligheten bakom inloggningsuppgifterna från vår server, förseglad så att bara reläet kan öppna den. Webbläsare når reläet över UDP, eller över TLS på port 443 där ett nätverk bara släpper igenom webbtrafik. Reläet skickar bara vidare över UDP, och bara från sin egen adress. Det vägrar skicka till andra datorer på privata eller interna nätverk (med ett godtaget undantag: reläets egen server, se beslut 0007) och begränsar hur många anslutningar som går via det samtidigt.",
           "På alla vägar ser varje webbläsare den andras IP-adress, precis som i ett videosamtal.",
         ],
       },
@@ -908,9 +908,9 @@ export const sv: Messages = {
       seen: {
         heading: "Vad vår server och vårt relä ser och sparar",
         body: [
-          "Vår server ser varje sidas IP-adress och webbläsaruppgifter, länk-ID:na, avsändarens val om reläet, vilken väg avsändaren rapporterar för varje försök (direkt, STUN, relä eller misslyckad), om en länk redan har använts, när varje sida ansluter och kopplar ner samt de krypterade meddelandena för uppkopplingen och deras storlek. Den ser aldrig filen, dess namn, typ eller exakta storlek, och inte heller en delad hemlighet eller dess längd. Den ser aldrig en länks hemlighet eller nycklarna och kan inte läsa meddelandena, utom för en länk som vi mejlar: då får den länkens hemlighet en gång för att skriva mejlet, tillsammans med mottagarens e-postadress och namnet avsändaren skrev. Den har det den vet bara i minnet och glömmer en sida inom en minut efter att den kopplat ner. Undantagen är en mejlad länks adress, koder och tokens, som finns kvar tills avsändarens sida släpper länken, och antalet mejl, som finns kvar en timme.",
+          "Vår server ser varje sidas IP-adress och webbläsaruppgifter, länk-ID:na, avsändarens val om reläet, vilken väg avsändaren rapporterar för varje försök (direkt, STUN, relä eller misslyckad), om en länk redan har använts, när varje sida ansluter och kopplar ner samt de krypterade meddelandena för uppkopplingen och deras storlek. Den ser aldrig filen, dess namn, typ eller exakta storlek, och inte heller en delad hemlighet eller dess längd. Den ser aldrig en länks hemlighet eller nycklarna och kan inte läsa meddelandena, utom för en länk som vi mejlar: då får den länkens hemlighet en gång för att skriva mejlet, tillsammans med mottagarens e-postadress och namnet avsändaren skrev. Den har det den vet om sidor bara i minnet och glömmer en sida inom en minut efter att den kopplat ner. Undantagen är en mejlad länks adress, koder och tokens, som finns kvar tills avsändarens sida släpper länken, och antalet mejl, som finns kvar en timme.",
           "Dess loggrader har en fast lista med fält, till exempel de 6 första tecknen i ett länk-ID och om en förbindelse gick direkt. Aldrig namn, e-postadresser, koder, nycklar, filinnehåll eller IP-adresser. De raderas efter 30 dagar.",
-          "Vårt relä ser båda IP-adresserna och den krypterade trafiken, alltså filens storlek bara ungefär och ingenting av en delad hemlighets längd. På port 443 vidarebefordrar ett program på samma server varje förbindelse till reläet utan att dekryptera den, och loggar ingenting. Reläet för ingen logg. Bara för att rätta ett fel eller stoppa missbruk slår vi på en, med tider för anslutningar, IP-adresser och datamängder, i högst 7 dagar.",
+          "Vårt relä ser båda IP-adresserna och den krypterade trafiken, alltså filens storlek bara ungefär och ingenting av en delad hemlighets längd. Det för ingen logg över trafiken. Bara för att rätta ett fel eller stoppa missbruk slår vi på en, med tider för anslutningar, IP-adresser och datamängder, i högst 7 dagar. Det sparar sin nuvarande och sin förra hemlighet, och ingenting av filen. Medan det förnyar sitt certifikat, några sekunder ungefär varannan månad, loggar det adresserna som når det på port 80. Det är Let's Encrypts kontroller och skannrar på internet, aldrig webbläsare, och de raderas inom ungefär fem veckor.",
         ],
         link: ["Alla loggfält, på integritetssidan", "/privacy"],
       },
@@ -1130,7 +1130,7 @@ export const sv: Messages = {
         ],
         [
           "Data som blir kvar på våra maskiner",
-          "Inga konton, ingen databas och ingen fillagring. Servern har det den vet bara i minnet och glömmer en sida inom en minut efter att den kopplat ner, utom förvrängda antal mejl och koder, som den sparar i en timme. Loggarna har fasta fält, aldrig namn, e-postadresser, koder, nycklar, filinnehåll eller IP-adresser, och raderas efter 30 dagar.",
+          "Inga konton, ingen fillagring och ingen databas över personer eller överföringar. Servern har det den vet om sidor bara i minnet och glömmer en sida inom en minut efter att den kopplat ner, utom förvrängda antal mejl och koder, som den sparar i en timme. Utöver loggarna har den bara en hemlighet för reläet på disk. Loggarna har fasta fält, aldrig namn, e-postadresser, koder, nycklar, filinnehåll eller IP-adresser, och raderas efter 30 dagar. Reläet sparar bara sina egna hemligheter och, i ungefär fem veckor, adresserna som når det medan dess certifikat förnyas.",
         ],
         [
           "Spårning, eller kod från andra webbplatser",
@@ -1252,7 +1252,7 @@ export const sv: Messages = {
     sees: [
       [
         "Din IP-adress och uppgifter om din webbläsare",
-        "Som på alla webbplatser du besöker. Vi använder dem bara för att visa dig sidan och koppla ihop er. Vår server skriver aldrig in dem i sina loggar. Vårt relä loggar inte heller något, utom medan vi åtgärdar ett fel eller stoppar missbruk (se nedan).",
+        "Som på alla webbplatser du besöker. Vi använder dem bara för att visa dig sidan och koppla ihop er. Vår server skriver aldrig in dem i sina loggar. Vårt relä loggar dem inte heller, utom medan vi åtgärdar ett fel eller stoppar missbruk (se nedan).",
       ],
       [
         "Ett länk-ID",
@@ -1276,11 +1276,11 @@ export const sv: Messages = {
       ],
     ],
     keepHeading: "Vad vi sparar",
-    keep: "Vi har inga konton, ingen databas, inga cookies och ingen spårning. Förutom loggraderna nedan, en relälogg medan vi åtgärdar ett fel eller stoppar missbruk, antalet mejl och koder ovan, som finns kvar en timme, och e-posttjänstens lista över adresser som studsat sparas ingenting när avsändarens sida har stängts, inom högst två minuter.",
+    keep: "Vi har inga konton, ingen databas över personer eller överföringar, inga cookies och ingen spårning. Förutom loggraderna nedan, en relälogg medan vi åtgärdar ett fel eller stoppar missbruk, antalet mejl och koder ovan, som finns kvar en timme, och e-posttjänstens lista över adresser som studsat sparas ingenting om dig när avsändarens sida har stängts, inom högst två minuter.",
     logFields,
     logRetention: "Loggraderna raderas efter 30 dagar.",
     relayLog:
-      "Vårt relä, som för den låsta filen vidare när två webbläsare inte kan ansluta direkt, har ingen logg. Bara för att åtgärda ett fel eller stoppa missbruk slår vi på en. Den sparar då för varje vidarebefordrad anslutning båda IP-adresserna och portarna, när den började och slutade och hur mycket data som gick igenom. Aldrig namn, nycklar eller fildata. Vi stänger av den och raderar den inom 7 dagar.",
+      "Vårt relä, som för den låsta filen vidare när två webbläsare inte kan ansluta direkt, för ingen logg över trafiken. Bara för att åtgärda ett fel eller stoppa missbruk slår vi på en. Den sparar då för varje vidarebefordrad anslutning båda IP-adresserna och portarna, när den började och slutade och hur mycket data som gick igenom. Aldrig namn, nycklar eller fildata. Vi stänger av den och raderar den inom 7 dagar. Dessutom loggar reläet adresserna som når det på port 80 medan det förnyar sitt certifikat, några sekunder ungefär varannan månad. Det är Let's Encrypts kontroller och skannrar på internet, aldrig webbläsare, och de raderas inom ungefär fem veckor.",
     limitsHeading: "Det här kan vi inte skydda dig mot",
     limits: [
       "Den som har länken kan öppna filen. En länk vi mejlar kräver också en kod som vi skickar till samma adress, så den som kan läsa den inkorgen kan öppna den. Skicka varje länk bara till den som den är avsedd för.",
