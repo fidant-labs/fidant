@@ -511,6 +511,9 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
   }
 
   async function setup(): Promise<void> {
+    if (typeof RTCPeerConnection === "undefined" || !RTCPeerConnection.generateCertificate) {
+      throw new PeerError("unsupported", "no RTCPeerConnection");
+    }
     const cert = await RTCPeerConnection.generateCertificate({
       name: "ECDSA",
       namedCurve: "P-256",
@@ -549,14 +552,21 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
         }
         attachChannel(event.channel);
       };
-      ownFingerprint = certificateFingerprint(cert);
+      try {
+        ownFingerprint = certificateFingerprint(cert);
+      } catch (error) {
+        throw new PeerError(
+          "unsupported",
+          error instanceof Error ? error.message : "no fingerprint",
+        );
+      }
       sendSignal({ kind: "commit", hash: await commitFingerprint(ownFingerprint) }, true);
     }
   }
 
   // Relayed signals wait for the certificate and the connection.
   incoming = setup().catch((error: unknown) => {
-    failWith(error, "unsupported");
+    failWith(error, "setup-failed");
   });
 
   return {

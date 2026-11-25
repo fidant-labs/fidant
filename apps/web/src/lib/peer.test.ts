@@ -156,6 +156,7 @@ function resetFake(...fingerprints: string[]) {
   FakePeerConnection.fingerprints = fingerprints;
   FakePeerConnection.readBack = undefined;
   FakePeerConnection.localFingerprint = undefined;
+  FakePeerConnection.throwOnConstruct = false;
 }
 
 function fakeSdp(...lines: string[]): string {
@@ -173,6 +174,7 @@ class FakePeerConnection {
   static last: FakePeerConnection | undefined;
   static readBack: ((sdp: string) => string) | undefined;
   static localFingerprint: string | undefined;
+  static throwOnConstruct = false;
   static async generateCertificate(): Promise<FakeCert> {
     const value = FakePeerConnection.fingerprints.shift() ?? SENDER_FP;
     return { getFingerprints: () => [{ algorithm: "sha-256", value: value.toLowerCase() }] };
@@ -187,6 +189,9 @@ class FakePeerConnection {
   onconnectionstatechange = null;
   ondatachannel = null;
   constructor(config: { certificates: FakeCert[] }) {
+    if (FakePeerConnection.throwOnConstruct) {
+      throw new TypeError("bad iceServers");
+    }
     this.certificate = config.certificates[0] as FakeCert;
     FakePeerConnection.last = this;
   }
@@ -420,6 +425,27 @@ test("a recipient whose certificate has no sha-256 fingerprint closes as unsuppo
   const h = await harness("r");
   assert.equal(h.closes[0]?.reason, "unsupported");
   assert.deepEqual(await h.signals(), []);
+});
+
+test("a connection that will not construct closes as setup-failed, not unsupported", async () => {
+  resetFake(SENDER_FP);
+  FakePeerConnection.throwOnConstruct = true;
+  const h = await harness("s");
+  await h.signals();
+  assert.equal(h.closes[0]?.reason, "setup-failed");
+});
+
+test("a browser without RTCPeerConnection closes as unsupported", async () => {
+  const g = globalThis as { RTCPeerConnection?: unknown };
+  g.RTCPeerConnection = undefined;
+  try {
+    resetFake(SENDER_FP);
+    const h = await harness("s");
+    await h.signals();
+    assert.equal(h.closes[0]?.reason, "unsupported");
+  } finally {
+    g.RTCPeerConnection = FakePeerConnection;
+  }
 });
 
 test("after the answer the sender ignores signals sealed for another attempt or garbage", async () => {

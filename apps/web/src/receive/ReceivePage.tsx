@@ -1023,7 +1023,7 @@ export function ReceivePage({
   );
 }
 
-/** This tab's token for an emailed link. Storage that is blocked acts as empty. */
+/** Moves focus to the step's heading so a screen reader announces it. */
 function focusHeading(): void {
   const heading = document.querySelector<HTMLElement>("#receive h1");
   if (!heading) {
@@ -1033,6 +1033,7 @@ function focusHeading(): void {
   heading.focus();
 }
 
+/** This tab's token for an emailed link. Storage that is blocked acts as empty. */
 function readToken(linkId: string): string | undefined {
   try {
     const token = sessionStorage.getItem(`token:${linkId}`);
