@@ -787,12 +787,11 @@ test("sigill-deploy refuses a commit off main's first-parent history, and retrie
       userData.indexOf("\nEOF\n", start) + 1,
     );
     assert.ok(body.includes("https://github.com/sigill-labs/sigill.git"));
-    writeFileSync(
-      script,
-      body
-        .replace("https://github.com/sigill-labs/sigill.git", `file://${dir}/src`)
-        .replaceAll("/opt/sigill", `${dir}/opt`),
-    );
+    const local = body
+      .replaceAll("https://github.com/sigill-labs/sigill.git", `file://${dir}/src`)
+      .replaceAll("/opt/sigill", `${dir}/opt`);
+    assert.doesNotMatch(local, /github\.com/);
+    writeFileSync(script, local);
     mkdirSync(join(dir, "opt", "releases"), { recursive: true });
     mkdirSync(join(dir, "src"));
     mkdirSync(join(dir, "bin"));
