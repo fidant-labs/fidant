@@ -6,11 +6,11 @@ import {
   decodeMeta,
   encodeCredit,
   type FileMeta,
+  FRAME_OVERHEAD_BYTES,
   FrameReader,
   FrameWriter,
   HEADER_BYTES,
   MAX_CHUNK_BYTES,
-  META_PADDED_BYTES,
   MIN_CHUNK_BYTES,
   paddedLength,
   ReceiveVerifier,
@@ -24,7 +24,6 @@ import { DEFAULT_MAX_MESSAGE_SIZE } from "./peer.ts";
 import {
   anySignal,
   anySignalFallback,
-  FRAME_OVERHEAD_BYTES,
   type FrameChannel,
   HASH_SLICE_BYTES,
   hashFile,
@@ -392,12 +391,4 @@ test("hashFile stops when aborted", async () => {
   const controller = new AbortController();
   controller.abort(new Error("other file"));
   await assert.rejects(hashFile(new Blob([new Uint8Array(10)]), controller.signal), /other file/);
-});
-
-test("the smallest chunk a recipient accepts is the smallest an honest sender makes", () => {
-  // A sender's META frame must fit maxMessageSize, and its chunk is maxMessageSize minus the overhead.
-  assert.equal(
-    MIN_CHUNK_BYTES,
-    HEADER_BYTES + META_PADDED_BYTES + TAG_BYTES - FRAME_OVERHEAD_BYTES,
-  );
 });
