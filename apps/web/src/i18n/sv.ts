@@ -111,6 +111,7 @@ export const sv: Messages = {
         "När de öppnar den går filen från din webbläsare till deras, krypterad hela vägen.",
       ],
     ] as ReadonlyArray<readonly [string, string]>,
+    serverHeading: "Vad vår server vet",
     neverHeading: "Vår server får aldrig",
     seesHeading: "Vår server ser bara",
     relayNote:
@@ -1199,42 +1200,8 @@ export const sv: Messages = {
   },
   privacy: {
     title: "Integritet",
-    lede: "Din fil går från din webbläsare till webbläsaren hos den du skickar till, direkt när era nätverk tillåter det och annars via vårt relä. Den låses innan den lämnar din dator, och bara den som har länken kan låsa upp den. Vi får aldrig filen, dess namn eller en hemlighet som du delar, och aldrig nyckeln om du inte ber oss mejla länken.",
-    howHeading: "Så går det till att skicka",
-    steps: [
-      [
-        "Du väljer en fil och lägger till dem du vill skicka den till.",
-        "Filen stannar på din dator. Ingenting laddas upp.",
-      ],
-      [
-        "Du får en länk per person.",
-        "Varje länk innehåller nyckeln som låser upp filen. Du skickar länken själv, till exempel via mejl eller chatt, eller så mejlar vi den till en adress du anger. En länk som vi mejlar kräver också en kod som vi skickar till samma adress.",
-      ],
-      [
-        "De öppnar länken medan din sida fortfarande är öppen.",
-        "Vår server hjälper de två webbläsarna att hitta varandra, som en telefonist som kopplar ett samtal.",
-      ],
-      ["De ser filens namn och storlek och väljer att ladda ner den, eller tackar nej.", ""],
-      [
-        "Filen går från din dator till deras, låst hela vägen.",
-        "Den går direkt när era nätverk tillåter det, annars via vårt relä. Deras webbläsare låser upp den och kontrollerar att det är exakt den fil du skickade.",
-      ],
-    ],
-    keepOpen:
-      "Eftersom filen aldrig sparas någonstans behöver du ha sidan öppen tills alla har laddat ner den.",
-    travelHeading: "Så färdas filen",
-    lockedBox:
-      "Tänk dig att du lämnar över en låst låda personligen. Det finns inget postkontor emellan som håller i den, och bara den som har nyckeln kan öppna den.",
-    keyPart: [
-      "Nyckeln är den sista delen av länken, efter tecknet ",
-      ". Webbläsare skickar aldrig den delen till någon webbplats, inte heller till vår. Därför kan vi inte låsa upp din fil, ens om vi ville. Undantaget är en länk som du ber oss mejla: då ger din webbläsare länkens nyckel till vår server en gång, för att lägga den i mejlet, och vi sparar eller loggar den inte.",
-    ],
-    direct:
-      "Eftersom de två webbläsarna ansluter direkt till varandra kan båda se den andras nätverksadress (IP-adress), precis som i ett videosamtal. Om ett nätverk blockerar det går filen i stället via vårt relä, fortfarande låst. Reläet ser då båda IP-adresserna och ungefär hur stor filen är, men kan inte låsa upp den.",
-    linkWarning:
-      "Alla som har länken kan öppna filen. En länk som vi mejlar kräver också en kod som vi skickar till samma adress, så alla som kan läsa den inkorgen kan öppna den. Skicka varje länk bara till den som den är avsedd för.",
-    serverHeading: "Vad vår server vet",
-    neverHeading: "Aldrig",
+    lede: "Vi får aldrig din fil eller delade hemlighet, eller dess namn. Vi får inte heller nyckeln som låser upp den, om du inte ber oss mejla länken. Här nedan står vad vi ser och sparar, och hur länge.",
+    neverHeading: "Det här får vi aldrig",
     never: [
       ["Din fil", "Varken innehållet, filnamnet, storleken eller filtypen."],
       [
@@ -1250,7 +1217,7 @@ export const sv: Messages = {
         "Inte namnen du ger dem du skickar till. Ditt eget namn når oss bara om du ber oss mejla en länk: det står då i mejlet, och vi sparar det inte.",
       ],
     ],
-    seesHeading: "Bara det den behöver för att koppla ihop er eller mejla en länk",
+    seesHeading: "Det här ser vår server, och bara för att koppla ihop er eller mejla en länk",
     sees: [
       [
         "Din IP-adress och uppgifter om din webbläsare",
@@ -1273,15 +1240,37 @@ export const sv: Messages = {
         "Om du ber oss mejla en länk skickar din webbläsare mottagarens e-postadress, länken med nyckeln och ditt namn till vår server. Nyckeln och ditt namn har vi bara tills mejlet har gått iväg. Adressen har vi i minnet medan din sida är öppen, så att vi kan mejla mottagaren en kod när länken öppnas. Vi har också den senaste koden och vilka flikar som har angett rätt kod. Vi loggar aldrig adressen och skriver den aldrig till disk. Vår e-posttjänst, Amazon SES, levererar mejlen, och studsar går bara dit, aldrig till en inkorg hos oss. Amazon SES har kvar ett mejl med en länk, och därmed nyckeln och ditt namn, bara tills det har levererats: om mottagarens e-postserver inte tar emot det direkt försöker Amazon SES igen i högst 15 minuter och kastar det sedan. En adress som studsar för att den inte går att leverera hamnar på en lista som Amazon SES har för alla sina kunder, i upp till 14 dagar, så att ingen skickar mer e-post till den. Den listan kan vi inte stänga av.",
       ],
       [
-        "Antal mejl",
-        "För att begränsa hur många mejl någon kan skicka räknar vi under en timme mejlen till varje adress och mejlen som varje IP-adress ber oss skicka. Antalet sparas under en förvrängd form av adressen (en HMAC), aldrig under själva adressen.",
+        "Antal mejl och koder",
+        "För att begränsa hur många mejl någon kan skicka räknar vi under en timme mejlen och koderna till varje adress och mejlen som varje IP-adress ber oss skicka. Antalet sparas under en förvrängd form av adressen (en HMAC), aldrig under själva adressen.",
       ],
     ],
     keepHeading: "Vad vi sparar",
-    keep: "Vi har inga konton, ingen databas, inga cookies och ingen spårning. Förutom loggraderna nedan, en relälogg medan vi åtgärdar ett fel eller stoppar missbruk, antalet mejl ovan, som finns kvar en timme, och e-posttjänstens lista över adresser som studsat sparas ingenting när avsändarens sida har stängts, inom högst två minuter.",
+    keep: "Vi har inga konton, ingen databas, inga cookies och ingen spårning. Förutom loggraderna nedan, en relälogg medan vi åtgärdar ett fel eller stoppar missbruk, antalet mejl och koder ovan, som finns kvar en timme, och e-posttjänstens lista över adresser som studsat sparas ingenting när avsändarens sida har stängts, inom högst två minuter.",
     logFields,
     logRetention: "Loggraderna raderas efter 30 dagar.",
     relayLog:
       "Vårt relä, som för den låsta filen vidare när två webbläsare inte kan ansluta direkt, har ingen logg. Bara för att åtgärda ett fel eller stoppa missbruk slår vi på en. Den sparar då för varje vidarebefordrad anslutning båda IP-adresserna och portarna, när den började och slutade och hur mycket data som gick igenom. Aldrig namn, nycklar eller fildata. Vi stänger av den och raderar den inom 7 dagar.",
+    limitsHeading: "Det här kan vi inte skydda dig mot",
+    limits: [
+      "Den som har länken kan öppna filen. En länk vi mejlar kräver också en kod som vi skickar till samma adress, så den som kan läsa den inkorgen kan öppna den. Skicka varje länk bara till den som den är avsedd för.",
+      "Din webbläsare kör den kod vår server skickar. En server som skickade annan kod skulle kunna läsa filer. Koden är offentlig, men webbläsare kan ännu inte kontrollera att det de fick stämmer med den.",
+      "Den andra webbläsaren ser din IP-adress, precis som i ett videosamtal. Vår server ser båda IP-adresserna, vilken mottagare som ansluter till vilken avsändare och när, och hur många mottagare en avsändare har. Så den får veta vem som skickar till vem, men inte vad, utom för en länk vi mejlat.",
+      "Varje webbläsare frågar vårt relä om sin offentliga adress, så reläet ser varje IP-adress. Nätverken på vägen, och vårt relä när filen går via det, ser båda IP-adresserna, när överföringen sker och ungefär hur stor filen är.",
+    ],
+    limitsLink: ["Varje risk, och vad Fidant gör åt den", "/how/protection"] as readonly [
+      string,
+      string,
+    ],
+    checkHeading: "Kontrollera själv",
+    check:
+      "Den här sidan är den korta versionen. Så fungerar det förklarar varje steg, och varje påstående här går att kontrollera mot den offentliga koden.",
+    checkLinks: [
+      ["Så fungerar det, steg för steg", "/how"],
+      ["Det som ses och sparas i varje steg", "/how/traces"],
+      ["Koden på GitHub", "https://github.com/sigill-labs/sigill"],
+    ] as ReadonlyArray<readonly [string, string]>,
+    contactHeading: "Kontakt",
+    contact:
+      "Fidant är ett projekt med öppen källkod, och inget företag eller ingen person ansvarar för det än. Frågor om integritet och dina uppgifter skickas till",
   },
 };
