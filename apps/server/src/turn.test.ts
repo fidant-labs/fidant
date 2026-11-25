@@ -19,6 +19,15 @@ test("mints coturn REST credentials that expire in 5 minutes", () => {
   });
 });
 
+test("adds a label to the username, which coturn checks with the rest of it", () => {
+  // printf 1700000300:probe | openssl dgst -sha1 -hmac test-secret -binary | base64
+  const fromOpenssl = "ubv0JVKpypWCxEDBRu/bsN7A+10=";
+  assert.deepEqual(turnCredentials("test-secret", 1_700_000_000_123, "probe"), {
+    username: "1700000300:probe",
+    credential: fromOpenssl,
+  });
+});
+
 test("the app box's TURN_URLS, with its IPv6 STUN address, pass the startup check", () => {
   assert.equal(boxUrls.length, 4);
   assert.ok(parseIceServers([{ urls: boxUrls, username: "", credential: "" }]));

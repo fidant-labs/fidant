@@ -38,7 +38,7 @@ A link works once: after a confirmed delivery, opening it again shows "This link
 
 ## Network tips
 
-- With a local `pnpm start`, sender and recipients must be on the same network: it hands out no STUN or TURN servers unless `TURN_URLS` and `TURN_SECRET_FILE` are set, so browsers connect only over local addresses.
+- With a local `pnpm start`, sender and recipients must be on the same network: it hands out no STUN or TURN servers unless `TURN_URLS` and `TURN_SECRET_FILE` are set, or `RELAYS_FILE` and `RELAY_MASTER_FILE` name a relay list and a master file (see `AGENTS.md`), so browsers connect only over local addresses.
 - A local `pnpm start` sends no mail, so the send page offers no email field. To try emailed links, run `mailpit` in another terminal and start with `MAIL_SMTP_URL=smtp://127.0.0.1:1025 MAIL_FROM="Fidant <noreply@example.se>" PUBLIC_ORIGIN=https://localhost:8443 pnpm start` (`PUBLIC_ORIGIN` is the address recipients open). Mailpit shows the mail at http://localhost:8025.
 - The hosted site at https://fidant.se has a STUN and TURN relay, so browsers there can be on different networks.
 - A phone hotspot is a reliable network for a demo.

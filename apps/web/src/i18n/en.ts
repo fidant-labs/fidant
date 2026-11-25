@@ -690,7 +690,7 @@ export const en = {
       `Both browsers' IP addresses and ${items[kind].seen}. It can't unlock ${items[kind].the}.`,
     relayLogsLabel: "Our relay logs",
     relayLogs: (kind: Kind) =>
-      `Nothing by default. Only while we fix a fault or stop abuse: connection times, IP addresses and how much data passed through, for at most 7 days. Never names, keys or ${items[kind].data}.`,
+      `No log of the traffic by default. Only while we fix a fault or stop abuse: connection times, IP addresses and how much data passed through, for at most 7 days. Never names, keys or ${items[kind].data}. While it renews its certificate, it also logs the addresses that reach it on port 80, never browsers', for about five weeks.`,
     relayKeepsLabel: "Our relay keeps",
     relayKeeps: (kind: Kind) =>
       `Nothing of ${items[kind].the} once ${items[kind].it} has passed through. Log lines from fixing a fault or stopping abuse are deleted within 7 days.`,
@@ -829,8 +829,8 @@ export const en = {
       parts: {
         heading: "The parts",
         body: [
-          "Fidant has three parts. The web app runs in the sender's and the recipient's browsers and does all the encryption. Our server, in Stockholm, serves the web app and passes setup messages between the two browsers over a WebSocket. Our relay, on the same machine, tells browsers their public address (STUN) and carries encrypted traffic when two browsers can't reach each other directly (TURN). If a sender asks us to email a link, our server also sends emails through a mail service.",
-          "There are no accounts, no database and no file storage. The server holds what it knows only in memory.",
+          "Fidant has three parts. The web app runs in the sender's and the recipient's browsers and does all the encryption. Our server, in Stockholm, serves the web app and passes setup messages between the two browsers over a WebSocket. Our relay, on a machine of its own in Stockholm, tells browsers their public address (STUN) and carries encrypted traffic when two browsers can't reach each other directly (TURN). If a sender asks us to email a link, our server also sends emails through a mail service.",
+          "There are no accounts, no file storage and no database of people or transfers. The server holds what it knows about pages and transfers only in memory. On disk the server keeps secrets of its own, among them the one the relay's secret comes from, and the relay keeps its current and previous secret in a small database file.",
           "All of it is open source, so every statement on this page can be checked against the code.",
         ],
         link: ["The code on GitHub", "https://github.com/sigill-labs/sigill"],
@@ -901,7 +901,7 @@ export const en = {
         body: [
           "WebRTC tries the direct routes first: over the local network, or through each side's public address, which the browser learns from our STUN service. The file then goes straight between the browsers. The sender's page shows which route each connection took.",
           "If no direct route works, which is common on mobile data and office networks, the traffic goes through our TURN relay in Stockholm. The relay forwards encrypted packets. It can't decrypt them and doesn't store them.",
-          "To use the relay a browser needs credentials, which our server creates for each pairing and gives only to the two paired pages. They expire after 5 minutes. Browsers reach the relay over UDP, or over TLS on port 443 where a network allows only web traffic. The relay forwards only over UDP, and only from its own address. It refuses to forward to other machines on private or internal networks (with one accepted exception: the relay's own box, see decision 0007), and limits how many relayed connections run at once.",
+          "To use the relay a browser needs credentials, which our server creates for each pairing and gives only to the two paired pages. They expire after 5 minutes. Our server checks every minute that the relay can carry traffic, and offers it once a check passes. The server stops offering it after two failed checks in a row. The relay gets the secret behind the credentials from our server, sealed so that only the relay can open it. Browsers reach the relay over UDP, or over TLS on port 443 where a network allows only web traffic. The relay forwards only over UDP, and only from its own address. It refuses to forward to other machines on private or internal networks (with one accepted exception: the relay's own box, see decision 0007), and limits how many relayed connections run at once.",
           "On every route, each browser sees the other's IP address, like on a video call.",
         ],
       },
@@ -953,9 +953,9 @@ export const en = {
       seen: {
         heading: "What our server and relay see and keep",
         body: [
-          "Our server sees each page's IP address and browser details, the link IDs, the sender's relay choice, the connection path the sender reports for each attempt (direct, STUN, relay or failed), whether a link was already used, when each side connects and disconnects, and the encrypted setup messages and their sizes. It never sees the file, its name, its type or its exact size, or a shared secret or its length. It never sees a link's secret or the keys and can't read the setup messages, except for a link we email: then it gets that link's secret once to write the email, along with the recipient's email address and the sender's typed name. It keeps what it knows in memory only, and forgets a page within a minute after it disconnects. The exceptions are an emailed link's address, codes and tokens, which stay until the sender's page lets the link go, and the email counts, which last an hour.",
+          "Our server sees each page's IP address and browser details, the link IDs, the sender's relay choice, the connection path the sender reports for each attempt (direct, STUN, relay or failed), whether a link was already used, when each side connects and disconnects, and the encrypted setup messages and their sizes. It never sees the file, its name, its type or its exact size, or a shared secret or its length. It never sees a link's secret or the keys and can't read the setup messages, except for a link we email: then it gets that link's secret once to write the email, along with the recipient's email address and the sender's typed name. It keeps what it knows about pages in memory only, and forgets a page within a minute after it disconnects. The exceptions are an emailed link's address, codes and tokens, which stay until the sender's page lets the link go, and the email counts, which last an hour.",
           "Its log lines use a fixed list of fields, such as the first 6 characters of a link ID and whether a connection was direct. Never names, email addresses, codes, keys, file data or IP addresses. They are deleted after 30 days.",
-          "Our relay sees both IP addresses and the encrypted traffic, so the file's size only roughly and nothing of a shared secret's length. On port 443 a program on the same server passes each connection to the relay without decrypting it, and logs nothing. The relay keeps no log. Only to fix a fault or stop abuse do we turn one on, with connection times, IP addresses and data volumes, for at most 7 days.",
+          "Our relay sees both IP addresses and the encrypted traffic, so the file's size only roughly and nothing of a shared secret's length. It keeps no log of the traffic. Only to fix a fault or stop abuse do we turn one on, with connection times, IP addresses and data volumes, for at most 7 days. It keeps its current and previous secret, and nothing of the file. While it renews its certificate, a few seconds every two months or so, it logs the addresses that reach it on port 80. Those are Let's Encrypt's checks and internet scanners, never browsers, and they are deleted within about five weeks.",
         ],
         link: ["Every log field, on the privacy page", "/privacy"],
       },
@@ -1032,11 +1032,11 @@ export const en = {
         items: {
           local: {
             heading: "Direct, on the same network",
-            body: "When both browsers are on the same local network, they connect over their local addresses. The file goes straight between them, and our server and relay see none of it. Each browser still asks our STUN service for its public address, which shows it that IP address, and if you allow the relay, it sees both IP addresses.",
+            body: "When both browsers are on the same local network, they connect over their local addresses. The file goes straight between them, and our server and relay see none of it. Each browser still asks our STUN service for its public address, which shows it that IP address, and if you allow the relay and it is available, it sees both IP addresses.",
           },
           stun: {
             heading: "Direct, through public addresses",
-            body: "Each browser asks our STUN service for its public address, which shows our STUN service that IP address and nothing else. The file then goes straight between the browsers over the internet. If you allow the relay, it still sees both IP addresses.",
+            body: "Each browser asks our STUN service for its public address, which shows our STUN service that IP address and nothing else. The file then goes straight between the browsers over the internet. If you allow the relay and it is available, it still sees both IP addresses.",
           },
           relay: {
             heading: "Through our relay",
@@ -1177,7 +1177,7 @@ export const en = {
         ],
         [
           "Data left behind on our machines",
-          "No accounts, database or file storage. The server holds what it knows only in memory and forgets a page within a minute after it disconnects, apart from scrambled counts of emails and codes, which it keeps for an hour. Logs have fixed fields, never names, email addresses, codes, keys, file data or IP addresses, and are deleted after 30 days.",
+          "No accounts, file storage or database of people or transfers. The server holds what it knows about pages only in memory and forgets a page within a minute after it disconnects, apart from scrambled counts of emails and codes, which it keeps for an hour. Its logs have fixed fields, never names, email addresses, codes, keys, file data or IP addresses, and are deleted after 30 days. The relay keeps no log of the traffic by default. While it renews its certificate, it logs the addresses that reach it on port 80, never browsers', for about five weeks.",
         ],
         [
           "Tracking, or code from other sites",
@@ -1236,7 +1236,7 @@ export const en = {
             ],
             [
               "direct,relay",
-              "Relay credentials for this pair, valid 5 minutes to start a relay, in memory while the page is open.",
+              "While our relay is available, relay credentials for this pair, valid 5 minutes to start a relay, in memory while the page is open.",
             ],
           ],
         },
@@ -1264,7 +1264,7 @@ export const en = {
             ],
             [
               "direct,relay",
-              "Makes relay credentials for this pair, valid for 5 minutes, and sends them to both pages without keeping them.",
+              "While our relay is available, makes relay credentials for this pair, valid for 5 minutes, and sends them to both pages without keeping them.",
             ],
             [
               "email",
@@ -1327,13 +1327,13 @@ export const en = {
         },
         relay: {
           name: "Our relay",
-          kept: "Nothing once the traffic has passed. No log by default; only to fix a fault or stop abuse do we turn one on, with connection times, IP addresses and data volumes, for at most 7 days.",
+          kept: "Nothing once the traffic has passed. No log of the traffic. Only to fix a fault or stop abuse do we turn one on, with connection times, IP addresses and data volumes, for at most 7 days. While it renews its certificate, it also logs the addresses that reach it on port 80, never browsers', for about five weeks.",
           never: "The key, the file or the secret. It can't decrypt what it carries.",
           lines: [
             ["", "Each browser's public IP address, when the browser asks for it."],
             [
               "direct",
-              "Both IP addresses, because each browser reserves a relay address even when a direct route wins.",
+              "While our relay is available, both IP addresses, because each browser reserves a relay address even when a direct route wins.",
             ],
             [
               "relay",
@@ -1367,7 +1367,7 @@ export const en = {
             ["email", "A token for the right code, in that tab's session storage."],
             [
               "direct,relay",
-              "Relay credentials for this pair, valid 5 minutes to start a relay, in memory while the page is open.",
+              "While our relay is available, relay credentials for this pair, valid 5 minutes to start a relay, in memory while the page is open.",
             ],
             ["", "Their theme and language choice, in the browser's local storage, until cleared."],
           ],
@@ -1431,21 +1431,21 @@ export const en = {
           "The link ID, a random attempt ID, and the recipient's IP address and browser details.",
           "Which recipient page is paired with which link, in memory.",
           "That a recipient joined or was refused and why, with the first 6 characters of the link ID.",
-          "Nothing yet. If you allow the relay, our server gives the two pages credentials for it that expire after 5 minutes.",
+          "Nothing yet. If you allow the relay and it is available, our server gives the two pages credentials for it that expire after 5 minutes.",
         ],
         [
           "The browsers set up the connection",
           "Encrypted setup messages and their sizes. It can't read them, except for a link we emailed.",
           "Nothing. It passes them on.",
           "Each message's size, with the first 6 characters of the link ID.",
-          "Each browser's IP address, when it asks for its public address (STUN). If you allow the relay, each browser also reserves a relay address, so the relay sees both IP addresses even when a direct route wins.",
+          "Each browser's IP address, when it asks for its public address (STUN). If you allow the relay and it is available, each browser also reserves a relay address, so the relay sees both IP addresses even when a direct route wins.",
         ],
         [
           "The file or secret travels",
           "Nothing of it. Your page reports the route: direct, STUN, relay or failed.",
           "Nothing.",
           "The route.",
-          "On the relay route, the encrypted packets, which it forwards and doesn't store. Both IP addresses whenever you allow the relay.",
+          "On the relay route, the encrypted packets, which it forwards and doesn't store. Both IP addresses whenever you allow the relay and it is available.",
         ],
         [
           "The recipient confirms delivery",
@@ -1466,7 +1466,7 @@ export const en = {
           "Nothing.",
           "Only the scrambled counts of emails and codes, for up to an hour.",
           "Log lines are deleted after 30 days.",
-          "No log. Only to fix a fault or stop abuse do we turn one on, with connection times, IP addresses and data volumes, for at most 7 days.",
+          "No log of the traffic. Only to fix a fault or stop abuse do we turn one on, with connection times, IP addresses and data volumes, for at most 7 days. Separately, while it renews its certificate, it logs the addresses that reach it on port 80, never browsers', for about five weeks.",
         ],
       ],
     },
@@ -1494,7 +1494,7 @@ export const en = {
     sees: [
       [
         "Your IP address and browser details",
-        "Like any website you visit. We use them only to show you this page and connect you. Our server never writes them to its logs. Our relay logs nothing either, except while we fix a fault or stop abuse (see below).",
+        "Like any website you visit. We use them only to show you this page and connect you. Our server never writes them to its logs. Our relay doesn't log them either, except while we fix a fault or stop abuse (see below).",
       ],
       [
         "A link ID",
@@ -1518,11 +1518,11 @@ export const en = {
       ],
     ] as ReadonlyArray<readonly [string, string]>,
     keepHeading: "What we keep",
-    keep: "We have no accounts, no database, no cookies and no tracking. Apart from the log lines below, a relay log while we fix a fault or stop abuse, the email and code counts above, which last an hour, and our mail service's list of bounced addresses, nothing is kept once the sender's page is closed, within 2 minutes at most.",
+    keep: "We have no accounts, no database of people or transfers, no cookies and no tracking. Apart from the log lines below, a relay log while we fix a fault or stop abuse, the email and code counts above, which last an hour, and our mail service's list of bounced addresses, nothing about you is kept once the sender's page is closed, within 2 minutes at most.",
     logFields,
     logRetention: "Log lines are deleted after 30 days.",
     relayLog:
-      "Our relay, which carries the locked file when two browsers can't connect directly, keeps no log. Only to fix a fault or stop abuse do we turn one on. It then records, for each relayed connection, both IP addresses and ports, when it started and ended, and how much data passed through. Never names, keys or file data. We turn it off and delete it within 7 days.",
+      "Our relay, which carries the locked file when two browsers can't connect directly, keeps no log of the traffic. Only to fix a fault or stop abuse do we turn one on. It then records, for each relayed connection, both IP addresses and ports, when it started and ended, and how much data passed through. Never names, keys or file data. We turn it off and delete it within 7 days. Separately, while the relay renews its certificate, a few seconds every two months or so, it logs the addresses that reach it on port 80. Those are Let's Encrypt's checks and internet scanners, never browsers, and they are deleted within about five weeks.",
     limitsHeading: "What we can't protect you from",
     limits: [
       "Anyone who has the link can open the file. A link we email also needs a code we send to the same address, so anyone who can read that mailbox can open it. Send each link only to the person it is for.",
