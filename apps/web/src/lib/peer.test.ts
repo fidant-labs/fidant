@@ -77,7 +77,10 @@ test("parseSignalPayload rejects anything else", () => {
     { kind: "restart-offer" },
     { kind: "restart-offer", sdp: "" },
     { kind: "restart-offer", sdp: "v=0", check: true },
+    { kind: "restart-answer" },
+    { kind: "restart-answer", sdp: "" },
     { kind: "restart-answer", sdp: 1 },
+    { kind: "restart-answer", sdp: "v=0", check: true },
     { kind: "restart", sdp: "v=0" },
     { kind: "bye" },
     { kind: "ice" },
@@ -203,7 +206,6 @@ class FakePeerConnection {
   onicecandidate = null;
   onconnectionstatechange = null;
   ondatachannel = null;
-  #answering = false;
   constructor(config: FakeConfiguration & { certificates: FakeCert[] }) {
     this.config = config;
     this.certificate = config.certificates[0] as FakeCert;
@@ -229,15 +231,13 @@ class FakePeerConnection {
   async setLocalDescription() {
     const [fp] = this.certificate.getFingerprints();
     this.localDescription = {
-      type: this.#answering ? "answer" : "offer",
+      type: this.remoteDescription ? "answer" : "offer",
       sdp: fakeSdp(`a=fingerprint:sha-256 ${FakePeerConnection.localFingerprint ?? fp?.value}`),
     };
-    this.#answering = false;
   }
   async setRemoteDescription(description: { type: string; sdp: string }) {
     const read = FakePeerConnection.readBack;
     this.remoteDescription = read ? { ...description, sdp: read(description.sdp) } : description;
-    this.#answering = description.type === "offer";
   }
   async addIceCandidate(candidate?: unknown) {
     this.added.push(candidate);
@@ -577,16 +577,68 @@ test("a browser that refuses the new servers keeps the connection without the re
   assert.deepEqual(await kinds(sender, 1), ["offer"]);
 });
 
-test("close() clears the fallback timer", async () => {
-  const timeouts = () => process.getActiveResourcesInfo().filter((r) => r === "Timeout").length;
-  resetFake(SENDER_FP);
-  const sender = await harness("s", undefined, relayServers);
-  await sender.relay({ kind: "commit", hash: await commitFingerprint(RECIPIENT_FP) });
-  const before = timeouts();
-  await sender.relay({ kind: "answer", sdp: sdpWith(RECIPIENT_FP, "r1") });
-  assert.equal(timeouts(), before + 1);
+test("close() stops the relay fallback", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const sender = await answeredSender();
   sender.peer.close();
-  assert.equal(timeouts(), before);
+  t.mock.timers.tick(RELAY_FALLBACK_MS);
+  assert.equal(sender.pc.restarts, 0);
+  assert.deepEqual(sender.pc.configured, []);
+  assert.deepEqual(await kinds(sender, 1), ["offer"]);
+});
+
+test("the sender does not restart once its channel is open", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const sender = await answeredSender();
+  (sender.pc.channel as { readyState?: string }).readyState = "open";
+  sender.pc.iceConnectionState = "disconnected";
+  t.mock.timers.tick(RELAY_FALLBACK_MS);
+  await sender.relay(ice("r1"));
+  assert.equal(sender.pc.restarts, 0);
+  assert.deepEqual(sender.pc.configured, []);
+  assert.deepEqual(sender.closes, []);
+  assert.deepEqual(await kinds(sender, 1), ["offer"]);
+});
+
+test("the sent restart-offer names the first certificate and carries no check flag", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const sender = await restartedSender(t);
+  const restart = (await sender.signals(2))[1] as { sdp: string; check?: unknown };
+  assert.equal("check" in restart, false);
+  assert.match(restart.sdp, new RegExp(SENDER_FP.toLowerCase()));
+});
+
+test("each side refuses the restart signal meant for the other", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const sender = await answeredSender();
+  await sender.relay({ kind: "restart-offer", sdp: sdpWith(RECIPIENT_FP, "r2") });
+  assert.deepEqual(sender.closes, [{ reason: "bad-signal", detail: "unexpected restart-offer" }]);
+
+  const recipient = await answeredRecipient();
+  await recipient.relay({ kind: "restart-answer", sdp: sdpWith(SENDER_FP, "s2") });
+  assert.deepEqual(recipient.closes, [
+    { reason: "bad-signal", detail: "unexpected restart-answer" },
+  ]);
+});
+
+test("the recipient ignores a restart-offer once its channel is open or ICE connected", async () => {
+  for (const open of [true, false]) {
+    const recipient = await answeredRecipient();
+    if (open) {
+      const channel = Object.assign(
+        { onopen: null },
+        { label: "sigill", ordered: true, readyState: "open", close() {} },
+      );
+      (recipient.pc.ondatachannel as unknown as (e: { channel: object }) => void)({ channel });
+    } else {
+      recipient.pc.iceConnectionState = "connected";
+    }
+    await recipient.relay({ kind: "restart-offer", sdp: sdpWith(SENDER_FP, "s2") });
+    assert.deepEqual(recipient.closes, [], String(open));
+    assert.deepEqual(recipient.pc.configured, [], String(open));
+    assert.equal(recipient.pc.remoteDescription?.sdp, sdpWith(SENDER_FP, "s1"));
+    assert.deepEqual(await kinds(recipient, 2), ["commit", "answer"]);
+  }
 });
 
 test("a sender takes one restart-answer, and only after its restart-offer", async (t) => {
@@ -611,6 +663,7 @@ test("a recipient takes one restart-offer, and only after its answer", async () 
   await recipient.relay({ kind: "restart-offer", sdp: sdpWith(SENDER_FP, "s2") });
   assert.deepEqual(await kinds(recipient, 3), ["commit", "answer", "restart-answer"]);
   assert.deepEqual(recipient.pc.configured, [relayServers]);
+  assert.equal(recipient.pc.restarts, 0);
   assert.equal(recipient.pc.remoteDescription?.sdp, sdpWith(SENDER_FP, "s2"));
   await recipient.relay({ kind: "restart-offer", sdp: sdpWith(SENDER_FP, "s3") });
   assert.deepEqual(recipient.closes, [

@@ -298,6 +298,10 @@ function toCandidate(candidate: RTCIceCandidate): SignalCandidate {
 
 const urlsOf = (server: RTCIceServer) => [server.urls].flat();
 
+function isConnected(state: RTCIceConnectionState): boolean {
+  return state === "connected" || state === "completed";
+}
+
 function startPeer(options: PeerOptions, side: Direction): Peer {
   const { signaling, linkId, attempt, signalKey } = options;
   const other: Direction = side === "s" ? "r" : "s";
@@ -325,17 +329,17 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
   const number = new Promise<string>((resolve) => {
     resolveNumber = resolve;
   });
-  /** The sender sent its restart-offer, or the recipient took one. */
+  /** Set when the sender starts its restart-offer, or the recipient takes one. */
   let restarted = false;
   let gotRestartAnswer = false;
-  let fallback: ReturnType<typeof setTimeout> | undefined;
+  let relayTimer: ReturnType<typeof setTimeout> | undefined;
   const pendingCandidates: Array<SignalCandidate | null> = [];
   let outgoing: Promise<void> = Promise.resolve();
   let incoming: Promise<void> = Promise.resolve();
 
   function teardown(): void {
     closed = true;
-    clearTimeout(fallback);
+    clearTimeout(relayTimer);
     if (channel) {
       channel.onopen = null;
       channel.onclose = null;
@@ -529,7 +533,7 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
         answerAccepted = true;
         theirFingerprint = theirs;
         if (hasTurn && !closed) {
-          fallback = setTimeout(fallBackToRelay, RELAY_FALLBACK_MS);
+          relayTimer = setTimeout(fallBackToRelay, RELAY_FALLBACK_MS);
         }
         resolveNumber(await checkNumber(offerFingerprint, theirs));
         return;
@@ -537,6 +541,10 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
       case "restart-offer": {
         if (side !== "r" || !answered || restarted) {
           throw new PeerError("bad-signal", "unexpected restart-offer");
+        }
+        // An honest offer can cross the channel opening; an open path stays as it is.
+        if (isConnected(connection().iceConnectionState) || channel?.readyState === "open") {
+          return;
         }
         restarted = true;
         const theirs = remoteFingerprint(payload.sdp);
@@ -591,7 +599,7 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
       .then(async () => {
         const pc = connection();
         const state = pc.iceConnectionState;
-        if (closed || state === "connected" || state === "completed") {
+        if (closed || isConnected(state) || channel?.readyState === "open") {
           return;
         }
         try {
