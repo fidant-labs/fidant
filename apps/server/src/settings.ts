@@ -1,10 +1,12 @@
 import { BlockList, isIP } from "node:net";
+import { parseIceServers } from "@sigill/protocol";
 
 export type SiteSettings = {
   pages: boolean;
   origin: string | undefined;
   proxies: BlockList;
   keepAliveMs: number | undefined;
+  stun: string[];
 };
 
 const badOrigin = "PUBLIC_ORIGIN must be an https:// origin with no path, like https://fidant.se.";
@@ -15,6 +17,17 @@ const badLoose =
 
 const badKeepAlive =
   "HTTP_KEEP_ALIVE_MS must be a whole number of milliseconds from 1000 to 299000.";
+
+const badStun =
+  "STUN_URLS must be 1 to 4 stun: URLs like stun:example.com:3478, separated by commas.";
+
+const stunUrl = /^stun:(?:[a-z0-9.-]+|\[[0-9a-f:]+\])(?::(\d{1,5}))?$/i;
+
+function isStunUrl(url: string): boolean {
+  const match = stunUrl.exec(url);
+  const port = Number(match?.[1] ?? 1);
+  return match !== null && port >= 1 && port <= 65535;
+}
 
 function toNumber(address: string, family: number): bigint {
   if (family === 4) {
@@ -79,10 +92,19 @@ export function siteSettings(env: Record<string, string | undefined>): SiteSetti
     throw new Error(badKeepAlive);
   }
 
+  const stun = (env.STUN_URLS ?? "")
+    .split(",")
+    .map((url) => url.trim())
+    .filter(Boolean);
+  if (env.STUN_URLS && !(stun.every(isStunUrl) && parseIceServers([{ urls: stun }]))) {
+    throw new Error(badStun);
+  }
+
   return {
     pages: only !== "1",
     origin,
     proxies,
     keepAliveMs: keepAlive === undefined ? undefined : keepAliveMs,
+    stun,
   };
 }

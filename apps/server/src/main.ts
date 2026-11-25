@@ -71,6 +71,9 @@ if (!relays && (turnUrls || turnSecretFile)) {
   }
   ice = { urls, secret };
 }
+if (!relays && !ice && site.stun.length > 0) {
+  ice = { urls: site.stun };
+}
 
 // Mail is optional too, and the SMTP password comes from a file for the same reason.
 // Emailed links point at PUBLIC_ORIGIN, never at whatever Host a request names.

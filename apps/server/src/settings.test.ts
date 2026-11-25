@@ -11,6 +11,7 @@ test("serves pages and trusts no proxy when nothing is set", () => {
   assert.equal(site.origin, undefined);
   assert.equal(site.proxies.check("10.0.1.5", "ipv4"), false);
   assert.equal(site.keepAliveMs, undefined);
+  assert.deepEqual(site.stun, []);
 });
 
 const keepAlive = "HTTP_KEEP_ALIVE_MS must be a whole number of milliseconds from 1000 to 299000.";
@@ -22,6 +23,34 @@ test("HTTP_KEEP_ALIVE_MS takes whole milliseconds from 1000 to 299000", () => {
   }
   for (const value of ["abc", "999", "300000", "1e5", " 125000", "125000 ", "-1000", "1000.5"]) {
     assert.throws(() => siteSettings({ HTTP_KEEP_ALIVE_MS: value }), { message: keepAlive }, value);
+  }
+});
+
+const stun = "STUN_URLS must be 1 to 4 stun: URLs like stun:example.com:3478, separated by commas.";
+
+test("STUN_URLS takes 1 to 4 stun: URLs separated by commas", () => {
+  assert.deepEqual(siteSettings({ STUN_URLS: "" }).stun, []);
+  assert.deepEqual(
+    siteSettings({
+      STUN_URLS: "stun:sto.relay.fidant.se:3478, stun:198.51.100.20,stun:[2001:db8::1]:3478",
+    }).stun,
+    ["stun:sto.relay.fidant.se:3478", "stun:198.51.100.20", "stun:[2001:db8::1]:3478"],
+  );
+  for (const value of [
+    "stun:a,stun:b,stun:c,stun:d,stun:e",
+    "turn:a:3478",
+    "stun:a,turns:a:443",
+    "http://a",
+    "stun:",
+    "stun:a b",
+    "stun:a:0",
+    "stun:a:65536",
+    "stun:a:3478?transport=udp",
+    `stun:${"a".repeat(256)}`,
+    ",",
+    " ",
+  ]) {
+    assert.throws(() => siteSettings({ STUN_URLS: value }), { message: stun }, value);
   }
 });
 
