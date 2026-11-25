@@ -51,6 +51,8 @@ Spawn a `Plan` subagent with: the issue title, description, comments, the milest
 
 - Acceptance criteria, taken from the issue, made concrete and testable.
 - An ordered list of **commits**. Each commit is one idea a human reviewer can read in a few minutes: a conventional-commit subject (imperative, under 72 characters), the files it touches, and what it adds. Each commit must leave `pnpm check` green. Typical order: scaffolding or types, core logic with tests, wiring, docs.
+- The assumptions about outside behaviour the plan rests on (AWS, coturn, systemd, browsers), each with the doc or observed run that backs it. An assumption with neither is tested by a spike before implementation, and the result goes in the PR body.
+- The planned diff's size. The CI reviewer has 30 turns: it read a 5,000-line diff only selectively, and diffs up to about 2,000 lines in full. A plan past about 2,000 changed lines is split into issues that each merge on their own; ask the user before creating them.
 - Open questions where the issue is ambiguous.
 
 Issue types that are not code still get a PR:
