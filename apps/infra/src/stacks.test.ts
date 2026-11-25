@@ -238,15 +238,46 @@ test("relay user data sets the relay's inputs, carries no secret and fits Lights
   assert.ok(Buffer.byteLength(userData) < 16 * 1024);
 });
 
-test("the relay keeps the app box's peer denials", () => {
-  const deny = (text: string) =>
-    text.split("\n").filter((line) => line.startsWith("denied-peer-ip="));
+test("the relay keeps the app box's coturn hardening and peer denials, and no static secret", () => {
+  const deny = (lines: string[]) => lines.filter((line) => line.startsWith("denied-peer-ip="));
   const userData = renderRelayUserData({ id: "sto" });
   const start = userData.indexOf("\ncat >>/etc/turnserver.conf.new <<EOF\n");
   assert.ok(start > 0);
-  const boxDenials = deny(readFileSync(new URL("../box/turnserver.conf", import.meta.url), "utf8"));
-  assert.equal(boxDenials.length, 13);
-  assert.deepEqual(deny(userData.slice(start, userData.indexOf("\nEOF\n", start))), boxDenials);
+  const relay = userData.slice(start, userData.indexOf("\nEOF\n", start)).split("\n");
+  const box = readFileSync(new URL("../box/turnserver.conf", import.meta.url), "utf8").split("\n");
+  assert.equal(deny(box).length, 13);
+  assert.deepEqual(deny(relay), deny(box));
+  const siteSpecific = /^(#|$|listening-port=|tls-listening-port=|realm=|cert=|pkey=)/;
+  const hardening = box.filter((line) => !siteSpecific.test(line));
+  assert.equal(hardening.length, 24);
+  for (const line of hardening) {
+    assert.ok(relay.includes(line), line);
+  }
+  assert.ok(!relay.some((line) => line.startsWith("static-auth-secret")));
+});
+
+test("the relay's scripts that handle a secret or a key run with set -eu and never trace", () => {
+  const script = readFileSync(new URL("../relay/install.sh", import.meta.url), "utf8");
+  for (const name of [
+    "fidant-relay-apply-secret",
+    "fidant-relay-secret",
+    "fidant-relay-cert-installed",
+  ]) {
+    const start = script.indexOf(`\ncat >/usr/local/bin/${name} <<'EOF'\n`);
+    assert.ok(start > 0, name);
+    const body = script.slice(
+      script.indexOf("\n", start + 1) + 1,
+      script.indexOf("\nEOF\n", start),
+    );
+    assert.match(body, /^#!\/bin\/sh\nset -eu\n/, name);
+    assert.doesNotMatch(body, /\bset\s+-[a-z]*x|xtrace/, name);
+  }
+});
+
+// Changing this name rebuilds the relay box, whose new public key must then be committed.
+test("the relay box keeps its name", () => {
+  const [, relay] = instanceNamed(appBox(), "^fidant-relay-sto-");
+  assert.equal(relay.Properties.InstanceName, "fidant-relay-sto-0a030133");
 });
 
 test("the app box keeps log lines for at most 30 days, before any service starts logging", () => {
