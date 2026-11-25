@@ -48,12 +48,12 @@ test("follows pickLanguage for every stored and browser language", () => {
       const { replaced } = run({
         stored: stored === undefined ? {} : { lang: stored },
         browser,
-        sv: "/sv/about",
+        sv: "/sv/om",
       });
       const swedish = pickLanguage(stored ?? null, browser) === "sv";
       assert.deepEqual(
         replaced.map((r) => r.url),
-        swedish ? ["/sv/about"] : [],
+        swedish ? ["/sv/om"] : [],
         `${stored} ${browser}`,
       );
     }
@@ -61,8 +61,13 @@ test("follows pickLanguage for every stored and browser language", () => {
 });
 
 test("keeps query and fragment and hides the page first", () => {
-  const { replaced } = run({ browser: "sv-SE", sv: "/sv/how", search: "?a=1", hash: "#relay" });
-  assert.deepEqual(replaced, [{ url: "/sv/how?a=1#relay", hidden: true }]);
+  const { replaced } = run({
+    browser: "sv-SE",
+    sv: "/sv/sa-fungerar-det",
+    search: "?a=1",
+    hash: "#relay",
+  });
+  assert.deepEqual(replaced, [{ url: "/sv/sa-fungerar-det?a=1#relay", hidden: true }]);
 });
 
 test("never redirects without data-sv", () => {

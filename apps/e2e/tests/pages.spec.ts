@@ -151,14 +151,7 @@ test("every internal link on a Swedish page leads to a Swedish page", async ({ p
     (m) => m[1] ?? "",
   );
   expect(swedish).toHaveLength(20);
-  for (const path of [
-    "/sv",
-    "/sv/skicka",
-    "/sv/sa-fungerar-det",
-    "/sv/sa-fungerar-det/kryptering",
-    "/sv/sa-fungerar-det/ordlista",
-    "/sv/integritet",
-  ]) {
+  for (const path of swedish) {
     await page.goto(path);
     await expect(page.locator("html")).toHaveAttribute("lang", "sv");
     await expect(page.locator("main h1")).not.toBeEmpty();
@@ -173,14 +166,11 @@ test("every internal link on a Swedish page leads to a Swedish page", async ({ p
 });
 
 test("switching language on a step page opens its twin and keeps the anchor", async ({ page }) => {
-  await page.goto("/sv/sa-fungerar-det/kryptering");
-  const id = await page.locator("main section[id]").first().getAttribute("id");
-  expect(id).toBeTruthy();
-  await page.goto(`/sv/sa-fungerar-det/kryptering#${id}`);
+  await page.goto("/sv/sa-fungerar-det/kryptering#keys");
   await expect(page.locator("main h1")).not.toBeEmpty();
   await choose(page, "Språk", "English");
-  await expect(page).toHaveURL(new RegExp(`/how/encryption#${id}$`));
+  await expect(page).toHaveURL(/\/how\/encryption#keys$/);
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
   await choose(page, "Language", "Svenska");
-  await expect(page).toHaveURL(new RegExp(`/sv/sa-fungerar-det/kryptering#${id}$`));
+  await expect(page).toHaveURL(/\/sv\/sa-fungerar-det\/kryptering#keys$/);
 });

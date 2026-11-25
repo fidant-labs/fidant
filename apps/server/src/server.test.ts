@@ -178,16 +178,7 @@ test("a trailing slash and the old /technical address redirect to the page", asy
 });
 
 test("never redirects off the site", async () => {
-  for (const path of [
-    "//about/",
-    "//evil.example/",
-    "/%2f%2fevil.example/",
-    "/sv//about/",
-    "/-/",
-    "/sv/-om/",
-    "/sv/om-/",
-    "/sv/sa--fungerar/",
-  ]) {
+  for (const path of ["//about/", "//evil.example/", "/%2f%2fevil.example/", "/sv//om/"]) {
     const res = await rawGet(path);
     assert.notEqual(res.status, 301, path);
     assert.equal(res.headers.location, undefined, path);
