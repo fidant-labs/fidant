@@ -104,10 +104,10 @@ test("each page has its own tab title", async ({ page }) => {
   }
 });
 
-test("the language and theme menus are in the footer at every width, not the header", async ({
+test("the language and theme menus are in the footer at every width, clear of the send page's bottom bar", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/send");
   const footer = page.locator("footer");
   for (const width of [1280, 360]) {
     await page.setViewportSize({ width, height: 800 });

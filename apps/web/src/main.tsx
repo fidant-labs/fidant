@@ -100,7 +100,7 @@ function App() {
     kept.current.add(route);
   }
   return (
-    <div class="flex min-h-dvh flex-col">
+    <div class="flex min-h-dvh flex-col max-lg:has-[[data-bottom-bar]:not([hidden]_*)]:pb-24">
       <Header current={route} />
       <div class="flex-1">
         {route === "landing" && <LandingPage />}
