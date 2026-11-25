@@ -63,8 +63,35 @@ describe("review gate", () => {
   const gate = (command: string, cwd = root) => hook("review-gate.sh", command, cwd);
 
   test("ignores commands that do not create a pull request", () => {
-    for (const c of ["ls", 'echo "gh pr create"', "git log --grep='gh pr create'", "gh pr view"]) {
+    for (const c of ["ls", "gh pr view", 'git commit -m "through the approach, renew"']) {
       assert.equal(gate(`cd ${repo} && ${c}`).code, 0, c);
+    }
+  });
+
+  test("blocks gh pr create in any shape it cannot follow, before looking for a mark", () => {
+    const other = mkdtempSync(join(root, "other-"));
+    for (const c of [
+      'echo "gh pr create"',
+      "git log --grep='gh pr create'",
+      'bash -c "gh pr create --fill"',
+      "/opt/homebrew/bin/gh pr create",
+      'FOO="a b" gh pr create',
+      "env -u X gh pr create",
+      "gh -Ro/r pr create",
+      "sudo gh pr create",
+      "xargs gh pr create",
+      "eval gh pr create",
+      `pushd ${repo} && gh pr create`,
+      `if cd ${repo}; then gh pr create; fi`,
+      `cd ${repo} & gh pr create`,
+      `cd ${repo} || gh pr create`,
+      `cd ${repo} && (cd ${other}); gh pr create`,
+      `cd ${repo} && git push && gh pr create`,
+      `cd ${repo} && gh pr create; cd ${other} && gh pr create`,
+    ]) {
+      const r = gate(c, repo);
+      assert.equal(r.code, 2, c);
+      assert.match(r.err, /cannot tell which branch/, c);
     }
   });
 

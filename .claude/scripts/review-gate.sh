@@ -46,7 +46,25 @@ read_input
 cmd=${cmd//\$\'/\'}
 cmd=${cmd//[\"\'\\\{\}]/}
 cmd=${cmd//,/ }
-runs "${GH_PR}(create|new)" || exit 0
+
+# Broad on purpose: the words gh, pr and create or new, in that order, anywhere. Only one plain shape
+# goes on to the mark check, because a false block is fine and a false pass is not.
+loose=$'(^|[^[:alnum:]_.-])gh([^[:alnum:]_-].*)?[^[:alnum:]_-]pr([^[:alnum:]_-].*)?[^[:alnum:]_-](create|new)([^[:alnum:]_-]|$)'
+[[ $cmd =~ $loose ]] || exit 0
+shape() {
+  echo "Blocked: the review gate cannot tell which branch this pull request is for. Run it as its own command, \`cd <worktree> && gh pr create ...\` or plain \`gh pr create ...\`, with the literal worktree path and nothing else before gh." >&2
+  exit 2
+}
+runs "${GH_PR}(create|new)" || shape
+[[ ${cmd#*"$match"} =~ $loose ]] && shape
+# Nothing may run before gh but one literal cd joined by && or ;. A background `&`, `||`, a pipe,
+# pushd, `if cd` or a subshell cd would leave gh in another folder than the one checked below.
+lone_cd=$'^[[:space:]]*cd[[:space:]]+[^[:space:];&|()]+[[:space:]]*'
+case "${match:0:1}" in
+  '&') [[ $before =~ ${lone_cd}'&'$ ]] || shape ;;
+  ';' | $'\n') [[ $before =~ ${lone_cd}$ ]] || shape ;;
+  *) [[ $before =~ ^[[:space:]]*$ ]] || shape ;;
+esac
 
 # The hook cwd is the session shell's, so honour the last `cd` the command runs before creating the PR.
 if ! enter_target; then
