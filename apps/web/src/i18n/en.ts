@@ -187,7 +187,7 @@ export const en = {
         heading: "Sometimes it goes through our relay",
         body: [
           "Some networks can't connect directly to each other. This is common on mobile data and office networks.",
-          "Then the file goes through our relay in Stockholm instead, still locked, if the relay is available.",
+          "Then, if the relay is available, the file goes through our relay in Stockholm instead, still locked.",
           "The relay can't open the file, and it doesn't keep it.",
           "It sees the internet address of each device and roughly how big the file is.",
         ],
@@ -934,7 +934,7 @@ export const en = {
         heading: "How the file travels",
         body: [
           "WebRTC tries the direct routes first: over the local network, or through each side's public address, which the browser learns from our STUN service. The file then goes straight between the browsers. The sender's page shows which route each connection took.",
-          "Direct routes often fail on mobile data and office networks. When no direct route works and the relay is available, the traffic goes through our TURN relay in Stockholm. The relay forwards encrypted packets. It can't decrypt them and doesn't store them. Once the estimated cost of our traffic for the month reaches our budget, the relay and our STUN service switch off for the rest of the month, so a new transfer then connects only where it can without them, for example on the same local network.",
+          "Direct routes often fail on mobile data and office networks. When no direct route works and the relay is available, the traffic goes through our TURN relay in Stockholm. The relay forwards encrypted packets. It can't decrypt them and doesn't store them. Once the estimated cost of our traffic for the month reaches our budget, the relay and our STUN service switch off until the month ends, unless we switch them on again sooner, for example by raising the budget. Until then, a new transfer connects only where it can without them, for example on the same local network, and fails elsewhere.",
           "To use the relay a browser needs credentials, which our server creates for each pairing and gives only to the two paired pages. They expire after 5 minutes. Our server checks every minute that the relay can carry traffic, and offers it once a check passes. The server stops offering it after two failed checks in a row. The relay gets the secret behind the credentials from our server, sealed so that only the relay can open it. Browsers reach the relay over UDP, or over TLS on port 443 where a network allows only web traffic. The relay forwards only over UDP, and only from its own address. It refuses to forward to other machines on private or internal networks (with one accepted exception: the relay's own box, see decision 0007), and limits how many relayed connections run at once.",
           "On every route, each browser sees the other's IP address, like on a video call.",
         ],
