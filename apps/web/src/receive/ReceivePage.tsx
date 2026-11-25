@@ -202,6 +202,15 @@ export function ReceivePage({
   const [view, setView] = useState<View>({ s: "connecting" });
   const unfinished = view.s === "offer" || view.s === "receiving";
   useEffect(() => onUnfinished(unfinished), [onUnfinished, unfinished]);
+  const downloading = view.s === "receiving";
+  useEffect(() => {
+    if (!downloading) {
+      return;
+    }
+    const ask = (event: BeforeUnloadEvent) => event.preventDefault();
+    addEventListener("beforeunload", ask);
+    return () => removeEventListener("beforeunload", ask);
+  }, [downloading]);
   const [picking, setPicking] = useState(false);
   const [relayed, countRelay] = useReducer(addRelay, NO_RELAYS);
   const [reachedServer, setReachedServer] = useState(false);

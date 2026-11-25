@@ -64,8 +64,8 @@ function App() {
   const [sendOpen, setSendOpen] = useState(false);
   const [secretOpen, setSecretOpen] = useState(false);
   const [receiveOpen, setReceiveOpen] = useState(false);
-  // Only the path: the fragment holds the key, and the mounted page already has it in memory.
-  const receivePath = useRef("");
+  // Holds the key, so it stays out of the DOM: the link back shows only the path.
+  const receiveUrl = useRef("");
   const away =
     sendOpen && route !== "send"
       ? "send"
@@ -113,8 +113,8 @@ function App() {
   if (holdsTransfer) {
     kept.current.add(route);
   }
-  if (route === "receive" && !receivePath.current) {
-    receivePath.current = location.pathname;
+  if (route === "receive" && !receiveUrl.current) {
+    receiveUrl.current = location.pathname + location.hash;
   }
   return (
     <div class="flex min-h-dvh flex-col has-[[data-bottom-bar]:not([hidden]_*)]:pb-24">
@@ -158,7 +158,8 @@ function App() {
             <LiveDot />
             <span>{t.openTransfer[away]}</span>
             <Link
-              href={away === "receive" ? receivePath.current : `/${away}`}
+              href={away === "receive" ? (receiveUrl.current.split("#")[0] ?? "") : `/${away}`}
+              to={away === "receive" ? receiveUrl.current : undefined}
               class={`${buttonVariants({ size: "sm" })} rounded-full`}
             >
               {t.openTransfer.back}

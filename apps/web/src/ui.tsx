@@ -149,8 +149,13 @@ export function navigate(href: string) {
 /** A link that navigates inside the app; modified clicks (new tab, new window) keep the browser default. */
 export function Link({
   href,
+  to,
   ...props
-}: AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) {
+}: AnchorHTMLAttributes<HTMLAnchorElement> & {
+  href: string;
+  /** Where a plain click goes, when that must differ from what the page shows in `href`. */
+  to?: string | undefined;
+}) {
   return (
     <a
       {...props}
@@ -166,7 +171,7 @@ export function Link({
           return;
         }
         event.preventDefault();
-        navigate(href);
+        navigate(to ?? href);
       }}
     />
   );
