@@ -261,7 +261,7 @@ sqlite3 /var/lib/fidant-relay/turndb 'SELECT count(*) FROM turn_secret'
 
 ### Removing a relay
 
-- Removing `sto` from `relays` (and from `relayAddresses`) in `apps/infra/src/config.ts` deletes the instance but keeps its static IP `fidant-relay-sto-ip`. Release it by hand (`aws lightsail release-static-ip --static-ip-name fidant-relay-sto-ip --profile fidant-poc --region eu-north-1`), or adding `sto` back fails on the name.
+- Removing `sto` from `relays` in `apps/infra/src/config.ts` deletes the instance but keeps its static IP `fidant-relay-sto-ip`. Release it by hand (`aws lightsail release-static-ip --static-ip-name fidant-relay-sto-ip --profile fidant-poc --region eu-north-1`), or adding `sto` back fails on the name.
 - From SIG-153 on, the same pull request removes the relay's public key from `relays.json`. A retired key that is still trusted keeps receiving new secrets.
 - Moving a relay is a removal plus a new box, whose key goes through a reviewed pull request, with its DNS record changed as in SIG-157.
 
