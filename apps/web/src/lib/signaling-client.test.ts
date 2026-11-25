@@ -138,6 +138,24 @@ test("a failed connect doubles the next wait, and a stable open resets it", (t) 
   assert.equal(created, 4);
 });
 
+test("a close with 1012 reconnects at once and resets the wait", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  t.mock.method(Math, "random", () => 1);
+  connectSignaling({ url: "wss://x/signal" });
+  drop();
+  t.mock.timers.tick(2000);
+  assert.equal(created, 2);
+  open();
+  drop(1012);
+  t.mock.timers.tick(0);
+  assert.equal(created, 3);
+  drop();
+  t.mock.timers.tick(1999);
+  assert.equal(created, 3);
+  t.mock.timers.tick(1);
+  assert.equal(created, 4);
+});
+
 test("a socket that opens and drops at once still backs off", (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
   t.mock.method(Math, "random", () => 1);
