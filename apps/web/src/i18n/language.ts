@@ -1,4 +1,4 @@
-// Which language the page shows. The choice stays in this browser and is never sent anywhere.
+// Which language the page shows: chosen in this browser, and named by the page's path (/sv for Swedish).
 
 import { en, type Messages } from "./en.ts";
 import { sv } from "./sv.ts";
@@ -36,4 +36,33 @@ export function rememberLanguage(lang: Lang) {
   } catch {
     // Not remembered, but the switch still applies to this page.
   }
+}
+
+const SV_PREFIX = /^\/sv(?=\/|$)/;
+
+/** The path without its /sv prefix: /sv/how is /how, /sv is /. */
+export function barePath(path: string): string {
+  const bare = path.replace(SV_PREFIX, "");
+  return bare === "" || bare === "/" ? "/" : bare;
+}
+
+/** The same page in `lang`. Receive links have one path for both languages. */
+export function localizedPath(path: string, lang: Lang): string {
+  if (path.startsWith("/r/")) {
+    return path;
+  }
+  const bare = barePath(path);
+  return lang === "sv" ? `/sv${bare === "/" ? "" : bare}` : bare;
+}
+
+/** The language a path names, or undefined for a receive link, whose language is picked as before. */
+export function pathLanguage(path: string): Lang | undefined {
+  if (path.startsWith("/r/")) {
+    return undefined;
+  }
+  return SV_PREFIX.test(path) ? "sv" : "en";
+}
+
+export function startLanguage(path: string): Lang {
+  return pathLanguage(path) ?? initialLanguage();
 }
