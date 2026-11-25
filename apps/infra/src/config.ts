@@ -16,6 +16,8 @@ export function signalName(id: string): string {
   return `${id}.signal.${primaryDomain}`;
 }
 
+export const imageRepository = "fidant-signal";
+
 export type DnsRecord = { name: string; value: string };
 
 export type Mail = {

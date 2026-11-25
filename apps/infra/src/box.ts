@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { CfnOutput, Duration, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import { LambdaAction, SnsAction } from "aws-cdk-lib/aws-cloudwatch-actions";
+import * as ecr from "aws-cdk-lib/aws-ecr";
 import * as events from "aws-cdk-lib/aws-events";
 import * as targets from "aws-cdk-lib/aws-events-targets";
 import * as iam from "aws-cdk-lib/aws-iam";
@@ -16,6 +17,7 @@ import * as cr from "aws-cdk-lib/custom-resources";
 import type { Construct } from "constructs";
 import {
   boxAllowanceBytes,
+  imageRepository,
   mailDomain,
   overageUsdPerGb,
   primaryDomain,
@@ -65,6 +67,14 @@ export class BoxStack extends Stack {
     address.applyRemovalPolicy(RemovalPolicy.RETAIN);
 
     new CfnOutput(this, "PublicIp", { value: address.attrIpAddress });
+
+    new ecr.Repository(this, "SignalImages", {
+      repositoryName: imageRepository,
+      // Commit and inputs tags never move; only live does.
+      imageTagMutability: ecr.TagMutability.IMMUTABLE_WITH_EXCLUSION,
+      imageTagMutabilityExclusionFilters: [ecr.ImageTagMutabilityExclusionFilter.wildcard("live")],
+      lifecycleRules: [{ tagStatus: ecr.TagStatus.UNTAGGED, maxImageAge: Duration.days(7) }],
+    });
 
     const relayBoxes = relays.map(
       (relay) => new RelayBox(this, `Relay-${relay.id}`, { relayId: relay.id }),

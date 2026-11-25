@@ -1472,6 +1472,39 @@ test("FidantApp outputs only the app box's and the relay's addresses and the thr
   }
 });
 
+test("FidantApp keeps the signaling images, where only live moves and only untagged images expire", () => {
+  const box = appBox();
+  const repository = box.findResources("AWS::ECR::Repository")[onlyId(box, "AWS::ECR::Repository")];
+  assert.equal(repository?.DeletionPolicy, "Retain");
+  assert.equal(repository?.UpdateReplacePolicy, "Retain");
+  const { LifecyclePolicy, ...properties } = repository?.Properties ?? {};
+  assert.deepEqual(properties, {
+    RepositoryName: "fidant-signal",
+    ImageTagMutability: "IMMUTABLE_WITH_EXCLUSION",
+    ImageTagMutabilityExclusionFilters: [
+      {
+        ImageTagMutabilityExclusionFilterType: "WILDCARD",
+        ImageTagMutabilityExclusionFilterValue: "live",
+      },
+    ],
+  });
+  assert.deepEqual(Object.keys(LifecyclePolicy), ["LifecyclePolicyText"]);
+  assert.deepEqual(JSON.parse(LifecyclePolicy.LifecyclePolicyText), {
+    rules: [
+      {
+        rulePriority: 1,
+        selection: {
+          tagStatus: "untagged",
+          countType: "sinceImagePushed",
+          countNumber: 7,
+          countUnit: "days",
+        },
+        action: { type: "expire" },
+      },
+    ],
+  });
+});
+
 function mailPause(box: Template) {
   const functions = Object.entries(box.findResources("AWS::Lambda::Function")).filter(([id]) =>
     id.startsWith("MailPause"),
