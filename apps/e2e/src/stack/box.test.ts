@@ -112,7 +112,7 @@ test("winningJournald takes the last value read and lists the files", () => {
   );
 });
 
-test("the box image has the Lightsail blueprint's Ubuntu and .node-version's node", () => {
+test("the box and relay images use the Lightsail blueprint's Ubuntu, the box .node-version's node", () => {
   const dockerfile = readFileSync(
     new URL("../../networks/box/Dockerfile", import.meta.url),
     "utf8",
@@ -120,10 +120,10 @@ test("the box image has the Lightsail blueprint's Ubuntu and .node-version's nod
   const infra = readFileSync(new URL("../../../infra/src/box.ts", import.meta.url), "utf8");
   const blueprint = /blueprintId: "ubuntu_(\d+)_(\d+)"/.exec(infra);
   assert.ok(blueprint, "apps/infra/src/box.ts has no Ubuntu blueprintId");
-  assert.match(
-    dockerfile,
-    new RegExp(`^FROM ubuntu:${blueprint[1]}\\.${blueprint[2]}@sha256:`, "m"),
-  );
+  const relay = readFileSync(new URL("../../networks/relay/Dockerfile", import.meta.url), "utf8");
+  for (const file of [dockerfile, relay]) {
+    assert.match(file, new RegExp(`^FROM ubuntu:${blueprint[1]}\\.${blueprint[2]}@sha256:`, "m"));
+  }
   const nodeVersion = readFileSync(new URL("../../../../.node-version", import.meta.url), "utf8");
   assert.match(
     serverImage,

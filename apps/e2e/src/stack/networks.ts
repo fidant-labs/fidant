@@ -33,7 +33,10 @@ export const relayHost = "sto.relay.sigill.test";
 export const serverImage =
   /^FROM (\S+) AS node$/m.exec(
     readFileSync(join(e2eDir, "networks", "box", "Dockerfile"), "utf8"),
-  )?.[1] ?? "";
+  )?.[1] ??
+  (() => {
+    throw new Error("networks/box/Dockerfile has no `FROM <image> AS node` line");
+  })();
 const repo = repoRoot.replace(/\/$/, "");
 
 /** The `playwright run-server` of each browser container, published on the host. */
