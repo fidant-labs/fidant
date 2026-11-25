@@ -84,17 +84,20 @@
 // - `path` records how the current attempt's connection runs. It applies only
 //   to the attempt it names, so a path read late for an earlier attempt is
 //   ignored. Anything that resets the recipient clears it; delivery keeps it.
-// - Each attempt keeps the `turn` its `joined` carried: whether the sender
-//   allowed our relay when the server paired it. An attempt that ends while
+// - Each attempt keeps whether our relay was allowed when the server paired
+//   it (`turn`): the `turn` its `joined` carried, and the sender's own
+//   choice at that moment (`allowRelay`), so a server that ignores the
+//   choice can't override it. Under `turn` false the start effect gets only
+//   the `stun:` URLs, with no credential. An attempt that ends while
 //   still connecting (dropped, timeout, left) under `turn` false returns to
 //   "waiting" with `noRelay`, because a refused relay is the likely reason it
 //   never connected. The next join clears it. Under `turn` true it returns
 //   with `noConnect` instead, so the sender sees that someone tried and
 //   couldn't connect; the next join clears that too.
 // - A `relay` path for an active attempt under `turn` false ends that attempt
-//   like a timeout and sets `noRelay`. This is a best-effort backstop: an
-//   honest recipient gets no relay for such a send, and the server is the
-//   real enforcement.
+//   like a timeout and sets `noRelay`. This is a backstop for a recipient that
+//   uses a relay on its own side: the sender's peer has no TURN server then,
+//   and an honest server gives the recipient none either.
 // - Removing a recipient is always allowed. If it was mid-transfer, the
 //   result includes a close effect.
 // - A recipient added with an email address starts at mail "sending"; `email`
@@ -174,7 +177,7 @@ export type Recipient = {
   readonly attempt?: string;
   /** How the current attempt's connection runs, once its data channel opened. */
   readonly path?: OpenPath;
-  /** Whether the server's `joined` for the current attempt allowed our relay. */
+  /** Whether our relay was allowed for the current attempt: the server's `turn` and the sender's own choice when it joined. */
   readonly turn?: boolean;
   /** The last attempt couldn't connect directly while the sender refused our relay. */
   readonly noRelay?: true;
@@ -202,7 +205,16 @@ export type SenderState = { readonly recipients: readonly Recipient[] };
 export type SenderAction =
   | { type: "add"; link: Link; name: string; email?: string; check?: boolean }
   | { type: "remove"; linkId: string }
-  | { type: "joined"; linkId: string; attempt: string; iceServers: IceServer[]; turn: boolean }
+  | {
+      type: "joined";
+      linkId: string;
+      attempt: string;
+      iceServers: IceServer[];
+      /** The server's `turn`. */
+      turn: boolean;
+      /** The sender's own relay checkbox when the join arrived. */
+      allowRelay: boolean;
+    }
   | { type: "channel-open"; linkId: string }
   | { type: "checked"; linkId: string }
   | { type: "check-differs"; linkId: string }
@@ -257,7 +269,7 @@ export function isActive(recipient: Recipient): boolean {
   return ACTIVE.has(recipient.status);
 }
 
-/** True for a relay path on the recipient's active `attempt` whose `joined` refused the relay. */
+/** True for a relay path on the recipient's active `attempt` that joined with the relay refused. */
 export function refusesRelay(recipient: Recipient, attempt: string, path: OpenPath): boolean {
   return (
     path === "relay" &&
@@ -348,16 +360,24 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
       return { state: { recipients }, effects };
     }
     case "joined": {
-      const { attempt, iceServers, turn } = action;
+      const { attempt, iceServers } = action;
+      const turn = action.turn && action.allowRelay;
       if (current.status === "delivered" || current.locked) {
         return { state, effects: [{ type: "refuse", linkId, attempt, reason: "used" }] };
       }
       if (isActive(current)) {
         return { state, effects: [{ type: "refuse", linkId, attempt, reason: "busy" }] };
       }
+      // Keep only the `stun:` URLs, without credentials, as the server does for a refused relay.
+      const allowed = turn
+        ? iceServers
+        : iceServers.flatMap((server) => {
+            const urls = server.urls.filter((url) => url.startsWith("stun:"));
+            return urls.length > 0 ? [{ urls }] : [];
+          });
       return {
         state: replace(state, { ...reset(current, "connecting"), attempt, turn }),
-        effects: [{ type: "start", linkId, attempt, iceServers }],
+        effects: [{ type: "start", linkId, attempt, iceServers: allowed }],
       };
     }
     case "channel-open":

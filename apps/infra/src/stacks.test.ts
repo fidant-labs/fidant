@@ -718,7 +718,7 @@ test("every relay address belongs to a relay in the config", () => {
 // Changing this name replaces the app box, and the site is down for 5–10 minutes.
 test("the app box keeps its name", () => {
   const [, instance] = instanceNamed(appBox(), "^fidant-app-");
-  assert.equal(instance?.Properties.InstanceName, "fidant-app-56e112e1");
+  assert.equal(instance?.Properties.InstanceName, "fidant-app-3760f705");
 });
 
 test("the journal is the only place the box's services keep log lines", () => {
@@ -763,6 +763,124 @@ test("neither the app server nor Caddy, which terminates TLS, has its memory swa
     userData.indexOf("caddy.service.d/no-swap.conf") <
       userData.indexOf("\nsystemctl restart caddy\n"),
   );
+});
+
+test("the box builds only a production commit that is on main, and checks it before installing", () => {
+  const userData = renderUserData();
+  const start = userData.indexOf("\ncat >/usr/local/bin/sigill-deploy <<'EOF'\n");
+  const deploy = userData.slice(start, userData.indexOf("\nEOF\n", start));
+  const order = [
+    `\nsha=$(git ls-remote "$repo" refs/heads/production | awk '$2 == "refs/heads/production" {print $1}')\n[[ $sha =~ ^[0-9a-f]{40}$ ]] || { echo "no production branch" >&2; exit 1; }\ndir=`,
+    '\nas_sigill "rm -rf $dir && git clone --quiet --filter=blob:none --no-checkout $repo $dir"\n',
+    '\nlist=$(as_sigill "git -C $dir rev-list --first-parent refs/remotes/origin/main") || list=\nif [ -z "$list" ]; then\n  echo "could not check $sha against main" >&2\n  as_sigill "rm -rf $dir"\n  exit 1\nfi\n',
+    '\ncase "$list" in\n*"$sha"*) ;;\n*)\n  echo "refused $sha: not on main" >&2\n  touch "/opt/sigill/failed-$sha"\n  as_sigill "rm -rf $dir"\n  exit 1\n  ;;\nesac\n',
+    '\nas_sigill "cd $dir && git checkout --quiet $sha && pnpm install --frozen-lockfile"\n',
+  ].map((text) => deploy.indexOf(text));
+  assert.ok(start > 0 && order.every((index) => index > 0), order.join());
+  assert.deepEqual(
+    order,
+    order.toSorted((a, b) => a - b),
+  );
+  assert.doesNotMatch(deploy, /refs\/heads\/main/);
+  assert.ok(userData.includes("\nDescription=Deploy the production branch\n"));
+});
+
+test("sigill-deploy refuses a commit off main's first-parent history, and retries a check that fails", () => {
+  const dir = mkdtempSync(join(tmpdir(), "sigill-deploy-"));
+  try {
+    const userData = renderUserData();
+    const start = userData.indexOf("\ncat >/usr/local/bin/sigill-deploy <<'EOF'\n");
+    assert.ok(start > 0);
+    const script = join(dir, "sigill-deploy");
+    const body = userData.slice(
+      userData.indexOf("\n", start + 1) + 1,
+      userData.indexOf("\nEOF\n", start) + 1,
+    );
+    assert.ok(body.includes("https://github.com/sigill-labs/sigill.git"));
+    const local = body
+      .replaceAll("https://github.com/sigill-labs/sigill.git", `file://${dir}/src`)
+      .replaceAll("/opt/sigill", `${dir}/opt`);
+    assert.doesNotMatch(local, /github\.com/);
+    writeFileSync(script, local);
+    mkdirSync(join(dir, "opt", "releases"), { recursive: true });
+    mkdirSync(join(dir, "src"));
+    mkdirSync(join(dir, "bin"));
+    writeFileSync(
+      join(dir, "bin", "runuser"),
+      '#!/bin/sh\ncase "$*" in *rev-list*) [ -z "$FAIL_RUNUSER" ] || exit 1 ;; esac\nwhile [ "$1" != -- ]; do shift; done\nshift\nexec "$@"\n',
+      { mode: 0o755 },
+    );
+    writeFileSync(
+      join(dir, "bin", "pnpm"),
+      `#!/bin/sh\ngit rev-parse HEAD >'${dir}/built'\nexit 1\n`,
+      {
+        mode: 0o755,
+      },
+    );
+    const env = {
+      ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_"))),
+      PATH: `${dir}/bin:${process.env.PATH}`,
+      GIT_CONFIG_GLOBAL: "/dev/null",
+      GIT_CONFIG_NOSYSTEM: "1",
+      GIT_AUTHOR_NAME: "test",
+      GIT_AUTHOR_EMAIL: "test@example.com",
+      GIT_COMMITTER_NAME: "test",
+      GIT_COMMITTER_EMAIL: "test@example.com",
+    };
+    const git = (...args: string[]) => {
+      const { status, stdout } = spawnSync("git", ["-C", join(dir, "src"), ...args], {
+        env,
+        encoding: "utf8",
+      });
+      assert.equal(status, 0, args.join(" "));
+      return stdout.trim();
+    };
+    git("init", "-q", "-b", "main");
+    git("config", "uploadpack.allowFilter", "true");
+    git("commit", "-q", "--allow-empty", "-m", "a");
+    git("checkout", "-q", "-b", "feature");
+    git("commit", "-q", "--allow-empty", "-m", "b");
+    const side = git("rev-parse", "HEAD");
+    git("checkout", "-q", "main");
+    git("merge", "-q", "--no-ff", "-m", "m", "feature");
+    const tip = git("rev-parse", "HEAD");
+    const run = (sha: string, extra = {}) => {
+      git("branch", "-f", "production", sha);
+      rmSync(join(dir, "built"), { force: true });
+      const { status, stderr } = spawnSync("/bin/bash", [script], {
+        env: { ...env, ...extra },
+        encoding: "utf8",
+      });
+      return {
+        status,
+        built: statSync(join(dir, "built"), { throwIfNoEntry: false })
+          ? readFileSync(join(dir, "built"), "utf8").trim()
+          : undefined,
+        marked:
+          statSync(join(dir, "opt", `failed-${sha}`), { throwIfNoEntry: false }) !== undefined,
+        said: stderr.match(/^(refused|could not check) .*$/m)?.[0],
+      };
+    };
+    const couldNotCheck = {
+      status: 1,
+      built: undefined,
+      marked: false,
+      said: `could not check ${tip} against main`,
+    };
+
+    assert.deepEqual(run(tip), { status: 1, built: tip, marked: false, said: undefined });
+    assert.deepEqual(run(tip, { FAIL_RUNUSER: "1" }), couldNotCheck);
+    assert.deepEqual(run(side), {
+      status: 1,
+      built: undefined,
+      marked: true,
+      said: `refused ${side}: not on main`,
+    });
+    git("branch", "-m", "main", "trunk");
+    assert.deepEqual(run(tip), couldNotCheck);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 function credentialHelper(): { helper: string; rest: string } {

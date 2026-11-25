@@ -2,6 +2,7 @@
 // Every claim here must stay true of what the code does today (see PrivacyPage).
 
 import { cn } from "cn";
+import { useLayoutEffect, useRef } from "preact/hooks";
 import { buttonVariants } from "#components/ui/button";
 import { useI18n } from "../i18n/I18n.tsx";
 import { display, Icon, Link } from "../ui.tsx";
@@ -14,15 +15,22 @@ const EXAMPLE_KEY = "Zt4kP0x9QmR2sV7bN1cL8hJ5wE3yA6uD0fG4iK2oT9c"; // gitleaks:a
 function LinkAnatomy() {
   const { t } = useI18n();
   const l = t.landing;
-  const length = `https://${location.host}/r/${EXAMPLE_ID}#${EXAMPLE_KEY}`.length;
+  // The build renders the live site's host.
+  const host = typeof location === "undefined" ? "fidant.se" : location.host;
+  const length = `https://${host}/r/${EXAMPLE_ID}#${EXAMPLE_KEY}`.length;
+  const line = useRef<HTMLParagraphElement>(null);
+  // Set from code, not a style attribute, which the CSP blocks in the page the server sends.
+  useLayoutEffect(() => {
+    line.current?.style.setProperty("--chars", String(length));
+  }, [length]);
   return (
     <figure class="@container m-0">
-      {/* Shrinks to keep the link on one line; below 0.7rem it wraps instead. 0.62em is a little over a monospace character's width. */}
+      {/* Shrinks to keep the link on one line; below 0.7rem it wraps instead. 0.62em is a little over a monospace character's width. 86 is the length on fidant.se. */}
       <p
-        class="m-0 rounded-lg border border-border bg-muted/50 px-4 py-3 font-mono text-[length:clamp(0.7rem,calc((100cqi_-_2.2rem)/(var(--chars)*0.62)),0.95rem)] leading-relaxed wrap-anywhere"
-        style={{ "--chars": length }}
+        ref={line}
+        class="m-0 rounded-lg border border-border bg-muted/50 px-4 py-3 font-mono text-[length:clamp(0.7rem,calc((100cqi_-_2.2rem)/(var(--chars,86)*0.62)),0.95rem)] leading-relaxed wrap-anywhere"
       >
-        <span class="text-muted-foreground">https://{location.host}/r/</span>
+        <span class="text-muted-foreground">https://{host}/r/</span>
         <span class="underline decoration-muted-foreground decoration-2 underline-offset-4">
           {EXAMPLE_ID}
         </span>

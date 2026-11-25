@@ -645,11 +645,11 @@ test("a recipient who leaves mid-download returns the sender's card to waiting",
   await expect(first.getByRole("heading", { name: "Downloading…" })).toBeVisible();
   await expect(card.getByText(`Sending through ${name}'s link`)).toBeVisible();
 
-  // The receive page has no pagehide that closes its peer (SIG-266), so the sender notices only
-  // when ICE consent expires, about 15 s later.
+  // The receive page's pagehide closes its peer, so the sender notices at once instead of when
+  // ICE consent expires (about 15 s).
   await first.close();
   await expect(card.getByText(`Waiting for ${name}'s link to be opened`)).toBeVisible({
-    timeout: 45_000,
+    timeout: 3_000,
   });
 
   await stall(false);

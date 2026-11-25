@@ -14,7 +14,8 @@
 //   only after LOST_AFTER_MS without it.
 // - Server `joined` → reducer `joined`, whose `start` effect derives the
 //   link's signal key and creates a sender peer with the ICE servers from
-//   `joined`. `relay` goes to that peer.
+//   `joined`, without TURN entries when the relay checkbox or the server
+//   refused it. `relay` goes to that peer.
 //   `left` → reducer `left`, which only matters before the channel opens.
 // - When the data channel opens, sendFile runs the transfer and reports
 //   accepted, progress, declined and receipt back to the reducer.
@@ -451,6 +452,7 @@ export function SendPage({
             attempt: message.attempt,
             iceServers: message.iceServers,
             turn: message.turn,
+            allowRelay: allowRelayRef.current,
           });
           break;
         case "left":
@@ -654,7 +656,7 @@ export function SendPage({
   const hasRecipients = sender.recipients.length > 0;
   const tooLong = textLength > MAX_TEXT_LENGTH;
   const full = sender.recipients.length >= MAX_LINKS;
-  const isLocalhost = LOCAL_HOSTS.has(location.hostname);
+  const isLocalhost = typeof location !== "undefined" && LOCAL_HOSTS.has(location.hostname);
   // ponytail: counts by status, so it over-counts if a recipient's signaling drops mid-transfer; track joined/left if that matters
   const connected = sender.recipients.filter(isActive).length;
   const emailed = sender.recipients.filter(emailBound);
@@ -664,9 +666,9 @@ export function SendPage({
   const allDone = hasRecipients && !unfinished;
   const finished = allDone && !more && !typed;
   // Read during render: once effects run, a remounted form or list no longer holds focus.
-  const sectionHadFocus = !!document
-    .getElementById(id("recipients"))
-    ?.contains(document.activeElement);
+  const sectionHadFocus =
+    typeof document !== "undefined" &&
+    !!document.getElementById(id("recipients"))?.contains(document.activeElement);
   useEffect(() => {
     if (!finished) {
       return;

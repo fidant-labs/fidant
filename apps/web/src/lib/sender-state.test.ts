@@ -55,7 +55,7 @@ function statusOf(state: SenderState, linkId: string) {
 }
 
 function joined(linkId: string, attempt: string, turn = true): SenderAction {
-  return { type: "joined", linkId, attempt, iceServers: [], turn };
+  return { type: "joined", linkId, attempt, iceServers: [], turn, allowRelay: true };
 }
 
 test("add creates a waiting recipient from a link and keeps insertion order", () => {
@@ -87,10 +87,46 @@ test("add ignores a duplicate link ID and stops at MAX_LINKS", () => {
   assert.equal(extra.state, full);
 });
 
+test("a relay refused by the sender or the server starts without TURN servers", () => {
+  // The server sends STUN and TURN URLs in one entry with the credential.
+  const mixed = {
+    urls: ["stun:127.0.0.1:3478", "turn:127.0.0.1:3478?transport=udp"],
+    username: "1700000000",
+    credential: "hmac",
+  };
+  for (const [turn, allowRelay] of [
+    [false, true],
+    [true, false],
+  ] as const) {
+    const { state: s0, linkId } = withRecipient();
+    const joined = update(s0, {
+      type: "joined",
+      linkId,
+      attempt: A,
+      iceServers: [mixed, ...TURN],
+      turn,
+      allowRelay,
+    });
+    assert.deepEqual(joined.effects, [
+      { type: "start", linkId, attempt: A, iceServers: [{ urls: ["stun:127.0.0.1:3478"] }] },
+    ]);
+    // The backstop keys on the same choice: a relay path still ends the attempt.
+    const relayed = update(joined.state, { type: "path", linkId, attempt: A, path: "relay" });
+    assert.equal(findRecipient(relayed.state, linkId)?.noRelay, true, `turn ${turn}`);
+  }
+});
+
 test("a full delivery walks waiting → connecting → offered → receiving → delivered", () => {
   const { state: s0, linkId } = withRecipient();
 
-  const s1 = update(s0, { type: "joined", linkId, attempt: A, iceServers: TURN, turn: true });
+  const s1 = update(s0, {
+    type: "joined",
+    linkId,
+    attempt: A,
+    iceServers: TURN,
+    turn: true,
+    allowRelay: true,
+  });
   assert.equal(statusOf(s1.state, linkId), "connecting");
   assert.deepEqual(s1.effects, [{ type: "start", linkId, attempt: A, iceServers: TURN }]);
   assert.equal(statusOf(s0, linkId), "waiting", "previous state not mutated");
@@ -410,7 +446,7 @@ test("events that do not fit the current status are ignored", () => {
 test("path records the current attempt's path through offered, receiving and delivered", () => {
   const { state: s0, linkId } = withRecipient();
   const steps: SenderAction[] = [
-    { type: "joined", linkId, attempt: A, iceServers: TURN, turn: true },
+    { type: "joined", linkId, attempt: A, iceServers: TURN, turn: true, allowRelay: true },
     { type: "channel-open", linkId },
     { type: "accepted", linkId },
     { type: "receipt", linkId, match: true },
@@ -505,6 +541,7 @@ test("an attempt that ends while connecting under a refused relay marks the reci
       attempt: B,
       iceServers: TURN,
       turn: true,
+      allowRelay: true,
     });
     const recipient = findRecipient(rejoined.state, linkId);
     assert.equal(recipient?.status, "connecting", end);
@@ -562,6 +599,7 @@ test("a busy join keeps the relay choice of the attempt in progress", () => {
     attempt: B,
     iceServers: TURN,
     turn: true,
+    allowRelay: true,
   });
   assert.deepEqual(effects.at(-1), { type: "refuse", linkId, attempt: B, reason: "busy" });
   assert.equal(findRecipient(state, linkId)?.turn, false);
@@ -747,7 +785,7 @@ test("add with an email starts its mail at sending and keeps both through attemp
   const { state, effects } = run(
     added.state,
     { type: "email", linkId, status: "sent" },
-    { type: "joined", linkId, attempt: A, iceServers: [], turn: true },
+    { type: "joined", linkId, attempt: A, iceServers: [], turn: true, allowRelay: true },
     { type: "dropped", linkId },
   );
   assert.ok(effects.every((effect) => !JSON.stringify(effect).includes(email)));
