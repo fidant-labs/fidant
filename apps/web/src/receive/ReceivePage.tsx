@@ -671,12 +671,7 @@ export function ReceivePage({
       firstView.current = false;
       return;
     }
-    const heading = document.querySelector<HTMLElement>("#receive h1");
-    if (!heading) {
-      return;
-    }
-    heading.tabIndex = -1;
-    heading.focus();
+    focusHeading();
   }, [view.s]);
 
   const onAccept = () => {
@@ -729,7 +724,7 @@ export function ReceivePage({
     attempt.confirm(matches);
     attempt.confirm = undefined;
     setView({ ...view, said: matches });
-    document.querySelector<HTMLElement>("#receive h1")?.focus();
+    focusHeading();
   };
 
   const onShow = () => {
@@ -1029,6 +1024,15 @@ export function ReceivePage({
 }
 
 /** This tab's token for an emailed link. Storage that is blocked acts as empty. */
+function focusHeading(): void {
+  const heading = document.querySelector<HTMLElement>("#receive h1");
+  if (!heading) {
+    return;
+  }
+  heading.tabIndex = -1;
+  heading.focus();
+}
+
 function readToken(linkId: string): string | undefined {
   try {
     const token = sessionStorage.getItem(`token:${linkId}`);
