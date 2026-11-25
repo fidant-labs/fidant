@@ -392,3 +392,20 @@ test("hashFile stops when aborted", async () => {
   controller.abort(new Error("other file"));
   await assert.rejects(hashFile(new Blob([new Uint8Array(10)]), controller.signal), /other file/);
 });
+
+test("the sender refuses a connection too small for the smallest chunk a recipient accepts", async () => {
+  const smallest = MIN_CHUNK_BYTES + FRAME_OVERHEAD_BYTES;
+  assert.equal(smallest, 1_050);
+  const { secret } = createLink("https://localhost");
+  const refused = options(fakeChannel(secret, "accept").channel, secret, new Uint8Array(10));
+  await assert.rejects(
+    sendFile({ ...refused.value, maxMessageSize: smallest - 1 }),
+    /max message size too small/,
+  );
+  const fake = fakeChannel(secret, "accept");
+  const o = options(fake.channel, secret, new Uint8Array(10));
+  const result = await sendFile({ ...o.value, maxMessageSize: smallest });
+  await fake.done();
+  assert.deepEqual(result, { type: "receipt", match: true });
+  assert.equal(fake.received.meta?.chunkSize, MIN_CHUNK_BYTES);
+});
