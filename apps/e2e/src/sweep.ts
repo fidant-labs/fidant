@@ -13,7 +13,7 @@ import { readRegistry } from "./leaks/registry.ts";
 import { formatLeakReport, logViolations } from "./leaks/report.ts";
 import { type Capture, type Finding, scan } from "./leaks/scan.ts";
 import type { ObservationRecord } from "./observations.ts";
-import { observationsDir, runSources, serverStdoutLog } from "./paths.ts";
+import { observationsDir, type RunSource, runSources, serverStdoutLog } from "./paths.ts";
 
 /**
  * The run-level sweep: every observation file and every run log in `dir`, against every secret
@@ -58,8 +58,10 @@ const completeLog = (log: Buffer) => logSlice(log, 0, { complete: true });
 /** How the sweep reads each file directly in run/, by name. */
 const runFormats = new Map(runSources.map((source) => [basename(source.path), source.read]));
 
+type Format = RunSource["read"] | "mail" | "records";
+
 /** How the sweep reads `<test>/<...rest>`, or undefined for a file it does not know. */
-function formatOf(test: string, rest: string[]): string | undefined {
+function formatOf(test: string, rest: string[]): Format | undefined {
   const name = rest.at(-1) ?? "";
   if (rest.length === 2 && rest[0] === "mail" && name.endsWith(".eml")) {
     return "mail";
@@ -111,6 +113,8 @@ async function allCaptures(
       if (!exempt.has(test)) {
         limits.push(...bodyLimits(point, records));
       }
+    } else if (format !== "ignored") {
+      format satisfies never;
     }
     // "ignored": runSources says why.
   }

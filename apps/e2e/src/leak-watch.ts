@@ -1,5 +1,5 @@
 import { readFile, stat } from "node:fs/promises";
-import { join, relative } from "node:path";
+import { basename, join, relative } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import type { CanaryFile, CanaryKey } from "./leaks/canary.ts";
 import {
@@ -26,7 +26,7 @@ import { exemptTest, registerSecrets } from "./leaks/registry.ts";
 import { formatLeakReport, logViolations } from "./leaks/report.ts";
 import { type Capture, type Finding, scan } from "./leaks/scan.ts";
 import { saveMail } from "./mail.ts";
-import { e2eDir, observationsDir, runSources, serverStdoutLog } from "./paths.ts";
+import { e2eDir, observationsDir, type RunSource, runSources, serverStdoutLog } from "./paths.ts";
 import type { Recorder } from "./recorder.ts";
 
 /** What a test uses to register its secrets and check for leaks. */
@@ -75,13 +75,6 @@ export interface Leaks {
 const point = (path: string) => relative(e2eDir, path);
 
 /**
- * The run's logs (server stdout first, which also gets the allowlist check) and binary captures.
- * Some exist only once a test or a run wrote them; a missing one reads as empty.
- */
-const logs = runSources.flatMap((source) => (source.read === "lines" ? [source.path] : []));
-const binaries = runSources.flatMap((source) => (source.read === "binary" ? [source.path] : []));
-
-/**
  * One test's leak check: its secrets, the recorders whose records it scans, and where the server
  * logs stood when the test began, so it scans only what the server wrote during the test.
  */
@@ -90,6 +83,8 @@ export class LeakWatch implements Leaks {
   recorders: ReadonlyMap<string, Recorder> = new Map();
   readonly #test: string;
   readonly #registry: string | undefined;
+  readonly #logs: string[];
+  readonly #binaries: string[];
   readonly #logStarts: number[];
   readonly #binaryStarts: number[];
   readonly #secrets: Secret[] = [];
@@ -100,22 +95,40 @@ export class LeakWatch implements Leaks {
   private constructor(
     test: string,
     registry: string | undefined,
+    logs: string[],
+    binaries: string[],
     logStarts: number[],
     binaryStarts: number[],
   ) {
     this.#test = test;
     this.#registry = registry;
+    this.#logs = logs;
+    this.#binaries = binaries;
     this.#logStarts = logStarts;
     this.#binaryStarts = binaryStarts;
   }
 
   /**
    * `test` is the test's observations directory name. `registry` is the run's registry directory,
-   * where secrets are also written for the run-level sweep.
+   * where secrets are also written for the run-level sweep. `sources` are the run's logs (the one
+   * named like server stdout also gets the allowlist check) and binary captures, as `runSources`;
+   * some exist only once a test or a run wrote them, and a missing one reads as empty.
    */
-  static async start(test: string, registry: string | undefined): Promise<LeakWatch> {
-    const logStarts = await Promise.all(logs.map(sizeOf));
-    return new LeakWatch(test, registry, logStarts, await Promise.all(binaries.map(sizeOf)));
+  static async start(
+    test: string,
+    registry: string | undefined,
+    sources: readonly RunSource[] = runSources,
+  ): Promise<LeakWatch> {
+    const logs = sources.flatMap((source) => (source.read === "lines" ? [source.path] : []));
+    const binaries = sources.flatMap((source) => (source.read === "binary" ? [source.path] : []));
+    return new LeakWatch(
+      test,
+      registry,
+      logs,
+      binaries,
+      await Promise.all(logs.map(sizeOf)),
+      await Promise.all(binaries.map(sizeOf)),
+    );
   }
 
   watch(file: CanaryFile, label = `file#${++this.#files}`): CanaryFile {
@@ -214,21 +227,25 @@ export class LeakWatch implements Leaks {
       captures.push(...mailCaptures(point(path), await readFile(path)));
     }
     const slices = await Promise.all(
-      logs.map(async (path, index) =>
+      this.#logs.map(async (path, index) =>
         logSlice(await readFile(path).catch(() => Buffer.alloc(0)), this.#logStarts[index]),
       ),
     );
-    logs.forEach((path, index) => {
+    this.#logs.forEach((path, index) => {
       captures.push(...logCaptures(point(path), slices[index] as LogSlice));
     });
-    for (const [index, path] of binaries.entries()) {
+    for (const [index, path] of this.#binaries.entries()) {
       const bytes = await settled(path);
       if (bytes) {
         // Not lines: one capture of what was written since the test began.
         captures.push({ point: point(path), bytes: bytes.subarray(this.#binaryStarts[index]) });
       }
     }
-    return { captures, limits, stdout: slices[0] as LogSlice };
+    const stdout = this.#logs.findIndex((path) => basename(path) === basename(serverStdoutLog));
+    if (stdout < 0) {
+      throw new Error("No log source named like server stdout, so the allowlist check can't run");
+    }
+    return { captures, limits, stdout: slices[stdout] as LogSlice };
   }
 }
 
@@ -241,7 +258,14 @@ export async function failOnLeaks(
   cleanUp: () => Promise<void>,
 ): Promise<void> {
   const report = await watch.check();
-  await cleanUp();
+  try {
+    await cleanUp();
+  } catch (error) {
+    // The leak report wins over a clean-up failure.
+    if (!report) {
+      throw error;
+    }
+  }
   if (report) {
     throw new Error(report);
   }

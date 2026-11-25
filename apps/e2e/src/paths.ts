@@ -30,12 +30,12 @@ export const boxSyslog = join(runDir, "box-syslog.log");
  * `lines` as a log scanned line by line, `binary` as raw bytes, `ignored` not at all. The per-test
  * scan reads what each grew by during the test, the run-level sweep the whole file. The sweep fails
  * on any file in observations/ that is neither here nor a per-test record or saved mail
- * (`src/sweep.ts`). Server stdout comes first: it also gets the allowlist check.
+ * (`src/sweep.ts`). Server stdout, found by its file name, also gets the allowlist check.
  */
-export const runSources: readonly (
+export type RunSource =
   | { path: string; read: "lines" | "binary" }
-  | { path: string; read: "ignored"; reason: string }
-)[] = [
+  | { path: string; read: "ignored"; reason: string };
+export const runSources: readonly RunSource[] = [
   { path: serverStdoutLog, read: "lines" },
   { path: serverStderrLog, read: "lines" },
   { path: coturnLog, read: "lines" },
