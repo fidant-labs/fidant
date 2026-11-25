@@ -629,6 +629,25 @@ test("neither the app server nor Caddy, which terminates TLS, has its memory swa
   );
 });
 
+test("the box builds only a production commit that is on main, and checks it before installing", () => {
+  const userData = renderUserData();
+  const start = userData.indexOf("\ncat >/usr/local/bin/sigill-deploy <<'EOF'\n");
+  const deploy = userData.slice(start, userData.indexOf("\nEOF\n", start));
+  const order = [
+    `\nsha=$(git ls-remote "$repo" refs/heads/production | awk '$2 == "refs/heads/production" {print $1}')\n[[ $sha =~ ^[0-9a-f]{40}$ ]] || { echo "no production branch" >&2; exit 1; }\ndir=`,
+    '\nas_sigill "rm -rf $dir && git clone --quiet --filter=blob:none --no-checkout $repo $dir"\n',
+    '\nif ! as_sigill "cd $dir && git merge-base --is-ancestor $sha refs/remotes/origin/main"; then\n  echo "refused $sha: not on main" >&2\n  touch "/opt/sigill/failed-$sha"\n  as_sigill "rm -rf $dir"\n  exit 1\nfi\n',
+    '\nas_sigill "cd $dir && git checkout --quiet $sha && pnpm install --frozen-lockfile"\n',
+  ].map((text) => deploy.indexOf(text));
+  assert.ok(start > 0 && order.every((index) => index > 0), order.join());
+  assert.deepEqual(
+    order,
+    order.toSorted((a, b) => a - b),
+  );
+  assert.doesNotMatch(deploy, /refs\/heads\/main/);
+  assert.ok(userData.includes("\nDescription=Deploy the production branch\n"));
+});
+
 function credentialHelper(): { helper: string; rest: string } {
   const userData = renderUserData();
   const start = userData.indexOf("\ncat >/usr/local/bin/sigill-credential <<'EOF'\n");
