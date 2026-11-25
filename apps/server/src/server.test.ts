@@ -166,9 +166,13 @@ test("serves over https with a generated certificate", async () => {
 async function rawSocket(
   port: number,
   ca: Buffer,
+  origin?: string,
 ): Promise<{ socket: WsClient; next(): Promise<string> }> {
   // Trusts only the server's own certificate, so TLS checks stay on.
-  const socket = new WsClient(`wss://localhost:${port}/signal`, { ca });
+  const socket = new WsClient(`wss://localhost:${port}/signal`, {
+    ca,
+    ...(origin ? { headers: { origin } } : {}),
+  });
   const frames: string[] = [];
   const waiting: ((frame: string) => void)[] = [];
   socket.on("message", (data) => {
@@ -482,18 +486,8 @@ test("without a web root, serves the relay routes and 404 for every other path",
   });
   t.after(() => bare.close());
   const { port } = bare.address() as AddressInfo;
-  const ask = (method: string, path: string) =>
-    new Promise<{ status: number; headers: IncomingHttpHeaders; body: string }>((done, fail) => {
-      httpsRequest({ host: "localhost", port, path, method, rejectUnauthorized: false }, (res) => {
-        let body = "";
-        res.on("data", (chunk) => {
-          body += chunk;
-        });
-        res.on("end", () => done({ status: res.statusCode ?? 0, headers: res.headers, body }));
-      })
-        .on("error", fail)
-        .end();
-    });
+  const ca = ensureCert(join(dir, "bare-certs"), []).cert;
+  const ask = (method: string, path: string) => call(port, path, { method, ca });
   const status = await ask("GET", "/relay-status");
   assert.equal(status.status, 200);
   assert.equal(status.body, "[]");
@@ -511,10 +505,22 @@ test("without a web root, serves the relay routes and 404 for every other path",
     assert.equal((await ask(method, path)).status, 404, `${method} ${path}`);
   }
   assert.equal((await ask("POST", "/relay-status")).status, 405);
-  const socket = new WsClient(`wss://localhost:${port}/signal`, { rejectUnauthorized: false });
+  const { socket } = await rawSocket(port, ca);
   t.after(() => socket.terminate());
-  const first = await new Promise<string>((done, fail) => {
-    socket.once("message", (data) => done(String(data))).once("error", fail);
+});
+
+test("startServer hands siteOrigin to signaling", async (t) => {
+  const { server: site } = await startServer({
+    port: 0,
+    root: undefined,
+    certDir: join(dir, "origin-certs"),
+    hosts: ["localhost"],
+    siteOrigin: "https://fidant.se",
   });
-  assert.equal(parseServerMessage(first)?.t, "hello");
+  t.after(() => site.close());
+  const { port } = site.address() as AddressInfo;
+  const ca = ensureCert(join(dir, "origin-certs"), []).cert;
+  const ok = await rawSocket(port, ca, "https://fidant.se");
+  ok.socket.terminate();
+  await assert.rejects(rawSocket(port, ca, "https://other.example"), /403/);
 });

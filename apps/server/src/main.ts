@@ -151,7 +151,7 @@ process.once("SIGTERM", () => {
 });
 // Only for a person at a terminal. Under systemd stderr goes to the journal, which should hold
 // nothing but the allowlisted log lines, not the box's addresses.
-if (process.stderr.isTTY) {
+if (process.stderr.isTTY && site.pages) {
   console.error("Sigill is running. Open one of these and accept the certificate warning once:");
   for (const host of ["localhost", ...lanAddresses]) {
     console.error(`  https://${host}:${port}`);

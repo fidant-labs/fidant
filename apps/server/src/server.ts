@@ -151,7 +151,7 @@ export function ensureCert(dir: string, hosts: string[]): { key: Buffer; cert: B
 
 export function startServer(options: {
   port: number;
-  root?: string | undefined;
+  root: string | undefined;
   certDir: string;
   hosts: string[];
   ice?: IceConfig | undefined;
