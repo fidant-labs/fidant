@@ -47,7 +47,7 @@ test("leaving /send for Privacy and going back keeps the file and recipient", as
     buffer: file.bytes,
   });
   await page.getByLabel("Who is it for?").fill(name);
-  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByRole("button", { name: "Create link", exact: true }).click();
   const link = await page.getByLabel(`Link for ${name}`, { exact: true }).textContent();
   leaks.watchKey("link secret", new URL(link ?? "").hash.slice(1));
   const pages = page.context().pages().length;
