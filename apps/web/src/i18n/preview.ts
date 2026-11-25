@@ -22,11 +22,11 @@ export function previewPage(html: string, lang: Lang, kind: PreviewKind): string
     `<meta name="twitter:card" content="summary_large_image" />`,
   ];
   const english = `<meta name="description" content="${attribute(MESSAGES.en.footer.tagline)}" />`;
-  return replaceOnce(
-    replaceOnce(html, `<html lang="en">`, `<html lang="${lang}">`),
-    english,
-    tags.join("\n    "),
-  );
+  // Search results show this before the app sets the tab title, so it matches that tab title.
+  const tabTitle = kind === "receive" ? t.tabTitles.receive : t.tabTitles.landing;
+  let page = replaceOnce(html, `<html lang="en">`, `<html lang="${lang}">`);
+  page = replaceOnce(page, `<title>Fidant</title>`, `<title>${text(tabTitle)}</title>`);
+  return replaceOnce(page, english, tags.join("\n    "));
 }
 
 function replaceOnce(html: string, from: string, to: string): string {
@@ -35,6 +35,10 @@ function replaceOnce(html: string, from: string, to: string): string {
     throw new Error(`previewPage: expected ${from} once, found it ${parts.length - 1} times`);
   }
   return parts.join(to);
+}
+
+function text(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;");
 }
 
 function attribute(text: string): string {
