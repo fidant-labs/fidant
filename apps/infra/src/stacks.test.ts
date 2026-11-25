@@ -1020,8 +1020,8 @@ test("relay traffic past 80 %, the cap, and a failing cap email the alert addres
   const notify = [alertTopic(box)];
   const now = new Date();
   for (const [name, threshold, logged] of [
-    ["Fidant relay traffic past 80 % of the monthly cap", 3_200_000_000_000, metricLine(0, now)],
-    ["Fidant relay stopped: monthly traffic cap reached", 20, overageLine(0, now)],
+    ["Fidant relay traffic past 80 % of the allowance", 3_200_000_000_000, metricLine(0, now)],
+    ["Fidant relay stopped: overage budget reached", 20, overageLine(0, now)],
     ["Fidant relay cap failing", 1, undefined],
   ] as const) {
     const alarm = byName(name);

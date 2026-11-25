@@ -243,7 +243,7 @@ export class BoxStack extends Stack {
     });
     const alarms = [
       new cloudwatch.Alarm(this, "RelayWarn", {
-        alarmName: "Fidant relay traffic past 80 % of the monthly cap",
+        alarmName: "Fidant relay traffic past 80 % of the allowance",
         metric: monthBytes,
         threshold: 0.8 * poolBytes,
         comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
@@ -251,7 +251,7 @@ export class BoxStack extends Stack {
         treatMissingData: cloudwatch.TreatMissingData.IGNORE,
       }),
       new cloudwatch.Alarm(this, "RelayCapped", {
-        alarmName: "Fidant relay stopped: monthly traffic cap reached",
+        alarmName: "Fidant relay stopped: overage budget reached",
         metric: monthOverage,
         threshold: relayOverageBudgetUsd,
         comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
