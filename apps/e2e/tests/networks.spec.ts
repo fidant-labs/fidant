@@ -296,8 +296,8 @@ for (const row of scenarios) {
       baseURL,
     }) => {
       await routerMode("router-b", row.routerB);
-      // ponytail: 1 MiB, not 3: SCTP over this link moves about 50 KB/s, so 3 MiB took a minute.
-      const size = row.progress ? 1024 * 1024 + 1 : 300_001;
+      // ponytail: 512 KiB: SCTP over this link moves about 50 KB/s, and it still shows 10 steps.
+      const size = row.progress ? 512 * 1024 + 1 : 300_001;
       const file = leaks.watch(canaryFile(canary.fork("file"), { size }));
 
       const sender = await actor("sender");
