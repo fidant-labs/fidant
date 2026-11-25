@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type EmailStatus, MAX_LINKS } from "@sigill/protocol";
+import { CHECK_ATTEMPTS } from "./check.ts";
 import { createLink, type Link } from "./link.ts";
 import {
+  CHECK_DIFFERS,
+  CHECK_LIMIT,
   CHECKSUM_MISMATCH,
   emailBound,
   findRecipient,
@@ -865,4 +868,162 @@ test("server-lost unbinds every link the server emailed or may have emailed, and
   assert.equal(late.state, lost.state);
   const removed = run(lost.state, { type: "remove", linkId: sent.linkId }).state;
   assert.deepEqual(hostedLinks(removed), [plain.linkId, limited.linkId]);
+});
+
+function withChecked(name = "Anna") {
+  const link = createLink(ORIGIN);
+  const { state } = run(initialSenderState, { type: "add", link, name, check: true });
+  return { state, linkId: link.linkId, link };
+}
+
+test("an added recipient keeps its check choice", () => {
+  const checked = withChecked();
+  assert.equal(findRecipient(checked.state, checked.linkId)?.check, true);
+  const plain = withRecipient();
+  assert.equal(Object.hasOwn(findRecipient(plain.state, plain.linkId) ?? {}, "check"), false);
+  const off = run(initialSenderState, {
+    type: "add",
+    link: createLink(ORIGIN),
+    name: "A",
+    check: false,
+  });
+  assert.equal(Object.hasOwn(off.state.recipients[0] ?? {}, "check"), false);
+});
+
+test("a checked recipient waits in checking until both confirmed", () => {
+  const { state: s0, linkId } = withChecked();
+  const open = run(s0, joined(linkId, A), { type: "channel-open", linkId });
+  assert.equal(statusOf(open.state, linkId), "checking");
+  assert.equal(update(open.state, joined(linkId, B)).effects[0]?.type, "refuse");
+  const checked = update(open.state, { type: "checked", linkId });
+  assert.equal(statusOf(checked.state, linkId), "offered");
+  assert.deepEqual(checked.effects, []);
+
+  const plain = withRecipient();
+  const plainOpen = run(plain.state, joined(plain.linkId, A), {
+    type: "channel-open",
+    linkId: plain.linkId,
+  });
+  assert.equal(statusOf(plainOpen.state, plain.linkId), "offered");
+  assert.equal(
+    statusOf(
+      update(plainOpen.state, { type: "checked", linkId: plain.linkId }).state,
+      plain.linkId,
+    ),
+    "offered",
+  );
+});
+
+test("it differs: back to waiting with the reason, the attempt refused and closed", () => {
+  const { state: s0, linkId } = withChecked();
+  const { state } = run(s0, joined(linkId, A), { type: "channel-open", linkId });
+  const result = update(state, { type: "check-differs", linkId });
+  const recipient = findRecipient(result.state, linkId);
+  assert.equal(recipient?.status, "waiting");
+  assert.equal(recipient?.error, CHECK_DIFFERS);
+  assert.equal(recipient?.checkFailures, 1);
+  assert.deepEqual(result.effects, [
+    { type: "refuse", linkId, attempt: A, reason: "drop" },
+    { type: "close", linkId },
+  ]);
+  const retry = update(result.state, joined(linkId, B));
+  assert.equal(statusOf(retry.state, linkId), "connecting");
+  assert.equal(findRecipient(retry.state, linkId)?.error, undefined);
+  assert.equal(findRecipient(retry.state, linkId)?.checkFailures, 1);
+});
+
+test("failed checked attempts count, and the fifth locks the link", () => {
+  const { state: s0, linkId } = withChecked();
+  const open: SenderAction = { type: "channel-open", linkId };
+  let state = run(
+    s0,
+    joined(linkId, A),
+    { type: "dropped", linkId },
+    joined(linkId, A),
+    { type: "left", linkId },
+    joined(linkId, A),
+    { type: "timeout", linkId },
+    joined(linkId, A),
+    open,
+    { type: "check-differs", linkId },
+  ).state;
+  assert.equal(statusOf(state, linkId), "waiting");
+  assert.equal(findRecipient(state, linkId)?.checkFailures, 4);
+  assert.deepEqual(hostedLinks(state), [linkId]);
+  assert.equal(CHECK_ATTEMPTS, 5);
+
+  state = run(state, joined(linkId, B), open).state;
+  const fifth = update(state, { type: "check-differs", linkId });
+  const locked = findRecipient(fifth.state, linkId);
+  assert.equal(locked?.status, "failed");
+  assert.equal(locked?.locked, true);
+  assert.equal(locked?.error, CHECK_LIMIT);
+  assert.equal(locked?.checkFailures, 5);
+  assert.deepEqual(fifth.effects, [
+    { type: "refuse", linkId, attempt: B, reason: "drop" },
+    { type: "close", linkId },
+  ]);
+  assert.deepEqual(hostedLinks(fifth.state), []);
+
+  const sixth = update(fifth.state, joined(linkId, A));
+  assert.deepEqual(sixth.effects, [{ type: "refuse", linkId, attempt: A, reason: "used" }]);
+  assert.equal(sixth.state, fifth.state);
+});
+
+test("every way a checked attempt ends unconfirmed counts", () => {
+  const ends: Array<[string, (linkId: string) => SenderAction[]]> = [
+    [
+      "dropped while checking",
+      (linkId) => [
+        { type: "channel-open", linkId },
+        { type: "dropped", linkId },
+      ],
+    ],
+    ["unsendable", (linkId) => [{ type: "unsendable", linkId }]],
+    ["a refused relay", (linkId) => [{ type: "path", linkId, attempt: A, path: "relay" }]],
+    ["server-lost", () => [{ type: "server-lost" }]],
+  ];
+  for (const [label, actions] of ends) {
+    const { state: s0, linkId } = withChecked();
+    const { state } = run(s0, joined(linkId, A, false), ...actions(linkId));
+    assert.equal(findRecipient(state, linkId)?.checkFailures, 1, label);
+  }
+});
+
+test("a left, timeout or drop that locks the link refuses and closes it", () => {
+  const { state: s0, linkId } = withChecked();
+  let state = s0;
+  for (let i = 0; i < CHECK_ATTEMPTS - 1; i++) {
+    state = run(state, joined(linkId, A), { type: "left", linkId }).state;
+  }
+  const result = update(run(state, joined(linkId, B)).state, { type: "left", linkId });
+  assert.equal(findRecipient(result.state, linkId)?.locked, true);
+  assert.deepEqual(result.effects, [
+    { type: "refuse", linkId, attempt: B, reason: "drop" },
+    { type: "close", linkId },
+  ]);
+});
+
+test("a passed check does not count", () => {
+  const { state: s0, linkId } = withChecked();
+  const { state } = run(
+    s0,
+    joined(linkId, A),
+    { type: "channel-open", linkId },
+    { type: "checked", linkId },
+    { type: "dropped", linkId },
+  );
+  assert.equal(statusOf(state, linkId), "waiting");
+  assert.equal(findRecipient(state, linkId)?.checkFailures, undefined);
+});
+
+test("attempts without the check never count", () => {
+  const { state: s0, linkId } = withRecipient();
+  let state = s0;
+  for (let i = 0; i < CHECK_ATTEMPTS + 1; i++) {
+    state = run(state, joined(linkId, A), { type: "dropped", linkId }).state;
+  }
+  assert.equal(statusOf(state, linkId), "waiting");
+  assert.equal(findRecipient(state, linkId)?.checkFailures, undefined);
+  assert.equal(update(state, { type: "check-differs", linkId }).state, state);
 });

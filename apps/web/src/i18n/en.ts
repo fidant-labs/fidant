@@ -366,6 +366,7 @@ export const en = {
     status: {
       waiting: (name: string) => `Waiting for ${name}'s link to be opened`,
       connecting: (name: string) => `Connecting through ${name}'s link…`,
+      checking: (name: string) => `${name}'s link has been opened. Compare the check number.`,
       offered: (name: string) => `${name}'s link has been opened`,
       declined: (name: string) =>
         `${name}'s link was opened and the file was declined. The link still works.`,

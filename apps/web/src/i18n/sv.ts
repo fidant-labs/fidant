@@ -346,6 +346,7 @@ export const sv: Messages = {
     status: {
       waiting: (name: string) => `Väntar på att länken till ${name} ska öppnas`,
       connecting: (name: string) => `Ansluter via länken till ${name}…`,
+      checking: (name: string) => `Länken till ${name} har öppnats. Jämför kontrollnumret.`,
       offered: (name: string) => `Länken till ${name} har öppnats`,
       declined: (name: string) =>
         `Länken till ${name} öppnades och filen avböjdes. Länken fungerar fortfarande.`,
