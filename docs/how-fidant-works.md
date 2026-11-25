@@ -182,7 +182,7 @@ The relay is becoming its own service, so that relays can run on any Ubuntu serv
 
 - It runs coturn with the settings above (`no-tcp-relay`, `relay-ip`, `denied-peer-ip`, `total-quota=200`, `log-file=/dev/null`), on UDP and TCP 3478, and with TLS on TCP 443 directly, with its own Let's Encrypt certificate for `sto.relay.fidant.se`. No HAProxy sits in front of it, so it sees real client addresses on TLS too.
 - At install it makes an RSA key pair. The private key never leaves the box. Every minute the relay asks the app for its secret at `https://fidant.se/relay-secret/sto`. The answer is to be the secret sealed to the relay's public key (RSA-OAEP with SHA-256, `sealRelaySecret`), so anyone can ask but only that relay can open it. The app will trust only public keys committed in a reviewed pull request (SIG-153, planned). Today the app has no such endpoint: the relay gets the site's page, drops it, and has no secret. So it answers STUN and refuses every TURN allocation.
-- A new secret reaches coturn through coturn's own SQLite file, without a restart, so relayed transfers in progress keep running. The previous secret stays valid for 24 hours after a change, and longer while no new answer arrives.
+- A new secret reaches coturn through coturn's own SQLite file, without a restart, so relayed transfers in progress keep running. The previous secret stays valid for 24 hours after a change, unless a second change ends it sooner, and longer while no new answer arrives.
 - What it sees, keeps and logs is under "What the server and relay see, keep and log".
 
 ### Refusing the relay
@@ -303,7 +303,7 @@ The relay box (see "The relay box") serves no transfers until SIG-153. Today:
 From SIG-153 on, it also:
 
 - sees what the relay above sees, with the real address of every client, TLS included;
-- keeps the current secret, and the previous one for 24 hours after a change or longer while no new secret arrives, readable only by root and coturn. It keeps nothing of the file.
+- keeps the current secret, and at most one previous one for 24 hours after a change or longer while no new secret arrives, readable only by root and coturn. It keeps nothing of the file.
 
 /privacy lists every log field, generated from the same type.
 
