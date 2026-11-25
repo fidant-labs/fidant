@@ -14,13 +14,7 @@ const host = "127.0.0.1";
 const startTimeoutMs = 10_000;
 const missing = "coturn not found; brew install coturn (macOS) or apt-get install coturn";
 
-/**
- * coturn on a free loopback port, behind a relay list of two entries: `bad`, whose secret coturn
- * doesn't know, and `loc`, whose secret it has. It hands the server RELAYS_FILE and
- * RELAY_MASTER_FILE, and also TURN_URLS and TURN_SECRET_FILE with `loc`'s URLs and secret. Each
- * relay's private key is `<id>.key` next to the list. Without `turnserver` on PATH the stack runs
- * without it, except in CI, where that fails the run.
- */
+// Relay list of `bad`, whose secret coturn lacks, then `loc`, whose secret it has. Skipped without turnserver, except in CI.
 export const coturn: Service = { name: "coturn", start: startCoturn };
 
 async function startCoturn(): Promise<RunningService> {

@@ -139,11 +139,7 @@ async function allocates(
   return relayedIPv4(answer) === address;
 }
 
-/**
- * Whether the TURN server at `host:port` gives an allocation over UDP to credentials minted from
- * `secret`, relayed at the address `host` resolves to. It releases the allocation, takes at most
- * `timeoutMs`, and never throws or logs: any failure is `false`.
- */
+// Never throws or logs: any failure is false.
 export async function turnAllocates(
   host: string,
   port: number,

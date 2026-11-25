@@ -148,12 +148,7 @@ function down(): void {
   execFileSync("docker", [...compose, "down", "-t", "2", "--remove-orphans"], { stdio: "ignore" });
 }
 
-/**
- * The routers, browser containers, coturn, the box and the relay box of networks/compose.yaml.
- * It hands the server a relay list and a master made for this run: `net`, coturn at
- * 198.51.100.20, which takes net's derived secret and shares it with the box, then `sto`, the
- * relay box, which has no secret until it fetches one.
- */
+// The relay list is `net`, coturn at 198.51.100.20, then `sto`, the relay box, which has no secret until it fetches one.
 export const dockerNetworks: Service = { name: "networks", start: startNetworks };
 
 async function startNetworks(): Promise<RunningService> {
