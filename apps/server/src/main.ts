@@ -71,6 +71,9 @@ if (!relays && (turnUrls || turnSecretFile)) {
   }
   ice = { urls, secret };
 }
+if (!relays && !ice && site.stun.length > 0) {
+  ice = { urls: site.stun };
+}
 
 // Mail is optional too, and the SMTP password comes from a file for the same reason.
 // Emailed links point at PUBLIC_ORIGIN, never at whatever Host a request names.
@@ -137,6 +140,7 @@ const { server, signaling } = await startServer({
   log,
   mail,
   startingMs: startingEnv === undefined ? undefined : Number(startingEnv),
+  keepAliveMs: site.keepAliveMs,
 });
 
 const { port } = server.address() as AddressInfo;

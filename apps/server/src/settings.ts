@@ -1,12 +1,33 @@
 import { BlockList, isIP } from "node:net";
+import { parseIceServers } from "@sigill/protocol";
 
-export type SiteSettings = { pages: boolean; origin: string | undefined; proxies: BlockList };
+export type SiteSettings = {
+  pages: boolean;
+  origin: string | undefined;
+  proxies: BlockList;
+  keepAliveMs: number | undefined;
+  stun: string[];
+};
 
 const badOrigin = "PUBLIC_ORIGIN must be an https:// origin with no path, like https://fidant.se.";
 const badRanges = "TRUSTED_PROXIES must be address ranges like 10.0.0.0/24, separated by commas.";
 
 const badLoose =
   "TRUSTED_PROXIES ranges must start at their first address, like 10.0.0.0/24, not 10.0.0.5/24.";
+
+const badKeepAlive =
+  "HTTP_KEEP_ALIVE_MS must be a whole number of milliseconds from 1000 to 299000.";
+
+const badStun =
+  "STUN_URLS must be 1 to 4 stun: URLs like stun:example.com:3478, separated by commas.";
+
+const stunUrl = /^stun:(?:[a-z0-9.-]+|\[[0-9a-f:]+\])(?::(\d{1,5}))?$/i;
+
+function isStunUrl(url: string): boolean {
+  const match = stunUrl.exec(url);
+  const port = Number(match?.[1] ?? 1);
+  return match !== null && port >= 1 && port <= 65535;
+}
 
 function toNumber(address: string, family: number): bigint {
   if (family === 4) {
@@ -61,5 +82,29 @@ export function siteSettings(env: Record<string, string | undefined>): SiteSetti
     }
   }
 
-  return { pages: only !== "1", origin, proxies };
+  const keepAlive = env.HTTP_KEEP_ALIVE_MS || undefined;
+  const keepAliveMs = Number(keepAlive);
+  // headersTimeout, 1 s above this, must stay within Node's 300 s requestTimeout.
+  if (
+    keepAlive !== undefined &&
+    !(/^\d+$/.test(keepAlive) && keepAliveMs >= 1000 && keepAliveMs <= 299_000)
+  ) {
+    throw new Error(badKeepAlive);
+  }
+
+  const stun = (env.STUN_URLS ?? "")
+    .split(",")
+    .map((url) => url.trim())
+    .filter(Boolean);
+  if (env.STUN_URLS && !(stun.every(isStunUrl) && parseIceServers([{ urls: stun }]))) {
+    throw new Error(badStun);
+  }
+
+  return {
+    pages: only !== "1",
+    origin,
+    proxies,
+    keepAliveMs: keepAlive === undefined ? undefined : keepAliveMs,
+    stun,
+  };
 }

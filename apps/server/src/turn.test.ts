@@ -50,3 +50,12 @@ test("hands no ICE servers when the sender refuses TURN and there is no STUN URL
   const ice = { urls: ["turn:a:3478?transport=udp", "turns:a:5349"], secret: "test-secret" };
   assert.deepEqual(iceServersFor(ice, 0, false), []);
 });
+
+test("hands STUN_URLS alone, with no credentials, whatever the sender's relay choice", () => {
+  const urls = ["stun:198.51.100.20:3478", ipv6Stun];
+  for (const turn of [true, false]) {
+    const servers = iceServersFor({ urls }, 0, turn);
+    assert.deepEqual(servers, [{ urls }]);
+    assert.deepEqual(parseIceServers(JSON.parse(JSON.stringify(servers))), servers);
+  }
+});

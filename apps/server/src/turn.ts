@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
 import type { IceServer } from "@sigill/protocol";
 
-export type IceConfig = { urls: string[]; secret: string };
+export type IceConfig = { urls: string[]; secret?: string };
 
 // Credentials go only to paired sockets, minted per pairing. The expiry only
 // limits starting a relay: coturn 4.19 kept a relayed connection alive, and
@@ -23,8 +23,8 @@ export function turnCredentials(
 }
 
 /**
- * The ICE servers for one pairing: none without TURN, TURN with fresh credentials if the sender
- * allows it, else only the STUN URLs, with no credential minted.
+ * The ICE servers for one pairing: none without a config, TURN with fresh credentials if there is
+ * a secret and the sender allows it, else only the STUN URLs, with no credential minted.
  */
 export function iceServersFor(
   ice: IceConfig | undefined,
@@ -34,7 +34,7 @@ export function iceServersFor(
   if (!ice) {
     return [];
   }
-  if (turn) {
+  if (turn && ice.secret !== undefined) {
     return [{ urls: ice.urls, ...turnCredentials(ice.secret, nowMs) }];
   }
   const stun = ice.urls.filter((url) => url.startsWith("stun:"));
