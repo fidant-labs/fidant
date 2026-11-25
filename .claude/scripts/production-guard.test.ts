@@ -99,6 +99,7 @@ test("blocks commands that update the production branch", () => {
     "gh pr edit 96 --base production",
     `echo ${"x".repeat(32768)}; git push origin main:production`,
     `git${" -a".repeat(4000)} status; git push origin main:production`,
+    `echo${" a\\\n".repeat(8000)}x; git push origin main:production`,
   ]) {
     assert.equal(guard(command), 2, command.slice(0, 80));
   }

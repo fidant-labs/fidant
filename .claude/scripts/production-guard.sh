@@ -5,8 +5,8 @@ set -uo pipefail
 input=$(cat)
 cmd=$(jq -r '.tool_input.command // ""' <<<"$input")
 cwd=$(jq -r '.cwd // ""' <<<"$input")
-cmd=${cmd//$'\\\n'/ }
-# tr, because bash 3.2's ${x//[set]/y} takes minutes on a long command, and a hook that times out doesn't block.
+# awk and tr, because bash 3.2's ${x//pattern/y} takes minutes on a long command, and a hook that times out doesn't block.
+cmd=$(printf '%s\n' "$cmd" | awk '{ if (sub(/\\$/, " ")) printf "%s", $0; else print }')
 cmd=$(printf '%s' "$cmd" | tr -d "\"'")
 cmd=$(printf '%s' "$cmd" | tr ';&|()<>`' '\n\n\n\n\n\n\n\n')
 opt='[[:space:]]+((-[Cc]|--(git-dir|work-tree|namespace|config-env|attr-source|shallow-file))[[:space:]]+[^[:space:]]+|-[^[:space:]]+)'
