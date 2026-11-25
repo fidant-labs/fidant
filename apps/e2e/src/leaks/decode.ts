@@ -347,6 +347,9 @@ function inflate(inflater: Inflater, data: Buffer, room: number): Inflated | und
       maxOutputLength: Math.max(cap, 1),
       finishFlush: constants.Z_SYNC_FLUSH,
       ...(inflater === brotliDecompressSync && { finishFlush: constants.BROTLI_OPERATION_FLUSH }),
+      // Z_SYNC_FLUSH is ZSTD_e_end to zstd, which throws on a cut-off frame. ZSTD_e_flush
+      // returns every complete block that arrived.
+      ...(inflater === zstdDecompressSync && { finishFlush: constants.ZSTD_e_flush }),
     });
   try {
     return { bytes: attempt(data), limited: false };

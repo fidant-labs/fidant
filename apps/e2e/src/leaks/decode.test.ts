@@ -144,6 +144,13 @@ test("decompresses what arrived of a stream cut short", () => {
   assert.deepEqual(pathsWith(gzipped.subarray(0, gzipped.length / 2), secret), ["gzip"]);
 });
 
+test("decompresses the complete blocks of a zstd stream cut short", () => {
+  // zstd decodes whole 128 KiB blocks, so the secret sits in the first of several.
+  const data = Buffer.concat([padding, secret, Buffer.alloc(400_000, "b"), random.bytes(1000)]);
+  const zstd = zstdCompressSync(data);
+  assert.ok(pathsWith(zstd.subarray(0, zstd.length - 100), secret).includes("zstd"));
+});
+
 test("decompresses brotli and raw deflate when the content-encoding says so", () => {
   const data = Buffer.concat([padding, secret]);
   assert.deepEqual(pathsWith(brotliCompressSync(data), secret, { contentEncoding: "br" }), ["br"]);
