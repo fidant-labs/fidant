@@ -9,6 +9,15 @@
 /** A link ID: 16 random bytes as base64url, without padding. */
 export const LINK_ID_PATTERN = /^[A-Za-z0-9_-]{22}$/;
 
+/** The longest wait between a client's attempts to reach the signaling server. */
+export const RETRY_MAX_MS = 30_000;
+
+/** How long after it starts the server refuses unknown links with `starting` (decision 0018). */
+export const STARTING_MS = 2 * RETRY_MAX_MS;
+
+/** WebSocket close code (Service Restart) the server sends every socket when it stops. */
+export const SERVICE_RESTART = 1012;
+
 /** The most links one sender may host at once. */
 export const MAX_LINKS = 256;
 
@@ -41,8 +50,12 @@ const CODE_PATTERN = /^[0-9]{6}$/;
 
 const BASE64URL_PATTERN = /^[A-Za-z0-9_-]+$/;
 
-/** Why a sender turns a recipient away. `drop`: it gave up on the attempt; the link still works. */
-export const REFUSE_REASONS = ["used", "busy", "unknown", "drop"] as const;
+/**
+ * Why a recipient is turned away. `drop`: the sender gave up on the attempt; the link still works.
+ * `starting`: the server started less than STARTING_MS ago and doesn't know the link yet, so its
+ * sender may still be reconnecting; ask again.
+ */
+export const REFUSE_REASONS = ["used", "busy", "unknown", "drop", "starting"] as const;
 export type RefuseReason = (typeof REFUSE_REASONS)[number];
 
 /**

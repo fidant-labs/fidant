@@ -67,7 +67,7 @@ test("parses valid client messages", () => {
     link,
     data: "a-b_C9",
   });
-  for (const reason of ["used", "busy", "unknown", "drop"] as const) {
+  for (const reason of ["used", "busy", "unknown", "drop", "starting"] as const) {
     assert.deepEqual(parseClientMessage(JSON.stringify({ t: "refuse", link, attempt, reason })), {
       t: "refuse",
       link,
@@ -116,7 +116,7 @@ test("parses valid server messages", () => {
     link,
     data: "xyz",
   });
-  for (const reason of ["used", "busy", "unknown", "drop"] as const) {
+  for (const reason of ["used", "busy", "unknown", "drop", "starting"] as const) {
     assert.deepEqual(parseServerMessage(JSON.stringify({ t: "refused", reason })), {
       t: "refused",
       reason,

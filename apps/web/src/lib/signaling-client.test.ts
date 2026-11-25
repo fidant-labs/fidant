@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
-import { connectSignaling, RETRY_MAX_MS, retryDelay } from "./signaling-client.ts";
+import { RETRY_MAX_MS } from "@sigill/protocol";
+import { connectSignaling, retryDelay } from "./signaling-client.ts";
 
 const STABLE = 10_000;
 const LINK = "AAAAAAAAAAAAAAAAAAAAAA";

@@ -26,11 +26,14 @@
 //   consent runs out) and the drop is reported as the sender's page closing.
 // - If the signaling socket drops before the data channel opens, a new
 //   attempt starts (new socket, new attempt ID). A socket that never opened is
-//   left to the signaling client's own retries. A server that restarted no
-//   longer knows the sender's link until the sender re-hosts, so `refused:
-//   unknown` after a drop or failed connect waits retryDelay and tries again,
-//   up to MAX_REJOINS times. Once the channel is open the transfer no longer
-//   needs the server, so a drop then only closes the signaling client.
+//   left to the signaling client's own retries. A server that started less
+//   than STARTING_MS ago may not know the sender's link yet, because the
+//   sender is still reconnecting, and refuses with `starting`: the page sends
+//   the same `join` again on the same socket after STARTING_RETRY_MS, and each
+//   `join` re-arms the connect timeout, so the server decides when waiting
+//   ends (decision 0018). `refused: unknown` always ends the attempt. Once the
+//   channel is open the transfer no longer needs the server, so a drop then
+//   only closes the signaling client.
 //   Reaching the code step resets the rejoin count (a token holder's rejoins
 //   do not), and the code field survives a rejoin. A `failed` or `expired`
 //   code result asks the gate again, so a binding that is gone ends as "no
@@ -79,7 +82,7 @@ import type { FileOffer } from "../lib/receive-file.ts";
 import { ReceiveError, receiveFile } from "../lib/receive-file.ts";
 import { peerLostProblem } from "../lib/receive-problem.ts";
 import { addRelay, type Kind, NO_RELAYS, type Tie } from "../lib/server-facts.ts";
-import { connectSignaling, retryDelay, type SignalingClient } from "../lib/signaling-client.ts";
+import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
 import {
   BLOB_WARN_BYTES,
   BlobSink,
@@ -182,8 +185,10 @@ const HOST_GONE_GRACE_MS = 1000;
 const LINGER_MS = 5000;
 /** How long to wait for the data channel before giving up on the sender. */
 const CONNECT_TIMEOUT_MS = 30_000;
-/** How many new attempts follow a dropped socket or an `unknown` refusal before giving up. */
+/** How many new attempts follow a socket that drops after opening before giving up. */
 const MAX_REJOINS = 4;
+/** How long to wait before asking again after the server refuses with `starting`. */
+const STARTING_RETRY_MS = 1000;
 
 export function ReceivePage({
   onUnfinished,
@@ -312,9 +317,9 @@ export function ReceivePage({
     // Set before `join` is sent, so it is there when `joined` arrives.
     let signalKey: CryptoKey | undefined;
     let opened = false;
-    /** A connection attempt failed, so the server may have restarted and lost the sender's link. */
-    let failedBefore = false;
     let joinSent = false;
+    /** The token the last `join` carried, so a `starting` refusal can send the same `join` again. */
+    let joinToken: string | undefined;
     const ask = () => {
       if (!opened || !signalKey || !current()) {
         return;
@@ -327,6 +332,7 @@ export function ReceivePage({
     };
     const join = (token: string | undefined) => {
       joinSent = true;
+      joinToken = token;
       armConnectTimeout();
       signaling.send(
         token === undefined
@@ -357,7 +363,6 @@ export function ReceivePage({
       setTie("closed");
       if (!opened) {
         // The client retries; CONNECT_TIMEOUT_MS bounds the wait.
-        failedBefore = true;
         return;
       }
       if (attempt.channelOpen) {
@@ -486,22 +491,15 @@ export function ReceivePage({
           // link is in use or used: the sender only signals a join it took.
           if (attempt.heardSender) {
             finish({ s: "failed", problem: lostMessage() });
-          } else if (
-            message.reason === "unknown" &&
-            (rejoins > 0 || failedBefore) &&
-            rejoins < MAX_REJOINS
-          ) {
-            // The server may have restarted before the sender re-hosted.
-            if (current()) {
-              release(attempt);
-              attempt.timers.push(
-                setTimeout(() => {
-                  if (attemptRef.current === attempt) {
-                    start(rejoins + 1);
-                  }
-                }, retryDelay(rejoins)),
-              );
-            }
+          } else if (message.reason === "starting") {
+            // The server just started and the sender may not have hosted again yet.
+            attempt.timers.push(
+              setTimeout(() => {
+                if (current() && joinSent) {
+                  join(joinToken);
+                }
+              }, STARTING_RETRY_MS),
+            );
           } else {
             finish(
               message.reason === "drop"

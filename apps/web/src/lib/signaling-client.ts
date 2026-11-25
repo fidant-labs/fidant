@@ -15,7 +15,13 @@
 // the page re-sends host/join there, since it knows them and this wrapper
 // does not.
 
-import { type ClientMessage, parseServerMessage, type ServerMessage } from "@sigill/protocol";
+import {
+  type ClientMessage,
+  parseServerMessage,
+  RETRY_MAX_MS,
+  SERVICE_RESTART,
+  type ServerMessage,
+} from "@sigill/protocol";
 
 export type SignalingClose = {
   /** WebSocket close code (1006 when the connection dropped). */
@@ -43,11 +49,8 @@ export function defaultSignalingUrl(): string {
 }
 
 const RETRY_BASE_MS = 1000;
-export const RETRY_MAX_MS = 30_000;
 // A socket that stayed open this long was healthy; a faster close counts as a failure.
 const STABLE_MS = 10_000;
-// The close code the server sends to every socket when it stops.
-const SERVICE_RESTART = 1012;
 
 /** A random wait up to min(30 s, 1 s × 2^failures), so clients don't reconnect in step. */
 export function retryDelay(failures: number, random = Math.random): number {
