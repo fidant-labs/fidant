@@ -104,26 +104,21 @@ test("each page has its own tab title", async ({ page }) => {
   }
 });
 
-test("the theme menu is in the header on wide screens and in the footer on phones", async ({
+test("the language and theme menus are in the footer at every width, not the header", async ({
   page,
 }) => {
   await page.goto("/");
-  const header = page.locator("header").getByRole("button", { name: "Theme" });
-  const footer = page.locator("footer").getByRole("button", { name: "Theme" });
-  await expect(header).toBeVisible();
-  await expect(footer).toBeHidden();
+  const footer = page.locator("footer");
+  for (const width of [1280, 360]) {
+    await page.setViewportSize({ width, height: 800 });
+    await expect(page.locator("header").getByRole("button")).toHaveCount(0);
+    await expect(footer.getByRole("button", { name: "Language: English" })).toBeVisible();
+    await expect(footer.getByRole("button", { name: "Theme: System" })).toBeVisible();
+  }
 
-  await page.setViewportSize({ width: 360, height: 800 });
-  await expect(header).toBeHidden();
-  await footer.click();
+  await footer.getByRole("button", { name: "Theme" }).click();
+  await expect(page.getByRole("menu")).toBeInViewport({ ratio: 1 });
   await page.getByRole("menuitemradio", { name: "Dark" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-  await expect(page.getByRole("menu")).toHaveCount(0);
-
-  await page.setViewportSize({ width: 1280, height: 800 });
-  await header.click();
-  await expect(page.getByRole("menuitemradio", { name: "Dark" })).toHaveAttribute(
-    "aria-checked",
-    "true",
-  );
+  await expect(footer.getByRole("button", { name: "Theme: Dark" })).toBeVisible();
 });

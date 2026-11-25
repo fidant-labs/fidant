@@ -101,7 +101,7 @@ function App() {
   }
   return (
     <div class="flex min-h-dvh flex-col">
-      <Header current={route} theme={theme} onTheme={chooseTheme} />
+      <Header current={route} />
       <div class="flex-1">
         {route === "landing" && <LandingPage />}
         {/* The privacy page uses no crypto, so it opens even without a secure connection. */}
