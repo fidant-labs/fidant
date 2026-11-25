@@ -135,7 +135,7 @@ META's `chunkSize` must be at least 986 bytes (`MIN_CHUNK_BYTES`): the META fram
 
 ### Names
 
-META refuses names, types and sender names containing C0 or C1 control characters, line and paragraph separators (U+2028, U+2029), any Unicode Bidi_Control character (U+061C, U+200E, U+200F, U+202A–202E, U+2066–2069), a filler that always draws as blank (U+115F, U+1160, U+2800, U+3164, U+FFA0) or three or more spaces of any kind (also when invisible characters such as U+200B sit between them), so a name ending in `.exe` can't be displayed as one ending in `.pdf` or have its ending pushed out of sight. A single space of any kind is allowed, since macOS puts U+202F in screenshot names (`hasForbiddenCharacters` in `packages/protocol`). The sender's name is typed by the sender and not verified.
+META refuses names, types and sender names containing C0 or C1 control characters, line and paragraph separators (U+2028, U+2029), any Unicode Bidi_Control character (U+061C, U+200E, U+200F, U+202A–202E, U+2066–2069), a filler that always draws as blank (U+115F, U+1160, U+2800, U+3164, U+FFA0, U+13441, U+13442, U+16FE4, U+1D159) or three or more spaces of any kind (also when invisible characters such as U+200B sit between them), so a name ending in `.exe` can't be displayed as one ending in `.pdf` or have its ending pushed out of sight. A single space of any kind is allowed, since macOS puts U+202F in screenshot names (`hasForbiddenCharacters` in `packages/protocol`). The sender's name is typed by the sender and not verified.
 
 ## Padding
 

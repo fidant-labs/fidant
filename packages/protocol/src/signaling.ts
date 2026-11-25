@@ -302,13 +302,13 @@ function isMaskedAddress(value: unknown): value is string {
  * C0 and C1 control characters (U+0000–001F, U+007F–009F), the line and paragraph
  * separators (U+2028, U+2029), every Unicode Bidi_Control character (U+061C, U+200E,
  * U+200F, U+202A–202E, U+2066–2069), the fillers that always draw as blank (U+115F, U+1160,
- * U+2800, U+3164, U+FFA0) and three or more spaces of any kind (Unicode Zs), whether
+ * U+2800, U+3164, U+FFA0, U+13441, U+13442, U+16FE4, U+1D159) and three or more spaces of any kind (Unicode Zs), whether
  * next to each other or with invisible characters (Default_Ignorable_Code_Point, such as
  * U+200B, U+2060, U+00AD, U+FEFF) between them. A run of invisible characters with no
  * spaces is allowed: it takes no width, so it hides nothing.
  */
 const FORBIDDEN_CHARACTERS =
-  /[\p{Cc}\p{Zl}\p{Zp}\p{Bidi_Control}\u115F\u1160\u2800\u3164\uFFA0]|(?:\p{Zs}\p{Default_Ignorable_Code_Point}*){3,}/u;
+  /[\p{Cc}\p{Zl}\p{Zp}\p{Bidi_Control}\u115F\u1160\u2800\u3164\uFFA0\u{13441}\u{13442}\u{16FE4}\u{1D159}]|(?:\p{Zs}\p{Default_Ignorable_Code_Point}*){3,}/u;
 
 /**
  * Whether a file name, type or sender name contains characters META refuses: control
