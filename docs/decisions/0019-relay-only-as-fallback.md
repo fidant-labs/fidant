@@ -46,7 +46,8 @@ The browsers first try the direct routes without the relay. They add the relay o
 - ICE counts as connected when `iceConnectionState` is `connected` or `completed`; DTLS doesn't count, so a connection that is `disconnected` at 3 s also gets the relay restart.
 - The recipient adds its own full list and answers with `restart-answer`.
 - ICE then tries every route again, the relay included, and can still pick a direct one.
-- Each is accepted once per attempt: `restart-offer` only after the first `offer`, and `restart-answer` only after `restart-offer`. A second `offer` or `answer` is still refused, so the server can't replay a first offer or answer as a restart one.
+- Each is accepted once per attempt: `restart-offer` only after the recipient answered the first `offer`, and `restart-answer` only after `restart-offer`. A second `offer` or `answer` is still refused, so the server can't replay a first offer or answer as a restart one.
+- Both must name the same two DTLS certificates as the first `offer` and `answer`, which the check number comes from (0017). A page refuses the other side's restart SDP with another fingerprint as a bad signal, and closes with `setup-failed` if its own would name another, so a relay restart can't put anyone between the browsers after the number was fixed.
 - Both kinds are sealed like every other signal, with the direction and the attempt bound in. The server sees only another opaque `relay` message.
 - A candidate whose `usernameFragment` is set and differs from the current remote description's is dropped silently, which drops candidates from before the restart that arrive after it.
 - If sending `restart-offer` or `restart-answer` fails, the peer closes with `signal-failed`. If `setLocalDescription` fails for either, it closes with `setup-failed`.
