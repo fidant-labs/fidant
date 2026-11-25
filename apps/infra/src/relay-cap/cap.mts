@@ -6,7 +6,13 @@ export type Port = {
   ipv6Cidrs?: string[];
   cidrListAliases?: string[];
 };
-export type CapState = { month: string; boxes: Record<string, number>; capped: boolean };
+export type Traffic = { in: number; out: number };
+export type CapState = { month: string; boxes: Record<string, Traffic>; capped: boolean };
+export type StoredState = {
+  month: string;
+  boxes: Record<string, Traffic | number>;
+  capped: boolean;
+};
 export type BoxPorts = { box: string; openPorts: Port[]; cappedPorts: Port[] };
 export type CapConfig = {
   boxes: BoxPorts[];
@@ -16,7 +22,7 @@ export type CapConfig = {
 };
 export type RelayStatus = { id: string; up: boolean }[];
 export type CapDeps = {
-  boxBytes(box: string, start: Date, end: Date): Promise<number>;
+  boxTraffic(box: string, start: Date, end: Date): Promise<Traffic>;
   readState(): Promise<string | undefined>;
   writeState(json: string): Promise<void>;
   putPorts(box: string, ports: Port[]): Promise<void>;
@@ -31,7 +37,24 @@ export function monthStart(now: Date): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 }
 
-export function parseState(json: string | undefined): CapState | undefined {
+function validNumber(n: unknown): boolean {
+  return typeof n === "number" && Number.isFinite(n) && n >= 0;
+}
+
+function validCount(value: unknown): boolean {
+  if (validNumber(value)) {
+    return true;
+  }
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    Object.keys(value).sort().join() === "in,out" &&
+    validNumber((value as Traffic).in) &&
+    validNumber((value as Traffic).out)
+  );
+}
+
+export function parseState(json: string | undefined): StoredState | undefined {
   if (json === undefined) {
     return undefined;
   }
@@ -42,25 +65,44 @@ export function parseState(json: string | undefined): CapState | undefined {
     !/^\d{4}-\d{2}$/.test(value.month) ||
     typeof boxes !== "object" ||
     boxes === null ||
-    !Object.values(boxes).every((n) => typeof n === "number" && Number.isFinite(n) && n >= 0) ||
+    !Object.values(boxes).every(validCount) ||
     typeof value.capped !== "boolean"
   ) {
     throw new Error("relay cap state is malformed");
   }
-  return { month: value.month, boxes: { ...boxes }, capped: value.capped };
+  const copy = Object.fromEntries(
+    Object.entries(boxes as Record<string, Traffic | number>).map(([box, count]) => [
+      box,
+      typeof count === "number" ? count : { in: count.in, out: count.out },
+    ]),
+  );
+  return { month: value.month, boxes: copy, capped: value.capped };
 }
 
 export function decide(
-  previous: CapState | undefined,
+  previous: StoredState | undefined,
   month: string,
-  counts: Record<string, number>,
+  counts: Record<string, Traffic>,
   limitBytes: number,
 ): { state: CapState; total: number; ports: "keep" | "open" | "capped" } {
-  const boxes = previous?.month === month ? { ...previous.boxes } : {};
-  for (const [box, bytes] of Object.entries(counts)) {
-    boxes[box] = Math.max(boxes[box] ?? 0, bytes);
+  const boxes: Record<string, Traffic> = {};
+  if (previous?.month === month) {
+    for (const [box, count] of Object.entries(previous.boxes)) {
+      if (typeof count !== "number") {
+        boxes[box] = { ...count };
+      } else if (!(box in counts)) {
+        // ponytail: a count from before SIG-154 is in plus out; drop once no such state exists
+        boxes[box] = { in: 0, out: count };
+      }
+    }
   }
-  const total = Object.values(boxes).reduce((sum, n) => sum + n, 0);
+  for (const [box, fresh] of Object.entries(counts)) {
+    boxes[box] = {
+      in: Math.max(boxes[box]?.in ?? 0, fresh.in),
+      out: Math.max(boxes[box]?.out ?? 0, fresh.out),
+    };
+  }
+  const total = Object.values(boxes).reduce((sum, t) => sum + t.in + t.out, 0);
   const capped = total >= limitBytes;
   const ports = capped ? "capped" : previous?.capped ? "open" : "keep";
   return { state: { month, boxes, capped }, total, ports };
@@ -214,9 +256,9 @@ export function statusLines(
 
 export async function runCap(deps: CapDeps, config: CapConfig, now: Date): Promise<void> {
   const previous = parseState(await deps.readState());
-  const counts: Record<string, number> = {};
+  const counts: Record<string, Traffic> = {};
   for (const { box } of config.boxes) {
-    counts[box] = await deps.boxBytes(box, monthStart(now), now);
+    counts[box] = await deps.boxTraffic(box, monthStart(now), now);
   }
   const { state, total, ports } = decide(previous, monthOf(now), counts, config.limitBytes);
   if (ports !== "keep") {
