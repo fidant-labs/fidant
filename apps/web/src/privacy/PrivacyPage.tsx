@@ -6,8 +6,8 @@ const section = "mt-10";
 const h2 = "mb-3 text-[1.25rem] font-bold";
 
 // The privacy notice: short and plain, for people who aren't technical. The explaining lives on the
-// /how pages. Keep every sentence true of what the code does today: `server` in the dictionaries
-// and apps/server/src/signaling.ts are the source.
+// /how pages. Keep every sentence true of what the code does today: docs/how-fidant-works.md is the
+// source of truth, checked against apps/server/src/signaling.ts and apps/server/src/mail.ts.
 // The text lives in i18n/en.ts and i18n/sv.ts under `privacy`.
 
 function Facts({ rows }: { rows: ReadonlyArray<readonly [string, string]> }) {

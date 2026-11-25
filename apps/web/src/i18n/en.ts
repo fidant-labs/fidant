@@ -1244,7 +1244,7 @@ export const en = {
   },
   privacy: {
     title: "Privacy",
-    lede: "We never get your file or shared secret, its name, or the key that unlocks it, unless you ask us to email the link. Below is everything we do see and keep, and for how long.",
+    lede: "We never get your file or shared secret, or its name. We never get the key that unlocks it either, unless you ask us to email the link. Below is what we see and keep, and for how long.",
     neverHeading: "What we never get",
     never: [
       ["Your file", "Not the contents, not the file name, not its size or type."],
@@ -1298,7 +1298,8 @@ export const en = {
     limits: [
       "Anyone who has the link can open the file. A link we email also needs a code we send to the same address, so anyone who can read that mailbox can open it. Send each link only to the person it is for.",
       "Your browser runs the code our server sends it. A server that sent different code could read files. The code is public, but browsers can't yet check that what they got matches it.",
-      "The other browser sees your IP address, as on a video call. If you allow our relay, it sees both IP addresses.",
+      "The other browser sees your IP address, as on a video call. Our server sees both IP addresses, which recipient connects to which sender and when, and how many recipients a sender has. So it learns who sends to whom, though not what, unless we emailed the link.",
+      "Each browser asks our relay for its public address, so the relay sees each IP address. The networks on the way, and our relay when the file goes through it, see both IP addresses, when the transfer happens and roughly how big the file is.",
     ],
     limitsLink: ["Every risk, and what Fidant does about it", "/how/protection"] as readonly [
       string,

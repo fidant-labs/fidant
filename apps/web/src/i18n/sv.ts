@@ -1200,7 +1200,7 @@ export const sv: Messages = {
   },
   privacy: {
     title: "Integritet",
-    lede: "Vi får aldrig din fil eller delade hemlighet, dess namn eller nyckeln som låser upp den, om du inte ber oss mejla länken. Här nedan står allt vi faktiskt ser och sparar, och hur länge.",
+    lede: "Vi får aldrig din fil eller delade hemlighet, eller dess namn. Vi får inte heller nyckeln som låser upp den, om du inte ber oss mejla länken. Här nedan står vad vi ser och sparar, och hur länge.",
     neverHeading: "Det här får vi aldrig",
     never: [
       ["Din fil", "Varken innehållet, filnamnet, storleken eller filtypen."],
@@ -1252,9 +1252,10 @@ export const sv: Messages = {
       "Vårt relä, som för den låsta filen vidare när två webbläsare inte kan ansluta direkt, har ingen logg. Bara för att åtgärda ett fel eller stoppa missbruk slår vi på en. Den sparar då för varje vidarebefordrad anslutning båda IP-adresserna och portarna, när den började och slutade och hur mycket data som gick igenom. Aldrig namn, nycklar eller fildata. Vi stänger av den och raderar den inom 7 dagar.",
     limitsHeading: "Det här kan vi inte skydda dig mot",
     limits: [
-      "Den som har länken kan öppna filen. En länk vi mejlar kräver också en kod som vi skickar till samma adress, så den som kan läsa den brevlådan kan öppna den. Skicka varje länk bara till den den är till.",
+      "Den som har länken kan öppna filen. En länk vi mejlar kräver också en kod som vi skickar till samma adress, så den som kan läsa den inkorgen kan öppna den. Skicka varje länk bara till den som den är avsedd för.",
       "Din webbläsare kör den kod vår server skickar. En server som skickade annan kod skulle kunna läsa filer. Koden är offentlig, men webbläsare kan ännu inte kontrollera att det de fick stämmer med den.",
-      "Den andra webbläsaren ser din IP-adress, precis som i ett videosamtal. Om du tillåter vårt relä ser det båda IP-adresserna.",
+      "Den andra webbläsaren ser din IP-adress, precis som i ett videosamtal. Vår server ser båda IP-adresserna, vilken mottagare som ansluter till vilken avsändare och när, och hur många mottagare en avsändare har. Så den får veta vem som skickar till vem, men inte vad, utom för en länk vi mejlat.",
+      "Varje webbläsare frågar vårt relä om sin offentliga adress, så reläet ser varje IP-adress. Nätverken på vägen, och vårt relä när filen går via det, ser båda IP-adresserna, när överföringen sker och ungefär hur stor filen är.",
     ],
     limitsLink: ["Varje risk, och vad Fidant gör åt den", "/how/protection"] as readonly [
       string,
