@@ -1010,9 +1010,12 @@ export function ReceivePage({
       body = (
         <>
           <Problem {...problem} />
-          <Button type="button" onClick={() => start()}>
-            {t.receive.tryAgain}
-          </Button>
+          {/* A retry in the same browser fails the same way, and on a link with the check number on it would use up one of the sender's attempts. */}
+          {view.problem !== "browser" && (
+            <Button type="button" onClick={() => start()}>
+              {t.receive.tryAgain}
+            </Button>
+          )}
           {problem.detail && <TechDetails rows={[[t.receive.whatHappened, problem.detail]]} />}
         </>
       );

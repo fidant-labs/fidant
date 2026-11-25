@@ -434,6 +434,7 @@ harness("a recipient whose browser has no WebRTC is told so", async ({ actor, le
   await expect(
     recipient.getByRole("heading", { name: "This browser can't connect to the sender" }),
   ).toBeVisible();
+  await expect(recipient.getByRole("button", { name: "Try again" })).toHaveCount(0);
 });
 
 harness("a recipient who can't reach the server is told so", async ({ actor, leaks, canary }) => {
