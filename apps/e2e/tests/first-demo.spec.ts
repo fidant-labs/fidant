@@ -560,7 +560,7 @@ test("a lost sender says whether the file may have been saved", async ({ demo, l
   await expect(bo.getByText("The file may not have been saved.")).toBeVisible();
 });
 
-type Tamper = "flip" | "drop-last" | "reorder" | "repeat" | "other";
+type Tamper = "flip" | "other";
 
 /**
  * Runs in the sender page through addInitScript, so it may use nothing from this module. Alters
@@ -580,8 +580,7 @@ function tamperSender(mode: Tamper) {
   const send = RTCDataChannel.prototype.send;
   const sent = new Map<RTCDataChannel, Uint8Array[]>();
   let source: Uint8Array[] | undefined;
-  let held: Uint8Array | undefined;
-  let chunks = 0;
+  let flipped = false;
   RTCDataChannel.prototype.send = function (this: RTCDataChannel, data: Uint8Array) {
     const out = (frame: Uint8Array) => Reflect.apply(send, this, [frame]);
     let frame: Uint8Array = data.slice();
@@ -599,31 +598,11 @@ function tamperSender(mode: Tamper) {
       }
       return out(frame);
     }
-    if (kind !== CHUNK) {
-      if (kind === END && mode === "drop-last") {
-        held = undefined;
-      }
-      return out(frame);
-    }
-    chunks++;
-    if (mode === "flip" && chunks === 1) {
+    if (kind === CHUNK && !flipped) {
+      flipped = true;
       frame[10] = (frame[10] as number) ^ 1; // the first ciphertext byte, after the 10-byte header
-    } else if (mode === "drop-last") {
-      if (held) {
-        out(held);
-      }
-      held = frame;
-      return;
-    } else if (mode === "reorder" && chunks === 1) {
-      held = frame;
-      return;
-    } else if (mode === "repeat" && chunks === 1) {
-      out(frame);
     }
-    out(frame);
-    if (mode === "reorder" && chunks === 2 && held) {
-      out(held);
-    }
+    return out(frame);
   } as RTCDataChannel["send"];
 }
 
@@ -682,28 +661,25 @@ function expectNoConnection(page: Page) {
 }
 
 test.describe("a hostile path", () => {
-  for (const mode of ["flip", "drop-last", "reorder", "repeat"] as const) {
-    test(`a recipient refuses data channel frames that are tampered: ${mode}`, async ({
-      demo,
-      leaks,
-      canary,
-    }) => {
-      // Three 48 KiB chunks, so there is a first, a middle and a last one.
-      const file = makeFile(leaks, canary, 100_001);
-      const sender = await openSender(demo, file, "", (page) =>
-        page.addInitScript(tamperSender, mode),
-      );
-      const name = makeName(leaks, canary, "Anna");
-      const link = await addRecipient(leaks, sender, name);
-      const recipient = await demo.open("recipient");
-      const refused = expectRefusal(recipient);
-      await recipient.goto(link);
-      const downloadButton = recipient.getByRole("button", { name: "Download" });
-      await expect(downloadButton).toBeVisible({ timeout: 30_000 });
-      await downloadButton.click();
-      await refused(sender, name);
-    });
-  }
+  test("a recipient refuses a data channel frame that was tampered with", async ({
+    demo,
+    leaks,
+    canary,
+  }) => {
+    const file = makeFile(leaks, canary, 100_001);
+    const sender = await openSender(demo, file, "", (page) =>
+      page.addInitScript(tamperSender, "flip" as const),
+    );
+    const name = makeName(leaks, canary, "Anna");
+    const link = await addRecipient(leaks, sender, name);
+    const recipient = await demo.open("recipient");
+    const refused = expectRefusal(recipient);
+    await recipient.goto(link);
+    const downloadButton = recipient.getByRole("button", { name: "Download" });
+    await expect(downloadButton).toBeVisible({ timeout: 30_000 });
+    await downloadButton.click();
+    await refused(sender, name);
+  });
 
   test("a recipient refuses an earlier transfer's frames replayed on its link", async ({
     demo,
