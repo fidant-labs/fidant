@@ -5,7 +5,16 @@ import { previewPage } from "./src/i18n/preview.ts";
 import { signalingUrlFrom } from "./src/lib/signaling-list.ts";
 
 const signalsFile = process.env.SIGNALS_FILE;
-const signalingUrl = signalsFile ? signalingUrlFrom(readFileSync(signalsFile, "utf8")) : "";
+
+function readSignals(file: string): string {
+  try {
+    return readFileSync(file, "utf8");
+  } catch {
+    throw new Error("The signaling list could not be read.");
+  }
+}
+
+const signalingUrl = signalsFile ? signalingUrlFrom(readSignals(signalsFile)) : "";
 
 const latinGeist = /^assets\/geist-latin-wght-normal-[\w-]+\.woff2$/;
 
