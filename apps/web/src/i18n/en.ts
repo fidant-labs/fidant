@@ -686,7 +686,7 @@ export const en = {
       `Both browsers' IP addresses and ${items[kind].seen}. It can't unlock ${items[kind].the}.`,
     relayLogsLabel: "Our relay logs",
     relayLogs: (kind: Kind) =>
-      `Nothing by default. Only while we fix a fault or stop abuse: connection times, IP addresses and how much data passed through, for at most 7 days. Never names, keys or ${items[kind].data}.`,
+      `No log of the traffic by default. Only while we fix a fault or stop abuse: connection times, IP addresses and how much data passed through, for at most 7 days. Never names, keys or ${items[kind].data}. While it renews its certificate, it also logs the addresses that reach it on port 80, never browsers', for about five weeks.`,
     relayKeepsLabel: "Our relay keeps",
     relayKeeps: (kind: Kind) =>
       `Nothing of ${items[kind].the} once ${items[kind].it} has passed through. Log lines from fixing a fault or stopping abuse are deleted within 7 days.`,
@@ -897,7 +897,7 @@ export const en = {
         body: [
           "WebRTC tries the direct routes first: over the local network, or through each side's public address, which the browser learns from our STUN service. The file then goes straight between the browsers. The sender's page shows which route each connection took.",
           "If no direct route works, which is common on mobile data and office networks, the traffic goes through our TURN relay in Stockholm. The relay forwards encrypted packets. It can't decrypt them and doesn't store them.",
-          "To use the relay a browser needs credentials, which our server creates for each pairing and gives only to the two paired pages. They expire after 5 minutes. Our server checks every minute that the relay can carry traffic, and offers it only then. The relay gets the secret behind the credentials from our server, sealed so that only the relay can open it. Browsers reach the relay over UDP, or over TLS on port 443 where a network allows only web traffic. The relay forwards only over UDP, and only from its own address. It refuses to forward to other machines on private or internal networks (with one accepted exception: the relay's own box, see decision 0007), and limits how many relayed connections run at once.",
+          "To use the relay a browser needs credentials, which our server creates for each pairing and gives only to the two paired pages. They expire after 5 minutes. Our server checks every minute that the relay can carry traffic, and offers it once a check passes. It stops offering it after two failed checks in a row. The relay gets the secret behind the credentials from our server, sealed so that only the relay can open it. Browsers reach the relay over UDP, or over TLS on port 443 where a network allows only web traffic. The relay forwards only over UDP, and only from its own address. It refuses to forward to other machines on private or internal networks (with one accepted exception: the relay's own box, see decision 0007), and limits how many relayed connections run at once.",
           "On every route, each browser sees the other's IP address, like on a video call.",
         ],
       },
@@ -1267,7 +1267,7 @@ export const en = {
           "Nothing.",
           "Only the scrambled counts of emails and codes, for up to an hour.",
           "Log lines are deleted after 30 days.",
-          "No log. Only to fix a fault or stop abuse do we turn one on, with connection times, IP addresses and data volumes, for at most 7 days.",
+          "No log of the traffic. Only to fix a fault or stop abuse do we turn one on, with connection times, IP addresses and data volumes, for at most 7 days. Separately, while it renews its certificate, it logs the addresses that reach it on port 80, never browsers', for about five weeks.",
         ],
       ],
     },
