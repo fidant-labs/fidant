@@ -684,6 +684,7 @@ test.describe("the relay box", () => {
     const left = (await inRelay("ls", dir)).split("\n");
     expect(left).toContain("fidant-new");
     expect(left).not.toContain("fidant-old");
+    expect(await inRelay("systemctl", "is-enabled", "logrotate.timer")).toBe("enabled\n");
   });
 
   test.describe("with a secret", () => {

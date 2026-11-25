@@ -60,7 +60,7 @@ The relay is `apps/infra/relay/install.sh`, a POSIX `sh` script that depends on 
   - `RELAY_NAME`: a lowercase host name, the relay's DNS name and coturn's realm, for example `sto.relay.fidant.se`.
   - `APP_URL`: `^https://[a-z0-9.-]+$`, the app it fetches its secret from.
 - It runs with `set -eux`, because it handles no secret. Running it again keeps the key pair, the secrets, the database, the certificate and the `external-ip` line, and rewrites everything else.
-- It writes the same journald drop-in as the app box, then installs `coturn`, `certbot`, `sqlite3`, `ufw` and `curl` from Ubuntu if any is missing. coturn stays masked until its config is written, so it never runs with the package's default config.
+- It writes the same journald drop-in as the app box, then installs `coturn`, `certbot`, `sqlite3`, `ufw`, `curl` and `logrotate` from Ubuntu if any is missing. coturn stays masked until its config is written, so it never runs with the package's default config.
 - Files:
 
 | Path                                                          | Owner and mode        | Holds                                                                                                 |
@@ -159,7 +159,7 @@ On the relay:
 - The journal is kept 29 days, with the app box's drop-in (`MaxRetentionSec=29day`, `MaxFileSec=1day`, `ForwardToSyslog=no`).
 - certbot's own log, in `/var/log/letsencrypt/`, records the address of whatever reaches port 80 while certbot holds it to get or renew a certificate: a few seconds on each attempt, every 15 minutes until the first certificate, then roughly every 60 days. That means Let's Encrypt's validators and scanners. Browsers never use port 80 on the relay.
 - Ubuntu's certbot appends to one log (`max-log-backups = 0` in `/etc/letsencrypt/cli.ini`), and logrotate rotates it weekly. A tmpfiles rule (`e /var/log/letsencrypt - - - m:29d`) removes any file there 29 days after its last write. It goes by modification time, because rotating a log renames it, which renews its change time. So such an address is kept for at most about five weeks.
-- That rests on logrotate, which Ubuntu's server images include and the script doesn't install. Without it, `certbot.timer` writes to the one log twice a day, and the rule never removes it.
+- That rests on logrotate, which the script installs. Without it, `certbot.timer` writes to the one log twice a day, and the rule never removes it.
 - So the relay box keeps no log of relayed transfers, but it does keep certbot's log.
 
 ### The Stockholm relay box
@@ -181,7 +181,7 @@ On the relay:
 - There is no HAProxy in front of coturn, so it sees real client addresses on TLS too, unlike the app box's relay (0010).
 - coturn also opens TLS on 444 and listens on 3479. Both firewalls keep them closed. It accepts TLS on 3478 too, which is open, as on the app box.
 - The previous secret stays valid for 24 hours after a change while hand-outs keep arriving, and longer while they don't.
-- certbot's log keeps the addresses that reach port 80 during a challenge for up to about five weeks, as long as logrotate is installed. Until the first certificate, certbot holds port 80 for a few seconds every 15 minutes.
+- certbot's log keeps the addresses that reach port 80 during a challenge for up to about five weeks. Until the first certificate, certbot holds port 80 for a few seconds every 15 minutes.
 - Lightsail pools the transfer allowance across the region's `micro_3_0` boxes, and 0011's cap counts only the app box's traffic. The relay box carries no relayed transfers until SIG-153, which moves the cap to it.
 - `pnpm e2e:networks` runs the script at boot in an Ubuntu container (`apps/e2e/networks/relay`), with the run's certificate in place of Let's Encrypt's, and relays over UDP, TCP and TLS on 443 through it. It can't run certbot, Lightsail's NAT or the first certificate's restart.
 

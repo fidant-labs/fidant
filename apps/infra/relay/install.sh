@@ -26,9 +26,9 @@ systemctl restart systemd-journald
 
 systemctl mask coturn
 export DEBIAN_FRONTEND=noninteractive
-dpkg -s coturn certbot sqlite3 ufw curl >/dev/null 2>&1 || {
+dpkg -s coturn certbot sqlite3 ufw curl logrotate >/dev/null 2>&1 || {
   apt-get -o DPkg::Lock::Timeout=600 update
-  apt-get -o DPkg::Lock::Timeout=600 install -y coturn certbot sqlite3 ufw curl
+  apt-get -o DPkg::Lock::Timeout=600 install -y coturn certbot sqlite3 ufw curl logrotate
 }
 
 private_ip=$(ip -4 -o addr show scope global | awk '{ sub("/.*", "", $4); print $4; exit }')

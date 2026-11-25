@@ -189,7 +189,7 @@ services:
 
   # The relay box: a new Ubuntu server that runs apps/infra/relay/install.sh at boot (relay/Dockerfile).
   relay:
-    image: sigill-e2e-relay:1
+    image: sigill-e2e-relay:2
     build: relay
     privileged: true
     tmpfs: [/run, /run/lock]
