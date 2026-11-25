@@ -689,7 +689,8 @@ test("keeps a socket under the message limit open across window resets", async (
 
 test("refuses a link's joins as busy past its pairings per window, so a guest cannot spend the host's limit", async (t) => {
   const limited = createServer();
-  // The window starts when the server does, and the joins below take milliseconds of it.
+  // The heartbeat tick ends the window; mock it so the test, not the clock, decides when.
+  t.mock.timers.enable({ apis: ["setInterval"] });
   const heartbeatMs = 1000;
   const signaling = attachSignaling(limited, {
     log: () => {},
@@ -719,13 +720,11 @@ test("refuses a link's joins as busy past its pairings per window, so a guest ca
     assert.deepEqual(await guest.next(), { t: "refused", reason: "drop" });
     return reply;
   };
-  const started = Date.now();
   for (let i = 0; i < 3; i += 1) {
     assert.equal((await pair()).t, "joined");
   }
   assert.deepEqual(await pair(), { t: "refused", reason: "busy" });
-  assert.ok(Date.now() - started < heartbeatMs, "all four joins fell in one window");
-  await new Promise((done) => setTimeout(done, heartbeatMs * 1.5));
+  t.mock.timers.tick(heartbeatMs);
   assert.equal((await pair()).t, "joined");
 });
 
