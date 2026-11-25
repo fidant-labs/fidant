@@ -35,9 +35,18 @@ type Props = {
   statusText: StatusText;
   summary(done: number, total: number): string;
   onRemove(linkId: string): void;
+  /** Delivered links as full cards too, for the details shown once every link has delivered. */
+  full?: boolean;
 };
 
-export function RecipientList({ recipients, fileSize, statusText, summary, onRemove }: Props) {
+export function RecipientList({
+  recipients,
+  fileSize,
+  statusText,
+  summary,
+  onRemove,
+  full = false,
+}: Props) {
   const { t } = useI18n();
   if (recipients.length === 0) {
     return null;
@@ -57,6 +66,7 @@ export function RecipientList({ recipients, fileSize, statusText, summary, onRem
             fileSize={fileSize}
             statusText={statusText}
             onRemove={onRemove}
+            full={full}
           />
         ))}
       </ul>
@@ -69,9 +79,10 @@ type RowProps = {
   fileSize: number;
   statusText: StatusText;
   onRemove(linkId: string): void;
+  full: boolean;
 };
 
-function RecipientRow({ recipient, fileSize, statusText, onRemove }: RowProps) {
+function RecipientRow({ recipient, fileSize, statusText, onRemove, full }: RowProps) {
   const { name, url, status, bytesSent, linkId, path, noRelay, error, email, mail, unbound } =
     recipient;
   const { t, lang } = useI18n();
@@ -85,7 +96,7 @@ function RecipientRow({ recipient, fileSize, statusText, onRemove }: RowProps) {
     <Button
       type="button"
       variant="link"
-      size={status === "delivered" ? "sm" : "default"}
+      size={status === "delivered" && !full ? "sm" : "default"}
       aria-label={t.send.removeFor(name)}
       data-remove={linkId}
       // Focus moves to the next Remove button, so a held Enter would remove it too.
@@ -100,7 +111,7 @@ function RecipientRow({ recipient, fileSize, statusText, onRemove }: RowProps) {
     </Button>
   );
 
-  if (status === "delivered") {
+  if (status === "delivered" && !full) {
     return (
       <li class="min-w-0">
         <div class="flex items-center gap-2.5 rounded-xl border border-border px-4 py-1.5 text-[0.9rem] text-muted-foreground">

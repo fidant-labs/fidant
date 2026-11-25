@@ -577,13 +577,14 @@ export function SendPage({
   const delivered = sender.recipients.filter((r) => r.status === "delivered").length;
   const allDone = hasRecipients && !unfinished;
   const finished = allDone && !more;
-  const recipientList = (
+  const recipientList = (full: boolean) => (
     <RecipientList
       recipients={sender.recipients}
       fileSize={file?.size ?? 0}
       statusText={text ? { ...t.send.status, ...t.secret.status } : t.send.status}
       summary={(text ? t.secret : t.send).summary}
       onRemove={onRemove}
+      full={full}
     />
   );
 
@@ -611,12 +612,6 @@ export function SendPage({
               <AlertDescription>{t.send.localhost}</AlertDescription>
             </Alert>
           )}
-          {lostServer && (
-            <Alert variant="destructive" className="my-4">
-              <AlertDescription>{text ? t.secret.lostServer : t.send.lostServer}</AlertDescription>
-            </Alert>
-          )}
-
           {text && (
             <div class={`my-4 ${field}`}>
               <Label htmlFor="secret-text">{t.secret.label}</Label>
@@ -901,10 +896,10 @@ export function SendPage({
           {finished ? (
             <details class="mt-2">
               <summary class="cursor-pointer text-muted-foreground">{t.send.showDetails}</summary>
-              {recipientList}
+              {recipientList(true)}
             </details>
           ) : (
-            recipientList
+            recipientList(false)
           )}
           <details class="mt-6 text-[0.9rem]">
             <summary class="cursor-pointer text-muted-foreground">
