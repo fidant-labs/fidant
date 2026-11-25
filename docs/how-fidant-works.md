@@ -367,7 +367,7 @@ On the relay box (see "The relay box"):
 
 ## The web app and the server
 
-`apps/server/src/server.ts`, `apps/server/src/relays.ts`, `apps/web/src/main.tsx`, `apps/web/src/prerender.tsx`, `apps/web/src/prepaint.js`, `apps/web/src/i18n/preview.ts`, `apps/web/vite.config.ts`, `apps/infra/box/user-data.sh`
+`apps/server/src/server.ts`, `apps/server/src/relays.ts`, `apps/web/src/main.tsx`, `apps/web/src/prerender.tsx`, `apps/web/src/prepaint.js`, `apps/web/src/i18n/language.ts`, `apps/web/src/i18n/preview.ts`, `apps/web/vite.config.ts`, `apps/infra/box/user-data.sh`
 
 - HTTPS only, with `Strict-Transport-Security` (Caddy, Let's Encrypt). Send and receive refuse to run outside a secure context.
 - HAProxy holds TCP 443 and passes every connection not for `turn.fidant.se` to Caddy on port 8444, without decrypting it. It adds a PROXY protocol header, which Caddy accepts only from 127.0.0.1, so Caddy and the server still see the real client address (`docs/decisions/0010-turn-tls-443.md`). HAProxy logs nothing and stores nothing on disk; it holds only addresses and connection counts in memory, for its per-source cap.
