@@ -3,11 +3,13 @@ import { createHash, randomBytes } from "node:crypto";
 import { test } from "node:test";
 import {
   ChecksumMismatchError,
+  decodeCheck,
   decodeCredit,
   decodeEnd,
   decodeHeader,
   decodeInit,
   decodeMeta,
+  encodeCheck,
   encodeCredit,
   encodeEnd,
   encodeHeader,
@@ -256,6 +258,34 @@ test("CREDIT carries a u64 grant from the recipient only", async () => {
   assert.throws(() => decodeCredit(randomBytes(9)), /malformed/);
   // A u64 above 2^53 is refused rather than rounded.
   assert.throws(() => decodeCredit(new Uint8Array(8).fill(0xff)), /out of range/);
+});
+
+test("CHECK carries one byte, 1 for matches and 0 for differs, in each direction", async () => {
+  const { key } = await setup();
+  assert.equal(decodeCheck(encodeCheck(true)), true);
+  assert.equal(decodeCheck(encodeCheck(false)), false);
+  for (const bad of [new Uint8Array([2]), new Uint8Array(0), new Uint8Array(2)]) {
+    assert.throws(() => decodeCheck(bad), /malformed/);
+  }
+  for (const [dir, kind] of [
+    ["s", SenderKind.CHECK],
+    ["r", RecipientKind.CHECK],
+  ] as const) {
+    const frame = await new FrameWriter(key, dir).encrypt(kind, encodeCheck(true));
+    const { kind: read, body } = await new FrameReader(key, dir).decrypt(frame);
+    assert.equal(read, kind);
+    assert.equal(decodeCheck(body), true);
+    await assert.rejects(
+      new FrameWriter(key, dir).encrypt(kind, new Uint8Array(2)),
+      /out of range/,
+    );
+  }
+  await assert.rejects(
+    new FrameWriter(key, "r").encrypt(SenderKind.CHECK, encodeCheck(true)),
+    /not allowed/,
+  );
+  assert.equal(SenderKind.CHECK, 4);
+  assert.equal(RecipientKind.CHECK, 20);
 });
 
 test("a flipped bit anywhere in a frame fails", async () => {
