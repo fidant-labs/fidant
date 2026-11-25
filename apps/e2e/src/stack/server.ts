@@ -42,10 +42,17 @@ export async function startServer(
     : {};
   // Settles once every server run so far has closed, so no output can arrive after stop().
   let closed = Promise.resolve();
-  const spawnChild = (port: number): ChildProcess => {
+  const spawnChild = (port: number, extra: Record<string, string> = {}): ChildProcess => {
     const child = spawn(command as string, args, {
       cwd: repoRoot,
-      env: { ...process.env, ...stackEnv, ...origin, PORT: String(port), CERT_DIR: certDir },
+      env: {
+        ...process.env,
+        ...stackEnv,
+        ...origin,
+        ...extra,
+        PORT: String(port),
+        CERT_DIR: certDir,
+      },
       stdio: ["ignore", "pipe", "pipe"],
     });
     // A restarted server appends to the same logs, so the leak checks cover both runs. stop()
@@ -58,7 +65,9 @@ export async function startServer(
     );
     return child;
   };
-  let child = spawnChild(requested);
+  // The first run skips the warm-up window, so specs see `unknown` links at once. A restarted
+  // server keeps the real window, as in production.
+  let child = spawnChild(requested, { STARTING_MS: "0" });
 
   // Backstop: if the runner exits without calling stop(), do not leave the server or its
   // certificate behind. Only synchronous work runs inside an exit handler.

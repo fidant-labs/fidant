@@ -101,6 +101,14 @@ if (mailUrl || mailFrom || mailPasswordFile || publicOrigin) {
   }
 }
 
+// For tests only: how long after start a join for a link nobody hosts is refused as `starting`
+// (default STARTING_MS in @sigill/protocol, docs/decisions/0018-restart-warm-up-window.md).
+const startingEnv = process.env.STARTING_MS;
+if (startingEnv !== undefined && !/^\d+$/.test(startingEnv)) {
+  console.error("STARTING_MS must be a whole number of milliseconds.");
+  process.exit(1);
+}
+
 const lanAddresses = Object.values(networkInterfaces())
   .flat()
   .flatMap((address) => (address?.family === "IPv4" && !address.internal ? [address.address] : []));
@@ -119,6 +127,7 @@ const { server, signaling } = await startServer({
   relays,
   log,
   mail,
+  startingMs: startingEnv === undefined ? undefined : Number(startingEnv),
 });
 
 const { port } = server.address() as AddressInfo;

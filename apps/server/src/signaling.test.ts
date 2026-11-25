@@ -27,6 +27,8 @@ const signaling = attachSignaling(server, {
   iceServers: (turn) => (turn ? [RELAY] : []),
   // Every test's sockets stay open until after(), and all come from one address.
   limits: { socketsPerAddress: 1000 },
+  // Past the warm-up window at once, so a link nobody hosts is `unknown`.
+  startingMs: 0,
 });
 let port = 0;
 const clients: Client[] = [];
@@ -156,6 +158,38 @@ test("refuses a join for a link nobody hosts", async () => {
   const guest = await connect();
   guest.send({ t: "join", link: linkId(), attempt: linkId() });
   assert.deepEqual(await guest.next(), { t: "refused", reason: "unknown" });
+});
+
+test("refuses a link nobody hosts as starting while the server warms up, then as unknown", async (t) => {
+  const warming = createServer();
+  const warmingSignaling = attachSignaling(warming, { log: () => {}, startingMs: 300 });
+  t.after(() => {
+    warmingSignaling.close();
+    warming.close();
+  });
+  await new Promise<void>((done) => warming.listen(0, done));
+  const url = `ws://localhost:${(warming.address() as AddressInfo).port}/signal`;
+
+  const link = linkId();
+  const guest = await connect(url);
+  guest.send({ t: "join", link, attempt: linkId() });
+  assert.deepEqual(await guest.next(), { t: "refused", reason: "starting" });
+
+  // A hosted link still pairs, and a link with a guest is still busy.
+  const host = await connect(url);
+  host.send({ t: "host", links: [link], turn: false });
+  host.send({ t: "relay", link: linkId(), data: "sync" });
+  assert.deepEqual(await host.next(), { t: "error", code: "not-on-link" });
+  const attempt = linkId();
+  guest.send({ t: "join", link, attempt });
+  assert.deepEqual(await host.next(), { t: "joined", link, attempt, iceServers: [], turn: false });
+  const second = await connect(url);
+  second.send({ t: "join", link, attempt: linkId() });
+  assert.deepEqual(await second.next(), { t: "refused", reason: "busy" });
+
+  await new Promise((done) => setTimeout(done, 300));
+  second.send({ t: "join", link: linkId(), attempt: linkId() });
+  assert.deepEqual(await second.next(), { t: "refused", reason: "unknown" });
 });
 
 test("refuses a second concurrent guest as busy and frees the link when the first leaves", async () => {
@@ -746,6 +780,7 @@ async function mailServer(
   const mailing = createServer();
   const mailingSignaling = attachSignaling(mailing, {
     log: (event, fields) => lines.push(JSON.stringify({ event, ...fields })),
+    startingMs: 0,
     mail: {
       origin: ORIGIN,
       send: (mail) => {

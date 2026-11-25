@@ -27,6 +27,7 @@ import {
   type RefuseReason,
   SERVICE_RESTART,
   type ServerMessage,
+  STARTING_MS,
 } from "@sigill/protocol";
 import { type RawData, WebSocket, WebSocketServer } from "ws";
 import type { Mailer } from "./mail.ts";
@@ -206,6 +207,8 @@ export function attachSignaling(
   options: {
     log: Logger;
     heartbeatMs?: number;
+    /** How long after start a join for a link nobody hosts is refused as `starting`, not `unknown`. */
+    startingMs?: number | undefined;
     limits?: Partial<typeof LIMITS>;
     /** Minted once per pairing, so TURN credentials are fresh. Never logged. */
     iceServers?: (turn: boolean) => IceServer[];
@@ -215,6 +218,8 @@ export function attachSignaling(
 ): { close(): void } {
   const { log, iceServers = () => [], mail } = options;
   const limits = { ...LIMITS, ...options.limits };
+  const startedAt = Date.now();
+  const startingMs = options.startingMs ?? STARTING_MS;
 
   /**
    * Sends a message, unless the socket has stopped reading: once more than twice the relay limit
@@ -432,7 +437,12 @@ export function attachSignaling(
     }
     const hostSocket = hosts.get(link);
     if (!hostSocket || guests.has(link)) {
-      const reason: RefuseReason = hostSocket ? "busy" : "unknown";
+      // Just after a start, senders may not have re-hosted yet, so the link may not be dead.
+      const reason: RefuseReason = hostSocket
+        ? "busy"
+        : Date.now() - startedAt < startingMs
+          ? "starting"
+          : "unknown";
       log("refused", { link: short(link), reason });
       send(socket, { t: "refused", reason });
       return;
