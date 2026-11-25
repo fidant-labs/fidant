@@ -235,7 +235,11 @@ async function harness(side: "s" | "r", check?: boolean) {
   const relay = async (payload: unknown) =>
     peer.handleRelay(await sealSignal(key, linkId, attempt, from, payload));
   const settle = () => new Promise((resolve) => setTimeout(resolve, 10));
-  const signals = async () => {
+  /** Every signal sent so far, once at least `count` went out. */
+  const signals = async (count = 0) => {
+    for (let i = 0; i < 500 && sent.length < count; i++) {
+      await settle();
+    }
     await settle();
     return Promise.all(sent);
   };
@@ -247,7 +251,7 @@ test("the sender offers only after the recipient's commitment, with its check se
   const h = await harness("s", true);
   assert.deepEqual(await h.signals(), []);
   await h.relay({ kind: "commit", hash: await commitFingerprint(RECIPIENT_FP) });
-  const [offer] = (await h.signals()) as Array<{ kind: string; sdp: string; check: boolean }>;
+  const [offer] = (await h.signals(1)) as Array<{ kind: string; sdp: string; check: boolean }>;
   assert.equal(offer?.kind, "offer");
   assert.equal(offer?.check, true);
   assert.match(offer?.sdp ?? "", new RegExp(SENDER_FP.toLowerCase()));
@@ -297,7 +301,7 @@ test("the sender refuses a second commitment", async () => {
 test("the recipient commits to its certificate before anything else", async () => {
   FakePeerConnection.fingerprints = [RECIPIENT_FP];
   const h = await harness("r");
-  assert.deepEqual(await h.signals(), [
+  assert.deepEqual(await h.signals(1), [
     { kind: "commit", hash: await commitFingerprint(RECIPIENT_FP) },
   ]);
 });
@@ -306,7 +310,7 @@ test("the recipient answers an offer, keeps its check flag and refuses a commitm
   FakePeerConnection.fingerprints = [RECIPIENT_FP];
   const h = await harness("r");
   await h.relay({ kind: "offer", sdp: fakeSdp(`a=fingerprint:sha-256 ${SENDER_FP}`), check: true });
-  const [, answer] = (await h.signals()) as Array<{ kind: string }>;
+  const [, answer] = (await h.signals(2)) as Array<{ kind: string }>;
   assert.equal(answer?.kind, "answer");
   const pc = FakePeerConnection.last as unknown as {
     ondatachannel: (event: { channel: object }) => void;
