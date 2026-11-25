@@ -1384,6 +1384,22 @@ export const en = {
             ],
           ],
         },
+        relayCap: {
+          name: "Our monthly traffic count",
+          kept: "The month's totals until the next month starts, and their last 100 versions, about 8 hours. The month's total as of every 5 minutes for 63 days, every hour for 15 months, and in its own log for 30 days. Our host, Amazon Lightsail, keeps how much traffic our server and our relay carry, for 455 days.",
+          never:
+            "Which transfer the traffic belongs to, IP addresses, the key, the file or the secret.",
+          lines: [
+            [
+              "",
+              "The pages your browser loads and the messages it exchanges with our server, and its requests to our relay, counted with all their other traffic, so that we can switch the relay off when the estimated cost reaches our budget.",
+            ],
+            [
+              "relay",
+              "Your transfer's encrypted size, rounded up, in the traffic of the relay that carried it. Every 5 minutes we save the month's totals for our server and our relay. On a quiet relay, the step between two saved values can match your transfer's size and time.",
+            ],
+          ],
+        },
         mail: {
           name: "Our mail service and the recipient's mailbox",
           kept: "Until the mail service and the recipient's mail provider delete the emails, by their own policies",

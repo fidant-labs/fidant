@@ -1347,6 +1347,22 @@ export const sv: Messages = {
             ],
           ],
         },
+        relayCap: {
+          name: "Vår mätning av månadens trafik",
+          kept: "Månadens summor tills nästa månad börjar, och deras senaste 100 versioner, ungefär 8 timmar. Månadens summa var 5:e minut i 63 dagar, varje timme i 15 månader och i mätningens egen logg i 30 dagar. Vårt värdföretag, Amazon Lightsail, sparar datamängderna för vår server och vårt relä i 455 dagar.",
+          never:
+            "Vilken överföring trafiken hör till, IP-adresser, nyckeln, filen eller hemligheten.",
+          lines: [
+            [
+              "",
+              "Sidorna som din webbläsare hämtar och meddelandena den utbyter med vår server, och dess frågor till vårt relä, räknade tillsammans med all annan trafik genom dem, så att vi kan stänga av reläet när den uppskattade kostnaden når vår budget.",
+            ],
+            [
+              "relay",
+              "Din överförings krypterade storlek, avrundad uppåt, i trafiken för reläet som bar den. Var 5:e minut sparar vi månadens summor för vår server och vårt relä. På ett lugnt relä kan steget mellan två sparade värden motsvara din överförings storlek och tid.",
+            ],
+          ],
+        },
         mail: {
           name: "Vår mejltjänst och mottagarens inkorg",
           kept: "Tills mejltjänsten och mottagarens mejlleverantör raderar mejlen, enligt egna regler",
