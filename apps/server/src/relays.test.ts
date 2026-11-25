@@ -7,7 +7,14 @@ import {
   type KeyObject,
   privateDecrypt,
 } from "node:crypto";
-import { mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -201,6 +208,41 @@ test("names the failure, not the file, when the relay master can't be created", 
   assert.throws(() => readOrCreateMaster(join(dir, "missing", "master")), {
     message: "Could not create the relay master file (ENOENT).",
   });
+});
+
+test("a failed write leaves no master and no temp file, and the next start creates one", () => {
+  const sub = mkdtempSync(join(dir, "failed-"));
+  const file = join(sub, "master");
+  const failing = (): never => {
+    throw Object.assign(new Error("disk full"), { code: "ENOSPC" });
+  };
+  assert.throws(() => readOrCreateMaster(file, failing), {
+    message: "Could not create the relay master file (ENOSPC).",
+  });
+  assert.deepEqual(readdirSync(sub), []);
+  assert.match(readOrCreateMaster(file), /^[0-9a-f]{64}$/);
+  assert.deepEqual(readdirSync(sub), ["master"]);
+});
+
+test("reads an existing master in a directory that isn't writable", (t) => {
+  const sub = mkdtempSync(join(dir, "readonly-"));
+  const file = join(sub, "master");
+  writeFileSync(file, `${"ab".repeat(32)}\n`);
+  chmodSync(sub, 0o500);
+  t.after(() => chmodSync(sub, 0o700));
+  assert.equal(readOrCreateMaster(file), "ab".repeat(32));
+  assert.deepEqual(readdirSync(sub), ["master"]);
+});
+
+test("a master published meanwhile is read, not replaced, and no temp file stays", () => {
+  const sub = mkdtempSync(join(dir, "raced-"));
+  const file = join(sub, "master");
+  const racing = ((fd: number, data: string) => {
+    writeFileSync(file, `${"cd".repeat(32)}\n`);
+    return writeFileSync(fd, data);
+  }) as typeof writeFileSync;
+  assert.equal(readOrCreateMaster(file, racing), "cd".repeat(32));
+  assert.deepEqual(readdirSync(sub), ["master"]);
 });
 
 test("derives a relay's secret as HMAC-SHA256 of its id under the master's bytes", () => {

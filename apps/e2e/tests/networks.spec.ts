@@ -410,9 +410,7 @@ test.describe("the box", () => {
     await expect(recipient.page.getByText(verifiedText)).toBeVisible({ timeout: 60_000 });
     const download = await downloading;
     expect(sha256Hex(await buffer(await download.createReadStream()))).toBe(sha256Hex(file.bytes));
-    // Relayed by the box's coturn over TLS on 443, through HAProxy. e2e.conf sets RELAYS_FILE
-    // empty, so the box's server reads no relay list and hands out only turn.fidant.se, which
-    // Chrome resolves through --host-resolver-rules for TCP only: its UDP lookups fail here.
+    // Only turn.fidant.se is offered, and Chrome resolves it for TCP only, so this is TURN over TLS.
     await expect
       .poll(async () => `${await pathOf(sender.page)} ${await pathOf(recipient.page)}`)
       .toMatch(/relay\+tls\//);

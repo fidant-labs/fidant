@@ -1,5 +1,13 @@
 import { createPublicKey, randomBytes } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  fsyncSync,
+  linkSync,
+  openSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { fileURLToPath } from "node:url";
 import { type IceServer, parseIceServers } from "@sigill/protocol";
 import { relaySecret, sealRelaySecret } from "./relay-secret.ts";
@@ -88,28 +96,61 @@ export function relayConfig(
   return file ? { file, masterFile: env.RELAY_MASTER_FILE || defaultMaster } : undefined;
 }
 
-// Messages never carry the file's content, which is the master or close to it.
-export function readOrCreateMaster(file: string): string {
-  try {
-    writeFileSync(file, `${randomBytes(32).toString("hex")}\n`, { mode: 0o600, flag: "wx" });
-  } catch (error) {
-    const { code } = error as NodeJS.ErrnoException;
-    if (code !== "EEXIST") {
-      throw new Error(`Could not create the relay master file (${code}).`);
-    }
-  }
+function readMaster(file: string): string | undefined {
   let text: string;
   try {
     text = readFileSync(file, "utf8");
   } catch (error) {
-    throw new Error(
-      `Could not read the relay master file (${(error as NodeJS.ErrnoException).code}).`,
-    );
+    const { code } = error as NodeJS.ErrnoException;
+    if (code === "ENOENT") {
+      return undefined;
+    }
+    throw new Error(`Could not read the relay master file (${code}).`);
   }
   if (!/^[0-9a-f]{64}\n?$/.test(text)) {
     throw new Error("The relay master file must hold 64 lowercase hex characters.");
   }
   return text.slice(0, 64);
+}
+
+// Messages never carry the file's content; a hard link of a synced temp file keeps its name whole or absent.
+export function readOrCreateMaster(
+  file: string,
+  write: typeof writeFileSync = writeFileSync,
+): string {
+  const existing = readMaster(file);
+  if (existing !== undefined) {
+    return existing;
+  }
+  const temp = `${file}.${randomBytes(6).toString("hex")}.tmp`;
+  let created = false;
+  try {
+    const fd = openSync(temp, "wx", 0o600);
+    created = true;
+    try {
+      write(fd, `${randomBytes(32).toString("hex")}\n`);
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+    linkSync(temp, file);
+  } catch (error) {
+    const { code } = error as NodeJS.ErrnoException;
+    if (code !== "EEXIST") {
+      throw new Error(`Could not create the relay master file (${code}).`);
+    }
+  } finally {
+    if (created) {
+      try {
+        unlinkSync(temp);
+      } catch {}
+    }
+  }
+  const master = readMaster(file);
+  if (master === undefined) {
+    throw new Error("Could not read the relay master file (ENOENT).");
+  }
+  return master;
 }
 
 export function nextState(state: RelayState, ok: boolean): RelayState {

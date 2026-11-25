@@ -7,10 +7,7 @@ export interface Stack {
   baseURL: string;
   /** The origin of every running service. The browser may reach these and nothing else. */
   origins: string[];
-  /**
-   * What the services handed on, merged. TURN_URLS and RELAYS_FILE are set only when coturn runs,
-   * MAILPIT_API only when Mailpit does.
-   */
+  /** What the services handed on, merged. */
   env: Record<string, string>;
   stop(): Promise<void>;
 }

@@ -6,11 +6,7 @@ import { type Actor, canaryFile, expect, type Observed, test } from "../src/fixt
 import { coturnLog, serverStderrLog, serverStdoutLog } from "../src/paths.ts";
 import { relaySecret } from "../src/stack/coturn.ts";
 
-// Transfers that cannot go directly: the recipient may only use relay candidates, so every byte
-// passes through the local coturn, unless the sender refuses the relay. The forced transfer runs
-// once with only the TURN-over-UDP URL and once with only the TURN-over-TCP one, so each transport
-// is proven on its own. The harness's leak check also scans coturn's log. The server reads a relay
-// list of two relays on that coturn: `bad`, with a secret coturn doesn't know, then `loc`.
+// Recipients may use only relay candidates, once over UDP and once over TCP; the leak check scans coturn's log.
 
 test.skip(!process.env.SIGILL_E2E_TURN_URLS, "coturn not found; brew install coturn");
 
