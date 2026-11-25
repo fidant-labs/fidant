@@ -1,9 +1,18 @@
-import { createHash, randomBytes } from "node:crypto";
+import {
+  constants,
+  createHash,
+  generateKeyPairSync,
+  publicEncrypt,
+  randomBytes,
+} from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { buffer } from "node:stream/consumers";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { Page } from "@playwright/test";
+// ponytail: relative import, not a workspace dependency on the server, for one small function.
+import { turnCredentials } from "../../server/src/turn.ts";
 import {
+  type Actor,
   canaryFile,
   canaryKey,
   delivered as deliveredRow,
@@ -17,11 +26,15 @@ import { checkServerLog, serverLogAllowlist } from "../src/leaks/server-log.ts";
 import { boxJournal, boxSyslog, serverStdoutLog } from "../src/paths.ts";
 import { winningJournald } from "../src/stack/box.ts";
 import {
+  applyRelaySecret,
   boxOrigin,
   clientAddresses,
   inBox,
+  inRelay,
   pauseRelay,
   type RouterMode,
+  relayHost,
+  relayIp,
   remoteBrowsers,
   resumeRelay,
   routerMode,
@@ -495,5 +508,567 @@ test.describe("the box", () => {
         agent,
       ).toEqual([]);
     }
+  });
+});
+
+/** The types of the candidates a page gathers with `server`, and the codes of its candidate errors. */
+function gather(page: Page, server: RTCIceServer): Promise<{ types: string[]; errors: number[] }> {
+  return page.evaluate(async (iceServer) => {
+    const pc = new RTCPeerConnection({ iceServers: [iceServer] });
+    const types: string[] = [];
+    const errors: number[] = [];
+    pc.addEventListener("icecandidate", ({ candidate }) => {
+      if (candidate?.type) {
+        types.push(candidate.type);
+      }
+    });
+    pc.addEventListener("icecandidateerror", (event) => errors.push(event.errorCode));
+    const complete = new Promise<void>((resolve) => {
+      pc.addEventListener("icegatheringstatechange", () => {
+        if (pc.iceGatheringState === "complete") {
+          resolve();
+        }
+      });
+    });
+    pc.createDataChannel("probe");
+    await pc.setLocalDescription();
+    await complete;
+    pc.close();
+    return { types, errors };
+  }, server);
+}
+
+type RelayGlobals = typeof globalThis & {
+  relay?: { pc: RTCPeerConnection; channel?: RTCDataChannel; received?: Promise<string> };
+};
+
+/** Opens both peers on the app's origin, a secure context, recording their peer connections. */
+async function relayPeers(actor: (name: string) => Promise<Actor>): Promise<[Page, Page]> {
+  const open = async (name: string) => {
+    const { context, page } = await actor(name);
+    await recordPeerConnections(context);
+    await page.goto("/");
+    return page;
+  };
+  return [await open("sender"), await open("recipient")];
+}
+
+/** Connects the two pages over a relay-only data channel and sends 64 KiB through it. */
+async function relayedChannel(
+  sender: Page,
+  recipient: Page,
+  ice: RTCIceServer,
+): Promise<{ path: string; echoed: boolean }> {
+  const config: RTCConfiguration = { iceServers: [ice], iceTransportPolicy: "relay" };
+  // Each callback runs in a page, so it repeats the helpers it needs.
+  const offer = await sender.evaluate(async (config) => {
+    const pc = new RTCPeerConnection(config);
+    (globalThis as RelayGlobals).relay = { pc, channel: pc.createDataChannel("relay") };
+    await pc.setLocalDescription();
+    while (pc.iceGatheringState !== "complete") {
+      await new Promise((done) => pc.addEventListener("icegatheringstatechange", done));
+    }
+    return { type: "offer" as const, sdp: pc.localDescription?.sdp ?? "" };
+  }, config);
+  const answer = await recipient.evaluate(
+    async ({ config, offer }) => {
+      const pc = new RTCPeerConnection(config);
+      const received = new Promise<string>((resolve) => {
+        pc.addEventListener("datachannel", ({ channel }) => {
+          channel.binaryType = "arraybuffer";
+          channel.addEventListener("message", async ({ data }) => {
+            const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", data));
+            resolve(Array.from(digest, (b) => b.toString(16).padStart(2, "0")).join(""));
+          });
+        });
+      });
+      (globalThis as RelayGlobals).relay = { pc, received };
+      await pc.setRemoteDescription(offer);
+      await pc.setLocalDescription();
+      while (pc.iceGatheringState !== "complete") {
+        await new Promise((done) => pc.addEventListener("icegatheringstatechange", done));
+      }
+      return { type: "answer" as const, sdp: pc.localDescription?.sdp ?? "" };
+    },
+    { config, offer },
+  );
+  const sent = await sender.evaluate(async (answer) => {
+    const relay = (globalThis as RelayGlobals).relay;
+    const channel = relay?.channel;
+    if (!relay || !channel) {
+      throw new Error("no channel");
+    }
+    await relay.pc.setRemoteDescription(answer);
+    await new Promise((resolve, reject) => {
+      setTimeout(() => reject(new Error(`not open: ${relay.pc.connectionState}`)), 20_000);
+      channel.addEventListener("open", resolve);
+    });
+    const bytes = crypto.getRandomValues(new Uint8Array(64 * 1024));
+    channel.send(bytes);
+    const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+    return Array.from(digest, (b) => b.toString(16).padStart(2, "0")).join("");
+  }, answer);
+  const received = await recipient.evaluate(() =>
+    Promise.race([
+      (globalThis as RelayGlobals).relay?.received,
+      new Promise<string>((resolve) => setTimeout(() => resolve("nothing"), 20_000)),
+    ]),
+  );
+  await expect.poll(() => pathOf(sender)).not.toBe("none");
+  const path = await pathOf(sender);
+  for (const page of [sender, recipient]) {
+    await page.evaluate(() => (globalThis as RelayGlobals).relay?.pc.close());
+  }
+  return { path, echoed: sent === received };
+}
+
+/** TURN on the relay box, with credentials for `secret`. */
+const relayIce = (transport: "udp" | "tcp" | "tls", secret: string): RTCIceServer => ({
+  urls:
+    transport === "tls"
+      ? `turns:${relayHost}:443?transport=tcp`
+      : // By address: Chrome resolves names through --host-resolver-rules for TCP only.
+        `turn:${relayIp}:3478?transport=${transport}`,
+  ...turnCredentials(secret, Date.now()),
+});
+
+// The standalone relay (networks/relay), set up by apps/infra/relay/install.sh as on a new server.
+test.describe("the relay box", () => {
+  test.use({ remoteBrowsers: { sender: remoteBrowsers.a1, recipient: remoteBrowsers.b1 } });
+  test.beforeAll(() => routerMode("router-b", "cone"));
+
+  test("comes up from install.sh with its key and firewall", async () => {
+    expect(await inRelay("systemctl", "is-active", "coturn")).toBe("active\n");
+    expect(
+      await inRelay(
+        "stat",
+        "-c",
+        "%a %U:%G",
+        "/etc/fidant-relay/relay.key",
+        "/etc/turnserver.conf",
+      ),
+    ).toBe("600 root:root\n640 root:turnserver\n");
+    expect(
+      await inRelay(
+        ..."openssl pkey -pubin -in /etc/fidant-relay/relay.pub -noout -text".split(" "),
+      ),
+    ).toMatch(/Public-Key: \(3072 bit\)/);
+    const ufw = await inRelay("ufw", "status");
+    expect(ufw).toMatch(/^Status: active/);
+    for (const rule of ["22/tcp", "80/tcp", "443/tcp", "3478/tcp", "3478/udp", "49152:65535/udp"]) {
+      expect(ufw).toContain(rule);
+    }
+    expect(await inRelay("ss", "-lnu")).toMatch(/:3478\b/);
+    const pins: [string, string][] = [
+      ["StartLimitIntervalUSec", "0"],
+      ["RestartUSec", "5s"],
+      ["Restart", "on-failure"],
+    ];
+    for (const [property, value] of pins) {
+      expect(await inRelay("systemctl", "show", "-p", property, "--value", "coturn")).toBe(
+        `${value}\n`,
+      );
+    }
+  });
+
+  // Until SIG-153 hands it a secret, the relay answers STUN and refuses every allocation.
+  test("refuses relaying before it has a secret", async ({ actor }) => {
+    const server = {
+      // By address: Chrome resolves names through --host-resolver-rules for TCP only.
+      urls: [`stun:${relayIp}:3478`, `turn:${relayIp}:3478?transport=udp`],
+      ...turnCredentials(randomBytes(32).toString("hex"), Date.now()),
+    };
+    for (const name of ["sender", "recipient"]) {
+      const { page } = await actor(name);
+      const { types, errors } = await gather(page, server);
+      expect(types, name).toContain("srflx");
+      expect(types, name).not.toContain("relay");
+      expect(errors, name).toContain(401);
+    }
+    expect(await inRelay("systemctl", "show", "-p", "NRestarts", "--value", "coturn")).toBe("0\n");
+  });
+
+  test("keeps certbot's log for 29 days like the journal", async () => {
+    const dir = "/var/log/letsencrypt";
+    await inRelay(
+      "sh",
+      "-c",
+      `install -d -m 700 ${dir} && touch -d '40 days ago' ${dir}/fidant-old && touch ${dir}/fidant-new`,
+    );
+    await inRelay("systemd-tmpfiles", "--clean");
+    const left = (await inRelay("ls", dir)).split("\n");
+    expect(left).toContain("fidant-new");
+    expect(left).not.toContain("fidant-old");
+    expect(await inRelay("systemctl", "is-enabled", "logrotate.timer")).toBe("enabled\n");
+  });
+
+  test.describe("with a secret", () => {
+    let secret = "";
+    const rotated = randomBytes(32).toString("hex");
+    test.beforeAll(async () => {
+      secret = randomBytes(32).toString("hex");
+      await applyRelaySecret(secret);
+    });
+
+    test("relays over UDP", async ({ actor }) => {
+      const [sender, recipient] = await relayPeers(actor);
+      const { path, echoed } = await relayedChannel(sender, recipient, relayIce("udp", secret));
+      expect(echoed).toBe(true);
+      expect(path).toMatch(/^relay\+udp\/(relay|prflx)$/);
+    });
+
+    test("relays over TCP", async ({ actor }) => {
+      const [sender, recipient] = await relayPeers(actor);
+      const { path, echoed } = await relayedChannel(sender, recipient, relayIce("tcp", secret));
+      expect(echoed).toBe(true);
+      expect(path).toMatch(/^relay\+tcp\//);
+    });
+
+    test("accepts the new and the previous secret after a rotation, then drops the old one after 24 hours", async ({
+      actor,
+    }) => {
+      const [sender, recipient] = await relayPeers(actor);
+      // Re-applying the same secret writes nothing: each write blocks new allocations.
+      const written = () => inRelay("stat", "-c", "%y", "/var/lib/fidant-relay/turndb");
+      const before = await written();
+      await applyRelaySecret(secret);
+      expect(await written()).toBe(before);
+      try {
+        await applyRelaySecret(rotated);
+        const state = ["current", "previous", "previous-since"].map(
+          (f) => `/var/lib/fidant-relay/${f}`,
+        );
+        expect(await inRelay("stat", "-c", "%a %U:%G", ...state)).toBe("600 root:root\n".repeat(3));
+        for (const credentials of [secret, rotated]) {
+          const { echoed } = await relayedChannel(sender, recipient, relayIce("udp", credentials));
+          expect(echoed).toBe(true);
+        }
+        await inRelay("sh", "-c", "echo 0 >/var/lib/fidant-relay/previous-since");
+        await applyRelaySecret(rotated);
+        const { types, errors } = await gather(sender, relayIce("udp", secret));
+        expect(types).not.toContain("relay");
+        expect(errors).toContain(401);
+      } finally {
+        await applyRelaySecret(secret);
+      }
+    });
+
+    test("applies a hand-out after a crash empties or removes previous-since", async () => {
+      const dir = "/var/lib/fidant-relay";
+      const stored = () =>
+        inRelay("sqlite3", `${dir}/turndb`, "SELECT value FROM turn_secret ORDER BY value");
+      try {
+        const future = "echo $(( $(date +%s) + 100000 )) >";
+        for (const lose of [": >", "rm", "echo x >", "echo 08 >", future]) {
+          // A crash in a rotation to `rotated`, after current moved to previous.
+          await inRelay(
+            "sh",
+            "-c",
+            `mv ${dir}/current ${dir}/previous && ${lose} ${dir}/previous-since`,
+          );
+          await applyRelaySecret(rotated);
+          expect(await stored(), lose).toBe(`${[secret, rotated].sort().join("\n")}\n`);
+          const since = await inRelay("cat", `${dir}/previous-since`);
+          expect(since, lose).toMatch(/^\d{10}\n$/);
+          expect(Number(since), lose).toBeLessThanOrEqual(Date.now() / 1000 + 5);
+          await applyRelaySecret(secret);
+        }
+      } finally {
+        await applyRelaySecret(secret);
+      }
+    });
+
+    test("keeps its current secret when the hand-out can't be opened", async ({ actor }) => {
+      const seal = (key: string, plaintext: string) =>
+        publicEncrypt(
+          { key, padding: constants.RSA_PKCS1_OAEP_PADDING, oaepHash: "sha256" },
+          Buffer.from(plaintext),
+        ).toString("base64");
+      const otherKey = generateKeyPairSync("rsa", { modulusLength: 3072 }).publicKey;
+      const foreign = `${seal(otherKey.export({ type: "spki", format: "pem" }).toString(), secret)}\n`;
+      const notHex = `${seal(await inRelay("cat", "/etc/fidant-relay/relay.pub"), "x".repeat(64))}\n`;
+      /** What `script` prints on stdout and stderr when fed `body`, then its exit code. */
+      const feed = (script: string, body: string) =>
+        inRelay("sh", "-c", `printf '%s' '${body}' | ${script} 2>&1; echo "exit $?"`);
+      const cannotOpen = "fidant-relay: cannot open the secret\nexit 1\n";
+
+      expect(await feed("fidant-relay-apply-secret", "not base64\n")).toBe(cannotOpen);
+      expect(await feed("fidant-relay-apply-secret", foreign)).toBe(cannotOpen);
+      expect(await feed("fidant-relay-apply-secret", notHex)).toBe(
+        "fidant-relay: not a secret\nexit 1\n",
+      );
+      // What fidant.se answers for the hand-out's path until it serves hand-outs: its page.
+      const page = '<!doctype html>\n<html lang="en"><title>Fidant</title></html>\n';
+      expect(await feed("fidant-relay-secret -", page)).toBe("exit 0\n");
+      // A hand-out's shape, 512 characters and a newline, gets past the fetch's check.
+      expect(foreign).toHaveLength(513);
+      expect(await feed("fidant-relay-secret -", foreign)).toBe(cannotOpen);
+      expect(await inRelay("cat", "/var/lib/fidant-relay/current")).toBe(`${secret}\n`);
+
+      const [sender, recipient] = await relayPeers(actor);
+      const { echoed } = await relayedChannel(sender, recipient, relayIce("udp", secret));
+      expect(echoed).toBe(true);
+    });
+
+    test("keeps its key and secret when install.sh runs again", async ({ actor }) => {
+      const state = () =>
+        inRelay(
+          "sh",
+          "-c",
+          "sha256sum /etc/fidant-relay/relay.pub; cat /var/lib/fidant-relay/current",
+        );
+      const before = await state();
+      expect(before).toContain(secret);
+      await inRelay("sh", "-c", "set -a; . /relay-config/env; sh /relay/install.sh");
+      expect(await state()).toBe(before);
+
+      const [sender, recipient] = await relayPeers(actor);
+      const { echoed } = await relayedChannel(sender, recipient, relayIce("udp", secret));
+      expect(echoed).toBe(true);
+    });
+
+    test("relays over TLS on 443", async ({ actor }) => {
+      await routerMode("router-b", "tcp-443");
+      try {
+        const [sender, recipient] = await relayPeers(actor);
+        const { path, echoed } = await relayedChannel(sender, recipient, relayIce("tls", secret));
+        expect(echoed).toBe(true);
+        expect(path).toMatch(/^relay\+tls\//);
+      } finally {
+        await routerMode("router-b", "cone");
+      }
+    });
+
+    test("reloads a renewed certificate without dropping coturn", async ({ actor }) => {
+      const tls = "/etc/fidant-relay/tls";
+      // As certbot does, live/ links into archive/. The run's key keeps the SPKI pin matching.
+      await inRelay(
+        "sh",
+        "-c",
+        `mkdir -p /tmp/archive /tmp/lineage /tmp/mismatch && cp ${tls}/turn.key /tmp/archive/privkey1.pem \
+          && openssl req -x509 -key /tmp/archive/privkey1.pem -days 1 -subj /CN=${relayHost} \
+            -addext subjectAltName=DNS:${relayHost} -out /tmp/archive/fullchain1.pem \
+          && ln -sf /tmp/archive/privkey1.pem /tmp/lineage/privkey.pem \
+          && ln -sf /tmp/archive/fullchain1.pem /tmp/lineage/fullchain.pem \
+          && ln -sf /tmp/archive/fullchain1.pem /tmp/mismatch/fullchain.pem \
+          && openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:prime256v1 -out /tmp/mismatch/privkey.pem`,
+      );
+      const installed = (lineage: string) =>
+        inRelay(
+          "sh",
+          "-c",
+          `RENEWED_LINEAGE=${lineage} fidant-relay-cert-installed 2>&1; echo "exit $?"`,
+        );
+      const files = () => inRelay("sh", "-c", `ls ${tls}; sha256sum ${tls}/*`);
+      const pid = () => inRelay("systemctl", "show", "-p", "MainPID", "--value", "coturn");
+      const fingerprint = "openssl x509 -noout -fingerprint -sha256";
+      const served = () =>
+        inRelay(
+          "sh",
+          "-c",
+          `openssl s_client -connect 127.0.0.1:443 </dev/null 2>/dev/null | ${fingerprint}`,
+        );
+
+      const before = await files();
+      expect(await installed("/tmp/mismatch")).toBe(
+        "fidant-relay: the certificate and key in /tmp/mismatch don't match\nexit 1\n",
+      );
+      expect(await files()).toBe(before);
+
+      const running = await pid();
+      expect(await installed("/tmp/lineage")).toBe("exit 0\n");
+      expect(await pid()).toBe(running);
+      await inRelay("cmp", "/tmp/lineage/fullchain.pem", `${tls}/turn.crt`);
+      expect(await inRelay("stat", "-c", "%a %U:%G", `${tls}/turn.key`)).toBe(
+        "640 root:turnserver\n",
+      );
+      const renewed = await inRelay("sh", "-c", `${fingerprint} -in /tmp/lineage/fullchain.pem`);
+      await expect.poll(served).toBe(renewed);
+
+      const [sender, recipient] = await relayPeers(actor);
+      const { path, echoed } = await relayedChannel(sender, recipient, relayIce("tls", secret));
+      expect(echoed).toBe(true);
+      expect(path).toMatch(/^relay\+tls\//);
+    });
+
+    test("installs a first certificate whose deploy hook didn't finish", async ({ actor }) => {
+      const tls = "/etc/fidant-relay/tls";
+      const saved = "/tmp/first-cert";
+      const lineage = `/etc/letsencrypt/live/${relayHost}`;
+      const pid = () => inRelay("systemctl", "show", "-p", "MainPID", "--value", "coturn");
+      const fingerprint = "openssl x509 -noout -fingerprint -sha256";
+      const served = () =>
+        inRelay(
+          "sh",
+          "-c",
+          `timeout 5 openssl s_client -connect 127.0.0.1:443 </dev/null 2>/dev/null | ${fingerprint} 2>/dev/null || true`,
+        );
+      try {
+        await inRelay(
+          "sh",
+          "-c",
+          `mkdir ${saved} && mv ${tls}/turn.crt ${tls}/turn.key ${saved}/ && systemctl restart coturn`,
+        );
+        await expect.poll(() => inRelay("ss", "-lnu")).toMatch(/:3478\b/);
+        expect(await served()).toBe("");
+        const running = await pid();
+        // As certbot leaves it when the hook never ran: live/ links to the files.
+        await inRelay(
+          "sh",
+          "-c",
+          `mkdir -p ${lineage} && ln -s ${saved}/turn.crt ${lineage}/fullchain.pem \
+            && ln -s ${saved}/turn.key ${lineage}/privkey.pem`,
+        );
+        expect(await inRelay("sh", "-c", 'fidant-relay-cert 2>&1; echo "exit $?"')).toBe(
+          "exit 0\n",
+        );
+        expect(await pid()).not.toBe(running);
+        await inRelay("cmp", `${saved}/turn.crt`, `${tls}/turn.crt`);
+        const certificate = await inRelay("sh", "-c", `${fingerprint} -in ${saved}/turn.crt`);
+        await expect.poll(served).toBe(certificate);
+
+        const [sender, recipient] = await relayPeers(actor);
+        const { path, echoed } = await relayedChannel(sender, recipient, relayIce("tls", secret));
+        expect(echoed).toBe(true);
+        expect(path).toMatch(/^relay\+tls\//);
+      } finally {
+        await inRelay(
+          "sh",
+          "-c",
+          `for f in turn.crt turn.key; do [ -e ${saved}/$f ] && mv ${saved}/$f ${tls}/; done; \
+            rm -rf /etc/letsencrypt/live ${saved}; systemctl restart coturn`,
+        );
+      }
+    });
+
+    test("maps its DNS name to external-ip only when the name points elsewhere", async ({
+      actor,
+    }) => {
+      const line = () => inRelay("sh", "-c", "grep '^external-ip=' /etc/turnserver.conf || true");
+      const pid = () => inRelay("systemctl", "show", "-p", "MainPID", "--value", "coturn");
+      // /etc/hosts is a bind mount, so it is rewritten in place. No ip: the name doesn't resolve.
+      const resolveTo = (ip?: string) =>
+        inRelay(
+          "sh",
+          "-c",
+          `{ cat /tmp/hosts; ${ip ? `echo '${ip} ${relayHost}'` : ":"}; } >/etc/hosts \
+            && fidant-relay-address`,
+        );
+      const elsewhere = `external-ip=198.51.100.99/${relayIp}\n`;
+      expect(await inRelay("systemctl", "is-active", "fidant-relay-address.timer")).toBe(
+        "active\n",
+      );
+      await inRelay("cp", "/etc/hosts", "/tmp/hosts");
+      try {
+        let running = await pid();
+        const inode = () => inRelay("stat", "-c", "%i", "/etc/turnserver.conf");
+        const before = await inode();
+        await resolveTo("198.51.100.99");
+        expect(await line()).toBe(elsewhere);
+        expect(await pid()).not.toBe(running);
+        // Replaced, never truncated in place: a crash mid-write would leave coturn with no auth.
+        expect(await inode()).not.toBe(before);
+        expect(await inRelay("stat", "-c", "%a %U:%G", "/etc/turnserver.conf")).toBe(
+          "640 root:turnserver\n",
+        );
+        expect(await inRelay("sh", "-c", "ls /etc/turnserver.conf*")).toBe(
+          "/etc/turnserver.conf\n",
+        );
+        await inRelay("sh", "-c", "set -a; . /relay-config/env; sh /relay/install.sh");
+        expect(await line()).toBe(elsewhere);
+
+        running = await pid();
+        await resolveTo("198.51.100.99");
+        expect(await pid()).toBe(running);
+        await resolveTo();
+        expect(await line()).toBe(elsewhere);
+        expect(await pid()).toBe(running);
+
+        await resolveTo(relayIp);
+        expect(await line()).toBe("");
+        expect(await pid()).not.toBe(running);
+      } finally {
+        // Restoring /etc/hosts alone would leave a line behind: the name then doesn't resolve.
+        await resolveTo(relayIp);
+        await resolveTo();
+      }
+      expect(await line()).toBe("");
+
+      const [sender, recipient] = await relayPeers(actor);
+      const { echoed } = await relayedChannel(sender, recipient, relayIce("udp", secret));
+      expect(echoed).toBe(true);
+    });
+
+    test("asks Let's Encrypt for a certificate only once its name resolves", async () => {
+      const marker = "/tmp/certbot-ran";
+      await inRelay(
+        "sh",
+        "-c",
+        `printf '#!/bin/sh\\ntouch ${marker}\\n' >/tmp/certbot && chmod +x /tmp/certbot && cp /etc/hosts /tmp/hosts-cert`,
+      );
+      const run = () =>
+        inRelay(
+          "sh",
+          "-c",
+          `rm -f ${marker}; PATH=/tmp:$PATH fidant-relay-cert; echo "exit $?"; ls ${marker} 2>&1; true`,
+        );
+      try {
+        expect(await run()).toMatch(/^exit 0\n.*No such file/);
+        await inRelay("sh", "-c", `echo '${relayIp} ${relayHost}' >>/etc/hosts`);
+        expect(await run()).toBe(`exit 0\n${marker}\n`);
+        await inRelay("fidant-relay-address");
+        expect(await inRelay("sh", "-c", "grep '^external-ip=' /etc/turnserver.conf || true")).toBe(
+          "",
+        );
+      } finally {
+        await inRelay("sh", "-c", `cat /tmp/hosts-cert >/etc/hosts; rm -f /tmp/certbot ${marker}`);
+      }
+    });
+
+    test("keeps secrets and client addresses out of its journal", async () => {
+      // A hand-out of the current secret, sealed on the relay, so argv holds only file names.
+      await inRelay(
+        "sh",
+        "-c",
+        `tr -d '\\n' </var/lib/fidant-relay/current | openssl pkeyutl -encrypt -pubin \
+          -inkey /etc/fidant-relay/relay.pub -pkeyopt rsa_padding_mode:oaep \
+          -pkeyopt rsa_oaep_md:sha256 -pkeyopt rsa_mgf1_md:sha256 | base64 -w0 >/tmp/hand-out \
+          && echo 'not a hand-out' >/tmp/garbage`,
+      );
+      // Through a unit, so what apply prints lands in the journal.
+      const apply = (body: string) =>
+        inRelay(
+          "sh",
+          "-c",
+          `systemd-run --wait --collect --quiet sh -c 'fidant-relay-apply-secret <${body}'; echo "exit $?"`,
+        );
+      expect(await apply("/tmp/hand-out")).toBe("exit 0\n");
+      expect(await apply("/tmp/garbage")).toBe("exit 1\n");
+      let lines: string[] = [];
+      // The fetch ran, offline here, and exited cleanly. The timer first fires 10 s after install.
+      await expect
+        .poll(
+          async () => {
+            lines = (await inRelay("journalctl", "-o", "export", "--no-pager")).split("\n");
+            return [
+              "MESSAGE=Finished fidant-relay-secret.service",
+              "MESSAGE=fidant-relay: cannot open the secret",
+            ].every((start) => lines.some((line) => line.startsWith(start)));
+          },
+          { timeout: 20_000 },
+        )
+        .toBe(true);
+      for (const value of [secret, rotated]) {
+        expect(lines.filter((line) => line.includes(value))).toEqual([]);
+      }
+      const addresses = await clientAddresses();
+      expect(addresses.length).toBeGreaterThan(0);
+      for (const ip of addresses) {
+        expect(
+          lines.filter((line) => addressPattern(ip).test(line)),
+          ip,
+        ).toEqual([]);
+      }
+    });
   });
 });
