@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import type { Page } from "@playwright/test";
 import { maskAddress } from "@sigill/protocol";
@@ -14,6 +14,7 @@ import {
   type Observed,
   recipientRow,
 } from "../src/fixtures.ts";
+import { commitTo, interpose, signalsOf, tamperSignal } from "../src/interpose.ts";
 import { base32Token, type CanaryFile, type SeededRandom } from "../src/leaks/canary.ts";
 import type { Allowed } from "../src/leaks/needles.ts";
 import { type Message, mailTo } from "../src/mail.ts";
@@ -634,30 +635,6 @@ function expectRefusal(page: Page) {
   };
 }
 
-/** A signaling message as JSON; only a `relay` message has `data`. */
-type Signal = { t: string; data: string };
-
-/**
- * Passes `page`'s signaling socket through `edit`, as a hostile server could: `sent` is true for
- * what the page sends. Register it before the page loads. A page route takes precedence over the
- * recorder's context route, which then no longer blocks the sockets this one matches, so match only
- * the stack's own. The recorder still sees the frames on the wire, as the server sends and receives
- * them: what the page sends after `edit`, what the server sends before it.
- */
-function tamperSignal(page: Page, edit: (message: Signal, sent: boolean) => Signal) {
-  const pass = (text: string | Buffer, sent: boolean) =>
-    JSON.stringify(edit(JSON.parse(text.toString()) as Signal, sent));
-  return page.routeWebSocket(
-    // A relative pattern resolves against baseURL, so this matches only the stack's own socket.
-    "/signal",
-    (ws) => {
-      const server = ws.connectToServer();
-      ws.onMessage((text) => server.send(pass(text, true)));
-      server.onMessage((text) => ws.send(pass(text, false)));
-    },
-  );
-}
-
 /** Counts `page`'s downloads; the returned check expects the connect error well before the 30 s connect timeout, no offer, no download and no delivery to `name`. */
 function expectNoConnection(page: Page) {
   let downloads = 0;
@@ -783,6 +760,105 @@ test.describe("a hostile path", () => {
       .toContain("sigill: sender dropped a connection: bad-signal");
     await failed(sender, name);
     expect(reflected, "reflected the offer").toBe(true);
+  });
+
+  test("a sender refuses an answer that does not match the commitment", async ({
+    demo,
+    observed,
+    leaks,
+    canary,
+  }) => {
+    let signals: ReturnType<typeof signalsOf> | undefined;
+    let attempt = "";
+    let swapped = false;
+    const kinds: string[] = [];
+    const sender = await openSender(demo, makeFile(leaks, canary, 10), "", (page) =>
+      tamperSignal(page, (message, sent, toPage) => {
+        attempt = message.attempt ?? attempt;
+        if (message.t !== "relay" || !signals) {
+          return message;
+        }
+        if (sent) {
+          void signals.open(attempt, "s", message.data).then(({ kind }) => kinds.push(kind));
+          return message;
+        }
+        if (swapped) {
+          return message;
+        }
+        // The recipient's commit, swapped for one to a certificate nobody has.
+        swapped = true;
+        const other = randomBytes(32)
+          .toString("hex")
+          .toUpperCase()
+          .replace(/..(?!$)/g, "$&:");
+        void signals
+          .seal(attempt, "r", { kind: "commit", hash: commitTo(other) })
+          .then((data) => toPage({ ...message, data }));
+        return undefined;
+      }),
+    );
+    const warnings = async () =>
+      (await observed("sender").records()).flatMap((r) => (r.type === "console" ? [r.text] : []));
+    const name = makeName(leaks, canary, "Anna");
+    const link = await addRecipient(leaks, sender, name);
+    signals = signalsOf(link);
+    const recipient = await demo.open("recipient");
+    const failed = expectNoConnection(recipient);
+    await recipient.goto(link);
+    await expect
+      .poll(warnings, { timeout: 10_000 })
+      .toContain("sigill: sender dropped a connection: bad-signal");
+    await failed(sender, name);
+    expect(kinds, "the sender took the swapped commit and offered").toContain("offer");
+  });
+
+  test("someone in the middle with an emailed link's key shows two different check numbers and gets nothing", async ({
+    demo,
+    leaks,
+    canary,
+  }) => {
+    test.skip(!process.env.SIGILL_E2E_MAILPIT, "needs Mailpit");
+    const middle = await interpose(await demo.open("middle"));
+    const sender = await openSender(demo, makeFile(leaks, canary, 100_001), "", (page) =>
+      middle.takeOver(page, "sender"),
+    );
+    const name = makeName(leaks, canary, "Anna");
+    const to = addressFor(canary, "Anna");
+    const emailed = await addEmailed(leaks, sender, name, to);
+    middle.start(emailed.link);
+    const recipient = await demo.open("recipient");
+    await middle.takeOver(recipient, "recipient");
+    await recipient.goto(emailed.link);
+    await enterCode(recipient, await requestCode(recipient, to));
+
+    const card = recipientRow(sender, name);
+    const number = /^\d{3} \d{3}$/;
+    await expect(
+      card.getByText(`Ask ${name} to read the number on their screen. Does it match?`),
+    ).toBeVisible({ timeout: 30_000 });
+    await expect(recipient.getByRole("heading", { name: "Check number" })).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(recipient.getByText("Read this number to the sender.")).toBeVisible();
+    const ours = await card.getByText(number).textContent();
+    const theirs = await recipient.getByText(number).textContent();
+    expect(ours).toMatch(number);
+    expect(theirs).toMatch(number);
+    expect(theirs, "the recipient's number").not.toBe(ours);
+
+    await card.getByRole("button", { name: "It differs" }).click();
+    await expect(card.getByText("The numbers didn't match, so nothing was sent.")).toBeVisible();
+    await expect(
+      recipient.getByText("The numbers didn't match, so nothing was received."),
+    ).toBeVisible();
+    for (const page of [sender, recipient]) {
+      await expect(page.getByRole("button", { name: "Download" })).toHaveCount(0);
+    }
+    const fromSender = (await middle.frames()).filter((f) => f.from === "sender");
+    expect(
+      fromSender.map((f) => f.kind),
+      "the middle got only INIT and CHECK from the sender, no META",
+    ).toEqual([0, 4]);
   });
 });
 
