@@ -274,6 +274,56 @@ async function record(
   const recorder = new Recorder(name, parseStackOrigins(process.env.SIGILL_E2E_STACK_ORIGINS));
   recorders.set(name, recorder);
   await recorder.attach(context);
+  await context.addInitScript(logPeerFailures);
+}
+
+/** Runs in the page through addInitScript, so it may use nothing from this module: logs why a peer connection call failed and who closed a peer or channel, which the app keeps out of its console. */
+function logPeerFailures() {
+  const log = (text: string) => console.warn(`sigill-e2e: ${text}`);
+  const native = (fn: unknown) =>
+    typeof fn === "function" && Function.prototype.toString.call(fn).includes("[native code]");
+  const stack = () => {
+    const limit = Error.stackTraceLimit;
+    Error.stackTraceLimit = 20;
+    const lines = (new Error().stack ?? "").split("\n").slice(3);
+    Error.stackTraceLimit = limit;
+    return lines.map((line) => line.trim()).join(" | ");
+  };
+  const peer = RTCPeerConnection.prototype as unknown as Record<string, unknown>;
+  for (const name of [
+    "createOffer",
+    "createAnswer",
+    "setLocalDescription",
+    "setRemoteDescription",
+    "addIceCandidate",
+  ]) {
+    const method = peer[name];
+    if (!native(method)) {
+      continue;
+    }
+    peer[name] = function (this: RTCPeerConnection, ...args: unknown[]) {
+      return (
+        Reflect.apply(method as () => Promise<unknown>, this, args) as Promise<unknown>
+      ).catch((error: unknown) => {
+        const { name: kind, message } = error as Error;
+        log(`${name} rejected: ${kind}: ${message}`);
+        throw error;
+      });
+    };
+  }
+  for (const [label, proto] of [
+    ["peer", RTCPeerConnection.prototype],
+    ["channel", RTCDataChannel.prototype],
+  ] as const) {
+    const close = proto.close;
+    if (!native(close)) {
+      continue;
+    }
+    proto.close = function (this: unknown) {
+      log(`${label} close() at ${stack()}`);
+      Reflect.apply(close, this, []);
+    };
+  }
 }
 
 /** A watched person's name, unique to this run. */

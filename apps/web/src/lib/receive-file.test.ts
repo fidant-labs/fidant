@@ -31,8 +31,11 @@ import {
 import { BlobSink, type Sink } from "./sink.ts";
 
 type Transit = {
-  /** Called for each sender → recipient frame. Return undefined to drop it. */
-  toRecipient?(frame: Uint8Array<ArrayBuffer>, pair: Pair): Uint8Array<ArrayBuffer> | undefined;
+  /** Called for each sender → recipient frame. Return undefined to drop it, several to deliver them in order. */
+  toRecipient?(
+    frame: Uint8Array<ArrayBuffer>,
+    pair: Pair,
+  ): Uint8Array<ArrayBuffer> | Uint8Array<ArrayBuffer>[] | undefined;
   /** Called after each recipient → sender frame is delivered. */
   afterToSender?(frame: Uint8Array<ArrayBuffer>, pair: Pair): void;
 };
@@ -65,16 +68,15 @@ function channelPair(transit: Transit = {}): Pair {
       if (readyState !== "open") {
         throw new Error("channel is closed");
       }
-      let copy: Uint8Array<ArrayBuffer> | undefined = data.slice();
+      const copy = data.slice();
       if (toRecipient) {
-        copy = transit.toRecipient ? transit.toRecipient(copy, pair) : copy;
-        if (copy) {
-          deliver(other, copy);
+        const out = transit.toRecipient ? transit.toRecipient(copy, pair) : copy;
+        for (const frame of out === undefined ? [] : [out].flat()) {
+          deliver(other, frame);
         }
       } else {
         deliver(other, copy);
-        const sent = copy;
-        setTimeout(() => transit.afterToSender?.(sent, pair));
+        setTimeout(() => transit.afterToSender?.(copy, pair));
       }
     },
     addEventListener: self.addEventListener.bind(self) as FrameChannel["addEventListener"],
@@ -344,17 +346,58 @@ test("treats a missing END as truncation", async () => {
   await assert.rejects(r.sending);
 });
 
-test("treats a dropped chunk as a failure", async () => {
+async function failsOnSequence(toRecipient: NonNullable<Transit["toRecipient"]>): Promise<void> {
   const sink = new RecordingSink();
-  let chunks = 0;
-  const pair = channelPair({
-    toRecipient: (frame) => (frame[1] === SenderKind.CHUNK && ++chunks === 2 ? undefined : frame),
-  });
-  const r = run({ bytes: new Uint8Array(randomBytes(200_000)), pair, sink });
-  await assert.rejects(r.receiving, /seq/);
+  const pair = channelPair({ toRecipient });
+  const r = run({ bytes: new Uint8Array(randomBytes(300_000)), pair, sink });
+  await assert.rejects(
+    r.receiving,
+    (error) => failedWith("invalid")(error) && /seq/.test(String(error)),
+  );
   assert.equal(sink.aborted, true);
   pair.close();
   await assert.rejects(r.sending);
+}
+
+test("treats a dropped chunk as a failure", async () => {
+  let chunks = 0;
+  await failsOnSequence((frame) =>
+    frame[1] === SenderKind.CHUNK && ++chunks === 2 ? undefined : frame,
+  );
+});
+
+test("treats a dropped last chunk as invalid", async () => {
+  let held: Uint8Array<ArrayBuffer> | undefined;
+  await failsOnSequence((frame) => {
+    if (frame[1] !== SenderKind.CHUNK) {
+      return frame;
+    }
+    const before = held;
+    held = frame;
+    return before;
+  });
+});
+
+test("treats a reordered chunk as invalid", async () => {
+  let chunks = 0;
+  let held: Uint8Array<ArrayBuffer> | undefined;
+  await failsOnSequence((frame) => {
+    if (frame[1] !== SenderKind.CHUNK) {
+      return frame;
+    }
+    if (++chunks === 2) {
+      held = frame;
+      return undefined;
+    }
+    return chunks === 3 && held ? [frame, held] : frame;
+  });
+});
+
+test("treats a repeated chunk as invalid", async () => {
+  let chunks = 0;
+  await failsOnSequence((frame) =>
+    frame[1] === SenderKind.CHUNK && ++chunks === 2 ? [frame, frame.slice()] : frame,
+  );
 });
 
 test("rejects when aborted during the offer and discards a late sink", async () => {
