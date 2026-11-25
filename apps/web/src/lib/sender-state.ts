@@ -10,24 +10,27 @@
 // | from                           | event          | to         | effect             |
 // |--------------------------------|----------------|------------|--------------------|
 // | waiting, declined, failed      | joined         | connecting | start              |
-// | connecting, offered, receiving | joined         | (same)     | refuse busy        |
-// | delivered                      | joined         | delivered  | refuse used        |
-// | connecting                     | channel-open   | offered    |                    |
+// | connecting ... receiving (2)   | joined         | (same)     | refuse busy        |
+// | delivered, or locked           | joined         | (same)     | refuse used        |
+// | connecting                     | channel-open   | offered, or checking with check |  |
+// | checking                       | checked        | offered    |                    |
+// | checking                       | check-differs  | waiting    | refuse drop, close |
 // | offered                        | accepted       | receiving  |                    |
 // | offered                        | declined       | declined   | close              |
 // | receiving                      | progress       | receiving  |                    |
 // | receiving                      | receipt(true)  | delivered  | close              |
 // | receiving                      | receipt(false) | failed     | close              |
-// | connecting, offered, receiving | dropped        | waiting    | refuse drop, close |
-// | connecting                     | timeout        | waiting    | refuse drop, close |
+// | connecting ... receiving (2)   | dropped        | waiting    | refuse drop, close |
+// | connecting, checking           | timeout        | waiting    | refuse drop, close |
 // | connecting                     | unsendable     | failed     | refuse drop, close |
 // | connecting                     | left           | waiting    | close              |
 // | connecting                     | server-lost    | waiting    | close              |
-// | connecting, offered, receiving | path relay (1) | waiting    | refuse drop, close |
+// | connecting ... receiving (2)   | path relay (1) | waiting    | refuse drop, close |
 // | (its attempt matches)          | path           | (same)     |                    |
 // | (not on the list)              | joined         | -          | refuse unknown     |
 //
 // (1) For the current attempt, when its `joined` said the sender refused the relay.
+// (2) connecting, checking, offered or receiving: the active statuses.
 //
 // Rules:
 // - A link is used only once the recipient's RECEIPT matches (delivered).
@@ -99,8 +102,12 @@
 //   ("sent", "failed", "limit") never replaces "verifying". Recipients without
 //   an address ignore it. A reply with a mark means the server took the link and emailed
 //   the marked copy, so the recipient's `url` becomes that copy. A refusal
-//   without one (`limit`, or `failed` before anything went out) keeps the
-//   plain link.
+//   without one (`limit`, or `failed` before anything went out) came after the
+//   `email` message gave the server the link's secret, so the page passes a
+//   `fresh` link and the recipient takes it in place of the old one, keeping
+//   its name and mail status; `hostedLinks` then names the new link ID, not the
+//   old. The page's own `failed` (its socket was closed, so nothing was sent)
+//   carries no `fresh` link and keeps the plain link.
 // - `server-lost` also unbinds every recipient whose link the server emailed
 //   or may have emailed (a mark, "sending", or "verifying"/"verified" without
 //   a mark, see `unmarked`): the server dropped its binding with the socket,
@@ -108,6 +115,23 @@
 //   ID plain from this page.
 // - The server answers every `email` it refuses with `failed` or `limit`, naming
 //   the link and with no mark, so a refusal never needs guessing which card it was for.
+//
+// - A recipient added with `check` shows the check number once its channel
+//   opens ("checking") and reaches "offered" only when both sides said the
+//   numbers match (`checked`). `check-differs` returns it to "waiting" with
+//   CHECK_DIFFERS, which the next join clears; the link still works, because a
+//   misheard digit is the likely cause.
+// - `timeout` also ends a "checking" attempt that both people have not
+//   confirmed within CHECK_TIMEOUT_MS, as a failed check with CHECK_EXPIRED:
+//   someone in the middle could otherwise hold one attempt open while it
+//   makes the recipient connect again and again.
+// - Every attempt of a `check` recipient that ends in connecting or checking
+//   (dropped, timeout, left, server-lost, unsendable, a refused relay,
+//   check-differs) adds one to `checkFailures`, and nothing lowers it: someone
+//   in the middle learns the sender's number from the offer, so it must not get
+//   unlimited tries at a matching one. At CHECK_ATTEMPTS the recipient is
+//   "failed" with CHECK_LIMIT and `locked`, its attempt refused and closed,
+//   every later join refused with "used", and `hostedLinks` leaves it out.
 //
 // Effects carry only link IDs, attempt IDs, refusal reasons and the ICE servers from the
 // server's `joined`. Recipient
@@ -121,12 +145,14 @@ import {
   MAX_LINKS,
   type RefuseReason,
 } from "@sigill/protocol";
+import { CHECK_ATTEMPTS } from "./check.ts";
 import type { Link } from "./link.ts";
 import type { OpenPath } from "./peer.ts";
 
 export type RecipientStatus =
   | "waiting"
   | "connecting"
+  | "checking"
   | "offered"
   | "declined"
   | "receiving"
@@ -157,16 +183,24 @@ export type Recipient = {
   readonly mark?: string;
   /** The server dropped this link's email binding, so the link is dead and no longer hosted. */
   readonly unbound?: true;
+  /** Both people compare the check number before anything about the file goes. */
+  readonly check?: true;
+  /** Checked attempts that ended before both sides confirmed. Never lowered. */
+  readonly checkFailures?: number;
+  /** The check failed CHECK_ATTEMPTS times: the link no longer works and is no longer hosted. */
+  readonly locked?: true;
 };
 
 /** Recipients in the order they were added. Link IDs are unique. */
 export type SenderState = { readonly recipients: readonly Recipient[] };
 
 export type SenderAction =
-  | { type: "add"; link: Link; name: string; email?: string }
+  | { type: "add"; link: Link; name: string; email?: string; check?: boolean }
   | { type: "remove"; linkId: string }
   | { type: "joined"; linkId: string; attempt: string; iceServers: IceServer[]; turn: boolean }
   | { type: "channel-open"; linkId: string }
+  | { type: "checked"; linkId: string }
+  | { type: "check-differs"; linkId: string }
   | { type: "accepted"; linkId: string }
   | { type: "progress"; linkId: string; bytesSent: number }
   | { type: "receipt"; linkId: string; match: boolean }
@@ -177,7 +211,14 @@ export type SenderAction =
   | { type: "declined"; linkId: string }
   | { type: "unsendable"; linkId: string }
   | { type: "path"; linkId: string; attempt: string; path: OpenPath }
-  | { type: "email"; linkId: string; status: EmailStatus; mark?: string | undefined };
+  | {
+      type: "email";
+      linkId: string;
+      status: EmailStatus;
+      mark?: string | undefined;
+      /** A new link to replace this one if the server refused its email: it saw the secret. */
+      fresh?: Link | undefined;
+    };
 
 export type SenderEffect =
   | { type: "start"; linkId: string; attempt: string; iceServers: IceServer[] }
@@ -188,13 +229,23 @@ export type SenderUpdate = { state: SenderState; effects: SenderEffect[] };
 
 /** How long after a join the data channel may take to open before the attempt is dropped. */
 export const SETUP_TIMEOUT_MS = 20_000;
+/** How long both people have to compare the check number before the attempt ends as a failed check. */
+export const CHECK_TIMEOUT_MS = 5 * 60_000;
 
 export const CHECKSUM_MISMATCH = "The recipient's checksum did not match.";
 export const TOO_SMALL_FOR_TEXT = "The connection can't carry a text in one chunk.";
+export const CHECK_DIFFERS = "The check numbers didn't match, so nothing was sent.";
+export const CHECK_LIMIT = "The check failed too many times, so this link no longer works.";
+export const CHECK_EXPIRED = "The check number wasn't confirmed in time, so nothing was sent.";
 
 export const initialSenderState: SenderState = { recipients: [] };
 
-const ACTIVE: ReadonlySet<RecipientStatus> = new Set(["connecting", "offered", "receiving"]);
+const ACTIVE: ReadonlySet<RecipientStatus> = new Set([
+  "connecting",
+  "checking",
+  "offered",
+  "receiving",
+]);
 
 /** True while a peer connection for the recipient is being set up or used. */
 export function isActive(recipient: Recipient): boolean {
@@ -231,10 +282,10 @@ export function emailBound(recipient: Recipient): boolean {
 /**
  * Every link ID the sender should host: all recipients, including delivered
  * ones, so that the sender can answer a late join on them with "used", except
- * those whose email binding the server dropped.
+ * those whose email binding the server dropped or whose check locked them.
  */
 export function hostedLinks(state: SenderState): string[] {
-  return state.recipients.filter((r) => !r.unbound).map((r) => r.linkId);
+  return state.recipients.filter((r) => !r.unbound && !r.locked).map((r) => r.linkId);
 }
 
 export function update(state: SenderState, action: SenderAction): SenderUpdate {
@@ -252,6 +303,7 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
       status: "waiting",
       bytesSent: 0,
       ...(email === undefined ? {} : { email, mail: "sending" as const }),
+      ...(action.check ? { check: true as const } : {}),
     };
     return { state: { recipients: [...state.recipients, recipient] }, effects: [] };
   }
@@ -265,7 +317,7 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
       }
       if (r.status === "connecting") {
         effects.push({ type: "close", linkId: r.linkId });
-        next = waiting(next, false);
+        next = failedCheck(r, waiting(next, false));
       }
       changed ||= next !== r;
       return next;
@@ -291,7 +343,7 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
     }
     case "joined": {
       const { attempt, iceServers, turn } = action;
-      if (current.status === "delivered") {
+      if (current.status === "delivered" || current.locked) {
         return { state, effects: [{ type: "refuse", linkId, attempt, reason: "used" }] };
       }
       if (isActive(current)) {
@@ -306,7 +358,24 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
       if (current.status !== "connecting") {
         return { state, effects: [] };
       }
+      return {
+        state: replace(state, { ...current, status: current.check ? "checking" : "offered" }),
+        effects: [],
+      };
+    case "checked":
+      if (current.status !== "checking") {
+        return { state, effects: [] };
+      }
       return { state: replace(state, { ...current, status: "offered" }), effects: [] };
+    case "check-differs":
+      if (current.status !== "checking") {
+        return { state, effects: [] };
+      }
+      return end(
+        state,
+        current,
+        failedCheck(current, { ...waiting(current, false), error: CHECK_DIFFERS }),
+      );
     case "accepted":
       if (current.status !== "offered") {
         return { state, effects: [] };
@@ -331,18 +400,31 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
     }
     case "dropped":
     case "timeout":
+      if (action.type === "timeout" && current.status === "checking") {
+        return end(
+          state,
+          current,
+          failedCheck(current, { ...waiting(current, false), error: CHECK_EXPIRED }),
+        );
+      }
       if (action.type === "dropped" ? !isActive(current) : current.status !== "connecting") {
         return { state, effects: [] };
       }
-      return end(state, current, waiting(current, current.status === "connecting"));
-    case "left":
+      return end(
+        state,
+        current,
+        failedCheck(current, waiting(current, current.status === "connecting")),
+      );
+    case "left": {
       if (current.status !== "connecting") {
         return { state, effects: [] };
       }
-      return {
-        state: replace(state, waiting(current, true)),
-        effects: [{ type: "close", linkId }],
-      };
+      const next = failedCheck(current, waiting(current, true));
+      if (next.locked) {
+        return end(state, current, next);
+      }
+      return { state: replace(state, next), effects: [{ type: "close", linkId }] };
+    }
     case "declined":
       if (current.status !== "offered") {
         return { state, effects: [] };
@@ -355,13 +437,17 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
       if (current.status !== "connecting") {
         return { state, effects: [] };
       }
-      return end(state, current, { ...reset(current, "failed"), error: TOO_SMALL_FOR_TEXT });
+      return end(
+        state,
+        current,
+        failedCheck(current, { ...reset(current, "failed"), error: TOO_SMALL_FOR_TEXT }),
+      );
     case "path":
       if (current.attempt !== action.attempt) {
         return { state, effects: [] };
       }
       if (refusesRelay(current, action.attempt, action.path)) {
-        return end(state, current, waiting(current, true));
+        return end(state, current, failedCheck(current, waiting(current, true)));
       }
       return { state: replace(state, { ...current, path: action.path }), effects: [] };
     case "email": {
@@ -373,6 +459,14 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
         (current.mail === "verifying" && action.status !== "verified");
       const mail = keep ? current.mail : action.status;
       const mark = current.mark ?? action.mark;
+      if (
+        action.fresh &&
+        !keep &&
+        mark === undefined &&
+        (action.status === "limit" || action.status === "failed")
+      ) {
+        return swap(state, current, action.fresh, action.status);
+      }
       if (mail === current.mail && mark === current.mark) {
         return { state, effects: [] };
       }
@@ -383,6 +477,39 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
       return { state: replace(state, { ...current, mail, ...marked }), effects: [] };
     }
   }
+}
+
+/**
+ * Replaces a recipient whose email the server refused with `fresh`, keeping its name and mail
+ * status. A joiner on the old link, which the server only allows before the `email` message, is
+ * refused as unknown and its connection closed.
+ */
+function swap(
+  state: SenderState,
+  current: Recipient,
+  fresh: Link,
+  mail: EmailStatus,
+): SenderUpdate {
+  const { linkId, attempt } = current;
+  const next: Recipient = {
+    ...reset(current, "waiting"),
+    linkId: fresh.linkId,
+    secret: fresh.secret,
+    url: fresh.url,
+    mail,
+  };
+  const effects: SenderEffect[] = isActive(current)
+    ? [
+        ...(attempt === undefined
+          ? []
+          : [{ type: "refuse", linkId, attempt, reason: "unknown" } as const]),
+        { type: "close", linkId },
+      ]
+    : [];
+  return {
+    state: { recipients: state.recipients.map((r) => (r === current ? next : r)) },
+    effects,
+  };
 }
 
 /** Ends the current attempt as `next`: its joiner refused and its connection closed. */
@@ -398,6 +525,21 @@ function end(state: SenderState, current: Recipient, next: Recipient): SenderUpd
       { type: "close", linkId },
     ],
   };
+}
+
+/**
+ * `next` for an attempt that ended: if `current` was a check recipient still
+ * connecting or checking, one more failed check, and locked at CHECK_ATTEMPTS.
+ */
+function failedCheck(current: Recipient, next: Recipient): Recipient {
+  if (!current.check || (current.status !== "connecting" && current.status !== "checking")) {
+    return next;
+  }
+  const checkFailures = (current.checkFailures ?? 0) + 1;
+  if (checkFailures < CHECK_ATTEMPTS) {
+    return { ...next, checkFailures };
+  }
+  return { ...reset(next, "failed"), checkFailures, error: CHECK_LIMIT, locked: true };
 }
 
 /** Back to waiting, with `noRelay` if the attempt was `blocked` while the sender refused our relay. */

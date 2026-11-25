@@ -5,7 +5,8 @@
 // Wiring (see lib/peer.ts and lib/sender-state.ts):
 // - On mount, connect to the signaling server and host every link ID on the
 //   list, with whether recipients may use our TURN relay; re-host the full
-//   list after every add or remove, every change of the relay checkbox and
+//   list whenever the hosted links change (an add, a remove, a link the check locked, or a
+//   link replaced after a refused email), every change of the relay checkbox and
 //   every reconnect, and again REHOST_AFTER_MS after `already-hosted` while
 //   the server still holds the old socket. When the socket drops, recipients
 //   still connecting go back to waiting (reducer `server-lost`, which never
@@ -21,8 +22,9 @@
 //   one chunk (textFitsOneChunk) gets nothing: reducer `unsendable` fails the
 //   recipient's card and refuses the joiner.
 // - A peer that closes or fails before delivery → `dropped`; a data channel
-//   that has not opened SETUP_TIMEOUT_MS after the join → `timeout`. Both
-//   refuse the joiner so the server unbinds it (see sender-state.ts).
+//   that has not opened SETUP_TIMEOUT_MS after the join, or a check number
+//   not confirmed CHECK_TIMEOUT_MS after it opened → `timeout`. Both refuse
+//   the joiner so the server unbinds it (see sender-state.ts).
 // - Each connection reports its path to the server once: direct, stun or
 //   relay when the channel opens, failed on an ICE failure or a timeout. A
 //   relay path on an active attempt whose relay the sender refused
@@ -35,7 +37,10 @@
 //   email address. Adding a recipient with one sends a single `email` message
 //   after the `host` that includes its link; the server's `email` replies go
 //   to the reducer. Its card offers no link until the server answers, then
-//   the marked link the server emailed, or the plain one if it refused. A
+//   the marked link the server emailed. If the server refused without a mark,
+//   it still saw the secret, so the card gets a fresh plain link and the page
+//   hosts that instead (reducer `email`); only the page's own `failed`, when
+//   its socket was closed and nothing was sent, keeps the first link. A
 //   reconnect never hosts an emailed link again (reducer `server-lost`).
 //
 // Names, the file or text and link secrets stay in this tab. The server only ever
@@ -65,6 +70,7 @@ import { createLink } from "../lib/link.ts";
 import { createSenderPeer, type Peer } from "../lib/peer.ts";
 import { hashFile, sendFile } from "../lib/send-file.ts";
 import {
+  CHECK_TIMEOUT_MS,
   emailBound,
   findRecipient,
   hostedLinks,
@@ -81,7 +87,7 @@ import { addRelay, NO_RELAYS } from "../lib/server-facts.ts";
 import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
 import { MAX_TEXT_LENGTH, textFile, textFitsOneChunk } from "../lib/text-secret.ts";
 import { FileCard, Icon, Link, lede, Page, ServerPanel, TechDetails } from "../ui.tsx";
-import { RecipientList } from "./RecipientList.tsx";
+import { type CheckView, RecipientList } from "./RecipientList.tsx";
 
 type Hash =
   | { status: "none" }
@@ -92,7 +98,13 @@ type Hash =
 type Connection = {
   abort: AbortController;
   peer?: Peer;
-  /** Fires `timeout` if the data channel has not opened in time. */
+  /** Relayed signals that arrived before the peer existed, such as the recipient's commit. */
+  early: string[];
+  /** With the check number on: the sender's own verdict, from the card's buttons. */
+  confirm?: (matches: boolean) => void;
+  /** What the sender said about the check number, once they said it. */
+  said?: boolean;
+  /** Fires `timeout` if the data channel has not opened in time, and later the 5-minute check deadline. */
   deadline?: ReturnType<typeof setTimeout>;
   /** Set once the connection's path went to the server. */
   pathSent?: boolean;
@@ -170,6 +182,11 @@ export function SendPage({
   const [mail, setMail] = useState(false);
   // Emailing a link is opt-in: until the sender ticks it, there is no email field.
   const [useEmail, setUseEmail] = useState(false);
+  // The check number follows the email choice until the sender sets it for this add.
+  const [checkChoice, setCheckChoice] = useState<boolean | undefined>(undefined);
+  const checkOn = checkChoice ?? useEmail;
+  // Each open check's number, by link ID: on screen only, gone with its connection.
+  const [checks, setChecks] = useState<Readonly<Record<string, CheckView>>>({});
   const [emailError, setEmailError] = useState(false);
   // ponytail: sticky for the page, since the server saw the key and keeps email counts for an hour
   const [mailed, setMailed] = useState(false);
@@ -207,6 +224,7 @@ export function SendPage({
       return;
     }
     connectionsRef.current.delete(linkId);
+    setChecks(({ [linkId]: _closed, ...rest }) => rest);
     clearTimeout(connection.deadline);
     connection.abort.abort(new Error("connection closed"));
     connection.peer?.close();
@@ -226,7 +244,7 @@ export function SendPage({
       return;
     }
     closeConnection(linkId);
-    const connection: Connection = { abort: new AbortController() };
+    const connection: Connection = { abort: new AbortController(), early: [] };
     connectionsRef.current.set(linkId, connection);
     const dispatch = (action: SenderAction) => dispatchRef.current(action);
     // Someone who knows the link ID but not the secret can join and stay
@@ -256,6 +274,7 @@ export function SendPage({
       attempt,
       signalKey,
       iceServers,
+      check: recipient.check === true,
       onOpen(channel, info) {
         clearTimeout(connection.deadline);
         // The path may come after a short transfer already closed the
@@ -283,21 +302,48 @@ export function SendPage({
           dispatch({ type: "dropped", linkId });
           return;
         }
+        const confirm = info.check
+          ? new Promise<boolean>((resolve) => {
+              connection.confirm = resolve;
+            })
+          : undefined;
+        if (confirm) {
+          void info.checkNumber.then((number) => {
+            if (connectionsRef.current.get(linkId) === connection) {
+              setChecks((all) => ({ ...all, [linkId]: { number } }));
+            }
+          });
+          connection.deadline = setTimeout(() => {
+            if (connectionsRef.current.get(linkId) === connection) {
+              dispatch({ type: "timeout", linkId });
+            }
+          }, CHECK_TIMEOUT_MS);
+        }
         sendFile({
           channel,
           maxMessageSize: info.maxMessageSize,
           file: chosen.file,
           from: fromRef.current,
           secret: recipient.secret,
+          attempt,
           sha256: chosen.sha256,
           signal: connection.abort.signal,
+          ...(confirm && {
+            confirm,
+            onChecked: () => {
+              clearTimeout(connection.deadline);
+              dispatch({ type: "checked", linkId });
+            },
+          }),
           onAccepted: () => dispatch({ type: "accepted", linkId }),
           onProgress: (bytesSent) => dispatch({ type: "progress", linkId, bytesSent }),
         }).then(
           (result) => {
-            if (result.type === "declined") {
+            if (result.type === "check-differs") {
+              dispatch({ type: "check-differs", linkId });
+            } else if (result.type === "declined") {
               dispatch({ type: "declined", linkId });
-            } else {
+            } else if (result.type === "receipt") {
               dispatch({ type: "receipt", linkId, match: result.match });
             }
           },
@@ -313,9 +359,13 @@ export function SendPage({
         if (reason === "connection-failed") {
           sendPath(linkId, connection, "failed");
         }
-        dispatch({ type: "dropped", linkId });
+        // After "It differs" the recipient closes the channel as it should.
+        dispatch({ type: connection.said === false ? "check-differs" : "dropped", linkId });
       },
     });
+    for (const data of connection.early.splice(0)) {
+      void connection.peer.handleRelay(data);
+    }
   };
 
   const runEffect = (effect: SenderEffect) => {
@@ -339,6 +389,7 @@ export function SendPage({
 
   // Applies an action, then carries out its effects. Never called during render.
   dispatchRef.current = (action: SenderAction) => {
+    const hosted = hostedLinks(senderRef.current).join();
     const next = update(senderRef.current, action);
     if (next.state !== senderRef.current) {
       senderRef.current = next.state;
@@ -347,9 +398,23 @@ export function SendPage({
     for (const effect of next.effects) {
       runEffect(effect);
     }
-    if (action.type === "add" || action.type === "remove") {
+    // Adding, removing, a check locking a link or a refused email replacing a link
+    // changes what to host.
+    if (hostedLinks(next.state).join() !== hosted) {
       host();
     }
+  };
+
+  const onCheck = (linkId: string, matches: boolean) => {
+    const connection = connectionsRef.current.get(linkId);
+    if (connection) {
+      connection.said = matches;
+      connection.confirm?.(matches);
+    }
+    setChecks((all) => {
+      const view = all[linkId];
+      return view ? { ...all, [linkId]: { ...view, said: matches } } : all;
+    });
   };
 
   // Runs once on mount: everything it uses is read through refs.
@@ -400,11 +465,22 @@ export function SendPage({
             linkId: message.link,
             status: message.status,
             mark: message.mark,
+            // A refusal without a mark came after the server got the secret: never share that link.
+            ...(message.mark === undefined &&
+            (message.status === "limit" || message.status === "failed")
+              ? { fresh: createLink(location.origin) }
+              : {}),
           });
           break;
-        case "relay":
-          void connectionsRef.current.get(message.link)?.peer?.handleRelay(message.data);
+        case "relay": {
+          const connection = connectionsRef.current.get(message.link);
+          if (connection?.peer) {
+            void connection.peer.handleRelay(message.data);
+          } else {
+            connection?.early.push(message.data);
+          }
           break;
+        }
         case "error":
           // After a reconnect the server may not have noticed the old socket close yet.
           if (message.code === "already-hosted") {
@@ -532,7 +608,7 @@ export function SendPage({
       fromRef.current = typed;
     }
     const link = createLink(location.origin);
-    dispatchRef.current(email ? { type: "add", link, name, email } : { type: "add", link, name });
+    dispatchRef.current({ type: "add", link, name, check: checkOn, ...(email && { email }) });
     // After `add`, so the server already hosts the link this names.
     if (email && findRecipient(senderRef.current, link.linkId)) {
       const sent = signalingRef.current?.send({
@@ -550,6 +626,7 @@ export function SendPage({
       }
     }
     form.reset();
+    setCheckChoice(undefined);
     setMore(false);
     setTyped(false);
     input.focus();
@@ -613,6 +690,8 @@ export function SendPage({
       statusText={text ? { ...t.send.status, ...t.secret.status } : t.send.status}
       summary={(text ? t.secret : t.send).summary}
       onRemove={onRemove}
+      checks={checks}
+      onCheck={onCheck}
       full={full}
     />
   );
@@ -925,6 +1004,17 @@ export function SendPage({
                   )}
                 </div>
               )}
+              <Label className="basis-full items-start leading-snug font-normal">
+                <input
+                  type="checkbox"
+                  name="check"
+                  class="mt-0.5 size-4 flex-none accent-primary"
+                  checked={checkOn}
+                  disabled={!file || full}
+                  onChange={(event) => setCheckChoice(event.currentTarget.checked)}
+                />
+                {text ? t.secret.checkChoice : t.send.check.choice}
+              </Label>
               <Button type="submit" disabled={!file || full}>
                 {useEmail ? t.send.addEmail : t.send.add}
               </Button>

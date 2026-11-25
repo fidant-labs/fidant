@@ -632,3 +632,23 @@ export function SectionLink({ link: [text, href] }: { link: readonly [string, st
     </p>
   );
 }
+
+/** A check number shown as "482 913", heard digit by digit when it appears. */
+export function CheckNumber({ label, number }: { label?: string; number: string | undefined }) {
+  return (
+    <p class="m-0" role="status">
+      {number && (
+        <>
+          {label && <span class="block text-[0.85rem] text-muted-foreground">{label}</span>}
+          <span
+            class="font-mono text-3xl font-semibold tracking-widest tabular-nums"
+            aria-hidden="true"
+          >
+            {number}
+          </span>
+          <span class="sr-only">{[...number.replace(" ", "")].join(" ")}</span>
+        </>
+      )}
+    </p>
+  );
+}

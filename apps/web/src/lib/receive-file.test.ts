@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
 import { test } from "node:test";
+import { encodeBase64url } from "./base64url.ts";
 import {
   encodeEnd,
   encodeInit,
   encodeMeta,
   FRAME_OVERHEAD_BYTES,
+  FrameReader,
   FrameWriter,
   HEADER_BYTES,
   MAX_CHUNK_BYTES,
@@ -95,6 +97,11 @@ function channelPair(transit: Transit = {}): Pair {
   return pair;
 }
 
+/** A fresh attempt ID, as the receive page makes one per join. */
+function newAttempt(): string {
+  return encodeBase64url(crypto.getRandomValues(new Uint8Array(16)));
+}
+
 /** A sink that records what happened to it. */
 class RecordingSink extends BlobSink {
   aborted = false;
@@ -133,6 +140,9 @@ type RunOptions = {
   signal?: AbortSignal;
   /** The checksum the sender puts in END. Defaults to the real one. */
   senderSha256?: Uint8Array;
+  /** Each side's own check verdict; without one, that side runs without the check. */
+  senderConfirm?: Promise<boolean>;
+  recipientConfirm?: Promise<boolean>;
 };
 
 /** Matches a ReceiveError with this reason. */
@@ -142,6 +152,7 @@ const failedWith = (reason: ReceiveFailure) => (error: unknown) =>
 /** Runs the real sendFile against receiveFile over a channel pair. */
 function run(options: RunOptions) {
   const { secret } = createLink("https://localhost");
+  const attempt = newAttempt();
   const pair = options.pair ?? channelPair();
   const sink = options.sink ?? new RecordingSink();
   const offers: FileOffer[] = [];
@@ -158,8 +169,10 @@ function run(options: RunOptions) {
     file,
     from: "Anna",
     secret,
+    attempt,
     sha256: Promise.resolve(options.senderSha256 ?? sha256(options.bytes)),
     signal: new AbortController().signal,
+    ...(options.senderConfirm ? { confirm: options.senderConfirm } : {}),
     onAccepted: () => {},
     onProgress: () => {},
   });
@@ -168,7 +181,9 @@ function run(options: RunOptions) {
     channel: pair.recipient,
     maxMessageSize,
     secret: options.recipientSecret ?? secret,
+    attempt,
     signal: options.signal ?? new AbortController().signal,
+    ...(options.recipientConfirm ? { confirm: options.recipientConfirm } : {}),
     onOffer:
       options.onOffer ??
       (async (offer) => {
@@ -227,6 +242,100 @@ test("succeeds when the sender closes the channel after the receipt", async () =
   const r = run({ bytes: new Uint8Array(randomBytes(100_000)), pair });
   const result = await r.receiving;
   assert.equal(result.type, "received");
+});
+
+function confirmation() {
+  let resolve: (matches: boolean) => void = () => {};
+  const promise = new Promise<boolean>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+}
+
+const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+
+/** A channel pair that records the kind of every frame, and closes like a page does after a "differs". */
+function watchedPair() {
+  const kinds: number[] = [];
+  const pair = channelPair({
+    toRecipient(frame) {
+      kinds.push(frame[1] as number);
+      return frame;
+    },
+  });
+  return { pair, kinds };
+}
+
+test("no offer before both checks", async () => {
+  const bytes = new Uint8Array(randomBytes(1000));
+  const own = confirmation();
+  const { pair, kinds } = watchedPair();
+  const r = run({
+    bytes,
+    pair,
+    senderConfirm: Promise.resolve(true),
+    recipientConfirm: own.promise,
+  });
+  await settle();
+  assert.deepEqual(r.offers, []);
+  assert.deepEqual(kinds, [SenderKind.INIT, SenderKind.CHECK]);
+  own.resolve(true);
+  const result = await r.receiving;
+  assert.equal(result.type, "received");
+  assert.equal(r.offers.length, 1);
+  assert.deepEqual(kinds.slice(0, 3), [SenderKind.INIT, SenderKind.CHECK, SenderKind.META]);
+  assert.deepEqual(await r.sending, { type: "receipt", match: true });
+});
+
+test("own differs: CHECK(0) goes out and both sides stop", async () => {
+  const sink = new RecordingSink();
+  const { pair, kinds } = watchedPair();
+  const r = run({
+    bytes: new Uint8Array(1000),
+    pair,
+    sink,
+    senderConfirm: new Promise<boolean>(() => {}),
+    recipientConfirm: Promise.resolve(false),
+  });
+  const sent = await r.sending;
+  pair.close();
+  assert.deepEqual(sent, { type: "check-differs", by: "recipient" });
+  assert.deepEqual(await r.receiving, { type: "check-differs", by: "recipient" });
+  assert.deepEqual(r.offers, []);
+  assert.deepEqual(kinds, [SenderKind.INIT]);
+  assert.equal(sink.writes, 0);
+});
+
+test("the sender differs: the recipient stops before its own click", async () => {
+  const { pair, kinds } = watchedPair();
+  const r = run({
+    bytes: new Uint8Array(1000),
+    pair,
+    senderConfirm: Promise.resolve(false),
+    recipientConfirm: new Promise<boolean>(() => {}),
+  });
+  const received = await r.receiving;
+  pair.close();
+  assert.deepEqual(received, { type: "check-differs", by: "sender" });
+  assert.deepEqual(await r.sending, { type: "check-differs", by: "sender" });
+  assert.deepEqual(r.offers, []);
+  assert.deepEqual(kinds, [SenderKind.INIT, SenderKind.CHECK]);
+});
+
+test("a flipped flag: a recipient without the check refuses a CHECK", async () => {
+  const r = run({ bytes: new Uint8Array(1000), senderConfirm: Promise.resolve(true) });
+  await assert.rejects(r.receiving, failedWith("invalid"));
+  assert.deepEqual(r.offers, []);
+  r.pair.close();
+  await assert.rejects(r.sending);
+});
+
+test("a flipped flag: a recipient with the check refuses META before CHECK", async () => {
+  const r = run({ bytes: new Uint8Array(1000), recipientConfirm: new Promise<boolean>(() => {}) });
+  await assert.rejects(r.receiving, failedWith("invalid"));
+  assert.deepEqual(r.offers, []);
+  r.pair.close();
+  await assert.rejects(r.sending);
 });
 
 test("rejects a link with the wrong secret before offering anything", async () => {
@@ -426,6 +535,7 @@ test("rejects when aborted during the offer and discards a late sink", async () 
 for (const early of ["CHUNK", "END"] as const) {
   test(`fails when the sender sends ${early} before the recipient answers`, async () => {
     const { secret } = createLink("https://localhost");
+    const attempt = newAttempt();
     const pair = channelPair();
     const sent: number[] = [];
     pair.sender.addEventListener("message", (event) => {
@@ -437,6 +547,7 @@ for (const early of ["CHUNK", "END"] as const) {
       channel: pair.recipient,
       maxMessageSize: 65536,
       secret,
+      attempt,
       signal: new AbortController().signal,
       onOffer: () => {
         offered = true;
@@ -449,7 +560,7 @@ for (const early of ["CHUNK", "END"] as const) {
 
     // A sender that does not wait for ACCEPT.
     const transferId = createTransferId();
-    const writer = new FrameWriter(await deriveFileKey(secret, transferId), "s");
+    const writer = new FrameWriter(await deriveFileKey(secret, transferId, attempt), "s");
     const meta = { name: "a.bin", size: 1, type: "", chunkSize: MAX_CHUNK_BYTES, from: "" };
     pair.sender.send(encodeInit(transferId));
     pair.sender.send(await writer.encrypt(SenderKind.META, encodeMeta(meta)));
@@ -473,6 +584,7 @@ for (const early of ["CHUNK", "END"] as const) {
 
 test("aborts when the sender ignores the credit window", async () => {
   const { secret } = createLink("https://localhost");
+  const attempt = newAttempt();
   const pair = channelPair();
   let accepted: (() => void) | undefined;
   const acceptance = new Promise<void>((resolve) => {
@@ -489,6 +601,7 @@ test("aborts when the sender ignores the credit window", async () => {
     channel: pair.recipient,
     maxMessageSize: 65536,
     secret,
+    attempt,
     signal: new AbortController().signal,
     onOffer: async () => sink,
     onProgress: () => {},
@@ -497,7 +610,7 @@ test("aborts when the sender ignores the credit window", async () => {
 
   // A sender that sends far more CHUNKs than it was granted.
   const transferId = createTransferId();
-  const writer = new FrameWriter(await deriveFileKey(secret, transferId), "s");
+  const writer = new FrameWriter(await deriveFileKey(secret, transferId, attempt), "s");
   const count = CREDIT_WINDOW_CHUNKS * 4;
   const meta = {
     name: "a.bin",
@@ -539,6 +652,65 @@ function inFlight() {
   });
   return { pair, count };
 }
+
+test("a replayed INIT does not make the recipient use one key and nonce twice (SIG-231)", async () => {
+  const { secret } = createLink("https://localhost");
+  const transferId = createTransferId();
+  const recorded = newAttempt();
+  const key = await deriveFileKey(secret, transferId, recorded);
+  const init = encodeInit(transferId);
+  const meta = await new FrameWriter(key, "s").encrypt(
+    SenderKind.META,
+    encodeMeta({ name: "report.pdf", size: 5, type: "", chunkSize: MAX_CHUNK_BYTES, from: "" }),
+  );
+  /** Plays the recorded INIT and META to a recipient attempt; returns its first frame, if any. */
+  const firstReply = async (accept: boolean, attempt: string) => {
+    let got: (frame: Uint8Array<ArrayBuffer>) => void = () => {};
+    const first = new Promise<Uint8Array<ArrayBuffer>>((done) => {
+      got = done;
+    });
+    const pair = channelPair({ afterToSender: (frame) => got(frame) });
+    const abort = new AbortController();
+    const receiving = receiveFile({
+      channel: pair.recipient,
+      maxMessageSize: 65536,
+      secret,
+      attempt,
+      signal: abort.signal,
+      onOffer: async () => (accept ? new BlobSink() : undefined),
+      onProgress: () => {},
+    });
+    pair.sender.send(init);
+    pair.sender.send(meta);
+    // A recipient that cannot open META rejects without sending anything.
+    const frame = await Promise.race([
+      first,
+      receiving.then(
+        () => new Promise<never>(() => {}),
+        () => undefined,
+      ),
+    ]);
+    abort.abort();
+    pair.close();
+    return frame;
+  };
+  // DECLINE in the recorded attempt and ACCEPT in the next would both be the recipient's frame 0.
+  const declined = await firstReply(false, recorded);
+  const accepted = await firstReply(true, newAttempt());
+  const opens = (frame: Uint8Array<ArrayBuffer> | undefined) =>
+    frame
+      ? new FrameReader(key, "r").decrypt(frame).then(
+          () => true,
+          () => false,
+        )
+      : false;
+  assert.equal(await opens(declined), true, "the recorded attempt answers as usual");
+  assert.equal(
+    await opens(accepted),
+    false,
+    "both attempts sealed their first frame under the same key, so with the same nonce",
+  );
+});
 
 test("a slow sink holds the sender to the credit window", async () => {
   const maxMessageSize = 4096;

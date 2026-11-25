@@ -25,7 +25,11 @@
 //   the sender's tab really closed, the peer drops too (at the latest when ICE
 //   consent runs out) and the drop is reported as the sender's page closing.
 // - If the signaling socket drops before the data channel opens, a new
-//   attempt starts (new socket, new attempt ID). A socket that never opened is
+//   attempt starts (new socket, new attempt ID), unless this page already
+//   answered the sender's offer: the answer gave anyone in the middle this
+//   connection's check number, so every new connection would be another guess, and only
+//   the recipient's "Try again" makes one. A `token` counts only as the
+//   answer to a code this page sent. A socket that never opened is
 //   left to the signaling client's own retries. A server that restarted no
 //   longer knows the sender's link until the sender re-hosts, so `refused:
 //   unknown` after a drop or failed connect waits retryDelay and tries again,
@@ -38,6 +42,11 @@
 // - If the data channel hasn't opened CONNECT_TIMEOUT_MS (30 s) after the
 //   attempt starts, the attempt fails with "connect" (a peer exists) or
 //   "server" (no `joined` yet), so "Connecting…" never stays up for good.
+// - When the data channel opens with the check number on, the page shows the
+//   number before anything about the file, and receiveFile holds the offer
+//   until the recipient said it matches and the sender's page said so too.
+//   Either side saying it differs ends the attempt as "differed"; "Try again"
+//   makes a new connection with a new number.
 // - When the data channel opens, receiveFile runs the transfer. The offer
 //   screen resolves its decision with a Sink (Download or Show) or undefined
 //   (Decline). Show always collects a text in memory, never in a save dialog.
@@ -74,7 +83,7 @@ import {
 } from "../lib/format.ts";
 import { deriveSignalKey } from "../lib/keys.ts";
 import { LINK_ID_BYTES, parseRecipientLocation } from "../lib/link.ts";
-import { createRecipientPeer, type OpenPath, type Peer } from "../lib/peer.ts";
+import { createRecipientPeer, type OpenPath, type Peer, type PeerOpenInfo } from "../lib/peer.ts";
 import type { FileOffer } from "../lib/receive-file.ts";
 import { ReceiveError, receiveFile } from "../lib/receive-file.ts";
 import { peerLostProblem } from "../lib/receive-problem.ts";
@@ -90,6 +99,7 @@ import {
 } from "../lib/sink.ts";
 import { decodeText, isTextOffer } from "../lib/text-secret.ts";
 import {
+  CheckNumber,
   Direct,
   Icon,
   Page,
@@ -146,6 +156,7 @@ type Offer = FileOffer & { text: boolean };
 type View =
   | { s: "connecting" }
   | { s: "verify"; to: string; asked: boolean; sending: boolean; result: CodeResult | undefined }
+  | { s: "check"; number: string | undefined; said?: boolean }
   | { s: "refused"; problem: ProblemKey; text?: boolean }
   | { s: "offer"; offer: Offer }
   | { s: "receiving"; offer: Offer; bytes: number; left?: number | undefined }
@@ -173,6 +184,12 @@ type Attempt = {
   ended: boolean;
   /** Resolves the offer: a Sink to accept, undefined to decline. */
   decide?: ((sink: Sink | undefined) => void) | undefined;
+  /** With the check number on: resolves the recipient's own verdict. */
+  confirm?: ((matches: boolean) => void) | undefined;
+  /** The recipient said the numbers differ, so whatever ends the attempt now ends it as "differed". */
+  saidDiffers?: boolean;
+  /** Set when this page sends a code; only then may a `token` answer it. */
+  codeSent?: boolean;
   timers: Array<ReturnType<typeof setTimeout>>;
 };
 
@@ -287,6 +304,10 @@ export function ReceivePage({
       if (!current()) {
         return;
       }
+      if (attempt.saidDiffers) {
+        finish({ s: "failed", problem: "differed" });
+        return;
+      }
       if (attempt.hostGone) {
         finish({ s: "refused", problem: offlineMessage() });
         return;
@@ -368,6 +389,12 @@ export function ReceivePage({
         }
         return;
       }
+      // The answer gave anyone in the middle this connection's check number, so
+      // a new one would be another guess: only the recipient's Try again makes it.
+      if (attempt.peer?.answered) {
+        finish({ s: "failed", problem: lostMessage() });
+        return;
+      }
       if (rejoins < MAX_REJOINS) {
         start(rejoins + 1);
       } else {
@@ -430,9 +457,10 @@ export function ReceivePage({
           }
           break;
         case "token":
-          if (!current() || message.link !== linkId || joinSent) {
+          if (!current() || message.link !== linkId || joinSent || !attempt.codeSent) {
             break;
           }
+          attempt.codeSent = false;
           storeToken(linkId, message.token);
           codeAsked.current = undefined;
           setView({ s: "connecting" });
@@ -450,31 +478,27 @@ export function ReceivePage({
           }
           setTie("paired");
           attempt.relayRefused = !message.turn;
-          try {
-            attempt.peer = createRecipientPeer({
-              signaling,
-              linkId,
-              attempt: attemptId,
-              signalKey,
-              iceServers: message.iceServers,
-              onOpen: (channel, info) => {
-                // A short transfer can end before the path resolves, so this checks the attempt, not current().
-                void info.path.then((resolved) => {
-                  if (attemptRef.current !== attempt) {
-                    return;
-                  }
-                  setPath(resolved);
-                  if (resolved === "relay") {
-                    setViaRelay(true);
-                  }
-                });
-                onOpen(channel, info.maxMessageSize);
-              },
-              onClose: () => lost(),
-            });
-          } catch {
-            finish({ s: "failed", problem: "server" });
-          }
+          attempt.peer = createRecipientPeer({
+            signaling,
+            linkId,
+            attempt: attemptId,
+            signalKey,
+            iceServers: message.iceServers,
+            onOpen: (channel, info) => {
+              // A short transfer can end before the path resolves, so this checks the attempt, not current().
+              void info.path.then((resolved) => {
+                if (attemptRef.current !== attempt) {
+                  return;
+                }
+                setPath(resolved);
+                if (resolved === "relay") {
+                  setViaRelay(true);
+                }
+              });
+              onOpen(channel, info);
+            },
+            onClose: () => lost(),
+          });
           break;
         case "relay":
           attempt.heardSender = true;
@@ -484,7 +508,9 @@ export function ReceivePage({
           // A refusal after the sender's first signal means the sender gave up
           // on this attempt (its peer failed or never connected), not that the
           // link is in use or used: the sender only signals a join it took.
-          if (attempt.heardSender) {
+          if (attempt.saidDiffers) {
+            finish({ s: "failed", problem: "differed" });
+          } else if (attempt.heardSender) {
             finish({ s: "failed", problem: lostMessage() });
           } else if (
             message.reason === "unknown" &&
@@ -534,18 +560,33 @@ export function ReceivePage({
       }
     });
 
-    const onOpen = (channel: RTCDataChannel, maxMessageSize: number) => {
+    const onOpen = (channel: RTCDataChannel, info: PeerOpenInfo) => {
       if (!current()) {
         return;
       }
       attempt.channelOpen = true;
       let offered: Offer | undefined;
       let timeLeft: ReturnType<typeof etaTracker> | undefined;
+      const confirm = info.check
+        ? new Promise<boolean>((resolve) => {
+            attempt.confirm = resolve;
+          })
+        : undefined;
+      if (confirm) {
+        setView({ s: "check", number: undefined });
+        void info.checkNumber.then((number) => {
+          if (current()) {
+            setView((v) => (v.s === "check" ? { ...v, number } : v));
+          }
+        });
+      }
       receiveFile({
         channel,
-        maxMessageSize,
+        maxMessageSize: info.maxMessageSize,
         secret,
+        attempt: attemptId,
         signal: attempt.abort.signal,
+        ...(confirm && { confirm }),
         onOffer(received) {
           return new Promise((resolve) => {
             if (!current()) {
@@ -579,9 +620,11 @@ export function ReceivePage({
         },
       }).then(
         (result) => {
-          if (result.type === "declined") {
+          if (result.type === "check-differs") {
+            finish({ s: "failed", problem: "differed" });
+          } else if (result.type === "declined") {
             finish({ s: "declined", text: attempt.text }, true);
-          } else if (offered) {
+          } else if (result.type === "received" && offered) {
             const sha256 = toHex(result.sha256);
             finish({ s: "done", offer: offered, blob: result.blob, sha256 }, true);
           }
@@ -678,6 +721,18 @@ export function ReceivePage({
 
   const onDecline = () => attemptRef.current?.decide?.(undefined);
 
+  const onCheck = (matches: boolean) => {
+    const attempt = attemptRef.current;
+    if (view.s !== "check" || !attempt?.confirm || attempt.ended) {
+      return;
+    }
+    attempt.saidDiffers = !matches;
+    attempt.confirm(matches);
+    attempt.confirm = undefined;
+    setView({ ...view, said: matches });
+    document.querySelector<HTMLElement>("#receive h1")?.focus();
+  };
+
   const onShow = () => {
     const attempt = attemptRef.current;
     if (view.s !== "offer" || !attempt?.decide || attempt.ended || attempt.abort.signal.aborted) {
@@ -713,6 +768,7 @@ export function ReceivePage({
       return;
     }
     setView({ ...view, result: undefined });
+    attempt.codeSent = true;
     attempt.signaling.send({ t: "code", link: link.linkId, code, mark: link.mark });
   };
 
@@ -781,6 +837,33 @@ export function ReceivePage({
           >
             {view.sending ? verify.sending : view.result && verify.results[view.result]}
           </p>
+        </>
+      );
+      break;
+    }
+    case "check": {
+      const { check } = t.receive;
+      body = (
+        <>
+          <h1>{check.heading}</h1>
+          <CheckNumber number={view.number} />
+          {view.number && view.said === undefined && (
+            <>
+              <p>{check.read}</p>
+              <div class="flex flex-wrap gap-3">
+                <Button type="button" onClick={() => onCheck(true)}>
+                  {check.matches}
+                </Button>
+                <Button type="button" variant="outline" onClick={() => onCheck(false)}>
+                  {check.differs}
+                </Button>
+              </div>
+            </>
+          )}
+          <p class={caption} role="status">
+            {view.said && check.waiting}
+          </p>
+          <p class={caption}>{check.why}</p>
         </>
       );
       break;
