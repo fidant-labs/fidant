@@ -3,7 +3,7 @@ import {
   CONNECTION_PATHS,
   ERROR_CODES,
   type LogFields,
-  REFUSE_REASONS,
+  REFUSED_REASONS,
   UPGRADE_REJECT_REASONS,
 } from "@sigill/protocol";
 
@@ -72,7 +72,7 @@ export const serverLogAllowlist: LogAllowlist = {
   ]),
   // LogReason in @sigill/protocol.
   reasons: new Set<string>([
-    ...REFUSE_REASONS,
+    ...REFUSED_REASONS,
     ...UPGRADE_REJECT_REASONS,
     ...CODE_RESULTS,
     "unverified",

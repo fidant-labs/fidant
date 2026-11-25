@@ -315,7 +315,8 @@ export const dockerServer: Service = {
         const user = `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`;
         // Holds the TURN secret, the relay list and the relay master, which the server reads.
         const secretDir = dirname(env.TURN_SECRET_FILE ?? "");
-        // --init: the server has no SIGTERM handler, and as PID 1 it would ignore one.
+        // --init: as PID 1 the server would ignore any signal it has no handler for, such as
+        // SIGTERM before it listens, so tini takes PID 1 and forwards docker's signals to it.
         // ponytail: one server container at a time; a second run on this machine replaces it.
         return [
           "docker",
