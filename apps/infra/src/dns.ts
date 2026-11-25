@@ -1,11 +1,19 @@
 import { CfnOutput, Fn, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
 import * as route53 from "aws-cdk-lib/aws-route53";
 import type { Construct } from "constructs";
-import { type Mail, mailDomain, mailRegion, primaryDomain, zoneNames } from "./config.ts";
+import {
+  type Mail,
+  mailDomain,
+  mailRegion,
+  primaryDomain,
+  relayName,
+  zoneNames,
+} from "./config.ts";
 
 export type DnsStackProps = StackProps & {
   mail: Mail;
   boxAddress: string;
+  relayAddresses: Record<string, string>;
 };
 
 function addMail(zone: route53.IHostedZone, mail: Mail): void {
@@ -96,6 +104,13 @@ export class DnsStack extends Stack {
       }
       for (const recordName of recordNames) {
         new route53.ARecord(zone, `${recordName} A`, { zone, recordName, target });
+      }
+      if (zoneName === primaryDomain) {
+        for (const [id, address] of Object.entries(props.relayAddresses)) {
+          const recordName = relayName(id);
+          const target = route53.RecordTarget.fromIpAddresses(address);
+          new route53.ARecord(zone, `${recordName} A`, { zone, recordName, target });
+        }
       }
     }
   }

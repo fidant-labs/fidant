@@ -18,7 +18,15 @@ import { test } from "node:test";
 import { App, Stack } from "aws-cdk-lib";
 import { Match, Template } from "aws-cdk-lib/assertions";
 import { addStacks } from "./app.ts";
-import { boxAddress, hostedZoneIds, mailFrom, siteNames, zoneNames } from "./config.ts";
+import {
+  boxAddress,
+  hostedZoneIds,
+  mailFrom,
+  relayAddresses,
+  relays,
+  siteNames,
+  zoneNames,
+} from "./config.ts";
 import { DnsStack } from "./dns.ts";
 import { renderRelayUserData, renderUserData } from "./user-data.ts";
 
@@ -36,6 +44,7 @@ const dns = Template.fromStack(
       dmarc: "v=DMARC1; p=quarantine",
     },
     boxAddress: "192.0.2.10",
+    relayAddresses: { sto: "198.51.100.7" },
   }),
 );
 
@@ -666,6 +675,39 @@ test("only fidant.se gets the relay name, pointing at the box over IPv4", () => 
     relay.map(({ Properties: p }) => [p.HostedZoneId, p.Name, p.Type, p.ResourceRecords]),
     [[zoneRef("fidant.se"), "turn.fidant.se.", "A", ["192.0.2.10"]]],
   );
+});
+
+test("only fidant.se gets a relay record per relay, over IPv4 only", () => {
+  const relay = Object.values(dns.findResources(recordSet)).filter((record) =>
+    String(record.Properties.Name).includes(".relay."),
+  );
+  assert.deepEqual(
+    relay.map(({ Properties: p }) => [p.HostedZoneId, p.Name, p.Type, p.ResourceRecords]),
+    [[zoneRef("fidant.se"), "sto.relay.fidant.se.", "A", ["198.51.100.7"]]],
+  );
+});
+
+test("the committed config points sto.relay.fidant.se at the relay box and no other zone has a relay record", () => {
+  const records = Object.values(committed.findResources(recordSet)).filter((record) =>
+    String(record.Properties.Name).includes(".relay."),
+  );
+  assert.deepEqual(
+    records.map(({ Properties: p }) => [p.Name, p.Type, p.ResourceRecords]),
+    [["sto.relay.fidant.se.", "A", ["13.51.1.111"]]],
+  );
+});
+
+test("every relay address belongs to a relay in the config", () => {
+  const ids = relays.map((relay) => relay.id);
+  for (const id of Object.keys(relayAddresses)) {
+    assert.ok(ids.includes(id), id);
+  }
+});
+
+// Changing this name replaces the app box, and the site is down for 5–10 minutes.
+test("the app box keeps its name", () => {
+  const [, instance] = instanceNamed(appBox(), "^fidant-app-");
+  assert.equal(instance?.Properties.InstanceName, "fidant-app-56e112e1");
 });
 
 test("the journal is the only place the box's services keep log lines", () => {
