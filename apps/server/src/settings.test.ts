@@ -61,3 +61,42 @@ test("TRUSTED_PROXIES takes address ranges and refuses anything else", () => {
     assert.throws(() => siteSettings({ TRUSTED_PROXIES: value }), { message: ranges }, value);
   }
 });
+
+const loose =
+  "TRUSTED_PROXIES ranges must start at their first address, like 10.0.0.0/24, not 10.0.0.5/24.";
+
+test("TRUSTED_PROXIES refuses a range that does not start at its first address", () => {
+  for (const value of [
+    "10.0.1.0/2",
+    "10.0.1.5/24",
+    "fd00:1::5/64",
+    "::ffff:10.0.0.1/104",
+    "10.0.1.0/24,10.0.2.1/24",
+  ]) {
+    assert.throws(() => siteSettings({ TRUSTED_PROXIES: value }), { message: loose }, value);
+  }
+  for (const value of [
+    "10.0.1.0/24",
+    "10.0.1.4/30",
+    "10.0.1.5/32",
+    "0.0.0.0/0",
+    "fd00:1::/64",
+    "fd00:1::5/128",
+    "::ffff:10.0.0.0/104",
+    "FD00:0001::/32",
+  ]) {
+    assert.doesNotThrow(() => siteSettings({ TRUSTED_PROXIES: value }), value);
+  }
+});
+
+test("TRUSTED_PROXIES refuses an address with a zone or a prefix too long for it", () => {
+  for (const value of ["fe80::%eth0/64", "10.0.0.0/33", "fd00::/129"]) {
+    assert.throws(() => siteSettings({ TRUSTED_PROXIES: value }), { message: ranges }, value);
+  }
+});
+
+test("an IPv6 range trusts its own addresses and not the next network's", () => {
+  const { proxies } = siteSettings({ TRUSTED_PROXIES: "fd00:1::/64" });
+  assert.equal(proxies.check("fd00:1::9", "ipv6"), true);
+  assert.equal(proxies.check("fd00:1:0:1::9", "ipv6"), false);
+});
