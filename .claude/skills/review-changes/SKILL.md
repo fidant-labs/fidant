@@ -65,7 +65,7 @@ Security findings about authorisation must name the concrete capability an attac
 
 - `blocker`: wrong behaviour, security hole, data loss, a broken `AGENTS.md` invariant, a broken acceptance criterion.
 - `major`: an objectively correct fix with no judgment call, such as dead code, an unused export, a missing `await`, a null hole, a typo in user-facing text, or a violated `AGENTS.md` or `CLAUDE.md` rule. Test: two competent engineers would agree on the fix without discussion.
-- `minor`: an improvement that involves taste. A reasonable reviewer might say "leave it". In a file under `apps/infra/box/`, any change after deploy replaces the box, so lanes rate a minor there `major`; nits stay nits. Step 6's round-2+ demotion and the verifier's downgrades still apply to that rating.
+- `minor`: an improvement that involves taste. A reasonable reviewer might say "leave it". In a file under `apps/infra/box/` or `apps/infra/relay/`, any change after deploy replaces the box, so lanes rate a minor there `major`; nits stay nits. Step 6's round-2+ demotion and the verifier's downgrades still apply to that rating.
 - `nit`: pure style preference.
 
 A coverage gap on production code that is already correct is `minor`, unless the regression it would catch is catastrophic.

@@ -4,7 +4,7 @@ Facts for the scripts that run on a box and for what CDK deploys. The deploy ste
 
 ## Box scripts
 
-- A box runs its user data once, at first boot, and the scripts that user data writes stay as written. A change to `box/` replaces the box, as do the other changes the root `AGENTS.md` lists, so a fix found after merge costs a box replacement.
+- A box runs its user data once, at first boot, and the scripts that user data writes stay as written. Its instance name carries a hash of the user data: a change to `box/` replaces the app box, a change to `relay/install.sh` replaces every relay box, and so do the other inputs the root `AGENTS.md` and record 0013 list. A fix found after merge costs a box replacement, and a new relay box has a new key pair.
 - Lightsail runs user data through `/bin/sh`, which is dash on Ubuntu. The scripts it writes name their shell on the `#!` line.
 - `set -e` stops a script at the first failing command, and `grep` fails with exit 1 when nothing matches. A failing command doesn't stop it in an `if`, `while` or `until` condition, before `&&` or `||`, after `!`, or as any but the last command of a pipeline. dash has no `set -o pipefail`; bash has it, and `sigill-deploy` uses it.
 - dash's `$(( ))` reads a leading zero as octal (`010` is 8, `08` is an error) and clamps a literal past 9223372036854775807 to that number, while a computed result past it wraps to a negative number (`$((9223372036854775807+1))` is -9223372036854775808). `[ "$n" -gt 1 ]` reads base 10, but fails with exit 2 on an empty value, a non-number or a number past that limit, and in an `if` condition the failure takes the `else` branch. A value that matches `0` or `[1-9][0-9]*` with at most 18 digits is safe in both.
@@ -16,7 +16,7 @@ Facts for the scripts that run on a box and for what CDK deploys. The deploy ste
 
 - `systemctl is-active` succeeds only for an active, reloading or refreshing unit. While a unit is `activating` it prints `activating` and exits 3, and a oneshot service is `activating` for its whole run.
 - `try-restart` restarts a unit that is active, activating, reloading or refreshing, and does nothing to one that is inactive, failed or deactivating.
-- The default start limit is 5 starts in 10 s, and every start counts: manual, `Restart=` and `try-restart`. Past it, every start fails until the 10 s have passed or `systemctl reset-failed` clears the count, and the unit stays failed until something starts it again, which `try-restart` never does.
+- The default start limit is 5 starts in 10 s, and every start counts: manual, `Restart=` and `try-restart`. Past it, every start fails until the 10 s have passed or `systemctl reset-failed` clears the count, and the unit stays failed until something starts it again, which `try-restart` never does. The relay's coturn has a drop-in with `StartLimitIntervalSec=0`; the app box's coturn keeps the default.
 - A timer fires up to its `AccuracySec=` late, 1 minute by default.
 - `systemctl start` on a service whose start is still running joins that run. Nothing serializes two direct runs of the same script.
 - `systemd-run --pipe` connects the unit's stdin, stdout and stderr to the caller, so its output never reaches the journal.
