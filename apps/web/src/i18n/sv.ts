@@ -339,6 +339,18 @@ export const sv: Messages = {
     emailError: "Skriv en giltig e-postadress, till exempel namn@example.se.",
     emailNotice:
       "Vår server ser den här länkens nyckel en gång, för att skriva mejlet. Den sparar eller loggar den inte, men vår e-posttjänst och den som läser mejlet på vägen kan också se den, och länken, med nyckeln, ligger kvar i mottagarens inkorg: den som kan läsa den inkorgen kan ta emot filen. Tills kontrollord finns skulle vår server också kunna ställa sig mellan er för den här länken. Om du skickar länken själv slipper du allt detta.",
+    check: {
+      choice: "Jämför ett nummer med mottagaren innan filen skickas",
+      number: "Kontrollnummer",
+      ask: (name: string) => `Be ${name} läsa upp numret på sin skärm. Stämmer det?`,
+      matches: "Det stämmer",
+      differs: "Det skiljer sig",
+      waiting: "Du sa att det stämmer. Det skickas när mottagaren också har bekräftat.",
+      differed:
+        "Numren stämde inte, så inget skickades. Någon kan ha varit emellan. Länken fungerar fortfarande om du vill försöka igen.",
+      limit: (times: number) =>
+        `Kontrollen misslyckades ${times} gånger, så länken fungerar inte längre. Någon kan försöka ta sig in mellan er. Lägg till mottagaren igen för en ny länk.`,
+    },
     fileFirst: "Välj en fil först.",
     full: (max: number) => `Du kan skicka till högst ${max} personer åt gången.`,
     oneLinkEach: "Varje person får en egen länk, som fungerar en gång.",
@@ -423,6 +435,14 @@ export const sv: Messages = {
       "Du kan stänga fliken. Om du ändrar dig fungerar länken fortfarande medan avsändarens sida är öppen.",
     showAgain: "Visa filen igen",
     tryAgain: "Försök igen",
+    check: {
+      heading: "Kontrollnummer",
+      read: "Läs upp numret för avsändaren.",
+      matches: "Avsändaren sa att det stämmer",
+      differs: "Avsändaren sa att det skiljer sig",
+      waiting: "Väntar på att avsändaren också säger att det stämmer.",
+      why: "Numret kommer från den här anslutningen. Om någon satt mellan dig och avsändaren skulle era skärmar visa olika nummer.",
+    },
     whatHappened: "Vad som hände",
     encryptionLabel: "Kryptering",
     encryption:
@@ -462,6 +482,10 @@ export const sv: Messages = {
       lost: {
         title: "Anslutningen till avsändaren bröts",
         body: "Ingenting sparades.",
+      },
+      differed: {
+        title: "Numren stämde inte",
+        body: "Så ingenting togs emot. Någon kan ha varit emellan. Försök igen för att få ett nytt nummer.",
       },
       lostReceiving: {
         title: "Anslutningen till avsändaren bröts",
@@ -549,6 +573,7 @@ export const sv: Messages = {
       `${done} av ${total} länkar har levererat hemligheten`,
     doneOne: (name: string) => `Hemligheten kom fram oskadd via länken till ${name}.`,
     doneMany: (n: number) => `Hemligheten kom fram oskadd via alla ${n} länkar.`,
+    checkChoice: "Jämför ett nummer med mottagaren innan hemligheten skickas",
     emailNotice:
       "Vår server ser den här länkens nyckel en gång, för att skriva mejlet. Den sparar eller loggar den inte, men vår e-posttjänst och den som läser mejlet på vägen kan också se den, och länken, med nyckeln, ligger kvar i mottagarens inkorg: den som kan läsa den inkorgen kan ta emot hemligheten. Tills kontrollord finns skulle vår server också kunna ställa sig mellan er för den här länken. Om du skickar länken själv slipper du allt detta.",
     status: {

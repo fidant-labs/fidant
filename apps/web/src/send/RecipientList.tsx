@@ -1,4 +1,4 @@
-// One card per recipient (status, email, connection path, progress, link, copy and remove), and one compact row once its link has delivered.
+// One card per recipient (status, email, connection path, check number, progress, link, copy and remove), and one compact row once its link has delivered.
 //
 // Only the status sentence and the email line sit in polite live regions, so
 // screen readers hear "Sending through Anna's link", "Email sent to a***@example.se"
@@ -11,14 +11,17 @@ import { Button } from "#components/ui/button";
 import { Card, CardContent } from "#components/ui/card";
 import type { Messages } from "../i18n/en.ts";
 import { useI18n } from "../i18n/I18n.tsx";
+import { CHECK_ATTEMPTS } from "../lib/check.ts";
 import { formatProgress } from "../lib/format.ts";
 import {
+  CHECK_DIFFERS,
+  CHECK_LIMIT,
   type Recipient,
   type RecipientStatus,
   TOO_SMALL_FOR_TEXT,
   unmarked,
 } from "../lib/sender-state.ts";
-import { Direct, Icon, PathLine, SwapLabel, useCopyNote } from "../ui.tsx";
+import { CheckNumber, Direct, Icon, PathLine, SwapLabel, useCopyNote } from "../ui.tsx";
 
 const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
 
@@ -29,12 +32,19 @@ const STATUS_COLOR: Partial<Record<RecipientStatus, string>> = {
 
 type StatusText = Messages["send"]["status"];
 
+/** An open check: its number, and the sender's own answer once given. */
+export type CheckView = { number: string; said?: boolean };
+
 type Props = {
   recipients: readonly Recipient[];
   fileSize: number;
   statusText: StatusText;
   summary(done: number, total: number): string;
   onRemove(linkId: string): void;
+  /** Open checks by link ID. */
+  checks: Readonly<Record<string, CheckView>>;
+  /** The sender said the numbers match, or differ. */
+  onCheck(linkId: string, matches: boolean): void;
   /** Delivered links as full cards too, for the details shown once every link has delivered. */
   full?: boolean;
 };
@@ -45,6 +55,8 @@ export function RecipientList({
   statusText,
   summary,
   onRemove,
+  checks,
+  onCheck,
   full = false,
 }: Props) {
   const { t } = useI18n();
@@ -66,6 +78,8 @@ export function RecipientList({
             fileSize={fileSize}
             statusText={statusText}
             onRemove={onRemove}
+            check={checks[recipient.linkId]}
+            onCheck={onCheck}
             full={full}
           />
         ))}
@@ -79,10 +93,20 @@ type RowProps = {
   fileSize: number;
   statusText: StatusText;
   onRemove(linkId: string): void;
+  check: CheckView | undefined;
+  onCheck(linkId: string, matches: boolean): void;
   full: boolean;
 };
 
-function RecipientRow({ recipient, fileSize, statusText, onRemove, full }: RowProps) {
+function RecipientRow({
+  recipient,
+  fileSize,
+  statusText,
+  onRemove,
+  check,
+  onCheck,
+  full,
+}: RowProps) {
   const { name, url, status, bytesSent, linkId, path, noRelay, error, email, mail, unbound } =
     recipient;
   const { t, lang } = useI18n();
@@ -90,7 +114,8 @@ function RecipientRow({ recipient, fileSize, statusText, onRemove, full }: RowPr
 
   const open = status === "waiting" || status === "declined" || status === "failed";
   // A link the server may still email, or whose email binding died, is not to be shared.
-  const shareable = open && !unmarked(recipient) && !unbound;
+  const shareable = open && !unmarked(recipient) && !unbound && !recipient.locked;
+  const checkFailed = error === CHECK_DIFFERS || error === CHECK_LIMIT;
   const lost = open && unbound;
   const removeButton = (
     <Button
@@ -133,17 +158,21 @@ function RecipientRow({ recipient, fileSize, statusText, onRemove, full }: RowPr
         <CardContent>
           <p class="m-0 text-[1.05rem] font-semibold wrap-anywhere">{name}</p>
           <p
-            class={`mt-1 mb-0 flex items-center gap-1.5 text-[0.9rem] wrap-anywhere ${noRelay ? "text-destructive" : (STATUS_COLOR[status] ?? "")}`}
+            class={`mt-1 mb-0 flex items-center gap-1.5 text-[0.9rem] wrap-anywhere ${noRelay || checkFailed ? "text-destructive" : (STATUS_COLOR[status] ?? "")}`}
             aria-live="polite"
           >
-            {(status === "failed" || noRelay) && <Icon name="alert" />}
+            {(status === "failed" || noRelay || checkFailed) && <Icon name="alert" />}
             {status === "declined" && !noRelay && <Icon name="declined" />}
             <span>
               {noRelay
                 ? t.send.noRelay(name)
                 : error === TOO_SMALL_FOR_TEXT
                   ? t.secret.unsendable(name)
-                  : statusText[status](name)}
+                  : error === CHECK_DIFFERS
+                    ? t.send.check.differed
+                    : error === CHECK_LIMIT
+                      ? t.send.check.limit(CHECK_ATTEMPTS)
+                      : statusText[status](name)}
             </span>
           </p>
           {email && mail && (
@@ -155,6 +184,32 @@ function RecipientRow({ recipient, fileSize, statusText, onRemove, full }: RowPr
             </p>
           )}
           {path && <PathLine path={path} />}
+          {status === "checking" && (
+            <div class="mt-3 grid gap-2">
+              <CheckNumber label={t.send.check.number} number={check?.number} />
+              {check?.said === undefined
+                ? check && (
+                    <>
+                      <p class="m-0 text-[0.9rem]">{t.send.check.ask(name)}</p>
+                      <div class="flex flex-wrap gap-3">
+                        <Button type="button" onClick={() => onCheck(linkId, true)}>
+                          {t.send.check.matches}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => onCheck(linkId, false)}
+                        >
+                          {t.send.check.differs}
+                        </Button>
+                      </div>
+                    </>
+                  )
+                : check.said && (
+                    <p class="m-0 text-[0.9rem] text-muted-foreground">{t.send.check.waiting}</p>
+                  )}
+            </div>
+          )}
           {status === "receiving" && (
             <>
               <Direct from={t.common.you} to={name} state="active" class="mt-3" />

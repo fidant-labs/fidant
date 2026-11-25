@@ -359,6 +359,18 @@ export const en = {
     emailError: "Enter a valid email address, like name@example.com.",
     emailNotice:
       "Our server will see this link's key once, to write the email. It doesn't store or log it, but our mail service and anyone who reads the email on its way can see it too, and the link, key included, stays in their mailbox: anyone who can read that mailbox could receive the file. Until check words exist, our server could also put itself between you and them for this link. Sending the link yourself avoids all of this.",
+    check: {
+      choice: "Check a number with this recipient before the file goes",
+      number: "Check number",
+      ask: (name: string) => `Ask ${name} to read the number on their screen. Does it match?`,
+      matches: "It matches",
+      differs: "It differs",
+      waiting: "You said it matches. It goes once they confirm too.",
+      differed:
+        "The numbers didn't match, so nothing was sent. Someone may have been in between. The link still works if you want to try again.",
+      limit: (times: number) =>
+        `The check failed ${times} times, so this link no longer works. Someone may be trying to get between you. Add the recipient again for a new link.`,
+    },
     fileFirst: "Choose a file first.",
     full: (max: number) => `You can send to up to ${max} people at a time.`,
     oneLinkEach: "Each person gets their own link, which works once.",
@@ -446,6 +458,14 @@ export const en = {
       "You can close this tab. If you change your mind, the link still works while the sender's page is open.",
     showAgain: "Show the file again",
     tryAgain: "Try again",
+    check: {
+      heading: "Check number",
+      read: "Read this number to the sender.",
+      matches: "They said it matches",
+      differs: "They said it differs",
+      waiting: "Waiting for the sender to say it matches too.",
+      why: "The number comes from this connection. If someone sat between you and the sender, your screens would show different numbers.",
+    },
     whatHappened: "What happened",
     encryptionLabel: "Encryption",
     encryption: "AES-256-GCM, end to end. The key is in your link and never leaves this browser.",
@@ -484,6 +504,10 @@ export const en = {
       lost: {
         title: "The connection to the sender was lost",
         body: "Nothing was saved.",
+      },
+      differed: {
+        title: "The numbers didn't match",
+        body: "So nothing was received. Someone may have been in between. Try again for a new number.",
       },
       lostReceiving: {
         title: "The connection to the sender was lost",
@@ -569,6 +593,7 @@ export const en = {
     summary: (done: number, total: number) => `${done} of ${total} links have delivered the secret`,
     doneOne: (name: string) => `The secret arrived intact through ${name}'s link.`,
     doneMany: (n: number) => `The secret arrived intact through all ${n} links.`,
+    checkChoice: "Check a number with this recipient before the secret goes",
     emailNotice:
       "Our server will see this link's key once, to write the email. It doesn't store or log it, but our mail service and anyone who reads the email on its way can see it too, and the link, key included, stays in their mailbox: anyone who can read that mailbox could receive the secret. Until check words exist, our server could also put itself between you and them for this link. Sending the link yourself avoids all of this.",
     // Only the statuses whose file wording would be wrong; the rest come from send.status.

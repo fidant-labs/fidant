@@ -38,6 +38,11 @@
 // - If the data channel hasn't opened CONNECT_TIMEOUT_MS (30 s) after the
 //   attempt starts, the attempt fails with "connect" (a peer exists) or
 //   "server" (no `joined` yet), so "Connecting…" never stays up for good.
+// - When the data channel opens with the check number on, the page shows the
+//   number before anything about the file, and receiveFile holds the offer
+//   until the recipient said it matches and the sender's page said so too.
+//   Either side saying it differs ends the attempt as "differed"; "Try again"
+//   makes a new connection with a new number.
 // - When the data channel opens, receiveFile runs the transfer. The offer
 //   screen resolves its decision with a Sink (Download or Show) or undefined
 //   (Decline). Show always collects a text in memory, never in a save dialog.
@@ -74,7 +79,7 @@ import {
 } from "../lib/format.ts";
 import { deriveSignalKey } from "../lib/keys.ts";
 import { LINK_ID_BYTES, parseRecipientLocation } from "../lib/link.ts";
-import { createRecipientPeer, type OpenPath, type Peer } from "../lib/peer.ts";
+import { createRecipientPeer, type OpenPath, type Peer, type PeerOpenInfo } from "../lib/peer.ts";
 import type { FileOffer } from "../lib/receive-file.ts";
 import { ReceiveError, receiveFile } from "../lib/receive-file.ts";
 import { peerLostProblem } from "../lib/receive-problem.ts";
@@ -90,6 +95,7 @@ import {
 } from "../lib/sink.ts";
 import { decodeText, isTextOffer } from "../lib/text-secret.ts";
 import {
+  CheckNumber,
   Direct,
   Icon,
   Page,
@@ -146,6 +152,7 @@ type Offer = FileOffer & { text: boolean };
 type View =
   | { s: "connecting" }
   | { s: "verify"; to: string; asked: boolean; sending: boolean; result: CodeResult | undefined }
+  | { s: "check"; number: string | undefined; said?: boolean }
   | { s: "refused"; problem: ProblemKey; text?: boolean }
   | { s: "offer"; offer: Offer }
   | { s: "receiving"; offer: Offer; bytes: number; left?: number | undefined }
@@ -173,6 +180,10 @@ type Attempt = {
   ended: boolean;
   /** Resolves the offer: a Sink to accept, undefined to decline. */
   decide?: ((sink: Sink | undefined) => void) | undefined;
+  /** With the check number on: resolves the recipient's own verdict. */
+  confirm?: ((matches: boolean) => void) | undefined;
+  /** The recipient said the numbers differ, so whatever ends the attempt now ends it as "differed". */
+  saidDiffers?: boolean;
   timers: Array<ReturnType<typeof setTimeout>>;
 };
 
@@ -285,6 +296,10 @@ export function ReceivePage({
     // it; wait for it so the message says why.
     const lost = () => {
       if (!current()) {
+        return;
+      }
+      if (attempt.saidDiffers) {
+        finish({ s: "failed", problem: "differed" });
         return;
       }
       if (attempt.hostGone) {
@@ -468,7 +483,7 @@ export function ReceivePage({
                     setViaRelay(true);
                   }
                 });
-                onOpen(channel, info.maxMessageSize);
+                onOpen(channel, info);
               },
               onClose: () => lost(),
             });
@@ -484,7 +499,9 @@ export function ReceivePage({
           // A refusal after the sender's first signal means the sender gave up
           // on this attempt (its peer failed or never connected), not that the
           // link is in use or used: the sender only signals a join it took.
-          if (attempt.heardSender) {
+          if (attempt.saidDiffers) {
+            finish({ s: "failed", problem: "differed" });
+          } else if (attempt.heardSender) {
             finish({ s: "failed", problem: lostMessage() });
           } else if (
             message.reason === "unknown" &&
@@ -534,18 +551,32 @@ export function ReceivePage({
       }
     });
 
-    const onOpen = (channel: RTCDataChannel, maxMessageSize: number) => {
+    const onOpen = (channel: RTCDataChannel, info: PeerOpenInfo) => {
       if (!current()) {
         return;
       }
       attempt.channelOpen = true;
       let offered: Offer | undefined;
       let timeLeft: ReturnType<typeof etaTracker> | undefined;
+      const confirm = info.check
+        ? new Promise<boolean>((resolve) => {
+            attempt.confirm = resolve;
+          })
+        : undefined;
+      if (confirm) {
+        setView({ s: "check", number: undefined });
+        void info.checkNumber.then((number) => {
+          if (current()) {
+            setView((v) => (v.s === "check" ? { ...v, number } : v));
+          }
+        });
+      }
       receiveFile({
         channel,
-        maxMessageSize,
+        maxMessageSize: info.maxMessageSize,
         secret,
         signal: attempt.abort.signal,
+        ...(confirm && { confirm }),
         onOffer(received) {
           return new Promise((resolve) => {
             if (!current()) {
@@ -579,7 +610,9 @@ export function ReceivePage({
         },
       }).then(
         (result) => {
-          if (result.type === "declined") {
+          if (result.type === "check-differs") {
+            finish({ s: "failed", problem: "differed" });
+          } else if (result.type === "declined") {
             finish({ s: "declined", text: attempt.text }, true);
           } else if (result.type === "received" && offered) {
             const sha256 = toHex(result.sha256);
@@ -677,6 +710,17 @@ export function ReceivePage({
   };
 
   const onDecline = () => attemptRef.current?.decide?.(undefined);
+
+  const onCheck = (matches: boolean) => {
+    const attempt = attemptRef.current;
+    if (view.s !== "check" || !attempt?.confirm || attempt.ended) {
+      return;
+    }
+    attempt.saidDiffers = !matches;
+    attempt.confirm(matches);
+    attempt.confirm = undefined;
+    setView({ ...view, said: matches });
+  };
 
   const onShow = () => {
     const attempt = attemptRef.current;
@@ -781,6 +825,31 @@ export function ReceivePage({
           >
             {view.sending ? verify.sending : view.result && verify.results[view.result]}
           </p>
+        </>
+      );
+      break;
+    }
+    case "check": {
+      const { check } = t.receive;
+      body = (
+        <>
+          <h1>{check.heading}</h1>
+          <CheckNumber number={view.number} />
+          {view.number && view.said === undefined && (
+            <>
+              <p>{check.read}</p>
+              <div class="flex flex-wrap gap-3">
+                <Button type="button" onClick={() => onCheck(true)}>
+                  {check.matches}
+                </Button>
+                <Button type="button" variant="outline" onClick={() => onCheck(false)}>
+                  {check.differs}
+                </Button>
+              </div>
+            </>
+          )}
+          {view.said && <p class={caption}>{check.waiting}</p>}
+          <p class={caption}>{check.why}</p>
         </>
       );
       break;
