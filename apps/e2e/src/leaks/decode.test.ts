@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   brotliCompressSync,
+  constants,
   deflateRawSync,
   deflateSync,
   gzipSync,
+  inflateRawSync,
   zstdCompressSync,
 } from "node:zlib";
 import { SeededRandom } from "./canary.ts";
@@ -142,6 +144,37 @@ test("decompresses what arrived of a stream cut short", () => {
   const data = Buffer.concat([padding, secret, random.bytes(100_000)]);
   const gzipped = gzipSync(data);
   assert.deepEqual(pathsWith(gzipped.subarray(0, gzipped.length / 2), secret), ["gzip"]);
+});
+
+test("decompresses the complete blocks of a zstd stream cut short", () => {
+  // zstd decodes whole 128 KiB blocks, so the secret sits in the first of several.
+  const data = Buffer.concat([padding, secret, Buffer.alloc(400_000, "b"), random.bytes(1000)]);
+  const zstd = zstdCompressSync(data);
+  assert.ok(pathsWith(zstd.subarray(0, zstd.length - 100), secret).includes("zstd"));
+});
+
+test("decompresses a corrupt stream up to the damage", () => {
+  const gzipHeader = Buffer.from([0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 0xff]);
+  const first = deflateRawSync(Buffer.concat([padding, secret]), {
+    finishFlush: constants.Z_SYNC_FLUSH,
+  });
+  const next = deflateRawSync(padding);
+  next[0] = (next[0] ?? 0) | 0b110; // Block type 11, which RFC 1951 reserves as an error.
+  const body = Buffer.concat([first, next]);
+  assert.throws(() => inflateRawSync(body, { finishFlush: constants.Z_SYNC_FLUSH }));
+  const decoded = decodeViews(Buffer.concat([gzipHeader, body]));
+  assert.deepEqual(
+    decoded.views.filter((view) => view.bytes.includes(secret)).map((view) => view.path),
+    ["gzip"],
+  );
+  assert.equal(decoded.truncated, false);
+});
+
+test("reports no cap for random bytes behind a false gzip magic", () => {
+  for (let i = 0; i < 20; i++) {
+    const blob = Buffer.concat([Buffer.from([0x1f, 0x8b, 8]), random.bytes(64 * 1024)]);
+    assert.equal(decodeViews(blob).truncated, false);
+  }
 });
 
 test("decompresses brotli and raw deflate when the content-encoding says so", () => {

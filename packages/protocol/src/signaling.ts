@@ -106,24 +106,26 @@ export type UpgradeRejectReason = (typeof UPGRADE_REJECT_REASONS)[number];
 export type LogReason = RefusedReason | UpgradeRejectReason | CodeResult | "unverified";
 
 /** The only events a log line may name. */
-export type LogEvent =
-  | "listening"
-  | "upgrade-rejected"
-  | "bad-message"
-  | "error"
-  | "host"
-  | "host-gone"
-  | "refused"
-  | "joined"
-  | "relay-dropped"
-  | "rate-limited"
-  | "relay"
-  | "path"
-  | "host-closed"
-  | "left"
-  | "email"
-  | "code"
-  | "verified";
+export const LOG_EVENTS = [
+  "listening",
+  "upgrade-rejected",
+  "bad-message",
+  "error",
+  "host",
+  "host-gone",
+  "refused",
+  "joined",
+  "relay-dropped",
+  "rate-limited",
+  "relay",
+  "path",
+  "host-closed",
+  "left",
+  "email",
+  "code",
+  "verified",
+] as const;
+export type LogEvent = (typeof LOG_EVENTS)[number];
 
 /** The only fields a log line may carry, besides `event`. `link` is cut to its first 6 characters. */
 export type LogFields = {

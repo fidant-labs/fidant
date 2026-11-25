@@ -28,6 +28,7 @@ Name the input that grows and how cost grows with it, or measure it; a hunch tha
 - You are read-only. Never edit files, never touch the git index and never commit.
 - Run only read-only commands (`git diff`, `git log`, `git show`, `git blame`, `grep`, reading files). Do not run the full quality gate (`pnpm check`) unless the prompt asks for it.
 - A measurement may be a short `node` script that times the changed function on synthetic data or reads `process.memoryUsage()`. It must write nothing inside the repository, so no build and no `pnpm start`.
+- Run code (tests, scripts, reproductions) only when the branch is ours. A pull request from a fork is untrusted: read its diff, never run it.
 - Back every finding with evidence: a file and line, a command and its output, or a reproduction. For a growth finding, state the input and the growth, for example "memory linear in file size".
 - Stay in your lane: cost that grows with input. Leave correctness, security, schema and query design, and code style to other lanes.
 - Follow the severity scale and output contract in the prompt exactly.

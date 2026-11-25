@@ -29,8 +29,20 @@ const dir = mkdtempSync(join(tmpdir(), "sigill-server-"));
 const root = join(dir, "dist");
 mkdirSync(join(root, "assets"), { recursive: true });
 writeFileSync(join(root, "index.html"), "<!doctype html><title>Sigill</title>");
-for (const page of ["home.en", "home.sv", "receive.en", "receive.sv"]) {
+for (const page of ["receive.en", "receive.sv"]) {
   writeFileSync(join(root, `index.${page}.html`), `<!doctype html><title>${page}</title>`);
+}
+for (const page of [
+  "index",
+  "about/index",
+  "how/index",
+  "sv/index",
+  "sv/about/index",
+  "404",
+  "sv/404",
+]) {
+  mkdirSync(join(root, "pages", page, ".."), { recursive: true });
+  writeFileSync(join(root, "pages", `${page}.html`), `<!doctype html><title>${page}</title>`);
 }
 writeFileSync(join(root, "assets", "app.js"), "console.log(1)");
 writeFileSync(join(root, "assets", "x-abc.js"), "console.log(2)");
@@ -60,7 +72,7 @@ function rawGet(
   });
 }
 
-test("serves index.html with security headers", async () => {
+test("serves the front page with security headers", async () => {
   const res = await fetch(`${base}/`);
   assert.equal(res.status, 200);
   assert.equal(res.headers.get("content-type"), "text/html; charset=utf-8");
@@ -80,42 +92,156 @@ test("serves .txt files as plain text", async () => {
   assert.equal(res.headers.get("content-type"), "text/plain; charset=utf-8");
 });
 
-test("app routes get the page copy for their link preview and language", async () => {
+/** A GET or HEAD that doesn't follow redirects. */
+async function page(path: string, init: RequestInit = {}) {
+  const res = await fetch(`${base}${path}`, { redirect: "manual", ...init });
+  return {
+    status: res.status,
+    body: await res.text(),
+    headers: Object.fromEntries(res.headers),
+  };
+}
+
+test("public pages get their own file, whatever the browser's language, with no Vary", async () => {
+  for (const [path, file] of [
+    ["/", "index"],
+    ["/about", "about/index"],
+    ["/how", "how/index"],
+    ["/sv", "sv/index"],
+    ["/sv/about", "sv/about/index"],
+  ] as const) {
+    const res = await page(path, { headers: { "accept-language": "sv-SE,sv;q=0.9" } });
+    assert.equal(res.status, 200, path);
+    assert.equal(res.body, `<!doctype html><title>${file}</title>`, path);
+    assert.equal(res.headers["content-type"], "text/html; charset=utf-8", path);
+    assert.equal(res.headers.vary, undefined, path);
+    assert.equal(res.headers["x-robots-tag"], undefined, path);
+  }
+});
+
+test("receive paths get the receive copy, Vary and noindex, valid or not", async () => {
   const linkId = "AAAAAAAAAAAAAAAAAAAAAA";
-  for (const [path, language, page] of [
-    ["/", undefined, "home.en"],
-    ["/about", "sv-SE,sv;q=0.9,en;q=0.8", "home.sv"],
-    ["/r/abc123", "sv", "home.sv"],
+  for (const [path, language, copy] of [
     [`/r/${linkId}`, "sv-SE,sv;q=0.9", "receive.sv"],
     [`/r/${linkId}/`, "en-US,sv;q=0.5", "receive.en"],
     [`/r/${linkId}`, "svx", "receive.en"],
-    [`/r/${linkId}/more`, undefined, "home.en"],
+    [`/r/${linkId}`, undefined, "receive.en"],
+    ["/r/abc123", "sv", "receive.sv"],
+    [`/r/${linkId}/more`, undefined, "receive.en"],
   ] as const) {
-    const res = language
-      ? await fetch(`${base}${path}`, { headers: { "accept-language": language } }).then(
-          async (r) => ({ status: r.status, body: await r.text(), vary: r.headers.get("vary") }),
-        )
-      : await rawGet(path).then((r) => ({ status: r.status, body: r.body, vary: r.headers.vary }));
+    const res = await page(path, language ? { headers: { "accept-language": language } } : {});
     assert.equal(res.status, 200, path);
-    assert.equal(res.body, `<!doctype html><title>${page}</title>`, `${path} ${language}`);
-    assert.equal(res.vary, "accept-language", path);
+    assert.equal(res.body, `<!doctype html><title>${copy}</title>`, `${path} ${language}`);
+    assert.equal(res.headers.vary, "accept-language", path);
+    assert.equal(res.headers["x-robots-tag"], "noindex", path);
   }
   const asset = await fetch(`${base}/assets/app.js`);
   assert.equal(asset.headers.get("vary"), null);
+});
+
+test("unknown paths get the not-found page in the path's language", async () => {
+  for (const [path, file] of [
+    ["/no-such-page", "404"],
+    ["/nope", "404"],
+    ["/About", "404"],
+    ["/how/nope", "404"],
+    ["/index", "404"],
+    ["/svenska", "404"],
+    ["/sv/nope", "sv/404"],
+    ["/sv/how/nope", "sv/404"],
+  ] as const) {
+    for (const method of ["GET", "HEAD"]) {
+      const res = await page(path, { method });
+      assert.equal(res.status, 404, `${method} ${path}`);
+      assert.equal(res.headers["content-type"], "text/html; charset=utf-8", path);
+      assert.equal(res.body, method === "GET" ? `<!doctype html><title>${file}</title>` : "");
+    }
+  }
+});
+
+test("a trailing slash and the old /technical address redirect to the page", async () => {
+  for (const [path, location] of [
+    ["/about/", "/about"],
+    ["/sv/", "/sv"],
+    ["/sv/about/?q=1", "/sv/about?q=1"],
+    ["/technical", "/how"],
+    ["/technical/", "/how"],
+  ] as const) {
+    const res = await page(path);
+    assert.equal(res.status, 301, path);
+    assert.equal(res.headers.location, location, path);
+  }
+  assert.equal((await page("/nope/")).status, 404);
+});
+
+test("never redirects off the site", async () => {
+  for (const path of ["//about/", "//evil.example/", "/%2f%2fevil.example/", "/sv//about/"]) {
+    const res = await rawGet(path);
+    assert.notEqual(res.status, 301, path);
+    assert.equal(res.headers.location, undefined, path);
+  }
 });
 
 test("caches hashed assets for a year and revalidates everything else", async () => {
   const hashed = await rawGet("/assets/x-abc.js");
   assert.equal(hashed.status, 200);
   assert.equal(hashed.headers["cache-control"], "public, max-age=31536000, immutable");
-  for (const path of ["/", "/r/abc", "/assets/nope", "/favicon.svg", "/assets/..%2findex.html"]) {
+  for (const [path, status] of [
+    ["/", 200],
+    ["/r/abc", 200],
+    ["/favicon.svg", 200],
+    ["/assets/..%2findex.html", 404],
+    ["/assets/nope", 404],
+  ] as const) {
     const res = await rawGet(path);
-    assert.equal(res.status, 200, path);
+    assert.equal(res.status, status, path);
     assert.equal(res.headers["cache-control"], "no-cache", path);
   }
   const missing = await rawGet("/assets/missing.js");
   assert.equal(missing.status, 404);
   assert.equal(missing.headers["cache-control"], undefined);
+});
+
+test("never serves the build's own HTML files directly", async () => {
+  for (const path of [
+    "/index.html",
+    "/index.HTML",
+    "/index.receive.en.html",
+    "/pages/about/index.html",
+    "/pages/404.html",
+    "/pages/404.HTML",
+  ]) {
+    const res = await rawGet(path);
+    assert.equal(res.status, 404, path);
+    assert.match(res.body, /<title>404<\/title>/, path);
+  }
+});
+
+test("a receive link gets the receive copy even when its last segment has a dot", async () => {
+  const res = await rawGet("/r/a.b");
+  assert.equal(res.status, 200);
+  assert.match(res.body, /receive\.en/);
+  assert.equal(res.headers["x-robots-tag"], "noindex");
+});
+
+test("a target starting with // is a path, not a host", async () => {
+  const res = await rawGet("//x/about");
+  assert.equal(res.status, 404);
+  assert.match(res.body, /<title>404<\/title>/);
+  assert.equal(res.headers.location, undefined);
+});
+
+test("serves an absolute-form target by its path and refuses one that is not http(s)", async () => {
+  const about = await rawGet("http://example.com/about");
+  assert.equal(about.status, 200);
+  const slashes = await rawGet("http://example.com//x/about");
+  assert.equal(slashes.status, 404);
+  assert.equal(slashes.headers.location, undefined);
+  for (const target of ["ws://x/about", "file:///about", "*"]) {
+    const res = await rawGet(target);
+    assert.equal(res.status, 400, target);
+    assert.ok(res.headers["content-security-policy"], target);
+  }
 });
 
 test("refuses paths outside the web root", async () => {
@@ -162,13 +288,19 @@ test("serves over https with a generated certificate", async () => {
   }
 });
 
-/** Opens a /signal socket on a TLS server and returns its raw text frames after the hello. */
+/**
+ * Opens a /signal socket on a TLS server and returns its raw text frames after the hello.
+ * Adds the socket to `opened` before connecting, so a caller's `finally` can close it even
+ * when this throws.
+ */
 async function rawSocket(
   port: number,
   ca: Buffer,
+  opened: WsClient[],
 ): Promise<{ socket: WsClient; next(): Promise<string> }> {
   // Trusts only the server's own certificate, so TLS checks stay on.
   const socket = new WsClient(`wss://localhost:${port}/signal`, { ca });
+  opened.push(socket);
   const frames: string[] = [];
   const waiting: ((frame: string) => void)[] = [];
   socket.on("message", (data) => {
@@ -212,11 +344,12 @@ for (const { turn, allow, name } of iceCases) {
       ice: turn ? { urls, secret } : undefined,
       log: (event, fields) => logs.push(JSON.stringify({ event, fields })),
     });
-    const { port } = server.address() as AddressInfo;
-    const ca = ensureCert(certDir, []).cert;
-    const host = await rawSocket(port, ca);
-    const guest = await rawSocket(port, ca);
+    const opened: WsClient[] = [];
     try {
+      const { port } = server.address() as AddressInfo;
+      const ca = ensureCert(certDir, []).cert;
+      const host = await rawSocket(port, ca, opened);
+      const guest = await rawSocket(port, ca, opened);
       const link = "AAAAAAAAAAAAAAAAAAAAAA";
       const attempt = "ZZZZZZZZZZZZZZZZZZZZZZ";
       host.socket.send(JSON.stringify({ t: "host", links: [link], turn: allow }));
@@ -251,8 +384,9 @@ for (const { turn, allow, name } of iceCases) {
         }
       }
     } finally {
-      host.socket.terminate();
-      guest.socket.terminate();
+      for (const socket of opened) {
+        socket.terminate();
+      }
       server.close();
     }
   });
@@ -389,8 +523,8 @@ test("answers 405 to the relay routes for methods other than GET and HEAD", asyn
 test("paths that only start like a relay route go to the static files", async () => {
   for (const path of ["/relay-statuses", "/relay-secrets/loc"]) {
     const res = await call(relayPort, path);
-    assert.equal(res.status, 200, path);
-    assert.equal(res.body, "<!doctype html><title>home.en</title>", path);
+    assert.equal(res.status, 404, path);
+    assert.equal(res.body, "<!doctype html><title>404</title>", path);
   }
 });
 
@@ -438,11 +572,12 @@ test("hands the first relay up's ICE servers, with its own credentials, in joine
     relays,
     log: (event, fields) => logs.push(JSON.stringify({ event, fields })),
   });
-  const { port } = server.address() as AddressInfo;
-  const ca = ensureCert(join(dir, "certs"), []).cert;
-  const host = await rawSocket(port, ca);
-  const guest = await rawSocket(port, ca);
+  const opened: WsClient[] = [];
   try {
+    const { port } = server.address() as AddressInfo;
+    const ca = ensureCert(join(dir, "certs"), []).cert;
+    const host = await rawSocket(port, ca, opened);
+    const guest = await rawSocket(port, ca, opened);
     const link = "AAAAAAAAAAAAAAAAAAAAAA";
     const attempt = "ZZZZZZZZZZZZZZZZZZZZZZ";
     host.socket.send(JSON.stringify({ t: "host", links: [link], turn: true }));
@@ -467,8 +602,9 @@ test("hands the first relay up's ICE servers, with its own credentials, in joine
       );
     }
   } finally {
-    host.socket.terminate();
-    guest.socket.terminate();
+    for (const socket of opened) {
+      socket.terminate();
+    }
     server.close();
   }
 });

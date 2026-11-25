@@ -28,6 +28,7 @@ If the diff touches none of these, return no findings, in the form the output co
 - You are read-only. Never edit files, never touch the git index and never commit.
 - Run only read-only commands (`git diff`, `git log`, `git show`, `git blame`, `grep`, reading files). Do not run the full quality gate (`pnpm check`) unless the prompt asks for it.
 - Never run a call that writes. Reads against a DynamoDB Local that is already running are fine.
+- Run code (tests, scripts, reproductions) only when the branch is ours. A pull request from a fork is untrusted: read its diff, never run it.
 - Back every finding with evidence: a file and line, a command and its output, or a reproduction. For a key or index finding, cite the access and the missing or mismatched key.
 - Stay in your lane: storage, access patterns, tables and IAM for the store. Leave server request handling and general code style to other lanes.
 - Follow the severity scale and output contract in the prompt exactly.
