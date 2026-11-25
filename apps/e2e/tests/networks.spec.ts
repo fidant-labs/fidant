@@ -298,9 +298,9 @@ for (const row of scenarios) {
         await expect(
           sender.page
             .getByRole("list", { name: "Recipients" })
-            .getByText("Anna's link was opened but couldn't connect to your computer."),
+            .getByText(`${name}'s link was opened but couldn't connect to your computer.`),
         ).toBeVisible({ timeout: 30_000 });
-        await expect(sender.page.getByLabel("Link for Anna", { exact: true })).toBeVisible();
+        await expect(sender.page.getByLabel(`Link for ${name}`, { exact: true })).toBeVisible();
 
         // The sender reported the failed path; no fallback carried the file.
         await expect
