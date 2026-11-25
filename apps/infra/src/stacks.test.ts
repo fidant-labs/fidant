@@ -979,6 +979,18 @@ test("the relay cap checks the app box's and the relay box's pooled traffic ever
   box.hasResourceProperties("AWS::Lambda::EventInvokeConfig", { MaximumRetryAttempts: 0 });
 });
 
+test("every box the relay cap counts is a micro_3_0 bundle, which the 2 TB pool per box assumes", () => {
+  const box = appBox();
+  const listed = sdkCall(relayCapFunction(box).Environment.Variables.BOXES).map(
+    (entry: { box: string }) => entry.box.slice("{Ref:".length, -1),
+  );
+  const instances = box.findResources("AWS::Lightsail::Instance");
+  assert.equal(listed.length, 2);
+  for (const id of listed) {
+    assert.equal(instances[id]?.Properties.BundleId, "micro_3_0", id);
+  }
+});
+
 test("the relay cap may only read instance metrics, set the two boxes' ports, and keep its state", () => {
   const box = appBox();
   const [appId] = instanceNamed(box, "^fidant-app-");
@@ -1046,6 +1058,9 @@ test("relay traffic past 80 %, the cap, and a failing cap email the alert addres
       assert.equal(alarm.ComparisonOperator, "GreaterThanOrEqualToThreshold");
       assert.deepEqual(alarm.Dimensions, Dimensions);
       assert.equal(alarm.Statistic, "Maximum");
+      assert.equal(alarm.Period, 300);
+      assert.equal(alarm.EvaluationPeriods, 1);
+      assert.equal(alarm.TreatMissingData, "ignore");
     }
   }
 });

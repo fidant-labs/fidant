@@ -14,15 +14,8 @@ export type StoredState = {
   capped: boolean;
 };
 export type BoxPorts = { box: string; openPorts: Port[]; cappedPorts: Port[] };
-export type CapConfig = {
-  boxes: BoxPorts[];
-  allowanceBytes: number;
-  budgetUsd: number;
-  usdPerGb: number;
-  relays: string[];
-  statusUrl: string;
-};
 export type Pricing = { allowanceBytes: number; budgetUsd: number; usdPerGb: number };
+export type CapConfig = Pricing & { boxes: BoxPorts[]; relays: string[]; statusUrl: string };
 export type RelayStatus = { id: string; up: boolean }[];
 export type CapDeps = {
   boxTraffic(box: string, start: Date, end: Date): Promise<Traffic>;
@@ -73,13 +66,7 @@ export function parseState(json: string | undefined): StoredState | undefined {
   ) {
     throw new Error("relay cap state is malformed");
   }
-  const copy = Object.fromEntries(
-    Object.entries(boxes as Record<string, Traffic | number>).map(([box, count]) => [
-      box,
-      typeof count === "number" ? count : { in: count.in, out: count.out },
-    ]),
-  );
-  return { month: value.month, boxes: copy, capped: value.capped };
+  return { month: value.month, boxes, capped: value.capped };
 }
 
 export function decide(
@@ -93,8 +80,8 @@ export function decide(
     for (const [box, count] of Object.entries(previous.boxes)) {
       if (typeof count !== "number") {
         boxes[box] = { ...count };
-      } else if (!(box in counts)) {
-        // ponytail: a count from before SIG-154 is in plus out; drop once no such state exists
+      } else if (!Object.hasOwn(counts, box)) {
+        // ponytail: the old number shape (in plus out, from the byte cap and its rollback) is kept as outbound for a box no longer listed
         boxes[box] = { in: 0, out: count };
       }
     }

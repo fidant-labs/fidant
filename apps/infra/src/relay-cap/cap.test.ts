@@ -43,11 +43,11 @@ test("each box's in and out never go down within a month", () => {
 });
 
 test("a replaced box's traffic still counts toward the month", () => {
-  const previous = { month: "2026-11", boxes: { old: t(2.2 * TB) }, capped: false };
-  const result = decide(previous, "2026-11", { new: t(2.1 * TB) }, price);
-  assert.equal(result.total, 4.3 * TB);
+  const previous = { month: "2026-11", boxes: { old: t(2200 * GB) }, capped: false };
+  const result = decide(previous, "2026-11", { new: t(2100 * GB) }, price);
+  assert.equal(result.total, 4300 * GB);
   assert.equal(result.ports, "capped");
-  assert.deepEqual(result.state.boxes, { old: t(2.2 * TB), new: t(2.1 * TB) });
+  assert.deepEqual(result.state.boxes, { old: t(2200 * GB), new: t(2100 * GB) });
 });
 
 test("reaching the budget caps the relay ports, and every later run caps them again", () => {
@@ -101,53 +101,60 @@ test("a state from before in and out were kept apart is read and migrated", () =
   });
 });
 
-const cost = (inbound: number, out: number, counts = [t(out, inbound)]) =>
+const cost = (...counts: { in: number; out: number }[]) =>
   decide(undefined, "2026-11", Object.fromEntries(counts.map((c, i) => [`b${i}`, c])), price);
 
-test("criterion 1: 10 TB in and no traffic out cost nothing and keep the ports", () => {
-  const result = cost(0, 0, [t(0, 5 * TB), t(0, 5 * TB)]);
+test("10 TB in and no traffic out cost nothing and keep the ports", () => {
+  const result = cost(t(0, 5 * TB), t(0, 5 * TB));
   assert.equal(result.overageUsd, 0);
   assert.equal(result.ports, "keep");
 });
 
-test("criterion 2: 10 TB in and 100 GB out cost 9 USD and keep the ports", () => {
-  const result = cost(10 * TB, 100 * GB);
+test("10 TB in and 100 GB out cost 9 USD and keep the ports", () => {
+  const result = cost(t(100 * GB, 10 * TB));
   assert.equal(result.overageUsd.toFixed(6), "9.000000");
   assert.equal(result.ports, "keep");
 });
 
-test("criterion 3: 4.23 TB out costs 20.7 USD and caps, 4.2 TB costs 18 USD and keeps", () => {
-  const over = cost(0, 4.23 * TB);
+test("4.23 TB out costs 20.7 USD and caps, 4.2 TB costs 18 USD and keeps", () => {
+  const over = cost(t(4230 * GB));
   assert.equal(over.overageUsd.toFixed(6), "20.700000");
   assert.equal(over.ports, "capped");
-  assert.equal(decide(over.state, "2026-11", { b0: t(4.23 * TB) }, price).ports, "capped");
-  const under = cost(0, 4.2 * TB);
+  assert.equal(decide(over.state, "2026-11", { b0: t(4230 * GB) }, price).ports, "capped");
+  const under = cost(t(4200 * GB));
   assert.equal(under.overageUsd.toFixed(6), "18.000000");
   assert.equal(under.ports, "keep");
 });
 
-test("criterion 4: the estimate matches AWS pricing example 2 (4 TB pool, 2.2 TB in, 2.1 TB out)", () => {
-  assert.equal(cost(2.2 * TB, 2.1 * TB).overageUsd.toFixed(6), (0.3 * 1000 * 0.09).toFixed(6));
+test("the estimate matches AWS pricing example 2 (4 TB pool, 2.2 TB in, 2.1 TB out)", () => {
+  assert.equal(cost(t(2100 * GB, 2200 * GB)).overageUsd.toFixed(6), (0.3 * 1000 * 0.09).toFixed(6));
 });
 
-test("criterion 4: the estimate stays above the bill in AWS FAQ example 1 (1 TB pool, 600 GB in, 700 GB out)", () => {
+test("an estimate exactly at the budget caps", () => {
+  const exact = { allowanceBytes: TB, budgetUsd: 20, usdPerGb: 0.5 };
+  const result = decide(undefined, "2026-11", { a: t(TB + 40 * GB) }, exact);
+  assert.equal(result.overageUsd, 20);
+  assert.equal(result.ports, "capped");
+});
+
+test("the estimate stays above the bill in AWS FAQ example 1 (1 TB pool, 600 GB in, 700 GB out)", () => {
   const pool = { allowanceBytes: TB, budgetUsd: 20, usdPerGb: 0.09 };
   const result = decide(undefined, "2026-11", { a: t(700 * GB, 600 * GB) }, pool);
   assert.equal(result.overageUsd.toFixed(6), (300 * 0.09).toFixed(6));
   assert.ok(result.overageUsd > 100 * 0.09);
 });
 
-test("criterion 5: the estimate is never more than outbound traffic at the overage price", () => {
+test("the estimate is never more than outbound traffic at the overage price", () => {
   for (const inbound of [0, 1 * TB, 4 * TB, 10 * TB]) {
     for (const out of [0, 100 * GB, 2 * TB, 4 * TB, 5 * TB, 20 * TB]) {
-      const { overageUsd } = cost(inbound, out);
+      const { overageUsd } = cost(t(out, inbound));
       assert.ok(overageUsd >= 0);
       assert.ok(overageUsd <= (out / 1e9) * 0.09 + 1e-9, `${inbound} ${out}`);
     }
   }
 });
 
-test("criterion 12: an old-shape state capped by the byte limit reopens both boxes", async () => {
+test("an old-shape state capped by the byte limit reopens both boxes", async () => {
   const state = JSON.stringify({
     month: "2026-11",
     boxes: { "box-1": 1_000_000_000_000, "relay-1": 900_000_000_000 },
@@ -241,15 +248,12 @@ test("config comes from the environment and refuses to run without it", () => {
     relays: ["sto"],
     statusUrl: "https://fidant.se/relay-status",
   });
-  for (const name of ["ALLOWANCE_BYTES", "BUDGET_USD", "USD_PER_GB"]) {
-    assert.equal(
-      configFromEnv({ ...env, [name]: "1.5" })[
-        { ALLOWANCE_BYTES: "allowanceBytes", BUDGET_USD: "budgetUsd", USD_PER_GB: "usdPerGb" }[
-          name
-        ] as "budgetUsd"
-      ],
-      1.5,
-    );
+  for (const [name, key] of [
+    ["ALLOWANCE_BYTES", "allowanceBytes"],
+    ["BUDGET_USD", "budgetUsd"],
+    ["USD_PER_GB", "usdPerGb"],
+  ] as const) {
+    assert.equal(configFromEnv({ ...env, [name]: "1.5" })[key], 1.5);
     for (const bad of [undefined, "", "abc", "0", "0.0", "-1", "1e3", "1.", ".5", "1,5"]) {
       assert.throws(() => configFromEnv({ ...env, [name]: bad }), new RegExp(name));
     }
@@ -371,6 +375,20 @@ test("a run sums the month so far over every box, caps each box's ports, then sa
     boxes: { "box-1": t(capOut), "relay-1": t(capOut) },
     capped: true,
   });
+});
+
+test("a run logs the in plus out total as the bytes and the estimate as the overage", async () => {
+  const lines: string[] = [];
+  const { deps } = fake({
+    async boxTraffic() {
+      return t(2 * TB, 3 * TB);
+    },
+    log: (line) => lines.push(line),
+  });
+  await runCap(deps, config, now);
+  assert.equal(lines.length, 2);
+  assert.equal(JSON.parse(lines[0] as string).RelayMonthBytes, 10 * TB);
+  assert.equal(JSON.parse(lines[1] as string).RelayMonthOverageUsd.toFixed(6), "360.000000");
 });
 
 test("a run in a new month reopens every box's ports with its full list", async () => {
