@@ -16,7 +16,7 @@
     "lint": "biome ci .",
     "format": "biome check --write .",
     "typecheck": "pnpm -r --if-present run typecheck",
-    "test": "pnpm -r --if-present run test",
+    "test": "pnpm -r --if-present run test && node --test '.claude/scripts/*.test.ts'",
     "prepare": "lefthook install",
     "lighthouse": "pnpm --filter @sigill/web build && pnpm --filter @sigill/web lighthouse"
   },
