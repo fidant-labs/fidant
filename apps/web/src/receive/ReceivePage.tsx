@@ -863,6 +863,7 @@ export function ReceivePage({
             {view.said && check.waiting}
           </p>
           <p class={caption}>{check.why}</p>
+          <p class={caption}>{check.expires}</p>
         </>
       );
       break;

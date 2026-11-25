@@ -480,6 +480,7 @@ export const en = {
       differs: "They said it differs",
       waiting: "Waiting for the sender to say it matches too.",
       why: "The number comes from this connection. If someone sat between you and the sender, your screens would show different numbers.",
+      expires: "The check expires after 5 minutes.",
     },
     whatHappened: "What happened",
     encryptionLabel: "Encryption",

@@ -457,6 +457,7 @@ export const sv: Messages = {
       differs: "Avsändaren sa att det skiljer sig",
       waiting: "Väntar på att avsändaren också säger att det stämmer.",
       why: "Numret kommer från den här anslutningen. Om någon satt mellan dig och avsändaren skulle era skärmar visa olika nummer.",
+      expires: "Kontrollen går ut efter 5 minuter.",
     },
     whatHappened: "Vad som hände",
     encryptionLabel: "Kryptering",
