@@ -695,8 +695,6 @@ test("the committed config points sto.relay.fidant.se at the relay box and no ot
     records.map(({ Properties: p }) => [p.Name, p.Type, p.ResourceRecords]),
     [["sto.relay.fidant.se.", "A", ["13.51.1.111"]]],
   );
-  committed.resourcePropertiesCountIs(recordSet, { Name: "sto.relay.fidant.org.", Type: "A" }, 0);
-  committed.resourcePropertiesCountIs(recordSet, { Name: "sto.relay.fidant.eu.", Type: "A" }, 0);
 });
 
 test("every relay address belongs to a relay in the config", () => {
@@ -706,6 +704,7 @@ test("every relay address belongs to a relay in the config", () => {
   }
 });
 
+// Changing this name replaces the app box, and the site is down for 5–10 minutes.
 test("the app box keeps its name", () => {
   const [, instance] = instanceNamed(appBox(), "^fidant-app-");
   assert.equal(instance?.Properties.InstanceName, "fidant-app-56e112e1");
