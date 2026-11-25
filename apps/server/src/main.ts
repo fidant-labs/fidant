@@ -101,6 +101,14 @@ if (mailUrl || mailFrom || mailPasswordFile || publicOrigin) {
   }
 }
 
+// For tests only: how long after start a join for a link nobody hosts is refused as `starting`
+// (default STARTING_MS in @sigill/protocol, docs/decisions/0018-restart-warm-up-window.md).
+const startingEnv = process.env.STARTING_MS;
+if (startingEnv !== undefined && !/^\d+$/.test(startingEnv)) {
+  console.error("STARTING_MS must be a whole number of milliseconds.");
+  process.exit(1);
+}
+
 const lanAddresses = Object.values(networkInterfaces())
   .flat()
   .flatMap((address) => (address?.family === "IPv4" && !address.internal ? [address.address] : []));
@@ -110,7 +118,7 @@ const lanAddresses = Object.values(networkInterfaces())
 // names, metadata, keys or relay payloads. Messages for humans go to stderr.
 const log: Logger = (event, fields) => console.log(JSON.stringify({ event, ...fields }));
 
-const server = await startServer({
+const { server, signaling } = await startServer({
   port: Number(process.env.PORT ?? 8443),
   root,
   certDir: process.env.CERT_DIR ?? fileURLToPath(new URL("../../../.certs/", import.meta.url)),
@@ -119,10 +127,19 @@ const server = await startServer({
   relays,
   log,
   mail,
+  startingMs: startingEnv === undefined ? undefined : Number(startingEnv),
 });
 
 const { port } = server.address() as AddressInfo;
 log("listening", { port });
+
+// On a restart, close every socket with 1012 so browsers reconnect at once instead of counting a
+// failure. Exit within a second even if a socket never answers its close frame.
+process.once("SIGTERM", () => {
+  signaling.close();
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 1000).unref();
+});
 // Only for a person at a terminal. Under systemd stderr goes to the journal, which should hold
 // nothing but the allowlisted log lines, not the box's addresses.
 if (process.stderr.isTTY) {
