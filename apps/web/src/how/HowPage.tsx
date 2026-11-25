@@ -1,15 +1,14 @@
+import type { ComponentChildren } from "preact";
 import { useEffect, useRef } from "preact/hooks";
 import { useI18n } from "../i18n/I18n.tsx";
 import { display, Link } from "../ui.tsx";
-import { Drawing } from "./Drawing.tsx";
+import { type ArtId, Drawing } from "./Drawing.tsx";
 
 const SECTIONS = ["stays", "link", "open", "direct", "relay", "never"] as const;
 
-export function HowPage() {
-  const { t } = useI18n();
-  const h = t.how;
+/** A ref for the page's <main>: each drawing in it starts its animation once half of it is in view. */
+export function useRevealDrawings() {
   const main = useRef<HTMLElement>(null);
-
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
@@ -22,11 +21,47 @@ export function HowPage() {
       },
       { threshold: 0.5 },
     );
-    for (const drawing of main.current?.querySelectorAll("section > svg") ?? []) {
+    for (const drawing of main.current?.querySelectorAll("[data-art]") ?? []) {
       observer.observe(drawing);
     }
     return () => observer.disconnect();
   }, []);
+  return main;
+}
+
+/** A section with its text on the left and, from small screens up, its drawing on the right. */
+export function DrawnSection({
+  id,
+  art,
+  heading,
+  children,
+}: {
+  id: string;
+  art?: ArtId | undefined;
+  heading: string;
+  children: ComponentChildren;
+}) {
+  return (
+    <section
+      id={id}
+      aria-labelledby={`${id}-heading`}
+      class={`mt-12 scroll-mt-20 border-t border-border pt-12 ${art ? "sm:grid sm:grid-cols-[1fr_12rem] sm:items-center sm:gap-x-8 md:grid-cols-[1fr_15rem] md:gap-x-12" : ""}`}
+    >
+      {art && <Drawing id={art} />}
+      <div>
+        <h2 id={`${id}-heading`} class={`${display} m-0 mb-4 text-[1.75rem] sm:text-[2.1rem]`}>
+          {heading}
+        </h2>
+        {children}
+      </div>
+    </section>
+  );
+}
+
+export function HowPage() {
+  const { t } = useI18n();
+  const h = t.how;
+  const main = useRevealDrawings();
 
   return (
     <main ref={main} class="mx-auto max-w-4xl px-4 pt-32 pb-20 lg:pt-40">
@@ -35,27 +70,13 @@ export function HowPage() {
       {SECTIONS.map((id) => {
         const { heading, body } = h.sections[id];
         return (
-          <section
-            key={id}
-            id={id}
-            aria-labelledby={`${id}-heading`}
-            class="mt-12 scroll-mt-20 border-t border-border pt-12 sm:grid sm:grid-cols-[1fr_12rem] sm:items-center sm:gap-x-8 md:grid-cols-[1fr_15rem] md:gap-x-12"
-          >
-            <Drawing id={id} />
-            <div>
-              <h2
-                id={`${id}-heading`}
-                class={`${display} m-0 mb-4 text-[1.75rem] sm:text-[2.1rem]`}
-              >
-                {heading}
-              </h2>
-              {body.map((paragraph) => (
-                <p key={paragraph} class="max-w-2xl">
-                  {paragraph}
-                </p>
-              ))}
-            </div>
-          </section>
+          <DrawnSection key={id} id={id} art={id} heading={heading}>
+            {body.map((paragraph) => (
+              <p key={paragraph} class="max-w-2xl">
+                {paragraph}
+              </p>
+            ))}
+          </DrawnSection>
         );
       })}
       <div class="mt-12 border-t border-border pt-12">

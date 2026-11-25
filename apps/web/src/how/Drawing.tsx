@@ -81,6 +81,7 @@ function Server({ x, y }: { x: number; y: number }) {
 function Art({ view, children }: { view: string; children: ComponentChildren }) {
   return (
     <svg
+      data-art=""
       class="group/art mb-6 w-full max-w-64 sm:col-start-2 sm:row-start-1 sm:mb-0"
       viewBox={view}
       fill="none"
@@ -93,6 +94,20 @@ function Art({ view, children }: { view: string; children: ComponentChildren }) 
     >
       {children}
     </svg>
+  );
+}
+
+function relayArt() {
+  return (
+    <Art view="0 0 240 144">
+      <path d="M94 50 72 72m74-22 22 22" class="text-muted-foreground" />
+      <Server x={120} y={24} />
+      <Computer x={44} y={108} />
+      <Computer x={196} y={108} />
+      <g class={`${animate.relay} [--art-from:-152px_0] [--art-via:-76px_-76px]`}>
+        <LockedFile x={196} y={100} />
+      </g>
+    </Art>
   );
 }
 
@@ -143,25 +158,10 @@ const ART = {
   ),
   direct: (
     <Art view="0 38 240 68">
-      <path d="M82 64h76" class="text-muted-foreground" />
-      <Computer x={44} y={72} />
-      <Computer x={196} y={72} />
-      <g class={`${animate.travel} [--art-from:-152px_0]`}>
-        <LockedFile x={196} y={64} />
-      </g>
+      <DirectPath y={72} />
     </Art>
   ),
-  relay: (
-    <Art view="0 0 240 144">
-      <path d="M94 50 72 72m74-22 22 22" class="text-muted-foreground" />
-      <Server x={120} y={24} />
-      <Computer x={44} y={108} />
-      <Computer x={196} y={108} />
-      <g class={`${animate.relay} [--art-from:-152px_0] [--art-via:-76px_-76px]`}>
-        <LockedFile x={196} y={100} />
-      </g>
-    </Art>
-  ),
+  relay: relayArt(),
   never: (
     <Art view="0 18 240 106">
       <Server x={42} y={72} />
@@ -184,6 +184,220 @@ const ART = {
   ),
 };
 
-export function Drawing({ id }: { id: keyof typeof ART }) {
-  return ART[id];
+/** A file travelling straight from the left computer to the right one, both at height `y`. */
+function DirectPath({ y }: { y: number }) {
+  return (
+    <>
+      <path d={`M82 ${y - 8}h76`} class="text-muted-foreground" />
+      <Computer x={44} y={y} />
+      <Computer x={196} y={y} />
+      <g class={`${animate.travel} [--art-from:-152px_0]`}>
+        <LockedFile x={196} y={y - 8} />
+      </g>
+    </>
+  );
+}
+
+// The /technical drawings, in the page's order.
+const TECHNICAL_ART = {
+  parts: (
+    <Art view="0 0 240 144">
+      <path d="M94 50 72 72m74-22 22 22" stroke-dasharray="3 5" class="text-muted-foreground" />
+      <Server x={120} y={24} />
+      <Computer x={44} y={108} />
+      <Computer x={196} y={108} />
+      <Drawn d="M82 100h76" />
+    </Art>
+  ),
+  keys: (
+    <Art view="0 12 240 120">
+      <At x={48} y={72} s={3}>
+        {ICONS.key}
+      </At>
+      <Drawn d="M88 72c30 0 30-32 60-32M88 72c30 0 30 32 60 32" class="text-muted-foreground" />
+      <g class={`${animate.arrive} [--art-from:-16px_0]`}>
+        <At x={184} y={40} s={2}>
+          {ICONS.key}
+        </At>
+        <At x={184} y={104} s={2}>
+          {ICONS.key}
+        </At>
+      </g>
+    </Art>
+  ),
+  signal: (
+    <Art view="0 0 240 144">
+      <path d="M94 50 72 72m74-22 22 22" class="text-muted-foreground" />
+      <Server x={120} y={24} />
+      <Computer x={44} y={108} />
+      <Computer x={196} y={108} />
+      <g class={`fill-background ${animate.arrive} [--art-from:0_-10px]`}>
+        <At x={83} y={61} s={1.2}>
+          {ICONS.lock}
+        </At>
+        <At x={157} y={61} s={1.2}>
+          {ICONS.lock}
+        </At>
+      </g>
+    </Art>
+  ),
+  layers: (
+    <Art view="0 34 240 72">
+      <rect x="80" y="40" width="80" height="48" rx="24" class="text-muted-foreground" />
+      <Computer x={44} y={72} />
+      <Computer x={196} y={72} />
+      <g class={`${animate.arrive} [--art-from:0_8px]`}>
+        <LockedFile x={120} y={64} />
+      </g>
+    </Art>
+  ),
+  frames: (
+    <Art view="0 44 240 56">
+      <g class={`${animate.arrive} [--art-from:-24px_0]`}>
+        <rect x="8" y="50" width="30" height="44" rx="3" stroke-dasharray="3 4" />
+        <path d="M8 60h30" stroke-dasharray="3 4" />
+        {[46, 84, 122, 160, 198].map((x) => (
+          <g key={x}>
+            <rect x={x} y="50" width="30" height="44" rx="3" />
+            <path d={`M${x} 60h30`} />
+            <At x={x + 15} y={77} s={0.8}>
+              {ICONS.lock}
+            </At>
+          </g>
+        ))}
+      </g>
+    </Art>
+  ),
+  check: (
+    <Art view="0 28 240 88">
+      <At x={64} y={72} s={3}>
+        {ICONS.file}
+      </At>
+      <path d="M104 72h36m-8-8 8 8-8 8" class="text-muted-foreground" />
+      <circle cx="184" cy="72" r="28" />
+      <Drawn d="M168.6 73.1l9.9 9.9 20.9-20.9" class="stroke-3" />
+    </Art>
+  ),
+  padding: (
+    <Art view="0 32 240 84">
+      <rect
+        x="10"
+        y="38"
+        width="220"
+        height="24"
+        rx="4"
+        stroke-dasharray="4 5"
+        class="text-muted-foreground"
+      />
+      <rect x="10" y="38" width="176" height="24" rx="4" />
+      <g class={`${animate.arrive} [--art-from:0_-12px]`}>
+        {[10, 55, 100, 145, 190].map((x) => (
+          <rect key={x} x={x} y="86" width="40" height="24" rx="4" />
+        ))}
+      </g>
+    </Art>
+  ),
+  recipients: (
+    <Art view="0 0 240 144">
+      <At x={52} y={72} s={3}>
+        {ICONS.computer}
+      </At>
+      <Drawn d="M82 64 176 24M82 64h94M82 64l94 44" class="text-muted-foreground" />
+      {[28, 72, 116].map((y) => (
+        <At key={y} x={196} y={y} s={2}>
+          {ICONS.computer}
+        </At>
+      ))}
+    </Art>
+  ),
+  site: (
+    <Art view="0 18 240 108">
+      <rect x="30" y="22" width="180" height="100" rx="8" />
+      <path d="M30 50h180" />
+      <At x={50} y={36} s={1.2}>
+        {ICONS.lock}
+      </At>
+      <path d="M68 36h120" class="text-muted-foreground" />
+      <At x={120} y={86} s={2.2} class="text-muted-foreground">
+        {ICONS.eye}
+      </At>
+      <Strike d="m100 66 40 40" />
+    </Art>
+  ),
+  file: (
+    <Art view="0 20 240 104">
+      <g class="fill-background">
+        <At x={120} y={72} s={3.5}>
+          {ICONS.file}
+        </At>
+        <g class={`${animate.arrive} [--art-from:0_8px]`}>
+          <At x={120} y={80} s={1.8}>
+            {ICONS.lock}
+          </At>
+        </g>
+      </g>
+    </Art>
+  ),
+  secret: (
+    <Art view="0 20 240 104">
+      <rect x="30" y="40" width="180" height="64" rx="12" />
+      <g class={`fill-current ${animate.arrive} [--art-from:-16px_0]`}>
+        {[66, 93, 120, 147, 174].map((x) => (
+          <circle key={x} cx={x} cy="72" r="6" stroke="none" />
+        ))}
+      </g>
+    </Art>
+  ),
+  emailed: (
+    <Art view="0 20 240 120">
+      <rect x="40" y="30" width="140" height="88" rx="8" />
+      <path d="m40 40 70 44 70-44" />
+      <g class={`fill-background ${animate.arrive} [--art-from:-16px_0]`}>
+        <At x={192} y={104} s={2.5}>
+          {ICONS.key}
+        </At>
+      </g>
+    </Art>
+  ),
+  // The connection modes, smaller in a grid of cards.
+  local: (
+    <Art view="0 12 240 104">
+      <rect
+        x="2"
+        y="16"
+        width="236"
+        height="96"
+        rx="16"
+        stroke-dasharray="3 5"
+        class="text-muted-foreground"
+      />
+      <DirectPath y={72} />
+    </Art>
+  ),
+  stun: (
+    <Art view="0 0 240 144">
+      <path d="M104 40 72 64m64-24 32 24" stroke-dasharray="3 5" class="text-muted-foreground" />
+      <At x={120} y={24} s={1.8} class="text-muted-foreground">
+        {ICONS.server}
+      </At>
+      <DirectPath y={108} />
+    </Art>
+  ),
+  turn: relayArt(),
+  norelay: (
+    <Art view="0 0 240 144">
+      <path d="M94 50 72 72m74-22 22 22" stroke-dasharray="3 5" class="text-muted-foreground" />
+      <Server x={120} y={24} />
+      <Strike d="m98 4 44 42" />
+      <DirectPath y={108} />
+    </Art>
+  ),
+};
+
+const ALL_ART = { ...ART, ...TECHNICAL_ART };
+
+export type ArtId = keyof typeof ALL_ART;
+
+export function Drawing({ id }: { id: ArtId }) {
+  return ALL_ART[id];
 }

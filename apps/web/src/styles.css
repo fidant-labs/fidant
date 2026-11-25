@@ -130,7 +130,7 @@
     }
   }
 
-  /* The /how drawings: paused until HowPage marks a drawing data-seen; the resting style is the last frame. */
+  /* The /how and /technical drawings: paused until useRevealDrawings marks a drawing data-seen; the resting style is the last frame. */
   @keyframes art-arrive {
     from {
       translate: var(--art-from);

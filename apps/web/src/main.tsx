@@ -7,6 +7,7 @@ import { LandingPage } from "./landing/LandingPage.tsx";
 import { PrivacyPage } from "./privacy/PrivacyPage.tsx";
 import { ReceivePage } from "./receive/ReceivePage.tsx";
 import { SendPage } from "./send/SendPage.tsx";
+import { TechnicalPage } from "./technical/TechnicalPage.tsx";
 import { applyTheme, initialTheme, type Theme } from "./theme.ts";
 import { Footer, Header, Page, Problem, type Route } from "./ui.tsx";
 
@@ -107,10 +108,10 @@ function App() {
         {/* The privacy page uses no crypto, so it opens even without a secure connection. */}
         {route === "privacy" && <PrivacyPage />}
         {route === "how" && <HowPage />}
-        {(route === "about" ||
-          route === "terms" ||
-          route === "security" ||
-          route === "technical") && <InfoPage page={route} />}
+        {route === "technical" && <TechnicalPage />}
+        {(route === "about" || route === "terms" || route === "security") && (
+          <InfoPage page={route} />
+        )}
         {!secure && holdsTransfer && <InsecurePage />}
         {secure && kept.current.has("receive") && (
           <div id="receive" hidden={route !== "receive"}>
