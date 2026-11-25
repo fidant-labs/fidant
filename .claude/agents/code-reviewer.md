@@ -20,7 +20,7 @@ Be specific (file, line, what breaks and why). When the diff leaves intent uncle
 - Conventions the tooling does not catch: relative imports keep the `.ts` extension (Node runs `.ts` by type stripping); each package declares every dependency it imports; workspace packages are depended on as `workspace:*`, never a version range that pnpm could resolve from the public registry.
 - Maintainability: misleading names, dead code, a new helper that duplicates one already in the repo, comments that contradict the code.
 - The AGENTS.md invariants, as they show up in ordinary code. Read its Invariants section, exceptions included. A flow it lists as an exception is not a finding.
-  - outside those exceptions, flag file content, file names, file metadata and keys that reach the server, other infrastructure, a log or `console` call, storage, a query string, a request body or an error message;
+  - outside those exceptions, flag file content, file names, file metadata and keys that reach the server, other infrastructure, a log or `console` call, and keys in storage, query strings, request bodies or error messages;
   - no secrets, real personal data or customer data in code, fixtures or tests, because the repository is public;
   - everything runs fully local with no internet, tests included.
 
