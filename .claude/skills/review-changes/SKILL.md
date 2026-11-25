@@ -104,6 +104,7 @@ The round's fix delta is `git diff <before> <after>`. Write both tree ids out li
 For every remaining blocker and major inside the diff, dispatch one fix subagent (`general-purpose`, sonnet). Never hand a finding back to the builder that wrote the code. Minors and nits are never fixed in this loop; every extra edit is new surface for the next round. Run fixes in parallel only when they touch different files. Each fixer gets the finding, the briefing and these rules:
 
 - Fix the class, not the line: sweep the whole diff for the same pattern and fix every occurrence.
+- A reviewer's suggested fix is a hint, not the fix: check what it does on every other path through the code before applying it.
 - When the finding is about behaviour, add a `node:test` test that fails before the fix.
 - Run the narrow gates for the touched packages. Stay inside the finding's scope.
 - Never commit. Run `git add -N` on every file you create, so it shows in `git status` and `git diff` as a new file and the mark refuses until it is committed.
