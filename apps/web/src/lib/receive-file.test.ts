@@ -97,12 +97,12 @@ function channelPair(transit: Transit = {}): Pair {
   return pair;
 }
 
-/** A sink that records what happened to it. */
 /** A fresh attempt ID, as the receive page makes one per join. */
 function newAttempt(): string {
   return encodeBase64url(crypto.getRandomValues(new Uint8Array(16)));
 }
 
+/** A sink that records what happened to it. */
 class RecordingSink extends BlobSink {
   aborted = false;
   closed = false;

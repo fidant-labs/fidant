@@ -5,8 +5,8 @@
 // Wiring (see lib/peer.ts and lib/sender-state.ts):
 // - On mount, connect to the signaling server and host every link ID on the
 //   list, with whether recipients may use our TURN relay; re-host the full
-//   list whenever the hosted links change (an add, a remove, or a link the check
-//   locked), every change of the relay checkbox and
+//   list whenever the hosted links change (an add, a remove, a link the check locked, or a
+//   link replaced after a refused email), every change of the relay checkbox and
 //   every reconnect, and again REHOST_AFTER_MS after `already-hosted` while
 //   the server still holds the old socket. When the socket drops, recipients
 //   still connecting go back to waiting (reducer `server-lost`, which never
@@ -398,7 +398,8 @@ export function SendPage({
     for (const effect of next.effects) {
       runEffect(effect);
     }
-    // Adding, removing or a check locking a link changes what to host.
+    // Adding, removing, a check locking a link or a refused email replacing a link
+    // changes what to host.
     if (hostedLinks(next.state).join() !== hosted) {
       host();
     }
