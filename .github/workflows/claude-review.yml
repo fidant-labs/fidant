@@ -17,6 +17,7 @@ jobs:
       github.event.pull_request.draft == false &&
       github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         shell: bash
@@ -30,9 +31,18 @@ jobs:
           fetch-depth: 2
           persist-credentials: false
       - name: Write PR diff
-        run: rm -f pr.diff && git diff --text --no-ext-diff --no-textconv HEAD^1 HEAD > pr.diff
+        run: |
+          rm -f pr.diff
+          git diff --text --no-ext-diff --no-textconv HEAD^1 HEAD > pr.diff
+          while IFS= read -r -d '' p; do
+            rm -rf -- "$p"
+            if git cat-file -e "HEAD^1:$p" 2> /dev/null; then git checkout HEAD^1 -- "$p"; fi
+          done < <(
+            printf '%s\0' .claude .mcp.json .claude.json .gitmodules .ripgreprc CLAUDE.md CLAUDE.local.md AGENTS.md .husky
+            { git ls-tree -r -z --name-only HEAD^1; git ls-files -z; } | grep -zE '(^|/)(AGENTS|CLAUDE)\.md$' | sort -zu
+          )
       - name: Install Claude Code
-        run: curl -fsSL https://claude.ai/install.sh | bash -s -- 2.1.330
+        run: curl -fsSL --retry 3 https://claude.ai/install.sh | bash -s -- 2.1.330
       - name: Review
         env:
           ANTHROPIC_FEDERATION_RULE_ID: fdrl_01231Vvb5m5amuSjogwWCWFr
@@ -41,7 +51,7 @@ jobs:
           ANTHROPIC_WORKSPACE_ID: wrkspc_01Mt8B96ymKDRUBXYtyA9e4j
           ANTHROPIC_IDENTITY_TOKEN_FILE: ${{ runner.temp }}/oidc/token
           DISABLE_AUTOUPDATER: "1"
-          SCHEMA: '{"type":"object","properties":{"verdict":{"type":"string","enum":["approve","request_changes"]},"summary":{"type":"string"},"findings":{"type":"array","items":{"type":"object","properties":{"path":{"type":"string"},"line":{"type":"integer"},"severity":{"type":"string","enum":["blocker","major","minor","nit"]},"body":{"type":"string"}},"required":["path","severity","body"],"additionalProperties":false}}},"required":["verdict","summary","findings"],"additionalProperties":false}'
+          SCHEMA: '{"type":"object","properties":{"verdict":{"type":"string","enum":["approve","request_changes"]},"summary":{"type":"string","minLength":1},"findings":{"type":"array","items":{"type":"object","properties":{"path":{"type":"string"},"line":{"type":"integer"},"severity":{"type":"string","enum":["blocker","major","minor","nit"]},"body":{"type":"string"}},"required":["path","severity","body"],"additionalProperties":false}}},"required":["verdict","summary","findings"],"additionalProperties":false}'
           PROMPT: |
             Review pull request #${{ github.event.pull_request.number }} in ${{ github.repository }}.
             Read AGENTS.md first; its invariants are hard rules. Also read any AGENTS.md in the directory of a changed file or above it, for the facts about that code.
@@ -59,18 +69,21 @@ jobs:
         run: |
           mkdir -m 700 "$RUNNER_TEMP/oidc"
           oidc() {
-            curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https%3A%2F%2Fapi.anthropic.com" | jq -er .value > "$ANTHROPIC_IDENTITY_TOKEN_FILE.new" &&
+            curl -fsS --retry 3 --max-time 30 -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https%3A%2F%2Fapi.anthropic.com" | jq -er .value > "$ANTHROPIC_IDENTITY_TOKEN_FILE.new" &&
               mv "$ANTHROPIC_IDENTITY_TOKEN_FILE.new" "$ANTHROPIC_IDENTITY_TOKEN_FILE"
           }
           oidc
           (while sleep 240; do oidc || true; done) &
           refresher=$!
-          trap 'kill "$refresher"' EXIT
+          trap 'kill "$refresher" || true; rm -rf "$RUNNER_TEMP/oidc"' EXIT
+          claude_status=0
           env -u ACTIONS_ID_TOKEN_REQUEST_TOKEN -u ACTIONS_ID_TOKEN_REQUEST_URL ~/.local/bin/claude -p "$PROMPT" \
-            --restricted --tools Read,Glob,Grep --allowedTools Read,Glob,Grep \
+            --restricted --strict-mcp-config --tools Read,Glob,Grep --allowedTools Read,Glob,Grep \
             --disallowedTools "Bash,Read(//proc/**),Read(./.git/**),Read(/$RUNNER_TEMP/**)" \
             --permission-mode default --max-turns 40 --model claude-opus-5-5 \
-            --output-format json --json-schema "$SCHEMA" > "$RUNNER_TEMP/result.json"
+            --output-format json --json-schema "$SCHEMA" > "$RUNNER_TEMP/result.json" || claude_status=$?
+          jq -c '{subtype, is_error, num_turns, total_cost_usd, permission_denials: (.permission_denials | length)}' "$RUNNER_TEMP/result.json" || true
+          [ "$claude_status" -eq 0 ] || exit "$claude_status"
           jq -e .structured_output "$RUNNER_TEMP/result.json" > "$RUNNER_TEMP/review.json"
       - name: Submit review
         env:
@@ -82,7 +95,9 @@ jobs:
           event=$(jq -r 'if .verdict == "approve" and all(.findings[]; .severity == "minor" or .severity == "nit") then "APPROVE" else "REQUEST_CHANGES" end' "$review")
           post() {
             jq --arg sha "$HEAD_SHA" --arg event "$event" --argjson inline "$1" '
-              (if $inline then [.findings[] | select(.line)] else [] end) as $c
+              def clean: gsub("[\u200b-\u200d\u2060\ufeff\u202a-\u202e\u2066-\u2069]"; "") | until(test("<!--") | not; gsub("<!--([\\s\\S]*?-->|[\\s\\S]*$)"; ""));
+              .summary |= clean | .findings |= map(.body |= clean | .path |= clean)
+              | (if $inline then [.findings[] | select(.line)] else [] end) as $c
               | {commit_id: $sha, event: $event,
                  body: ([.summary, ([(.findings - $c)[] | "- \(.severity): `\(.path)\(if .line then ":\(.line)" else "" end)` \(.body)"] | join("\n"))] | map(select(. != "")) | join("\n\n")),
                  comments: [$c[] | {path, line, side: "RIGHT", body: "\(.severity): \(.body)"}]}' "$review" |

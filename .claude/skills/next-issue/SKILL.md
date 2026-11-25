@@ -121,7 +121,7 @@ If follow-up work came up, create Linear issues for it in the same project and m
 
 ## 8. Answer the bot review
 
-The `Claude review` workflow reviews every push and posts as `github-actions[bot]`: a review with a verdict, and inline comments. Read it before telling the user the PR is ready. Two things make it easy to miss:
+The `Claude review` workflow reviews every push and posts as `github-actions[bot]`: one review with the verdict, with inline comments on diff lines or, when GitHub refuses those, every finding in its body. Read it before telling the user the PR is ready. Two things make it easy to miss:
 
 - Each run reviews the head commit from scratch. A later run can approve without repeating a blocker an earlier run raised, and that blocker may still hold.
 - The `review` check passes even when the verdict is request changes (SIG-52), so a green check says nothing about the verdict.
@@ -154,7 +154,7 @@ After opening the PR, and after every later push:
    - Minor points and nits: fix them when the fix is small and objective. List the rest under Notes in the PR body, or create Linear follow-ups.
    - A point that does not hold: say why under Notes.
 
-4. Stop when the verdict on the head commit approves and no earlier blocking point is still open. The verdict is the latest bot review on the head with state `APPROVED` or `CHANGES_REQUESTED`; each inline comment also creates a `COMMENTED` review, which is not a verdict. Any workflow in this repository can post as `github-actions[bot]`, so an approval counts only when its `commit_id` is the head SHA and the `Claude review` run on that SHA concluded `success` (`gh run view <run id> --repo sigill-labs/sigill --json conclusion`). This step never approves or merges. After 3 rounds, stop and report what is left; never call the PR ready with an open blocking point.
+4. Stop when the verdict on the head commit approves and no earlier blocking point is still open. The verdict is the latest bot review on the head with state `APPROVED` or `CHANGES_REQUESTED`; a `COMMENTED` review (older runs left them) is not a verdict. Any workflow in this repository can post as `github-actions[bot]`, so an approval counts only when its `commit_id` is the head SHA and the `Claude review` run on that SHA concluded `success` (`gh run view <run id> --repo sigill-labs/sigill --json conclusion`). This step never approves or merges. After 3 rounds, stop and report what is left; never call the PR ready with an open blocking point.
 
 ## 9. Report
 
