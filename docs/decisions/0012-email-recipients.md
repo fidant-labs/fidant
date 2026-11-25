@@ -1,6 +1,6 @@
 # 0012: Email recipients
 
-- Status: Superseded by 0013
+- Status: Accepted
 - Date: 2026-11-25
 - Linear: SIG-105
 

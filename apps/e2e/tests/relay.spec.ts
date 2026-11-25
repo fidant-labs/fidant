@@ -166,14 +166,13 @@ test("a sender who refuses the relay: no credentials, no bytes, plain words on b
   leaks,
   canary,
 }) => {
-  // The sender gives up on the refused connection after its 20 s setup timeout.
-  test.setTimeout(90_000);
   const stdoutStart = await sizeOf(serverStdoutLog);
   const coturnStart = await sizeOf(coturnLog);
   const file = leaks.watch(canaryFile(canary.fork("file"), { size: 100_001 }));
 
   const { context, page: sender } = await actor("sender");
   await context.addInitScript(watchPeers, null);
+  await sender.clock.install();
   await sender.goto("/send");
   await sender.getByLabel("Choose a file").setInputFiles({
     name: file.name,
@@ -193,9 +192,14 @@ test("a sender who refuses the relay: no credentials, no bytes, plain words on b
 
   const recipient = await relayOnly(actor, "recipient", "udp");
   await recipient.goto(link);
+  for (const page of [sender, recipient]) {
+    await expect.poll(async () => (await peerList(page, "peerStates"))?.length).toBeGreaterThan(0);
+  }
+  // The sender gives up on the refused connection after its 20 s setup timeout.
+  await sender.clock.fastForward(20_000);
   await expect(
     recipient.getByRole("heading", { name: "Couldn't connect directly to the sender" }),
-  ).toBeVisible({ timeout: 45_000 });
+  ).toBeVisible();
   await expect(recipient.getByText("The sender doesn't allow our relay")).toBeVisible();
   await expect(
     sender.getByRole("list", { name: "Recipients" }).getByText("couldn't connect directly"),
