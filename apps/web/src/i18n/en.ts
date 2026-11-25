@@ -331,7 +331,8 @@ export const en = {
       "If we email a link, your name also goes in that email, marked as not verified. Our server puts it there and doesn't keep it.",
     allowRelay: "Allow our relay if a direct connection isn't possible",
     fromError: {
-      unsafe: "Your name contains characters that can't be sent. Remove them and try again.",
+      unsafe:
+        "Your name contains characters that can't be sent, or three or more spaces in a row. Remove them and try again.",
       tooLong:
         "Your name and the file name are too long together. Shorten your name or rename the file.",
     },
@@ -339,7 +340,7 @@ export const en = {
     orDrop: "or drop it here",
     fileError: {
       unsafe:
-        "This file name contains characters that can't be sent. Rename the file and try again.",
+        "This file name contains characters that can't be sent, or three or more spaces in a row. Rename the file and try again.",
       tooLong: "This file name is too long to send. Rename the file and try again.",
     },
     preparing: "Getting the file ready…",
@@ -412,7 +413,7 @@ export const en = {
       submit: "Continue",
       results: {
         sent: "Code sent. Check your email.",
-        wait: "Too soon for another code. Try again in a moment.",
+        wait: "No new code yet. Try again in a minute, or in an hour if this keeps happening.",
         limit: "Too many codes for this link. Ask the sender to send you the link again.",
         failed: "We couldn't send the code. Try again in a moment.",
         wrong: "That code is wrong. Try again.",
@@ -938,7 +939,7 @@ export const en = {
           "Whoever sends a file or shares a secret can give a recipient's email address. Their page then sends our server one message with the link ID, the address, the link's secret, the name the sender typed and the page's language. This is the one case where a link's secret leaves the browser.",
           "Our server picks a random value and emails the recipient the link with that value in front of the link's secret: https://fidant.se/r/<link ID>#e.<value>.<secret>. It makes one attempt, with a time limit, and never retries. It has the link's secret and the sender's name only until that attempt ends, and never stores or logs them. The email is plain text. It gives the name the sender typed, marked as not verified, and says nothing about what is sent, not even whether it is a file or a shared secret.",
           "Before it connects, the recipient's page sends the value to our server. Only if it matches does the server show a masked address, like a***@example.se, and on request email a 6-digit code there. A code works for 10 minutes, and 5 wrong tries end it. The right code gets a random token that only that browser tab keeps, and the server connects nobody to an emailed link without one. Someone with only the link ID, or an emailed link that has stopped working, can't see the address, can't make us send codes and can't connect.",
-          "Our server keeps the address, the value, the codes and the tokens in memory while the sender's page has the link. When the sender removes the recipient, closes the page or loses the connection to our server, or when the server restarts, all of it is gone and the emailed link stops working. To limit abuse, the server counts emails for an hour under a scrambled form of each address (an HMAC with a random key), never the address itself: at most 20 emails an hour from one connection, 50 from one IP address (an IPv6 address counts by its first 48 bits) and 5 to one email address, and at most 5 codes per link, 30 seconds apart, 5 an hour asked for by one IP address and 10 an hour to one email address. The whole server sends at most 500 emails and 500 codes an hour. Anyone can use up the limits for one email address, or for the whole server, for up to an hour.",
+          "Our server keeps the address, the value, the codes and the tokens in memory while the sender's page has the link. When the sender removes the recipient, closes the page or loses the connection to our server, or when the server restarts, all of it is gone and the emailed link stops working. To limit abuse, the server counts emails for an hour under a scrambled form of each address (an HMAC with a random key), never the address itself: at most 20 emails an hour from one connection, 50 from one IP address and 5 to one email address, and at most 5 codes per link, 30 seconds apart, 5 an hour asked for by one IP address and 10 an hour to one email address. Both IP address limits count an IPv6 address by its first 48 bits. The whole server sends at most 500 emails and 500 codes an hour, counted with send times only, tied to no address. Anyone can use up the limits for one email address, or for the whole server, for up to an hour.",
           "The catch: the key is in the email. Our server had it, our mail service and anyone who reads the email on its way can see it, and it stays in the recipient's mailbox. The code stops a forwarded link or a mail scanner from receiving the file or the shared secret, but not someone who can read that mailbox. And because our server had the key, it could put itself between the two browsers for that link. Check words that both screens show, which are planned, will let you catch that. If you don't want any of this, leave “Email the link for me” unticked and send the link yourself.",
         ],
       },

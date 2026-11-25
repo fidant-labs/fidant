@@ -699,6 +699,23 @@ test("META refuses blank characters that push a name's real ending out of sight 
       assert.equal(hasForbiddenCharacters(name), true, `U+${code.toString(16)} between spaces`);
     }
   }
+  // Every blank filler is refused on its own, even once.
+  for (const code of [0x115f, 0x1160, 0x2800, 0x3164, 0xffa0, 0x13441, 0x13442, 0x16fe4, 0x1d159]) {
+    const name = `a${String.fromCodePoint(code)}b.txt`;
+    assert.equal(hasForbiddenCharacters(name), true, `U+${code.toString(16)}`);
+  }
+  // The boundary: two spaces pass, three don't, and invisible characters alone take no width.
+  assert.equal(hasForbiddenCharacters("a   b.txt"), true, "three spaces");
+  assert.equal(
+    hasForbiddenCharacters("a \u200b\u2060 b.txt"),
+    false,
+    "two spaces, invisible between",
+  );
+  assert.equal(
+    hasForbiddenCharacters("a\u200b\u2060\u00ad\ufeffb.txt"),
+    false,
+    "invisible, no spaces",
+  );
   // One space of any kind stays allowed. macOS puts U+202F before AM or PM in screenshot names.
   for (const name of ["Screenshot 2026-11-25 at 10.00.00 AM.png", "a b.txt", "a  b.txt"]) {
     assert.equal(hasForbiddenCharacters(name), false, name);
