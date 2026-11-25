@@ -10,6 +10,12 @@ export function relayName(id: string): string {
   return `${id}.relay.${primaryDomain}`;
 }
 
+export const signals: readonly { id: string }[] = [{ id: "sto" }];
+
+export function signalName(id: string): string {
+  return `${id}.signal.${primaryDomain}`;
+}
+
 export type DnsRecord = { name: string; value: string };
 
 export type Mail = {
