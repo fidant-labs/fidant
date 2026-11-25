@@ -84,11 +84,13 @@ test("the language menu switches language and the choice survives a reload", asy
   await choose(page, "Language", "Svenska");
   await expect(page.locator("main h1")).toHaveText("Integritet");
   await expect(page.locator("html")).toHaveAttribute("lang", "sv");
+  await expect(page).toHaveURL(/\/sv\/privacy$/);
   await page.reload();
   await expect(page.locator("main h1")).toHaveText("Integritet");
 
   await choose(page, "Språk", "English");
   await expect(page.locator("main h1")).toHaveText("Privacy");
+  await expect(page).toHaveURL(/\/privacy$/);
   await page.reload();
   await expect(page.locator("main h1")).toHaveText("Privacy");
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
