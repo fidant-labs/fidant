@@ -85,15 +85,57 @@ test("the committed config names the hosted zone that FidantDnssec signs for eve
   }
 });
 
-test("the fidant-poc account gets the CI and app box stacks, in eu-north-1", () => {
+test("the fidant-poc account gets the CI, app box and certificate stacks", () => {
   const stacks = stacksFor(pocAccount);
   assert.deepEqual(
     stacks.map((stack) => [stack.stackName, stack.region]),
     [
       ["FidantCi", "eu-north-1"],
       ["FidantApp", "eu-north-1"],
+      ["FidantPagesCerts", "us-east-1"],
+      ["FidantSignalCerts", "eu-north-1"],
     ],
   );
+});
+
+test("no stack depends on or imports from another, so deploying one never deploys another", () => {
+  for (const currentAccount of [dnsAccount, pocAccount]) {
+    const app = new App();
+    addStacks(app, {
+      CDK_DEFAULT_ACCOUNT: currentAccount,
+      FIDANT_DNS_ACCOUNT: dnsAccount,
+      FIDANT_POC_ACCOUNT: pocAccount,
+    });
+    const assembly = app.synth();
+    for (const stack of app.node.children.filter((child) => child instanceof Stack)) {
+      assert.deepEqual(stack.dependencies, [], stack.stackName);
+      const template = JSON.stringify(assembly.getStackByName(stack.stackName).template);
+      assert.doesNotMatch(template, /Fn::ImportValue/, stack.stackName);
+    }
+  }
+});
+
+test("the certificate stacks request DNS-validated certificates, with no zone, outputs or other resources", () => {
+  for (const [stackName, names] of [
+    ["FidantPagesCerts", zoneNames.map((zone) => [zone, `www.${zone}`])],
+    ["FidantSignalCerts", [["sto.signal.fidant.se"]]],
+  ] as const) {
+    const stack = stacksFor(pocAccount).find((child) => child.stackName === stackName);
+    const template = Template.fromStack(stack as Stack).toJSON();
+    assert.equal(template.Outputs, undefined, stackName);
+    assert.deepEqual(
+      Object.values(template.Resources),
+      names.map(([domainName, ...others]) => ({
+        Type: "AWS::CertificateManager::Certificate",
+        Properties: {
+          DomainName: domainName,
+          ...(others.length > 0 ? { SubjectAlternativeNames: others } : {}),
+          Tags: [{ Key: "Name", Value: `${stackName}/${domainName}` }],
+          ValidationMethod: "DNS",
+        },
+      })),
+    );
+  }
 });
 
 function ciTemplate(currentAccount: string): Template {
