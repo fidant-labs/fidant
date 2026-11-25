@@ -11,7 +11,8 @@
         "https://localhost:8444/privacy",
         "https://localhost:8444/terms",
         "https://localhost:8444/security",
-        "https://localhost:8444/how/traces"
+        "https://localhost:8444/how/traces",
+        "https://localhost:8444/sv/security"
       ],
       "settings": {
         "chromeFlags": "--headless=new --no-sandbox --ignore-certificate-errors"

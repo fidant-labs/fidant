@@ -455,3 +455,10 @@ export function breakableSender() {
     }
   } as RTCDataChannel["send"];
 }
+
+/** Opens a footer menu by its button name, picks one of its radio options and waits for the menu to close. */
+export async function choose(page: Page, menu: string, option: string): Promise<void> {
+  await page.locator("footer").getByRole("button", { name: menu }).click();
+  await page.getByRole("menuitemradio", { name: option }).click();
+  await expect(page.getByRole("menu")).toBeHidden();
+}
