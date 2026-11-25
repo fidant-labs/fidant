@@ -1,11 +1,4 @@
-import type { Page } from "@playwright/test";
-import { expect, makeName, test } from "../src/fixtures.ts";
-
-async function chooseLanguage(page: Page, menu: string, option: string) {
-  await page.locator("footer").getByRole("button", { name: menu }).click();
-  await page.getByRole("menuitemradio", { name: option }).click();
-  await expect(page.getByRole("menu")).toBeHidden();
-}
+import { choose, expect, makeName, test } from "../src/fixtures.ts";
 
 test.describe("without JavaScript", () => {
   test.use({ javaScriptEnabled: false });
@@ -124,7 +117,7 @@ test("switching language while sharing keeps the share, and the recipient still 
   leaks.watchKey("link secret", new URL(link).hash.slice(1));
 
   await sender.evaluate(() => Object.assign(window, { notReloaded: true }));
-  await chooseLanguage(sender, "Language", "Svenska");
+  await choose(sender, "Language", "Svenska");
   await expect(sender).toHaveURL(/\/sv\/secret$/);
   await expect(sender.locator("html")).toHaveAttribute("lang", "sv");
   expect(await sender.evaluate(() => "notReloaded" in window)).toBe(true);
@@ -142,7 +135,7 @@ test("back after a language switch shows the earlier page in the new language", 
   await page.goto("/privacy");
   await page.locator("header nav").getByRole("link", { name: "How it works" }).click();
   await expect(page).toHaveURL(/\/how$/);
-  await chooseLanguage(page, "Language", "Svenska");
+  await choose(page, "Language", "Svenska");
   await expect(page).toHaveURL(/\/sv\/how$/);
   await page.goBack();
   await expect(page).toHaveURL(/\/sv\/privacy$/);

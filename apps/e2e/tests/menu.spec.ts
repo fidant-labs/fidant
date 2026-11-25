@@ -1,15 +1,17 @@
 import type { Page } from "@playwright/test";
-import { canaryFile, chooseFile, expect, makeName, recipientRow, test } from "../src/fixtures.ts";
+import {
+  canaryFile,
+  choose,
+  chooseFile,
+  expect,
+  makeName,
+  recipientRow,
+  test,
+} from "../src/fixtures.ts";
 
 const nav = (page: Page) => page.locator("header nav");
 
 const footer = (page: Page) => page.locator("footer");
-
-async function choose(page: Page, menu: string, option: string) {
-  await footer(page).getByRole("button", { name: menu }).click();
-  await page.getByRole("menuitemradio", { name: option }).click();
-  await expect(page.getByRole("menu")).toBeHidden();
-}
 
 for (const path of ["/privacy", "/privacy/"]) {
   test(`${path} shows the Privacy page`, async ({ page }) => {
