@@ -708,7 +708,7 @@ test("every relay address belongs to a relay in the config", () => {
 // Changing this name replaces the app box, and the site is down for 5–10 minutes.
 test("the app box keeps its name", () => {
   const [, instance] = instanceNamed(appBox(), "^fidant-app-");
-  assert.equal(instance?.Properties.InstanceName, "fidant-app-66d7d24a");
+  assert.equal(instance?.Properties.InstanceName, "fidant-app-35e39129");
 });
 
 test("the journal is the only place the box's services keep log lines", () => {
@@ -762,7 +762,7 @@ test("the box builds only a production commit that is on main, and checks it bef
   const order = [
     `\nsha=$(git ls-remote "$repo" refs/heads/production | awk '$2 == "refs/heads/production" {print $1}')\n[[ $sha =~ ^[0-9a-f]{40}$ ]] || { echo "no production branch" >&2; exit 1; }\ndir=`,
     '\nas_sigill "rm -rf $dir && git clone --quiet --filter=blob:none --no-checkout $repo $dir"\n',
-    '\nif ! as_sigill "cd $dir && git merge-base --is-ancestor $sha refs/remotes/origin/main"; then\n  echo "refused $sha: not on main" >&2\n  touch "/opt/sigill/failed-$sha"\n  as_sigill "rm -rf $dir"\n  exit 1\nfi\n',
+    '\ncheck=0\nas_sigill "git -C $dir merge-base --is-ancestor $sha refs/remotes/origin/main" || check=$?\nif [ "$check" -eq 1 ]; then\n  echo "refused $sha: not on main" >&2\n  touch "/opt/sigill/failed-$sha"\n  as_sigill "rm -rf $dir"\n  exit 1\nfi\nif [ "$check" -ne 0 ]; then\n  echo "could not check $sha against main: git exited $check" >&2\n  as_sigill "rm -rf $dir"\n  exit 1\nfi\n',
     '\nas_sigill "cd $dir && git checkout --quiet $sha && pnpm install --frozen-lockfile"\n',
   ].map((text) => deploy.indexOf(text));
   assert.ok(start > 0 && order.every((index) => index > 0), order.join());

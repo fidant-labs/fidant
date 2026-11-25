@@ -57,9 +57,16 @@ previous=$(readlink /opt/sigill/current || true)
 as_sigill() { runuser -u sigill -- env HOME=/var/lib/sigill bash -euo pipefail -c "$1"; }
 as_sigill "rm -rf $dir && git clone --quiet --filter=blob:none --no-checkout $repo $dir"
 # The full ref, because a tag named origin/main would shadow the remote branch.
-if ! as_sigill "cd $dir && git merge-base --is-ancestor $sha refs/remotes/origin/main"; then
+check=0
+as_sigill "git -C $dir merge-base --is-ancestor $sha refs/remotes/origin/main" || check=$?
+if [ "$check" -eq 1 ]; then
   echo "refused $sha: not on main" >&2
   touch "/opt/sigill/failed-$sha"
+  as_sigill "rm -rf $dir"
+  exit 1
+fi
+if [ "$check" -ne 0 ]; then
+  echo "could not check $sha against main: git exited $check" >&2
   as_sigill "rm -rf $dir"
   exit 1
 fi
