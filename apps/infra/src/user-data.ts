@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { boxAddress, mailFrom, primaryDomain, siteNames } from "./config.ts";
+import { boxAddress, mailFrom, primaryDomain, relayName, siteNames } from "./config.ts";
 
 const root = new URL("../../../", import.meta.url);
 
@@ -17,4 +17,16 @@ export function renderUserData(): string {
     .replaceAll("@MAIL_FROM@", mailFrom)
     .replaceAll("@DOMAIN@", primaryDomain)
     .replaceAll("@BOX_ADDRESS@", boxAddress);
+}
+
+export function renderRelayUserData(relay: { id: string }): string {
+  const script = readFileSync(new URL("../relay/install.sh", import.meta.url), "utf8");
+  return [
+    "#!/bin/sh",
+    `RELAY_ID=${relay.id}`,
+    `RELAY_NAME=${relayName(relay.id)}`,
+    `APP_URL=https://${primaryDomain}`,
+    "export RELAY_ID RELAY_NAME APP_URL",
+    script.slice(script.indexOf("\n") + 1),
+  ].join("\n");
 }

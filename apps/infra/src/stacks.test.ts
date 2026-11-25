@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   copyFileSync,
   mkdirSync,
@@ -17,9 +18,17 @@ import { test } from "node:test";
 import { App, Stack } from "aws-cdk-lib";
 import { Match, Template } from "aws-cdk-lib/assertions";
 import { addStacks } from "./app.ts";
-import { boxAddress, hostedZoneIds, mailFrom, siteNames, zoneNames } from "./config.ts";
+import {
+  boxAddress,
+  hostedZoneIds,
+  mailFrom,
+  relayAddresses,
+  relays,
+  siteNames,
+  zoneNames,
+} from "./config.ts";
 import { DnsStack } from "./dns.ts";
-import { renderUserData } from "./user-data.ts";
+import { renderRelayUserData, renderUserData } from "./user-data.ts";
 
 const account = "111111111111";
 const dnsAccount = "222222222222";
@@ -35,6 +44,7 @@ const dns = Template.fromStack(
       dmarc: "v=DMARC1; p=quarantine",
     },
     boxAddress: "192.0.2.10",
+    relayAddresses: { sto: "198.51.100.7" },
   }),
 );
 
@@ -159,9 +169,8 @@ test("the committed config points every site name and the relay at the box, over
 });
 
 test("the app box is open only on 80, 443 and the relay's ports, and on 22 only to Lightsail's browser SSH", () => {
-  const stack = stacksFor(pocAccount).find((child) => child.stackName === "FidantApp");
-  const box = Template.fromStack(stack as Stack);
-  const [instance] = Object.values(box.findResources("AWS::Lightsail::Instance"));
+  const box = appBox();
+  const [instanceId, instance] = instanceNamed(box, "^fidant-app-");
   assert.deepEqual(instance?.Properties.Networking.Ports, [
     { Protocol: "tcp", FromPort: 80, ToPort: 80, Cidrs: ["0.0.0.0/0"], Ipv6Cidrs: ["::/0"] },
     { Protocol: "tcp", FromPort: 443, ToPort: 443, Cidrs: ["0.0.0.0/0"], Ipv6Cidrs: ["::/0"] },
@@ -170,9 +179,10 @@ test("the app box is open only on 80, 443 and the relay's ports, and on 22 only 
     { Protocol: "udp", FromPort: 3478, ToPort: 3478, Cidrs: ["0.0.0.0/0"], Ipv6Cidrs: ["::/0"] },
     { Protocol: "udp", FromPort: 49152, ToPort: 65535, Cidrs: ["0.0.0.0/0"], Ipv6Cidrs: ["::/0"] },
   ]);
-  const [instanceId] = Object.keys(box.findResources("AWS::Lightsail::Instance"));
-  box.hasResourceProperties("AWS::Lightsail::StaticIp", { AttachedTo: { Ref: instanceId } });
-  box.hasResource("AWS::Lightsail::StaticIp", { DeletionPolicy: "Retain" });
+  box.hasResource("AWS::Lightsail::StaticIp", {
+    DeletionPolicy: "Retain",
+    Properties: { StaticIpName: "fidant-app-ip", AttachedTo: { Ref: instanceId } },
+  });
   assert.match(instance?.Properties.InstanceName, /^fidant-app-[0-9a-f]{8}$/);
   assert.equal(instance?.Properties.UserData, renderUserData());
   assert.match(instance?.Properties.UserData, /^fidant\.se \{$/m);
@@ -186,11 +196,104 @@ test("the app box is open only on 80, 443 and the relay's ports, and on 22 only 
   assert.doesNotMatch(topLevel, /pipefail|\[\[/);
 });
 
-test("the app box keeps log lines for at most 30 days, before any service starts logging", () => {
-  const stack = stacksFor(pocAccount).find((child) => child.stackName === "FidantApp");
-  const [instance] = Object.values(
-    Template.fromStack(stack as Stack).findResources("AWS::Lightsail::Instance"),
+test("FidantApp has a Stockholm relay box apart from the app box", () => {
+  const box = appBox();
+  assert.equal(Object.keys(box.findResources("AWS::Lightsail::Instance")).length, 2);
+  const [, relay] = instanceNamed(box, "^fidant-relay-sto-[0-9a-f]{8}$");
+  const userData = renderRelayUserData({ id: "sto" });
+  assert.equal(relay.Properties.UserData, userData);
+  assert.equal(
+    relay.Properties.InstanceName,
+    `fidant-relay-sto-${createHash("sha256").update(userData).digest("hex").slice(0, 8)}`,
   );
+  assert.equal(relay.Properties.BundleId, "micro_3_0");
+  assert.equal(relay.Properties.BlueprintId, "ubuntu_24_04");
+  assert.equal(relay.Properties.AvailabilityZone, "eu-north-1a");
+  assert.deepEqual(relay.Properties.Networking.Ports, [
+    { Protocol: "tcp", FromPort: 22, ToPort: 22, CidrListAliases: ["lightsail-connect"] },
+    { Protocol: "tcp", FromPort: 80, ToPort: 80, Cidrs: ["0.0.0.0/0"], Ipv6Cidrs: ["::/0"] },
+    { Protocol: "tcp", FromPort: 443, ToPort: 443, Cidrs: ["0.0.0.0/0"], Ipv6Cidrs: ["::/0"] },
+    { Protocol: "tcp", FromPort: 3478, ToPort: 3478, Cidrs: ["0.0.0.0/0"], Ipv6Cidrs: ["::/0"] },
+    { Protocol: "udp", FromPort: 3478, ToPort: 3478, Cidrs: ["0.0.0.0/0"], Ipv6Cidrs: ["::/0"] },
+    { Protocol: "udp", FromPort: 49152, ToPort: 65535, Cidrs: ["0.0.0.0/0"], Ipv6Cidrs: ["::/0"] },
+  ]);
+});
+
+test("the relay box's static IP is retained, attached to it, and output as RelayStoIp", () => {
+  const box = appBox();
+  const [relayId] = instanceNamed(box, "^fidant-relay-sto-");
+  const ips = Object.keys(
+    box.findResources("AWS::Lightsail::StaticIp", {
+      DeletionPolicy: "Retain",
+      Properties: { StaticIpName: "fidant-relay-sto-ip", AttachedTo: { Ref: relayId } },
+    }),
+  );
+  assert.equal(ips.length, 1);
+  assert.deepEqual(box.toJSON().Outputs.RelayStoIp, {
+    Value: { "Fn::GetAtt": [ips[0], "IpAddress"] },
+  });
+});
+
+test("relay user data sets the relay's inputs, carries no secret and fits Lightsail's limit", () => {
+  const userData = renderRelayUserData({ id: "sto" });
+  const script = readFileSync(new URL("../relay/install.sh", import.meta.url), "utf8");
+  assert.match(
+    userData,
+    /^#!\/bin\/sh\nRELAY_ID=sto\nRELAY_NAME=sto\.relay\.fidant\.se\nAPP_URL=https:\/\/fidant\.se\nexport RELAY_ID RELAY_NAME APP_URL\n/,
+  );
+  assert.ok(userData.endsWith(script.slice(script.indexOf("\n"))));
+  assert.doesNotMatch(userData, /static-auth-secret=|BEGIN [A-Z ]*PRIVATE KEY/);
+  assert.equal(spawnSync("/bin/sh", ["-n"], { input: userData }).status, 0);
+  assert.ok(Buffer.byteLength(userData) < 16 * 1024);
+});
+
+test("the relay keeps the app box's coturn hardening and peer denials, and no static secret", () => {
+  const deny = (lines: string[]) => lines.filter((line) => line.startsWith("denied-peer-ip="));
+  const userData = renderRelayUserData({ id: "sto" });
+  const start = userData.indexOf('\ncat >>"$tmp" <<EOF\n');
+  assert.ok(start > 0);
+  assert.doesNotMatch(userData, /turnserver\.conf\.(?!XXXXXX)[A-Za-z]/);
+  const relay = userData.slice(start, userData.indexOf("\nEOF\n", start)).split("\n").slice(2);
+  const box = readFileSync(new URL("../box/turnserver.conf", import.meta.url), "utf8").split("\n");
+  assert.equal(deny(box).length, 13);
+  assert.deepEqual(deny(relay), deny(box));
+  const siteSpecific = /^(#|$|listening-port=|tls-listening-port=|realm=|cert=|pkey=)/;
+  const hardening = box.filter((line) => !siteSpecific.test(line));
+  assert.equal(hardening.length, 24);
+  const relayOnly = /^(userdb=|relay-ip=|tls-listening-port=|realm=|cert=|pkey=)/;
+  const shared = relay.filter(
+    (line) => !/^(#|$|listening-port=)/.test(line) && !relayOnly.test(line),
+  );
+  assert.deepEqual([...shared].sort(), [...hardening].sort());
+  assert.ok(!relay.some((line) => line.startsWith("static-auth-secret")));
+});
+
+test("the relay's scripts that handle a secret or a key run with set -eu and never trace", () => {
+  const script = readFileSync(new URL("../relay/install.sh", import.meta.url), "utf8");
+  for (const name of [
+    "fidant-relay-apply-secret",
+    "fidant-relay-secret",
+    "fidant-relay-cert-installed",
+  ]) {
+    const start = script.indexOf(`\ncat >/usr/local/bin/${name} <<'EOF'\n`);
+    assert.ok(start > 0, name);
+    const body = script.slice(
+      script.indexOf("\n", start + 1) + 1,
+      script.indexOf("\nEOF\n", start),
+    );
+    assert.match(body, /^#!\/bin\/sh\nset -eu\n/, name);
+    assert.doesNotMatch(body, /\bset\b[^\n;]*\s-[a-z]*x|xtrace/, name);
+  }
+});
+
+// Changing this name rebuilds the relay box, whose new public key must then be committed.
+test("the relay box keeps its name", () => {
+  const [, relay] = instanceNamed(appBox(), "^fidant-relay-sto-");
+  assert.equal(relay.Properties.InstanceName, "fidant-relay-sto-5349646e");
+});
+
+test("the app box keeps log lines for at most 30 days, before any service starts logging", () => {
+  const [, instance] = instanceNamed(appBox(), "^fidant-app-");
   const userData = String(instance?.Properties.UserData);
   const dropIn = userData.indexOf(
     "\ncat >/etc/systemd/journald.conf.d/zz-retention.conf <<'EOF'\n[Journal]\nMaxRetentionSec=29day\nMaxFileSec=1day\nForwardToSyslog=no\nEOF\nsystemctl restart systemd-journald\n",
@@ -200,9 +303,7 @@ test("the app box keeps log lines for at most 30 days, before any service starts
 });
 
 test("the app box runs coturn after the site is up, with a secret that stays on the box", () => {
-  const stack = stacksFor(pocAccount).find((child) => child.stackName === "FidantApp");
-  const box = Template.fromStack(stack as Stack);
-  const [instance] = Object.values(box.findResources("AWS::Lightsail::Instance"));
+  const [, instance] = instanceNamed(appBox(), "^fidant-app-");
   const userData = String(instance?.Properties.UserData);
   const lines = userData.split("\n");
   assert.ok(Buffer.byteLength(userData) < 16 * 1024);
@@ -286,10 +387,7 @@ test("the app box runs coturn after the site is up, with a secret that stays on 
 });
 
 test("the app box stops its boot rather than fall back to Ubuntu's Caddy 2.6", () => {
-  const stack = stacksFor(pocAccount).find((child) => child.stackName === "FidantApp");
-  const [instance] = Object.values(
-    Template.fromStack(stack as Stack).findResources("AWS::Lightsail::Instance"),
-  );
+  const [, instance] = instanceNamed(appBox(), "^fidant-app-");
   const lines = String(instance?.Properties.UserData).split("\n");
   const curls = lines.filter((line) => line.startsWith("curl "));
   assert.equal(curls.length, 3);
@@ -303,10 +401,7 @@ test("the app box stops its boot rather than fall back to Ubuntu's Caddy 2.6", (
 });
 
 test("the app box routes 443 by SNI to Caddy and to coturn's TLS, and copies Caddy's relay certificate", () => {
-  const stack = stacksFor(pocAccount).find((child) => child.stackName === "FidantApp");
-  const [instance] = Object.values(
-    Template.fromStack(stack as Stack).findResources("AWS::Lightsail::Instance"),
-  );
+  const [, instance] = instanceNamed(appBox(), "^fidant-app-");
   const userData = String(instance?.Properties.UserData);
 
   assert.ok(
@@ -582,11 +677,41 @@ test("only fidant.se gets the relay name, pointing at the box over IPv4", () => 
   );
 });
 
-test("the journal is the only place the box's services keep log lines", () => {
-  const stack = stacksFor(pocAccount).find((child) => child.stackName === "FidantApp");
-  const [instance] = Object.values(
-    Template.fromStack(stack as Stack).findResources("AWS::Lightsail::Instance"),
+test("only fidant.se gets a relay record per relay, over IPv4 only", () => {
+  const relay = Object.values(dns.findResources(recordSet)).filter((record) =>
+    String(record.Properties.Name).includes(".relay."),
   );
+  assert.deepEqual(
+    relay.map(({ Properties: p }) => [p.HostedZoneId, p.Name, p.Type, p.ResourceRecords]),
+    [[zoneRef("fidant.se"), "sto.relay.fidant.se.", "A", ["198.51.100.7"]]],
+  );
+});
+
+test("the committed config points sto.relay.fidant.se at the relay box and no other zone has a relay record", () => {
+  const records = Object.values(committed.findResources(recordSet)).filter((record) =>
+    String(record.Properties.Name).includes(".relay."),
+  );
+  assert.deepEqual(
+    records.map(({ Properties: p }) => [p.Name, p.Type, p.ResourceRecords]),
+    [["sto.relay.fidant.se.", "A", ["13.51.1.111"]]],
+  );
+});
+
+test("every relay address belongs to a relay in the config", () => {
+  const ids = relays.map((relay) => relay.id);
+  for (const id of Object.keys(relayAddresses)) {
+    assert.ok(ids.includes(id), id);
+  }
+});
+
+// Changing this name replaces the app box, and the site is down for 5–10 minutes.
+test("the app box keeps its name", () => {
+  const [, instance] = instanceNamed(appBox(), "^fidant-app-");
+  assert.equal(instance?.Properties.InstanceName, "fidant-app-56e112e1");
+});
+
+test("the journal is the only place the box's services keep log lines", () => {
+  const [, instance] = instanceNamed(appBox(), "^fidant-app-");
   const userData = String(instance?.Properties.UserData);
   const heredoc = (path: string): string[] => {
     const start = userData.indexOf(`\ncat >${path} <<'EOF'\n`);
@@ -764,6 +889,16 @@ function appBox(): Template {
   return Template.fromStack(stack as Stack);
 }
 
+function instanceNamed(box: Template, name: string) {
+  const [instance, ...others] = Object.entries(
+    box.findResources("AWS::Lightsail::Instance", {
+      Properties: { InstanceName: Match.stringLikeRegexp(name) },
+    }),
+  );
+  assert.ok(instance && others.length === 0, name);
+  return instance;
+}
+
 function alarmsNamed(box: Template, prefix: string) {
   return Object.values(box.findResources("AWS::CloudWatch::Alarm"))
     .map((alarm) => alarm.Properties)
@@ -784,7 +919,7 @@ function onlyId(box: Template, type: string): string {
 
 test("the relay cap checks the box's traffic every 5 minutes", () => {
   const box = appBox();
-  const [instanceId] = Object.keys(box.findResources("AWS::Lightsail::Instance"));
+  const [instanceId] = instanceNamed(box, "^fidant-app-");
   const functions = Object.entries(box.findResources("AWS::Lambda::Function"))
     .filter(([id]) => id.startsWith("RelayCap"))
     .map(([, fn]) => fn);
@@ -804,7 +939,7 @@ test("the relay cap checks the box's traffic every 5 minutes", () => {
 
 test("the relay cap may only read instance metrics, set the box's ports, and keep its state", () => {
   const box = appBox();
-  const [instanceId] = Object.keys(box.findResources("AWS::Lightsail::Instance"));
+  const [instanceId] = instanceNamed(box, "^fidant-app-");
   const policies = Object.values(box.findResources("AWS::IAM::Policy")).filter((policy) =>
     policy.Properties.Roles?.[0].Ref.startsWith("RelayCap"),
   );
@@ -1075,11 +1210,17 @@ test("the mail user may only send through the identity, and CDK gives it no key 
   ]);
 });
 
-test("the app box outputs only its address and the three DKIM records", () => {
+test("FidantApp outputs only the app box's and the relay's addresses and the three DKIM records", () => {
   const box = appBox();
   const identity = onlyId(box, "AWS::SES::EmailIdentity");
   const outputs = box.toJSON().Outputs;
-  assert.deepEqual(Object.keys(outputs).sort(), ["Dkim1", "Dkim2", "Dkim3", "PublicIp"]);
+  assert.deepEqual(Object.keys(outputs).sort(), [
+    "Dkim1",
+    "Dkim2",
+    "Dkim3",
+    "PublicIp",
+    "RelayStoIp",
+  ]);
   for (const n of [1, 2, 3]) {
     assert.deepEqual(outputs[`Dkim${n}`].Value, {
       "Fn::Join": [

@@ -4,6 +4,11 @@ export const mailRegion = "eu-north-1";
 export const mailFrom = `noreply@${mailDomain}`;
 export const zoneNames = ["fidant.se", "fidant.eu", "fidant.org"];
 export const siteNames = zoneNames.flatMap((zone) => [zone, `www.${zone}`]);
+export const relays: readonly { id: string }[] = [{ id: "sto" }];
+
+export function relayName(id: string): string {
+  return `${id}.relay.${primaryDomain}`;
+}
 
 export type DnsRecord = { name: string; value: string };
 
@@ -58,6 +63,9 @@ export const mail: Mail = {
 
 // Copied by hand from the PublicIp output of FidantApp, which deploys to another account.
 export const boxAddress = "16.192.25.20";
+
+// Copied by hand from FidantApp's `Relay<Id>Ip` outputs, the way `boxAddress` is.
+export const relayAddresses: Record<string, string> = { sto: "13.51.1.111" };
 
 // Copied by hand from `aws route53 list-hosted-zones --profile fidant-dns`; FidantDnssec signs these.
 export const hostedZoneIds: Record<string, string> = {
