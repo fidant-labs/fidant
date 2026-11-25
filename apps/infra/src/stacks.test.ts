@@ -28,7 +28,7 @@ import {
   zoneNames,
 } from "./config.ts";
 import { DnsStack } from "./dns.ts";
-import { statusLines } from "./relay-cap/cap.mts";
+import { metricLine, overageLine, statusLines } from "./relay-cap/cap.mts";
 import { renderRelayUserData, renderUserData } from "./user-data.ts";
 
 const account = "111111111111";
@@ -998,6 +998,16 @@ test("the relay cap may only read instance metrics, set the two boxes' ports, an
   assert.match(resource[1].at(-1), /:parameter\/fidant\/relay-cap$/);
 });
 
+function loggedMetric(line: string) {
+  const metric = JSON.parse(line);
+  const [declared] = metric._aws.CloudWatchMetrics;
+  return {
+    Namespace: declared.Namespace,
+    MetricName: declared.Metrics[0].Name,
+    Dimensions: declared.Dimensions[0].map((key: string) => ({ Name: key, Value: metric[key] })),
+  };
+}
+
 test("relay traffic past 80 %, the cap, and a failing cap email the alert address", () => {
   const box = appBox();
   box.hasResourceProperties("AWS::SNS::Subscription", {
@@ -1008,9 +1018,10 @@ test("relay traffic past 80 %, the cap, and a failing cap email the alert addres
   assert.equal(alarms.length, 5);
   const byName = (name: string) => alarms.find((alarm) => alarm.AlarmName === name);
   const notify = [alertTopic(box)];
-  for (const [name, threshold, metricName] of [
-    ["Fidant relay traffic past 80 % of the monthly cap", 3_200_000_000_000, "RelayMonthBytes"],
-    ["Fidant relay stopped: monthly traffic cap reached", 20, "RelayMonthOverageUsd"],
+  const now = new Date();
+  for (const [name, threshold, logged] of [
+    ["Fidant relay traffic past 80 % of the monthly cap", 3_200_000_000_000, metricLine(0, now)],
+    ["Fidant relay stopped: monthly traffic cap reached", 20, overageLine(0, now)],
     ["Fidant relay cap failing", 1, undefined],
   ] as const) {
     const alarm = byName(name);
@@ -1018,11 +1029,12 @@ test("relay traffic past 80 %, the cap, and a failing cap email the alert addres
     assert.equal(alarm.Threshold, threshold);
     assert.deepEqual(alarm.AlarmActions, notify);
     assert.deepEqual(alarm.OKActions, notify);
-    if (metricName) {
-      assert.equal(alarm.Namespace, "Fidant");
-      assert.equal(alarm.MetricName, metricName);
+    if (logged) {
+      const { Namespace, MetricName, Dimensions } = loggedMetric(logged);
+      assert.equal(alarm.Namespace, Namespace);
+      assert.equal(alarm.MetricName, MetricName);
       assert.equal(alarm.ComparisonOperator, "GreaterThanOrEqualToThreshold");
-      assert.deepEqual(alarm.Dimensions, [{ Name: "Service", Value: "relay" }]);
+      assert.deepEqual(alarm.Dimensions, Dimensions);
       assert.equal(alarm.Statistic, "Maximum");
     }
   }
@@ -1031,16 +1043,7 @@ test("relay traffic past 80 %, the cap, and a failing cap email the alert addres
 test("a relay that is down and a status that can't be read each email the alert address after 10 minutes", () => {
   const box = appBox();
   const notify = [alertTopic(box)];
-  const logged = statusLines(["sto"], [{ id: "sto", up: true }], new Date()).map((line) => {
-    const metric = JSON.parse(line);
-    const [declared] = metric._aws.CloudWatchMetrics;
-    const name = declared.Metrics[0].Name;
-    return {
-      Namespace: declared.Namespace,
-      MetricName: name,
-      Dimensions: declared.Dimensions[0].map((key: string) => ({ Name: key, Value: metric[key] })),
-    };
-  });
+  const logged = statusLines(["sto"], [{ id: "sto", up: true }], new Date()).map(loggedMetric);
   for (const [name, metricName] of [
     ["Fidant relay status unreachable", "RelayStatusOk"],
     ["Fidant relay sto unavailable", "RelayUp"],
