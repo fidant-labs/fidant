@@ -332,6 +332,8 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
   /** Set when the sender starts its restart-offer, or the recipient takes one. */
   let restarted = false;
   let gotRestartAnswer = false;
+  /** Set when a restart signal arrived with the path already up; later ones are ignored too. */
+  let ignoredRestart = false;
   let relayTimer: ReturnType<typeof setTimeout> | undefined;
   const pendingCandidates: Array<SignalCandidate | null> = [];
   let outgoing: Promise<void> = Promise.resolve();
@@ -543,7 +545,11 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
           throw new PeerError("bad-signal", "unexpected restart-offer");
         }
         // An honest offer can cross the channel opening; an open path stays as it is.
+        if (ignoredRestart) {
+          return;
+        }
         if (isConnected(connection().iceConnectionState) || channel?.readyState === "open") {
+          ignoredRestart = true;
           return;
         }
         restarted = true;
@@ -570,6 +576,13 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
         if (side !== "s" || !restarted || gotRestartAnswer) {
           throw new PeerError("bad-signal", "unexpected restart-answer");
         }
+        if (ignoredRestart) {
+          return;
+        }
+        if (isConnected(connection().iceConnectionState) || channel?.readyState === "open") {
+          ignoredRestart = true;
+          return;
+        }
         gotRestartAnswer = true;
         const theirs = remoteFingerprint(payload.sdp);
         if (theirs !== theirFingerprint) {
@@ -593,7 +606,7 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
     pc.setConfiguration({ ...pc.getConfiguration(), iceServers: options.iceServers });
   }
 
-  /** Adds TURN and restarts ICE, in order with the relayed signals, unless ICE connected. */
+  /** Adds TURN and restarts ICE, in order with the relayed signals, unless ICE connected or the channel opened. */
   function fallBackToRelay(): void {
     incoming = incoming
       .then(async () => {

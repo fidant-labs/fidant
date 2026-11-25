@@ -198,7 +198,7 @@ class FakePeerConnection {
   restarts = 0;
   added: unknown[] = [];
   iceConnectionState = "checking";
-  localDescription: { type: string; sdp: string } | null = null;
+  localDescription: { sdp: string } | null = null;
   remoteDescription: { type: string; sdp: string } | null = null;
   connectionState = "new";
   sctp = null;
@@ -231,7 +231,6 @@ class FakePeerConnection {
   async setLocalDescription() {
     const [fp] = this.certificate.getFingerprints();
     this.localDescription = {
-      type: this.remoteDescription ? "answer" : "offer",
       sdp: fakeSdp(`a=fingerprint:sha-256 ${FakePeerConnection.localFingerprint ?? fp?.value}`),
     };
   }
@@ -582,9 +581,16 @@ test("close() stops the relay fallback", async (t) => {
   const sender = await answeredSender();
   sender.peer.close();
   t.mock.timers.tick(RELAY_FALLBACK_MS);
+  assert.deepEqual(await kinds(sender, 1), ["offer"]);
   assert.equal(sender.pc.restarts, 0);
   assert.deepEqual(sender.pc.configured, []);
-  assert.deepEqual(await kinds(sender, 1), ["offer"]);
+
+  const fired = await answeredSender();
+  t.mock.timers.tick(RELAY_FALLBACK_MS);
+  fired.peer.close();
+  assert.deepEqual(await kinds(fired, 1), ["offer"]);
+  assert.equal(fired.pc.restarts, 0);
+  assert.deepEqual(fired.pc.configured, []);
 });
 
 test("the sender does not restart once its channel is open", async (t) => {
@@ -615,29 +621,53 @@ test("each side refuses the restart signal meant for the other", async (t) => {
   assert.deepEqual(sender.closes, [{ reason: "bad-signal", detail: "unexpected restart-offer" }]);
 
   const recipient = await answeredRecipient();
-  await recipient.relay({ kind: "restart-answer", sdp: sdpWith(SENDER_FP, "s2") });
+  await recipient.relay({ kind: "restart-offer", sdp: sdpWith(SENDER_FP, "s2") });
+  await recipient.relay({ kind: "restart-answer", sdp: sdpWith(SENDER_FP, "s3") });
   assert.deepEqual(recipient.closes, [
     { reason: "bad-signal", detail: "unexpected restart-answer" },
   ]);
 });
 
-test("the recipient ignores a restart-offer once its channel is open or ICE connected", async () => {
-  for (const open of [true, false]) {
-    const recipient = await answeredRecipient();
-    if (open) {
-      const channel = Object.assign(
-        { onopen: null },
-        { label: "sigill", ordered: true, readyState: "open", close() {} },
-      );
-      (recipient.pc.ondatachannel as unknown as (e: { channel: object }) => void)({ channel });
-    } else {
-      recipient.pc.iceConnectionState = "connected";
+/** Brings the path up as `how` and returns the function that takes it down again. */
+function pathUp(pc: FakePeerConnection, how: "open" | "connected" | "completed") {
+  if (how === "open") {
+    const channel = pc.channel ?? { label: "sigill", ordered: true, readyState: "", close() {} };
+    if (!pc.channel) {
+      (pc.ondatachannel as unknown as (e: { channel: object }) => void)({ channel });
     }
+    Object.assign(channel, { readyState: "open" });
+    return () => Object.assign(channel, { readyState: "closed" });
+  }
+  pc.iceConnectionState = how;
+  return () => {
+    pc.iceConnectionState = "checking";
+  };
+}
+
+test("the recipient ignores a restart-offer once its channel is open or ICE connected", async () => {
+  for (const how of ["open", "connected", "completed"] as const) {
+    const recipient = await answeredRecipient();
+    const down = pathUp(recipient.pc, how);
     await recipient.relay({ kind: "restart-offer", sdp: sdpWith(SENDER_FP, "s2") });
-    assert.deepEqual(recipient.closes, [], String(open));
-    assert.deepEqual(recipient.pc.configured, [], String(open));
-    assert.equal(recipient.pc.remoteDescription?.sdp, sdpWith(SENDER_FP, "s1"));
-    assert.deepEqual(await kinds(recipient, 2), ["commit", "answer"]);
+    down();
+    await recipient.relay({ kind: "restart-offer", sdp: sdpWith(SENDER_FP, "s2") });
+    assert.deepEqual(recipient.closes, [], how);
+    assert.deepEqual(recipient.pc.configured, [], how);
+    assert.equal(recipient.pc.remoteDescription?.sdp, sdpWith(SENDER_FP, "s1"), how);
+    assert.deepEqual(await kinds(recipient, 2), ["commit", "answer"], how);
+  }
+});
+
+test("the sender ignores a restart-answer once its channel is open or ICE connected", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  for (const how of ["open", "connected", "completed"] as const) {
+    const sender = await restartedSender(t);
+    const down = pathUp(sender.pc, how);
+    await sender.relay({ kind: "restart-answer", sdp: sdpWith(RECIPIENT_FP, "r2") });
+    down();
+    await sender.relay({ kind: "restart-answer", sdp: sdpWith(RECIPIENT_FP, "r2") });
+    assert.deepEqual(sender.closes, [], how);
+    assert.equal(sender.pc.remoteDescription?.sdp, sdpWith(RECIPIENT_FP, "r1"), how);
   }
 });
 
