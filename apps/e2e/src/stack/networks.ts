@@ -241,11 +241,8 @@ async function startNetworks(): Promise<RunningService> {
   try {
     // Left over from a run that was killed.
     down();
+    await fetchImages();
     await run("docker", [...compose, "up", "-d", "--wait", "--wait-timeout", "120"]);
-    // Pulled here, so the server's start timeout does not include a download.
-    await run("docker", ["image", "inspect", serverImage]).catch(() =>
-      run("docker", ["pull", "--quiet", serverImage]),
-    );
   } catch (error) {
     await stop();
     throw error;
@@ -265,6 +262,27 @@ async function startNetworks(): Promise<RunningService> {
     },
     stop,
   };
+}
+
+/** Pulls and builds missing images at the same time; compose up would pull first, then build. */
+async function fetchImages(): Promise<void> {
+  const { stdout } = await run("docker", [...compose, "config", "--images"]);
+  const images = [...stdout.split("\n").filter(Boolean), serverImage];
+  if (
+    await run("docker", ["image", "inspect", ...images]).then(
+      () => true,
+      () => false,
+    )
+  ) {
+    return;
+  }
+  await Promise.all([
+    run("docker", [...compose, "pull", "--policy", "missing", "--ignore-buildable", "--quiet"]),
+    // Built once serverImage is here: the box build copies node out of it.
+    run("docker", ["image", "inspect", serverImage])
+      .catch(() => run("docker", ["pull", "--quiet", serverImage]))
+      .then(() => run("docker", [...compose, "build", "--quiet"])),
+  ]);
 }
 
 /**
