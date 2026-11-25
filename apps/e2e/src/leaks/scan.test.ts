@@ -292,6 +292,20 @@ test("finds a size in a path, query pair or snake_case name", () => {
   }
 });
 
+test("ignores a size inside a blob run from 24 bytes, not 23", () => {
+  const size = { class: "M" as const, label: "n", size: 1_234_567 };
+  // (a) one-case letters and digits, no separators: 8 + 7 + 8 = 23, then 24.
+  // (b) mixed case, glued on both sides, joined by `+`: 23, then 24.
+  const pairs: [string, string][] = [
+    ["abcdefgh1234567abcdefgh", "abcdefgh1234567abcdefghi"],
+    ["A+cdefgh1234567abcdefgh", "Ab+cdefgh1234567abcdefgh"],
+  ];
+  for (const [at23, at24] of pairs) {
+    assert.ok(findSize(Buffer.from(` ${at23} `), size), at23);
+    assert.equal(findSize(Buffer.from(` ${at24} `), size), undefined, at24);
+  }
+});
+
 test("ignores a size-like digit run inside a long base64url token", () => {
   const size = { class: "M" as const, label: "n", size: 1_234_567 };
   const body = random.fork("b64url").bytes(48).toString("base64url");
