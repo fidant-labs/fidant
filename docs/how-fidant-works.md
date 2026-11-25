@@ -169,7 +169,7 @@ An observer learns a file's size only roughly, plus the chunk size, which follow
 
 ## How the file travels
 
-`apps/server/src/turn.ts`, `apps/server/src/relays.ts`, `apps/server/relays.json`, `apps/infra/relay/install.sh`, `apps/infra/box/turnserver.conf`, `apps/infra/box/user-data.sh`, `docs/decisions/0007-turn-relay.md`, `docs/decisions/0010-turn-tls-443.md`, `docs/decisions/0014-relay-switch.md`
+`apps/server/src/turn.ts`, `apps/server/src/relays.ts`, `apps/server/relays.json`, `apps/infra/relay/install.sh`, `apps/infra/box/turnserver.conf`, `apps/infra/box/user-data.sh`, `docs/decisions/0007-turn-relay.md`, `docs/decisions/0010-turn-tls-443.md`, `docs/decisions/0015-relay-switch.md`
 
 WebRTC tries the paths in this order, and the sender's page shows which one each connection took:
 
@@ -196,7 +196,7 @@ SIG-154 takes it off the box (planned).
 
 ### The relay box
 
-`apps/infra/relay/install.sh`, `apps/infra/src/relay.ts`, `apps/server/src/relays.ts`, `apps/server/src/relay-secret.ts`, `apps/server/src/turn-check.ts`, `docs/decisions/0013-relay-service.md`, `docs/decisions/0014-relay-switch.md`
+`apps/infra/relay/install.sh`, `apps/infra/src/relay.ts`, `apps/server/src/relays.ts`, `apps/server/src/relay-secret.ts`, `apps/server/src/turn-check.ts`, `docs/decisions/0013-relay-service.md`, `docs/decisions/0015-relay-switch.md`
 
 The relay is its own service, so that relays can run on any Ubuntu server and in more than one place. The first is a second Lightsail box in Stockholm, set up by `install.sh`, and it carries every relayed transfer.
 
@@ -206,7 +206,7 @@ The relay is its own service, so that relays can run on any Ubuntu server and in
 - Every minute the relay asks the server for its secret at `https://fidant.se/relay-secret/sto`. The answer is the secret sealed to the relay's public key (RSA-OAEP with SHA-256, `sealRelaySecret`), so anyone can ask but only that relay can open it.
 - A new secret reaches coturn through coturn's own SQLite file, without a restart, so relayed transfers in progress keep running. The previous secret stays valid for 24 hours after a change, unless a second change ends it sooner, and longer while no new answer arrives.
 - At startup and then every 60 seconds the server checks each relay with a real TURN allocation from the box, under a username marked `probe`, and releases it at once. A relay counts as up once a check passes, and as down before that and after two failed checks in a row. `joined` carries the first relay in the list that is up. When none is, it carries only the first relay's `stun:` URL, so browsers can still learn their public address but get no relay. `/relay-status` shows which relays are up, to anyone.
-- When `apps/server/relays.json` is `[]`, or a drop-in on the box turns the list off (`RELAYS_FILE` set but empty, see the runbook in `docs/decisions/0014-relay-switch.md`), the server has no relay list and uses the fallback relay above.
+- When `apps/server/relays.json` is `[]`, or a drop-in on the box turns the list off (`RELAYS_FILE` set but empty, see the runbook in `docs/decisions/0015-relay-switch.md`), the server has no relay list and uses the fallback relay above.
 - What the relay box sees, keeps and logs is under "What the server and relay see, keep and log".
 
 ### Refusing the relay
