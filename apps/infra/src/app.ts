@@ -34,11 +34,7 @@ export function addStacks(app: App, env: Record<string, string | undefined>): vo
     });
   } else if (account === pocAccount) {
     new CiStack(app, "FidantCi", { env: { account, region: "eu-north-1" } });
-    new BoxStack(app, "FidantApp", {
-      env: { account, region: "eu-north-1" },
-      alertEmail,
-      newMailIdentity: app.node.tryGetContext("newMailIdentity") === "true",
-    });
+    new BoxStack(app, "FidantApp", { env: { account, region: "eu-north-1" }, alertEmail });
   } else {
     throw new Error(`Account ${account} is neither FIDANT_DNS_ACCOUNT nor FIDANT_POC_ACCOUNT.`);
   }
