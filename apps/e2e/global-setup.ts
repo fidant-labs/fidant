@@ -45,6 +45,11 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   if (stack.env.TURN_URLS) {
     process.env.SIGILL_E2E_TURN_URLS = stack.env.TURN_URLS;
   }
+  // Paths only, never the secrets: a restarted server inherits this environment.
+  if (stack.env.RELAYS_FILE && stack.env.RELAY_MASTER_FILE) {
+    process.env.SIGILL_E2E_RELAYS_FILE = stack.env.RELAYS_FILE;
+    process.env.SIGILL_E2E_RELAY_MASTER_FILE = stack.env.RELAY_MASTER_FILE;
+  }
   // Mailpit's API, set only when it runs, so an email spec can skip without it.
   if (stack.env.MAILPIT_API) {
     process.env.SIGILL_E2E_MAILPIT = stack.env.MAILPIT_API;
