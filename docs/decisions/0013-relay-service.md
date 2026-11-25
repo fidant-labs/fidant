@@ -10,7 +10,7 @@
 - The app box is a Lightsail `micro_3_0`. Its 2 TB monthly allowance counts inbound and outbound traffic, and outbound traffic beyond it costs 0.09 USD/GB (0011). A relayed byte counts twice, once in and once out. One box in one place carries every relayed transfer.
 - SIG-151 makes the relay its own service: one install script that turns any Ubuntu server into a relay, relays in more than one place, each with its own secret and cap. This record covers SIG-152, the script and a first relay box in Stockholm. SIG-153 switches the app over to it. SIG-154 takes coturn, HAProxy and the relay ports off the app box.
 - A relay needs the secret that the app mints TURN credentials with (0006). Lightsail has no instance role, so a box can't fetch a secret from AWS by itself (0007).
-- SIG-151 chose a key pair for the hand-out over a secret pasted by hand after each app box replacement, and over handing the secret to requests from the relay's IP address. The relay makes a key pair at install, its public key is committed in a reviewed pull request, and the app hands out the secret sealed to that key. Holding a retired relay's IP address is then not enough to get its secret, and every change to which relays are trusted goes through review. SIG-153 keeps the trusted keys in `apps/server/relays.json`, which a maintainer adds to the `sensitive-paths` ruleset, so a key change needs a maintainer's approval. The cost: a rebuilt relay has a new key and stays without a secret until a pull request with that key merges.
+- SIG-151 chose a key pair for the hand-out over a secret pasted by hand after each app box replacement, and over handing the secret to requests from the relay's IP address. The relay makes a key pair at install, its public key is committed in a reviewed pull request, and the app hands out the secret sealed to that key. Holding a retired relay's IP address is then not enough to get its secret, and every change to which relays are trusted goes through review. SIG-153 keeps the trusted keys in `apps/server/relays.json`, so a key change needs a maintainer's approval. Before the first key merges, a maintainer adds `apps/server/relays.json` to the `sensitive-paths` ruleset, and SIG-153 adds the path to the Merging list in AGENTS.md. The cost: a rebuilt relay has a new key and stays without a secret until a pull request with that key merges.
 - Lightsail runs user data once, through `/bin/sh`. The instance name carries a hash of the user data, so any change to it replaces the box (0007).
 - `.github/workflows/deploy-infra.yml` checks out only `apps/infra/` and a few root files.
 - A Lightsail static IP names its instance in `attachedTo`, so the instance's user data can't contain that IP.
@@ -59,25 +59,26 @@ The relay is `apps/infra/relay/install.sh`, a POSIX `sh` script that depends on 
   - `RELAY_ID`: `^[a-z][a-z0-9]{1,15}$`, for example `sto`.
   - `RELAY_NAME`: a lowercase host name, the relay's DNS name and coturn's realm, for example `sto.relay.fidant.se`.
   - `APP_URL`: `^https://[a-z0-9.-]+$`, the app it fetches its secret from.
+- The server's `/etc/hosts` must not map `RELAY_NAME`. Some installers, and cloud-init with `manage_etc_hosts`, write `127.0.1.1 <hostname>` when the hostname is the relay's name, and `getent` reads `/etc/hosts` before DNS and stops at the first match. Then the certificate script treats that answer as "the name resolves" and asks Let's Encrypt even before DNS exists, and the address script ignores 127.0.0.0/8 answers, so it never sets `external-ip`. Lightsail's `ip-...` hostnames are unaffected.
 - It runs with `set -eux`, because it handles no secret. Running it again keeps the key pair, the secrets, the database, the certificate and the `external-ip` line, and rewrites everything else.
 - It writes the same journald drop-in as the app box, then installs `coturn`, `certbot`, `sqlite3`, `ufw`, `curl` and `logrotate` from Ubuntu if any is missing. While it installs them, coturn stays masked until its config is written, so it never runs with the package's default config, which has no authentication.
 - Files:
 
-| Path                                                          | Owner and mode        | Holds                                                                                                 |
-| ------------------------------------------------------------- | --------------------- | ----------------------------------------------------------------------------------------------------- |
-| `/etc/fidant-relay/`                                          | root, 0755            |                                                                                                       |
-| `/etc/fidant-relay/relay.key`                                 | root, 0600            | The relay's RSA 3072 private key, PKCS#8 PEM. Made once, and never leaves the box.                    |
-| `/etc/fidant-relay/relay.pub`                                 | root, 0644            | Its public key, SPKI PEM, written from `relay.key` on every run.                                      |
-| `/etc/fidant-relay/relay.env`                                 | root, 0644            | The three inputs.                                                                                     |
-| `/etc/fidant-relay/tls/`                                      | root:turnserver, 0750 | `turn.crt` (0644) and `turn.key` (0640 root:turnserver), coturn's certificate and key.                |
-| `/var/lib/fidant-relay/`                                      | root:turnserver, 0750 |                                                                                                       |
-| `/var/lib/fidant-relay/turndb`                                | root:turnserver, 0640 | coturn's SQLite database, from `/usr/share/coturn/schema.sql`. Made once, before coturn first starts. |
-| `/var/lib/fidant-relay/current`, `previous`, `previous-since` | root, 0600            | The current secret, the previous one, and when it became the previous one (Unix seconds).             |
-| `/etc/turnserver.conf`                                        | root:turnserver, 0640 | coturn's config, below.                                                                               |
-| `/usr/local/bin/fidant-relay-*`                               | root, 0700            | The five scripts below.                                                                               |
+| Path                                                          | Owner and mode        | Holds                                                                                                                                    |
+| ------------------------------------------------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `/etc/fidant-relay/`                                          | root, 0755            |                                                                                                                                          |
+| `/etc/fidant-relay/relay.key`                                 | root, 0600            | The relay's RSA 3072 private key, PKCS#8 PEM. Made once, and never leaves the box.                                                       |
+| `/etc/fidant-relay/relay.pub`                                 | root, 0644            | Its public key, SPKI PEM, written from `relay.key` on every run.                                                                         |
+| `/etc/fidant-relay/relay.env`                                 | root, 0644            | The three inputs.                                                                                                                        |
+| `/etc/fidant-relay/tls/`                                      | root:turnserver, 0750 | `turn.crt` (0644) and `turn.key` (0640 root:turnserver), coturn's certificate and key.                                                   |
+| `/var/lib/fidant-relay/`                                      | root:turnserver, 0750 |                                                                                                                                          |
+| `/var/lib/fidant-relay/turndb`                                | root:turnserver, 0640 | coturn's SQLite database, from `/usr/share/coturn/schema.sql`. Made once, before coturn first starts.                                    |
+| `/var/lib/fidant-relay/current`, `previous`, `previous-since` | root, 0600            | The current secret, the previous one, and when it became the previous one (Unix seconds).                                                |
+| `/etc/turnserver.conf`                                        | root:turnserver, 0640 | coturn's config, below. Each run of a writer uses its own temp file from `mktemp /etc/turnserver.conf.XXXXXX` and renames it into place. |
+| `/usr/local/bin/fidant-relay-*`                               | root, 0700            | The five scripts below.                                                                                                                  |
 
 - `/etc/turnserver.conf` holds `listening-port=3478`, `tls-listening-port=443`, `min-port=49152`, `max-port=65535`, `realm=<RELAY_NAME>`, `use-auth-secret`, `userdb=/var/lib/fidant-relay/turndb`, the certificate and key paths, and `relay-ip=<the box's private IPv4 address>`. It copies 0007's hardening exactly: `total-quota=200`, `no-dtls`, `no-cli`, `no-multicast-peers`, `no-tcp-relay`, `no-stdout-log`, `simple-log`, `log-file=/dev/null` and the 13 `denied-peer-ip` lines of `apps/infra/box/turnserver.conf`. A test in `apps/infra/src/stacks.test.ts` checks that each of these lines appears verbatim, the denials in the same order. There is no `static-auth-secret`.
-- Two coturn drop-ins: `online.conf` starts it after `network-online.target`, as on the app box. `bind443.conf` gives it `CAP_NET_BIND_SERVICE`, because Ubuntu's unit runs coturn as `turnserver` with no capabilities, and it couldn't bind 443 otherwise.
+- Three coturn drop-ins: `online.conf` starts it after `network-online.target`, as on the app box. `bind443.conf` gives it `CAP_NET_BIND_SERVICE`, because Ubuntu's unit runs coturn as `turnserver` with no capabilities, and it couldn't bind 443 otherwise. `restart.conf` sets `Restart=on-failure`, `RestartSec=5s` and `StartLimitIntervalSec=0`, so a crash loop keeps retrying every 5 seconds instead of hitting systemd's start limit and staying down for good.
 - Timers:
 
 | Timer                        | First run        | Then                      | Runs                                               |
@@ -122,7 +123,7 @@ The contract between the app (SIG-153) and the relay:
 On the relay:
 
 - `fidant-relay-secret` fetches the body with `curl` over HTTPS only, with a 10-second limit. It runs 10 s after boot and then 60 s after each run ends, to within a second (`AccuracySec=1s`; systemd's default of a minute would stretch the wait to up to two), so a new hand-out takes effect within about 80 s. Until SIG-153, `https://fidant.se` answers unknown paths with `200 text/html`, the app's page. So the script passes a body on only if it is one line of base64 (`[A-Za-z0-9+/]+={0,2}`) of at most 2048 bytes, the trailing newline included. Anything else, a failed request included, exits 0 with no change and no output. It doesn't check the content type.
-- `fidant-relay-apply-secret` reads the body on stdin, decodes it and opens it with `relay.key` (`openssl pkeyutl`, OAEP with SHA-256 for OAEP and MGF1). When the secret is new, `previous-since` gets the time, then the current one moves to `previous`, and the new one becomes `current`. Only the current secret and one previous are kept, so a second change within 24 hours ends the older one at once. Once `previous-since` is more than 24 hours old, `previous` and `previous-since` are deleted. A `previous-since` that is missing, empty or not a number, as a crash can leave it, gets the current time, so `previous` stays a full 24 hours from then. That check runs only after a hand-out opens, so while no hand-out arrives, the previous secret stays. Then it updates the database as above.
+- `fidant-relay-apply-secret` reads the body on stdin, decodes it and opens it with `relay.key` (`openssl pkeyutl`, OAEP with SHA-256 for OAEP and MGF1). When the secret is new, `previous-since` gets the time, then the current one moves to `previous`, and the new one becomes `current`. Only the current secret and one previous are kept, so a second change within 24 hours ends the older one at once. Once `previous-since` is more than 24 hours old, `previous` and `previous-since` are deleted. A `previous-since` that is missing, empty, not a number, has a leading zero, has more than 10 digits or lies in the future, as a crash can leave it, is reset to the current time, so `previous` stays a full 24 hours from then. That check runs only after a hand-out opens, so while no hand-out arrives, the previous secret stays. Then it updates the database as above.
 - It exits 0 when the secret was applied or unchanged. Otherwise it exits 1 with one of these on stderr, and keeps its secrets:
   - `fidant-relay: cannot open the secret`: not base64, or sealed to another key.
   - `fidant-relay: not a secret`: it opened, but the plaintext isn't exactly 64 lowercase hex characters.
@@ -133,16 +134,16 @@ On the relay:
 ### Certificates
 
 - coturn's TLS on 443 uses its own Let's Encrypt certificate for `RELAY_NAME`.
-- The first one comes from `fidant-relay-cert`, which runs `certbot certonly --standalone` with the HTTP challenge unless `/etc/letsencrypt/live/<RELAY_NAME>/` exists. certbot holds port 80 only while it runs. Its timer runs every 15 minutes, but the script asks Let's Encrypt only once `RELAY_NAME` resolves (`getent ahostsv4`, as `fidant-relay-address` does), because every validation of an unresolvable name fails and Let's Encrypt pauses a name after 1,152 consecutive failures (refilling at 1 a day) until someone unpauses it by hand. Until the DNS name exists (SIG-157) the script exits 0 without running certbot. Four tries an hour stays within the limit of 5 failed validations per host name per hour. The account has no email address.
+- The first one comes from `fidant-relay-cert`, which runs `certbot certonly --standalone` with the HTTP challenge unless `/etc/letsencrypt/live/<RELAY_NAME>/` exists. certbot holds port 80 only while it runs. Its timer runs every 15 minutes, but the script asks Let's Encrypt only once `RELAY_NAME` resolves (`getent ahostsv4`, any answer counts; only `fidant-relay-address` ignores answers in 127.0.0.0/8), because every validation of an unresolvable name fails and Let's Encrypt pauses a name after 1,152 consecutive failures (refilling at 1 a day) until someone unpauses it by hand. Until the DNS name exists (SIG-157) the script exits 0 without running certbot. Four tries an hour stays within the limit of 5 failed validations per host name per hour. The account has no email address.
 - If that lineage exists but `/etc/fidant-relay/tls/turn.crt` doesn't, certbot got the certificate but its deploy hook never put it in place, for example because the box rebooted while the hook ran, or the hook failed. `fidant-relay-cert` then runs the deploy hook on the lineage and exits with its status, so coturn doesn't wait for the renewal, about 60 days later, to get the certificate.
 - Renewal goes through Ubuntu's `certbot.timer`, which runs `certbot renew` with the challenge and the deploy hook that certbot stored in the renewal config.
 - The deploy hook `fidant-relay-cert-installed` copies the new `fullchain.pem` and `privkey.pem` to new files and checks that the certificate's public key matches the key, because 0010 found that a renewal between two reads can pair them wrongly. On a mismatch it stops with `fidant-relay: the certificate and key in <lineage> don't match` and changes nothing. Otherwise it moves both into place one right after the other.
-- Then, if coturn is active, the hook sends it `SIGUSR2` when `/etc/fidant-relay/tls/turn.crt` existed before the hook ran, which reloads the certificate without dropping relayed transfers. Otherwise it restarts coturn, because a coturn that started without a certificate opens TLS only on a restart (0010).
+- Then, if coturn is active, the hook sends it `SIGUSR2` when `/etc/fidant-relay/tls/turn.crt` existed before the hook ran, which reloads the certificate without dropping relayed transfers. Otherwise it uses `try-restart`, because a coturn that started without a certificate opens TLS only on a restart (0010), and one that isn't running needs no restart.
 - coturn 4.6.1 serves TLS 1.2 only, as 0010 records.
 
 ### `external-ip`
 
-- `fidant-relay-address` resolves `RELAY_NAME` every 5 minutes (`getent ahostsv4`, first address).
+- `fidant-relay-address` resolves `RELAY_NAME` every 5 minutes (`getent ahostsv4`, first address that isn't in 127.0.0.0/8, which `/etc/hosts` can give).
 - A failed lookup changes nothing, so a DNS fault can't restart a live relay.
 - When the name resolves to an address on the box itself, there is no `external-ip` line.
 - Otherwise the line is `external-ip=<resolved address>/<relay-ip>`, which maps the private address coturn relays from to the public one, as Lightsail's NAT needs.
@@ -179,9 +180,9 @@ On the relay:
 - Until the relay's DNS name exists (SIG-157), it has no certificate, so no TLS listener, and no `external-ip` line. These are checked on the box then, before SIG-153 commits the key, so a fix costs a rebuild rather than a second key pull request:
   - certificate issuance;
   - `external-ip` behind Lightsail's NAT;
-  - `systemctl status fidant-relay-secret.service` shows a clean run against fidant.se's page, which exercises curl, WebPKI trust and the shape filter;
-  - the `relay-ip=` value in `/etc/turnserver.conf` equals the private address that `ip -4 -o addr show scope global` shows.
-- Four things restart coturn and drop the relayed transfers in progress: a change in the address the relay's name resolves to, the first certificate, running the install again, and package updates (unattended-upgrades and needrestart).
+  - the fetch path: `. /etc/fidant-relay/relay.env; curl -sS --proto =https --max-time 10 -o /dev/null -w '%{http_code}\n' "$APP_URL/relay-secret/$RELAY_ID"` prints `200`, which proves egress, DNS and WebPKI trust to the app (the body is the site's page until SIG-153; a clean `fidant-relay-secret.service` proves nothing, because it exits 0 on any failed fetch);
+  - the `relay-ip=` value in `/etc/turnserver.conf` equals the `src` address that `ip -4 route get 1.1.1.1` prints, the address the box sends from.
+- Five things restart coturn and drop the relayed transfers in progress: a change in the address the relay's name resolves to, the first certificate, running the install again, package updates (unattended-upgrades and needrestart), and a crash (it restarts after 5 s).
 - A spoofed DNS answer for the relay's own name sets `external-ip`, so relay candidates name the attacker's host. Peers then send ICE checks there, which shows the attacker their public addresses, ICE ufrags and when transfers happen. File content, names, metadata and keys stay protected by DTLS and the link's fragment, and ICE transport data isn't secret (0001). An answer that keeps changing also restarts coturn every 5 minutes, which drops relayed transfers.
 - There is no HAProxy in front of coturn, so it sees real client addresses on TLS too, unlike the app box's relay (0010).
 - coturn also opens TLS on 444 and listens on 3479. Both firewalls keep them closed. It accepts TLS on 3478 too, which is open, as on the app box.
@@ -236,22 +237,33 @@ systemctl stop coturn && systemctl disable coturn
 
 ### A leaked secret
 
-Once the app hands out a new secret, the leaked one is `previous` and stays valid for 24 hours. To end it at once:
+The app's secret for a relay changes only when the app box is replaced (see Consequences), so from SIG-153 on, step 0 is to replace the app box, which makes new secrets. Then, on the relay, check when the current secret last changed, which prints only the file's modification time:
 
 ```sh
+stat -c %y /var/lib/fidant-relay/current
+```
+
+Run the next block only once that time is later than when the new app box came up. `current` is rewritten only when the secret changes, so an earlier time means the new hand-out hasn't arrived, and the block would turn the leaked secret into `previous`. The count check below also catches nothing in that case, so this one is needed.
+
+```sh
+systemctl start fidant-relay-secret.service
 rm -f /var/lib/fidant-relay/previous /var/lib/fidant-relay/previous-since
 systemctl start fidant-relay-secret.service
 sqlite3 /var/lib/fidant-relay/turndb 'SELECT count(*) FROM turn_secret'
-systemctl restart coturn
+[ "$(sqlite3 /var/lib/fidant-relay/turndb 'SELECT count(*) FROM turn_secret')" = 1 ] && systemctl restart coturn
 ```
 
-- The second line rewrites the database without the old secret once a hand-out opens. The third must then print 1.
-- The restart ends the allocations made with it, and drops every relayed transfer in progress.
+- The first start makes the new secret current. Run before it has applied, the second start would move the still-current leaked secret into `previous` for another 24 hours.
+- The second start rewrites the database without the old secret. The count must print 1.
+- The restart happens only once the database holds just the new secret. If the count isn't 1, coturn isn't restarted: wait a minute and run the block again.
+- The restart ends the allocations made with the leaked secret, and drops every relayed transfer in progress.
 - Never print the secret files (see above).
 
-### Removing or moving a relay
+### Removing a relay
 
 - Removing `sto` from `relays` in `apps/infra/src/config.ts` deletes the instance but keeps its static IP `fidant-relay-sto-ip`. Release it by hand (`aws lightsail release-static-ip --static-ip-name fidant-relay-sto-ip --profile fidant-poc --region eu-north-1`), or adding `sto` back fails on the name.
+- From SIG-153 on, the same pull request removes the relay's public key from `relays.json`. A retired key that is still trusted keeps receiving new secrets.
+- Moving a relay is a removal plus a new box, whose key goes through a reviewed pull request, with its DNS record changed as in SIG-157.
 
 ### Run the install again
 
