@@ -355,9 +355,12 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
       if (isActive(current)) {
         return { state, effects: [{ type: "refuse", linkId, attempt, reason: "busy" }] };
       }
+      // A refused relay gets no credentialed server, whatever the server sent:
+      // the parser only lets credential-free entries carry `stun:` URLs.
+      const allowed = turn ? iceServers : iceServers.filter((server) => !("credential" in server));
       return {
         state: replace(state, { ...reset(current, "connecting"), attempt, turn }),
-        effects: [{ type: "start", linkId, attempt, iceServers }],
+        effects: [{ type: "start", linkId, attempt, iceServers: allowed }],
       };
     }
     case "channel-open":

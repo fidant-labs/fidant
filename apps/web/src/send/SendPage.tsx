@@ -14,7 +14,8 @@
 //   only after LOST_AFTER_MS without it.
 // - Server `joined` → reducer `joined`, whose `start` effect derives the
 //   link's signal key and creates a sender peer with the ICE servers from
-//   `joined`. `relay` goes to that peer.
+//   `joined`, without TURN entries when the relay checkbox or the server
+//   refused it. `relay` goes to that peer.
 //   `left` → reducer `left`, which only matters before the channel opens.
 // - When the data channel opens, sendFile runs the transfer and reports
 //   accepted, progress, declined and receipt back to the reducer.
@@ -450,7 +451,8 @@ export function SendPage({
             linkId: message.link,
             attempt: message.attempt,
             iceServers: message.iceServers,
-            turn: message.turn,
+            // The page enforces its own choice too, so a server that ignores it can't get the relay used.
+            turn: message.turn && allowRelayRef.current,
           });
           break;
         case "left":

@@ -87,6 +87,19 @@ test("add ignores a duplicate link ID and stops at MAX_LINKS", () => {
   assert.equal(extra.state, full);
 });
 
+test("a refused relay starts without TURN servers, whatever joined carried", () => {
+  const { state: s0, linkId } = withRecipient();
+  const stun = { urls: ["stun:127.0.0.1:3478"] };
+  const result = update(s0, {
+    type: "joined",
+    linkId,
+    attempt: A,
+    iceServers: [stun, ...TURN],
+    turn: false,
+  });
+  assert.deepEqual(result.effects, [{ type: "start", linkId, attempt: A, iceServers: [stun] }]);
+});
+
 test("a full delivery walks waiting → connecting → offered → receiving → delivered", () => {
   const { state: s0, linkId } = withRecipient();
 
