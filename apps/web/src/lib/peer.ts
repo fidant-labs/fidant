@@ -298,10 +298,12 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
   let closed = false;
   let channel: RTCDataChannel | undefined;
   let gotOffer = false;
-  let gotAnswer = false;
   let commit: string | undefined;
   let offerFingerprint: string | undefined;
   let answered = false;
+  // Relays run one at a time and an answer that isn't accepted closes the
+  // peer, so this one flag both refuses a second answer and lets late relays
+  // through (handleRelay).
   let answerAccepted = false;
   let ownFingerprint: string | undefined;
   let check = side === "s" && options.check === true;
@@ -486,10 +488,9 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
         return;
       }
       case "answer": {
-        if (side !== "s" || gotAnswer || commit === undefined || !offerFingerprint) {
+        if (side !== "s" || answerAccepted || commit === undefined || !offerFingerprint) {
           throw new PeerError("bad-signal", "unexpected answer");
         }
-        gotAnswer = true;
         const theirs = remoteFingerprint(payload.sdp);
         if ((await commitFingerprint(theirs)) !== commit) {
           throw new PeerError("bad-signal", "answer does not match the commitment");
