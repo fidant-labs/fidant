@@ -3,13 +3,15 @@
 #   site-a 10.89.1.0/24: router-a (.2), net-a1 (.11), net-a2 (.12)
 #   site-b 10.89.2.0/24: router-b (.2), net-b1 (.11)
 #   public 198.51.100.0/24 (TEST-NET-2): router-a (.2), router-b (.3), coturn (.20), box (.30),
-#     relay (.40)
+#     relay (.40), alb (.50)
+#   lb 10.89.3.0/24, internal: alb (.2), signal (.10)
 #
 # Each browser-xx shares the network namespace of net-xx, whose default route is its site's
 # router. The routers NAT onto public, which has no way out, so nothing reaches the internet.
 #
 # Environment: PLAYWRIGHT_VERSION, SIGILL_E2E_REPO (repo path on the host),
-# SIGILL_E2E_RUN_DIR (observations/run), SIGILL_E2E_COTURN_DIR (holds turnserver.conf and the TLS certificate),
+# SIGILL_E2E_RUN_DIR (observations/run), SIGILL_E2E_COTURN_DIR (holds turnserver.conf and the TLS certificate,
+# and signal.env and signal-relays.json for signal),
 # SIGILL_E2E_BOX_DIR (the box's config files at their paths under /),
 # SIGILL_E2E_RELAY_DIR (the relay's install.sh inputs in env, and its TLS pair in tls/),
 # SIGILL_E2E_UID and SIGILL_E2E_GID (the host user, so files in the run dir stay theirs).
@@ -33,6 +35,12 @@ networks:
     ipam:
       config:
         - subnet: 10.89.2.0/24
+  lb:
+    name: sigill-e2e-lb
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.89.3.0/24
 
 x-tools: &tools
   image: sigill-e2e-net
@@ -207,3 +215,37 @@ services:
         - systemctl is-active --quiet relay-install && systemctl is-active --quiet coturn
       interval: 1s
       retries: 90
+
+  signal:
+    image: sigill-e2e-signal
+    build:
+      context: ${SIGILL_E2E_REPO:?}
+      dockerfile: apps/server/Dockerfile
+    read_only: true
+    # Docker Desktop makes a bare tmpfs root's, and the server then can't write to it.
+    tmpfs: ["/run/sigill:uid=1000,gid=1000,mode=700"]
+    # No healthcheck: its exec would inherit RELAY_MASTER, which this file holds.
+    env_file: ${SIGILL_E2E_COTURN_DIR:?}/signal.env
+    environment:
+      SIGNALING_ONLY: "1"
+      PUBLIC_ORIGIN: https://fidant.se
+      TRUSTED_PROXIES: 10.89.3.0/24
+      RELAYS_FILE: /config/relays.json
+      RELAY_MASTER_FILE: /run/sigill/relay-master
+      CERT_DIR: /run/sigill/certs
+      STUN_URLS: stun:198.51.100.20:3478
+      HTTP_KEEP_ALIVE_MS: "125000"
+    volumes:
+      - ${SIGILL_E2E_COTURN_DIR:?}/signal-relays.json:/config/relays.json:ro
+    networks:
+      lb: { ipv4_address: 10.89.3.10 }
+
+  alb:
+    image: sigill-e2e-alb
+    build: alb
+    volumes:
+      - ${SIGILL_E2E_COTURN_DIR:?}/turn.crt:/etc/alb/tls.crt:ro
+      - ${SIGILL_E2E_COTURN_DIR:?}/turn.key:/etc/alb/tls.key:ro
+    networks:
+      public: { ipv4_address: 198.51.100.50 }
+      lb: { ipv4_address: 10.89.3.2 }
