@@ -134,7 +134,8 @@ test("a text goes from /secret to the recipient, who shows and copies it", async
   await shown.focus();
   await page.keyboard.press("ControlOrMeta+A");
   expect(await page.evaluate(() => getSelection()?.toString())).toBe(text);
-  // A Cyrillic layout gives "ф" for the A key; Shift or Alt with A is another shortcut.
+  // A Cyrillic layout gives "ф" for the A key. Shift or Alt with A, and Ctrl+Q on AZERTY
+  // (the A key giving "q"), are other shortcuts.
   const keyDown = (init: {
     key: string;
     code: string;
@@ -158,6 +159,10 @@ test("a text goes from /secret to the recipient, who shows and copies it", async
       selected: "",
     });
   }
+  expect(await keyDown({ key: "q", code: "KeyA", ctrlKey: true })).toEqual({
+    prevented: false,
+    selected: "",
+  });
 
   // The canary repeats under --repeat-each, so a clipboard left by an earlier run would pass.
   await page.evaluate(() => navigator.clipboard.writeText("not the text"));
