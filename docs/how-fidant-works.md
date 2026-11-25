@@ -283,7 +283,7 @@ recipient → server     join {link, attempt, token}
 - Our server, while it builds and sends the notice, and the mail service.
 - Anyone who can read the mail in transit, the recipient's mailbox provider for as long as the mail is kept, and link scanners that fetch it. A scanner can't connect without the code.
 - Anyone who can read that mailbox, who can also get the code and so the file or shared secret.
-- With the key, our server could open that link's sealed setup messages, swap the DTLS fingerprints and sit in the middle of the transfer. The code doesn't stop this, because Fidant sends the code. Check words that both screens show will close the gap (SIG-109, planned). A sender who doesn't want any of this leaves the email field empty and passes the link on themselves.
+- With the key, our server could open that link's sealed setup messages, swap the DTLS fingerprints and sit in the middle of the transfer. The code doesn't stop this, because Fidant sends the code. Check words that both screens show will close the gap (SIG-109, planned). A sender who doesn't want any of this leaves "Email the link for me (less private)" unticked and passes the link on themselves.
 
 ## What the server and relay see, keep and log
 

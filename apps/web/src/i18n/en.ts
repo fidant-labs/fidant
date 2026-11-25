@@ -110,7 +110,7 @@ export const en = {
   },
   landing: {
     title: "Send a file only the recipient can open.",
-    lede: "Fidant encrypts the file in your browser before it goes to the person you choose. It is never stored, and you send the link yourself, so nobody in between, us included, can read it.",
+    lede: "Fidant encrypts the file in your browser before it goes to the person you choose. It is never stored, and only someone with the link can open it.",
     cta: "Send a file",
     how: "Read how it works",
     noAccount: "No account. Nothing stored.",
@@ -327,7 +327,7 @@ export const en = {
     emailLabel: "Their email address",
     emailError: "Enter a valid email address, like name@example.com.",
     emailNotice:
-      "Our server will see this link's key once, to write the email. It doesn't store or log it, but our mail service sees it too, and the link, key included, stays in their mailbox: anyone who can read that mailbox could receive the file. Until check words exist, our server could also put itself between you and them for this link. Sending the link yourself avoids all of this.",
+      "Our server will see this link's key once, to write the email. It doesn't store or log it, but our mail service and anyone who reads the email on its way can see it too, and the link, key included, stays in their mailbox: anyone who can read that mailbox could receive the file. Until check words exist, our server could also put itself between you and them for this link. Sending the link yourself avoids all of this.",
     fileFirst: "Choose a file first.",
     full: (max: number) => `You can send to up to ${max} people at a time.`,
     oneLinkEach: "Each person gets their own link, which works once.",
@@ -536,7 +536,7 @@ export const en = {
     locked: "Remove everyone to change your name or secret.",
     keepOpen: "Keep this tab open until everyone has the secret. It's sent from here.",
     emailNotice:
-      "Our server will see this link's key once, to write the email. It doesn't store or log it, but our mail service sees it too, and the link, key included, stays in their mailbox: anyone who can read that mailbox could receive the secret. Until check words exist, our server could also put itself between you and them for this link. Sending the link yourself avoids all of this.",
+      "Our server will see this link's key once, to write the email. It doesn't store or log it, but our mail service and anyone who reads the email on its way can see it too, and the link, key included, stays in their mailbox: anyone who can read that mailbox could receive the secret. Until check words exist, our server could also put itself between you and them for this link. Sending the link yourself avoids all of this.",
     // Only the statuses whose file wording would be wrong; the rest come from send.status.
     status: {
       declined: (name: string) =>
@@ -771,7 +771,7 @@ export const en = {
         heading: "What it doesn't protect against",
         body: [
           "Anyone who gets hold of a link can open the file, and a link we email also needs a code we send to the same address. Send each link only to the person it is for, over a channel you trust.",
-          "A link we email stays in the recipient's mailbox. Anyone who can read that mailbox can also get the code, and so the file. And because our server had that link's key, you have to trust us not to read the file on its way. To avoid both, leave the email address empty and send the link yourself.",
+          "A link we email stays in the recipient's mailbox. Anyone who can read that mailbox can also get the code, and so the file. And because our server had that link's key, you have to trust us not to read the file on its way. To avoid both, leave “Email the link for me” unticked and send the link yourself.",
           "The sender's name is typed by the sender and not verified.",
           "The two browsers see each other's IP address, the same as on a video call. When the file goes through our relay, the relay sees both IP addresses and roughly how big the file is.",
           "A computer that is already compromised can read the file before it is encrypted or after it is unlocked.",
@@ -906,7 +906,7 @@ export const en = {
           "Our server picks a random value and emails the recipient the link with that value in front of the link's secret: https://fidant.se/r/<link ID>#e.<value>.<secret>. It makes one attempt, with a time limit, and never retries. It has the link's secret and the sender's name only until that attempt ends, and never stores or logs them. The email is plain text. It gives the name the sender typed, marked as not verified, and says nothing about what is sent, not even whether it is a file or a shared secret.",
           "Before it connects, the recipient's page sends the value to our server. Only if it matches does the server show a masked address, like a***@example.se, and on request email a 6-digit code there. A code works for 10 minutes, and 5 wrong tries end it. The right code gets a random token that only that browser tab keeps, and the server connects nobody to an emailed link without one. Someone with only the link ID, or an emailed link that has stopped working, can't see the address, can't make us send codes and can't connect.",
           "Our server keeps the address, the value, the codes and the tokens in memory while the sender's page has the link. When the sender removes the recipient, closes the page or loses the connection to our server, or when the server restarts, all of it is gone and the emailed link stops working. To limit abuse, the server counts emails for an hour under a scrambled form of each address (an HMAC with a random key), never the address itself: at most 20 emails an hour from one connection, 50 from one IP address and 5 to one email address, and at most 5 codes per link, 30 seconds apart, and 10 an hour to one address.",
-          "The catch: the key is in the email. Our server had it, our mail service and anyone who reads the email on its way can see it, and it stays in the recipient's mailbox. The code stops a forwarded link or a mail scanner from receiving the file or the shared secret, but not someone who can read that mailbox. And because our server had the key, it could put itself between the two browsers for that link. Check words that both screens show, which are planned, will let you catch that. If you don't want any of this, leave the email address empty and send the link yourself.",
+          "The catch: the key is in the email. Our server had it, our mail service and anyone who reads the email on its way can see it, and it stays in the recipient's mailbox. The code stops a forwarded link or a mail scanner from receiving the file or the shared secret, but not someone who can read that mailbox. And because our server had the key, it could put itself between the two browsers for that link. Check words that both screens show, which are planned, will let you catch that. If you don't want any of this, leave “Email the link for me” unticked and send the link yourself.",
         ],
       },
       site: {

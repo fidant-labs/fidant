@@ -927,6 +927,7 @@ async function addEmailed(
   await expect(
     recipientRow(sender, name).getByText(`Email sent to ${maskAddress(to)}`),
   ).toBeVisible();
+  await expect(sender.getByLabel("Email the link for me (less private)")).toBeChecked();
   const link = (await sender.getByLabel(`Link for ${name}`, { exact: true }).textContent()) ?? "";
   const url = new URL(link);
   const [, mark = "", secret = ""] = /^#e\.([\w-]{22})\.([\w-]{43})$/.exec(url.hash) ?? [];
@@ -1300,6 +1301,14 @@ harness(
       await expect(
         page.getByRole("note").filter({ hasText: "Sending the link yourself avoids all of this." }),
       ).toBeVisible();
+      // Having opted in, the sender can't add a recipient without an address.
+      await page.getByLabel("Who is it for?").fill("Anna");
+      await page.getByRole("button", { name: "Add", exact: true }).click();
+      await expect(
+        page.getByText("Enter a valid email address, like name@example.com."),
+      ).toBeVisible();
+      await expect(page.getByLabel("Their email address")).toBeFocused();
+      await expect(page.getByLabel("Link for Anna", { exact: true })).toHaveCount(0);
     }
   },
 );

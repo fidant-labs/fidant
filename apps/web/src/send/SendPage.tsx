@@ -462,7 +462,8 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
     setNameError("");
     const emailInput = form.elements.namedItem("email") as HTMLInputElement | null;
     const email = emailInput?.value.trim() ?? "";
-    if (email && !isAddress(email)) {
+    // The field exists only once the sender opted in to email, and then it needs a real address.
+    if (emailInput && !isAddress(email)) {
       setEmailError(true);
       emailInput?.focus();
       return;
