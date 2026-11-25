@@ -217,10 +217,7 @@ export const sv: Messages = {
     timeLeft: (duration: string) => `Ungefär ${duration} kvar`,
   },
   send: {
-    fileHeading: "Din fil",
-    recipientsHeading: "Mottagare",
     continue: "Fortsätt",
-    back: "Tillbaka till filen",
     title: "Skicka en fil",
     lede: "Välj en fil och skapa sedan en länk till varje person. Din fil skickas från den här webbläsaren till dem. Den är krypterad hela vägen och laddas aldrig upp eller sparas.",
     step: (n: number) => `Steg ${n} av 2`,
@@ -233,8 +230,8 @@ export const sv: Messages = {
     shareFor: (name: string) => `Dela länken till ${name}`,
     sendingBar: (delivered: number, total: number) =>
       `Skickar från den här fliken · ${delivered} av ${total} levererade · håll den öppen`,
-    allDone: "Alla har fått filen. Du kan stänga fliken.",
-    summary: (done: number, total: number) => `${done} av ${total} har fått filen`,
+    allDone: "Alla länkar har levererat filen. Du kan stänga fliken.",
+    summary: (done: number, total: number) => `${done} av ${total} länkar har levererat filen`,
     delivered: "Levererad",
     doneTitle: "Allt levererat",
     doneOne: (name: string) => `Filen kom fram oskadd via länken till ${name}.`,
@@ -258,7 +255,6 @@ export const sv: Messages = {
         "Ditt namn och filnamnet är för långa tillsammans. Korta ditt namn eller byt namn på filen.",
     },
     chooseFile: "Välj en fil",
-    chooseOther: "Välj en annan fil",
     orDrop: "eller släpp den här",
     fileError: {
       unsafe:
@@ -283,7 +279,6 @@ export const sv: Messages = {
     fileFirst: "Välj en fil först.",
     full: (max: number) => `Du kan skicka till högst ${max} personer åt gången.`,
     oneLinkEach: "Varje person får en egen länk, som fungerar en gång.",
-    keepOpen: "Ha fliken öppen tills alla har fått filen. Den skickas härifrån.",
     recipients: "Mottagare",
     status: {
       waiting: (name: string) => `Väntar på att länken till ${name} ska öppnas`,
@@ -483,12 +478,11 @@ export const sv: Messages = {
         body: "Webbläsaren kunde inte läsa hemligheten den tog emot. Be avsändaren att skicka den igen.",
       },
     },
-    back: "Tillbaka till hemligheten",
     first: "Skriv eller klistra in hemligheten först.",
     locked: "Ta bort alla mottagare för att ändra ditt namn eller din hemlighet.",
-    keepOpen: "Ha fliken öppen tills alla har fått hemligheten. Den skickas härifrån.",
-    allDone: "Alla har fått hemligheten. Du kan stänga fliken.",
-    summary: (done: number, total: number) => `${done} av ${total} har fått hemligheten`,
+    allDone: "Alla länkar har levererat hemligheten. Du kan stänga fliken.",
+    summary: (done: number, total: number) =>
+      `${done} av ${total} länkar har levererat hemligheten`,
     doneOne: (name: string) => `Hemligheten kom fram oskadd via länken till ${name}.`,
     doneMany: (n: number) => `Hemligheten kom fram oskadd via alla ${n} länkar.`,
     emailNotice:

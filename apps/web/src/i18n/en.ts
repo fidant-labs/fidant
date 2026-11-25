@@ -232,10 +232,7 @@ export const en = {
     timeLeft: (duration: string) => `About ${duration} left`,
   },
   send: {
-    fileHeading: "Your file",
-    recipientsHeading: "Recipients",
     continue: "Continue",
-    back: "Back to the file",
     title: "Send a file",
     lede: "Choose a file, then create a link for each person. Your file is sent from this browser to them. It's encrypted the whole way and never uploaded or stored.",
     step: (n: number) => `Step ${n} of 2`,
@@ -248,8 +245,8 @@ export const en = {
     shareFor: (name: string) => `Share link for ${name}`,
     sendingBar: (delivered: number, total: number) =>
       `Sending from this tab · ${delivered} of ${total} delivered · keep it open`,
-    allDone: "Everyone has the file. You can close this tab.",
-    summary: (done: number, total: number) => `${done} of ${total} have the file`,
+    allDone: "Every link has delivered the file. You can close this tab.",
+    summary: (done: number, total: number) => `${done} of ${total} links have delivered the file`,
     delivered: "Delivered",
     doneTitle: "All delivered",
     doneOne: (name: string) => `The file arrived intact through ${name}'s link.`,
@@ -273,7 +270,6 @@ export const en = {
         "Your name and the file name are too long together. Shorten your name or rename the file.",
     },
     chooseFile: "Choose a file",
-    chooseOther: "Choose a different file",
     orDrop: "or drop it here",
     fileError: {
       unsafe:
@@ -298,7 +294,6 @@ export const en = {
     fileFirst: "Choose a file first.",
     full: (max: number) => `You can send to up to ${max} people at a time.`,
     oneLinkEach: "Each person gets their own link, which works once.",
-    keepOpen: "Keep this tab open until everyone has the file. It's sent from here.",
     recipients: "Recipients",
     status: {
       waiting: (name: string) => `Waiting for ${name}'s link to be opened`,
@@ -499,12 +494,10 @@ export const en = {
         body: "This browser couldn't read the secret it received. Ask the sender to send it again.",
       },
     },
-    back: "Back to the secret",
     first: "Write or paste the secret first.",
     locked: "Remove everyone to change your name or secret.",
-    keepOpen: "Keep this tab open until everyone has the secret. It's sent from here.",
-    allDone: "Everyone has the secret. You can close this tab.",
-    summary: (done: number, total: number) => `${done} of ${total} have the secret`,
+    allDone: "Every link has delivered the secret. You can close this tab.",
+    summary: (done: number, total: number) => `${done} of ${total} links have delivered the secret`,
     doneOne: (name: string) => `The secret arrived intact through ${name}'s link.`,
     doneMany: (n: number) => `The secret arrived intact through all ${n} links.`,
     emailNotice:
