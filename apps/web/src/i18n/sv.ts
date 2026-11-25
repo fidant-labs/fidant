@@ -163,10 +163,51 @@ export const sv: Messages = {
         ],
       },
       never: {
-        heading: "Det här ser vi aldrig",
+        heading: "Det här lämnas kvar",
         body: [
-          "Inte din fil. Inte filens namn. Inte nyckeln som låser upp den, om du inte ber oss mejla länken.",
-          "Det gäller både vår server och vårt relä. Reläet ser aldrig nyckeln.",
+          "Vi ser aldrig din fil, dess namn eller nyckeln som låser upp den, om du inte ber oss mejla länken. Vårt relä ser aldrig nyckeln alls.",
+          "Det vår server och vårt relä ser har de i minnet eller i korta loggar. De två webbläsarna har också några spår kvar, och mottagaren har filen.",
+        ],
+      },
+      encryption: {
+        heading: "Den låses två gånger",
+        body: [
+          "Din webbläsare låser filen med en nyckel som kommer från länken. Utan länken kan ingen låsa upp den.",
+          "Förbindelsen mellan de två webbläsarna är också låst, så filen är låst två gånger på vägen.",
+        ],
+      },
+      transfer: {
+        heading: "Den skickas i små numrerade delar",
+        body: [
+          "Din webbläsare skickar filen i lika stora delar, var och en låst och numrerad.",
+          "Ingen del skickas förrän mottagaren har tackat ja till filen.",
+        ],
+      },
+      verification: {
+        heading: "Mottagarens webbläsare kontrollerar den",
+        body: [
+          "När sista delen har kommit fram kontrollerar mottagarens webbläsare att filen är exakt den du skickade.",
+          "Saknas eller ändras något kastas filen. Du ser att den kommit fram först när kontrollen har gått igenom.",
+        ],
+      },
+      masking: {
+        heading: "Storleken suddas ut",
+        body: [
+          "Den som ser trafiken ser ungefär hur mycket som skickas, men inte filens exakta storlek.",
+          "En delad hemlighet ser alltid lika stor ut, hur lång den än är.",
+        ],
+      },
+      protection: {
+        heading: "Det som skyddar dig, och det som inte gör det",
+        body: [
+          "Varje risk, och vad i Fidant som står emot den.",
+          "Och riskerna Fidant inte kan skydda dig mot, till exempel att någon annan får tag på länken.",
+        ],
+      },
+      tech: {
+        heading: "Orden förklarade",
+        body: [
+          "Fidant bygger på WebRTC, tekniken webbläsare använder för videosamtal. Den här sidan förklarar den och de andra tekniska orden på de här sidorna, till exempel STUN och TURN.",
         ],
       },
     },
@@ -177,13 +218,21 @@ export const sv: Messages = {
     steps: "Steg",
     overview: "Översikt",
     next: "Nästa",
+    copyLink: "Kopiera länk till den här delen",
+    copied: "Länken kopierad",
     nav: {
       stays: "Filen",
+      encryption: "Kryptering",
       link: "Länken",
-      open: "Uppkopplingen",
+      open: "Uppkoppling",
       direct: "Direkt",
-      relay: "Reläet",
-      never: "Det vi inte ser",
+      relay: "Relä",
+      transfer: "Överföring",
+      verification: "Kontroll",
+      masking: "Maskering",
+      never: "Spår",
+      protection: "Skydd",
+      tech: "Ordlista",
     },
   },
   insecure: {
@@ -860,6 +909,22 @@ export const sv: Messages = {
           "https://github.com/sigill-labs/sigill/tree/main/docs/decisions",
         ],
       },
+      sender: {
+        heading: "Spår i avsändarens webbläsare",
+        body: [
+          "Filen läses från din disk och kopieras ingen annanstans. Länkarna, nycklarna och överföringarna finns bara i sidans minne och försvinner när den stängs.",
+          "En delad hemlighet skrivs i en textruta. En webbläsare kan spara det som står i en textruta med sessionen, för att återställa det efter en krasch eller en återöppnad flik.",
+          "Om du kopierar en länk ligger den i ditt urklipp. Fidant sparar själv bara ditt val av språk och tema i webbläsaren.",
+        ],
+      },
+      recipient: {
+        heading: "Spår i mottagarens webbläsare",
+        body: [
+          "Filen finns där mottagaren sparade den: Chrome och Edge skriver den till platsen mottagaren valde, och andra webbläsare till sina nedladdningar. En delad hemlighet finns bara i sidans minne, tills mottagaren kopierar den. Då ligger den också i urklippet, där urklippshistorik, synkade urklipp och andra appar kan läsa den.",
+          "Länken, med sin nyckel, finns kvar i webbläsarens historik som vilken adress som helst. En länk nekas när dess fil har levererats, och fungerar bara medan avsändarens sida är öppen.",
+          "För en länk vi mejlar sparas den token som rätt kod ger i den webbläsarfliken tills fliken stängs. Fidant sparar själv bara valet av språk och tema.",
+        ],
+      },
     } satisfies Record<string, Section>,
     modes: {
       send: {
@@ -909,6 +974,89 @@ export const sv: Messages = {
           },
         },
       },
+    },
+    glossary: {
+      webrtc: [
+        "WebRTC",
+        "Tekniken som finns i alla moderna webbläsare för att koppla ihop två webbläsare direkt, mest känd från videosamtal. Fidant använder den för att skicka filen mellan webbläsarna. Orden nedan är dess delar, och de som Fidant lägger till.",
+      ],
+      signaling: [
+        "Signalering",
+        "Att skicka meddelandena för uppkopplingen mellan två webbläsare innan de når varandra. WebRTC lämnar det till appen. Fidant skickar dem via vår server, krypterade så att servern inte kan läsa eller ändra dem.",
+      ],
+      websocket: [
+        "WebSocket",
+        "En bestående förbindelse åt båda hållen mellan en sida och en server. Fidants sidor håller en öppen mot vår server för att skicka meddelandena för uppkopplingen.",
+      ],
+      sdp: [
+        "Erbjudande och svar",
+        "Meddelandena som beskriver varje sida av en WebRTC-förbindelse, bland annat fingeravtrycket för dess DTLS-certifikat. Avsändarens webbläsare gör erbjudandet och mottagarens webbläsare svaret.",
+      ],
+      ice: [
+        "Kandidater",
+        "Adresserna där en webbläsare kanske kan nås: på det lokala nätverket, dess offentliga adress eller en adress på ett relä. De två webbläsarna byter kandidater och provar par av dem tills ett fungerar.",
+      ],
+      stun: [
+        "STUN",
+        "En tjänst som talar om för en webbläsare vilken offentlig adress den har, adressen internet ser den från bakom en router. Vår STUN-tjänst körs på samma maskin som vårt relä.",
+      ],
+      turn: [
+        "TURN",
+        "Ett relä som för vidare trafiken mellan två webbläsare som inte når varandra direkt. Vårt relä är en TURN-server. Det för vidare krypterade paket som det inte kan läsa.",
+      ],
+      dtls: [
+        "DTLS",
+        "Krypteringen som WebRTC alltid lägger på förbindelsen mellan två webbläsare, ungefär som TLS som HTTPS använder. Varje webbläsare kontrollerar den andras certifikat mot fingeravtrycket i erbjudandet eller svaret.",
+      ],
+      channel: [
+        "Datakanal",
+        "En WebRTC-förbindelse som bär data i stället för ljud och bild. Fidant skickar sina ramar över en sådan.",
+      ],
+      aes: [
+        "AES-256-GCM",
+        "Krypteringen som Fidant lägger till ovanpå DTLS, med en nyckel på 256 bitar. Den upptäcker också varje ändring av det den krypterat.",
+      ],
+      hkdf: [
+        "HKDF-SHA-256",
+        "Ett standardsätt att ta fram flera nycklar ur en hemlighet. Fidant tar fram signalnyckeln och filnyckeln ur hemligheten i länken.",
+      ],
+      sha: [
+        "SHA-256",
+        "En kontrollsumma: varje ändring av en fil, hur liten den än är, ger ett helt annat värde. Mottagarens webbläsare jämför filens kontrollsumma med avsändarens.",
+      ],
+      nonce: [
+        "Nonce",
+        "Ett tal som aldrig får användas två gånger med samma nyckel. Fidant bygger det av riktningen och ramens löpnummer.",
+      ],
+      fragment: [
+        "Fragment",
+        "Delen av en adress efter tecknet #. Webbläsare skickar den inte till servrar, så det är där länken har sin hemlighet.",
+      ],
+      padme: [
+        "Padmé",
+        "Ett sätt att avrunda en storlek uppåt så att den bara syns ungefär. Det lägger till högst 12 %.",
+      ],
+      hmac: [
+        "HMAC",
+        "En kontrollsumma gjord med en nyckel. Vår server har e-post- och IP-adresserna den räknar för sina gränser bara som HMAC, med en slumpmässig nyckel som bara finns i dess minne.",
+      ],
+    },
+    linkRisks: {
+      heading: "Vem som kan se nyckeln",
+      body: ["Hur länken når mottagaren avgör vem mer som kan se nyckeln i den."],
+      columns: ["Hur länken skickas", "Vem mer som kan se nyckeln", "Det här begränsar risken"],
+      rows: [
+        [
+          "Avsändaren skickar den vidare",
+          "Den som kan läsa kanalen avsändaren använder, till exempel chatt- eller e-posttjänsten.",
+          "Länken fungerar bara tills dess fil har levererats, och bara medan avsändarens sida är öppen. Skicka varje länk bara till den den är till, på ett sätt du litar på.",
+        ],
+        [
+          "Vi mejlar den",
+          "Vår server medan den skickar mejlet, vår e-posttjänst, den som läser mejlet på vägen, mottagarens e-postleverantör och den som kan läsa den brevlådan.",
+          "Mottagarens webbläsare ansluter först efter en sexsiffrig kod som skickas till samma adress, och som gäller i 10 minuter och 5 försök. Tills kontrollord finns skulle vår server kunna ställa sig mellan de två webbläsarna för den länken.",
+        ],
+      ],
     },
     protect: {
       heading: "Så skyddar Fidant dig",

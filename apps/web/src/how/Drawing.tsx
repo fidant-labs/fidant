@@ -1,6 +1,7 @@
 import type { ComponentChildren } from "preact";
-import { useEffect, useRef } from "preact/hooks";
-import { display, ICONS } from "../ui.tsx";
+import { useEffect, useRef, useState } from "preact/hooks";
+import { useI18n } from "../i18n/I18n.tsx";
+import { display, ICONS, Link } from "../ui.tsx";
 
 const run = "group-data-seen/art:[animation-play-state:running] print:animate-none";
 const animate = {
@@ -436,19 +437,119 @@ export function DrawnSection({
     >
       {art && <Drawing id={art} />}
       <div>
-        <h2 id={`${id}-heading`} class={`${display} m-0 mb-4 text-[1.75rem] sm:text-[2.1rem]`}>
+        <Heading id={id} class={`${display} m-0 mb-4 text-[1.75rem] sm:text-[2.1rem]`}>
           {heading}
-        </h2>
+        </Heading>
         {children}
       </div>
     </section>
   );
 }
 
+/**
+ * A section's h2 and, beside it so it stays out of the heading's name, a button shown on hover or
+ * focus that copies a link to the section. The h2's id is `<id>-heading`, for aria-labelledby.
+ */
+export function Heading({
+  id,
+  class: cls,
+  children,
+}: {
+  id: string;
+  class: string;
+  children: ComponentChildren;
+}) {
+  const { t } = useI18n();
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(`${location.origin}${location.pathname}#${id}`);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // No clipboard (an insecure page or a refused permission): the button just does nothing.
+    }
+  };
+  return (
+    <div class={`group/heading flex items-baseline ${cls}`}>
+      <h2 id={`${id}-heading`} class="m-0 [font:inherit]">
+        {children}
+      </h2>
+      <button
+        type="button"
+        onClick={copy}
+        aria-label={t.how.copyLink}
+        class="ml-2 inline-flex size-[0.9em] translate-y-[0.1em] cursor-pointer items-center justify-center rounded-sm align-baseline text-muted-foreground opacity-0 group-hover/heading:opacity-100 hover:text-foreground focus-visible:opacity-100 [@media(hover:none)]:opacity-60"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          class="size-[0.6em]"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          {copied ? ICONS.check : ICONS.link}
+        </svg>
+      </button>
+      <span class="sr-only" aria-live="polite">
+        {copied ? t.how.copied : ""}
+      </span>
+    </div>
+  );
+}
+
 export function Paragraphs({ body }: { body: readonly string[] }) {
   return body.map((paragraph) => (
     <p key={paragraph} class="max-w-2xl">
-      {paragraph}
+      <Terms text={paragraph} />
     </p>
   ));
+}
+
+/** Technical words, longest first, and their entry on /how/tech. The same in every language. */
+const TERMS: ReadonlyArray<readonly [string, string]> = [
+  ["HKDF-SHA-256", "hkdf"],
+  ["AES-256-GCM", "aes"],
+  ["SHA-256", "sha"],
+  ["WebRTC", "webrtc"],
+  ["WebSocket", "websocket"],
+  ["STUN", "stun"],
+  ["TURN", "turn"],
+  ["DTLS", "dtls"],
+  ["Padmé", "padme"],
+  ["HMAC", "hmac"],
+  ["nonce", "nonce"],
+];
+// The words hold no regex characters. A word on its own or starting a compound ("STUN-tjänst").
+const TERM = new RegExp(`(?<![\\w-])(${TERMS.map(([word]) => word).join("|")})(?!\\w)`, "g");
+
+/** Text with the first mention of each technical word linked to its entry on /how/tech, except `skip`. */
+export function Terms({ text, skip }: { text: string; skip?: string }) {
+  const seen = new Set<string>();
+  const parts: ComponentChildren[] = [];
+  let last = 0;
+  for (const match of text.matchAll(TERM)) {
+    const [word = ""] = match.slice(1);
+    const id = TERMS.find(([term]) => term === word)?.[1];
+    if (!id || id === skip || seen.has(id)) {
+      continue;
+    }
+    seen.add(id);
+    parts.push(
+      text.slice(last, match.index),
+      <Link
+        key={match.index}
+        href={`/how/tech#${id}`}
+        class="underline decoration-dotted underline-offset-4"
+      >
+        {word}
+      </Link>,
+    );
+    last = match.index + word.length;
+  }
+  parts.push(text.slice(last));
+  return <>{parts}</>;
 }

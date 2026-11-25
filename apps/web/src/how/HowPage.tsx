@@ -2,7 +2,7 @@ import type { ComponentChildren } from "preact";
 import { useI18n } from "../i18n/I18n.tsx";
 import { Detail, STEPS, type Step } from "../technical/TechnicalPage.tsx";
 import { display, Link } from "../ui.tsx";
-import { Drawing, DrawnSection, Paragraphs, useRevealDrawings } from "./Drawing.tsx";
+import { Drawing, DrawnSection, Paragraphs, Terms, useRevealDrawings } from "./Drawing.tsx";
 
 const link = "rounded-sm font-medium underline underline-offset-4";
 
@@ -61,10 +61,10 @@ function Overview() {
     <HowLayout>
       <h1 class={`${display} max-w-3xl text-[2.6rem] leading-[1.05] sm:text-[4rem]`}>{h.title}</h1>
       <p class="mt-6 max-w-2xl text-[1.15rem] text-muted-foreground">{h.lede}</p>
-      {STEPS.map(({ id, slug }) => {
+      {STEPS.map(({ id, slug, art }) => {
         const { heading, body } = h.sections[id];
         return (
-          <DrawnSection key={id} id={id} art={id} heading={heading}>
+          <DrawnSection key={id} id={id} art={art} heading={heading}>
             <Paragraphs body={body} />
             <p class="mb-0">
               <Link href={`/how/${slug}`} class={link}>
@@ -105,7 +105,7 @@ function StepPage({ step }: { step: Step }) {
         aria-labelledby="step-heading"
         class="sm:grid sm:grid-cols-[minmax(0,1fr)_12rem] sm:items-center sm:gap-x-8 md:grid-cols-[minmax(0,1fr)_15rem] md:gap-x-12"
       >
-        <Drawing id={step.id} />
+        <Drawing id={step.art} />
         <div>
           <h1
             id="step-heading"
@@ -115,7 +115,7 @@ function StepPage({ step }: { step: Step }) {
           </h1>
           {body.map((paragraph) => (
             <p key={paragraph} class="max-w-2xl text-[1.1rem] text-muted-foreground">
-              {paragraph}
+              <Terms text={paragraph} />
             </p>
           ))}
         </div>

@@ -57,8 +57,13 @@ function routeOf(path: string): Route {
  */
 function App() {
   const { t } = useI18n();
-  // The path, not just the route, so moving between /how steps renders the new step.
-  const [path, setPath] = useState(location.pathname);
+  // The path, not just the route, so moving between /how steps renders the new step. On /how pages
+  // the fragment too, so a link to an entry on the same page scrolls to it; elsewhere the fragment
+  // can be a decryption key, so it stays out.
+  const where = () =>
+    location.pathname + (location.pathname.startsWith("/how") ? location.hash : "");
+  const [place, setPlace] = useState(where);
+  const path = place.split("#")[0] ?? "";
   const route = routeOf(path);
   const [theme, setTheme] = useState(initialTheme);
   const chooseTheme = (next: Theme) => {
@@ -67,7 +72,7 @@ function App() {
   };
   const kept = useRef(new Set<Route>());
   useEffect(() => {
-    const onPop = () => setPath(location.pathname);
+    const onPop = () => setPlace(where());
     addEventListener("popstate", onPop);
     return () => removeEventListener("popstate", onPop);
   }, []);
@@ -99,7 +104,7 @@ function App() {
     }
     heading.tabIndex = -1;
     heading.focus({ preventScroll: target !== null });
-  }, [path]);
+  }, [place]);
 
   const secure = hasSecureCrypto();
   const holdsTransfer = route === "send" || route === "secret" || route === "receive";

@@ -296,6 +296,15 @@ recipient → server     join {link, attempt, token}
 
 /privacy lists every log field, generated from the same type.
 
+## What stays on the two devices
+
+`apps/web/src/theme.ts`, `apps/web/src/i18n/language.ts`, `apps/web/src/send/SendPage.tsx`, `apps/web/src/receive/ReceivePage.tsx`
+
+- Both pages keep the links, keys, transfers and file data only in memory. Fidant writes only two things to storage that outlasts the tab: the chosen theme and language, in `localStorage`.
+- Sender: the file is read from where it is and copied nowhere else. A shared secret is typed into a `<textarea>`, whose value a browser can save with its session. A link the sender copies is on their clipboard.
+- Recipient: the file is where they saved it (see "Checking on the recipient's side"). A shared secret is only in the page's memory until copied, then also on the clipboard (see "What Fidant doesn't protect against"). For an emailed link, the token stays in that tab's `sessionStorage` (see "Opening an emailed link").
+- Both: the browser's history keeps every address it opened, so the recipient's history holds the link with its secret, like any address. The link is refused once its file is delivered and works only while the sender's page is open.
+
 ## The web app and the server
 
 `apps/server/src/server.ts`, `apps/web/src/main.tsx`, `apps/web/src/i18n/preview.ts`, `apps/web/vite.config.ts`, `apps/infra/box/user-data.sh`
@@ -336,5 +345,5 @@ A pull request that changes security or data flow updates this document in the s
 
 The web pages explain the same things for readers, and change with it:
 
-- `/technical` and the step pages `/how/file`, `/how/link`, `/how/connect`, `/how/direct`, `/how/relay` and `/how/never`: the `technical` text in `apps/web/src/i18n/en.ts` and `sv.ts`, a reader's version of this document, split over the steps by `STEPS` in `apps/web/src/technical/TechnicalPage.tsx`.
+- `/technical` and the `/how/<step>` pages (`file`, `encryption`, `link`, `connect`, `direct`, `relay`, `transfer`, `verification`, `masking`, `traces`, `protection` and the word list `tech`): the `technical` text in `apps/web/src/i18n/en.ts` and `sv.ts`, a reader's version of this document, split over the steps by `STEPS` in `apps/web/src/technical/TechnicalPage.tsx`.
 - `/how`, `/privacy`, `/security` and the landing page, wherever they say something the change makes untrue.

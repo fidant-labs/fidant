@@ -1,7 +1,20 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "../src/fixtures.ts";
 
-const SECTIONS = ["stays", "link", "open", "direct", "relay", "never"];
+const SECTIONS = [
+  "stays",
+  "encryption",
+  "link",
+  "open",
+  "direct",
+  "relay",
+  "transfer",
+  "verification",
+  "masking",
+  "never",
+  "protection",
+  "tech",
+];
 
 let errors: string[] = [];
 
@@ -66,7 +79,7 @@ async function expectBelowHeader(page: Page, selector: string) {
     .toBe(true);
 }
 
-test("the landing page links to the six steps, which end with links to /privacy and /technical", async ({
+test("the landing page links to the steps, which end with links to /privacy and /technical", async ({
   page,
 }) => {
   await page.goto("/");
@@ -79,7 +92,7 @@ test("the landing page links to the six steps, which end with links to /privacy 
   for (const [index, id] of SECTIONS.entries()) {
     await expect(sections.nth(index)).toHaveId(id);
     await expect(sections.nth(index).locator("h2")).toHaveCount(1);
-    await expect(sections.nth(index).locator('svg[aria-hidden="true"]')).toHaveCount(1);
+    await expect(sections.nth(index).locator(':scope > svg[aria-hidden="true"]')).toHaveCount(1);
   }
   await expect(page.getByRole("link", { name: "Read the privacy page" })).toHaveAttribute(
     "href",
@@ -96,7 +109,20 @@ test("the landing page links to the six steps, which end with links to /privacy 
 });
 
 test("each step has a Read more page with the step menu and the next step", async ({ page }) => {
-  const slugs = ["file", "link", "connect", "direct", "relay", "never"];
+  const slugs = [
+    "file",
+    "encryption",
+    "link",
+    "connect",
+    "direct",
+    "relay",
+    "transfer",
+    "verification",
+    "masking",
+    "traces",
+    "protection",
+    "tech",
+  ];
   await page.goto("/how");
   const menu = page.getByRole("navigation", { name: "Steps" }).getByRole("link");
   await expect(menu).toHaveCount(slugs.length + 1);
@@ -115,12 +141,23 @@ test("each step has a Read more page with the step menu and the next step", asyn
   await expect(menu.nth(1)).toHaveAttribute("aria-current", "page");
   await expect(page.locator("#parts")).toBeVisible();
 
-  await page.getByRole("link", { name: "You get a link with the key inside" }).click();
-  await expect(page).toHaveURL(/\/how\/link$/);
+  await page.getByRole("link", { name: "It is locked twice" }).click();
+  await expect(page).toHaveURL(/\/how\/encryption$/);
   await expect(menu.nth(2)).toHaveAttribute("aria-current", "page");
+
+  await menu.nth(3).click();
+  await expect(page).toHaveURL(/\/how\/link$/);
   await expect(
     page.getByRole("heading", { name: "How the link reaches the recipient" }),
   ).toBeVisible();
+  await expect(page.getByRole("table", { name: "Who can see the key" })).toBeVisible();
+
+  // A technical word links to its entry in the word list, which scrolls into view and takes focus.
+  await page.goto("/how/direct");
+  await page.locator('main a[href="/how/tech#stun"]').first().click();
+  await expect(page).toHaveURL(/\/how\/tech#stun$/);
+  await expect(page.locator("#stun h2")).toBeFocused();
+  await expectBelowHeader(page, "#stun");
 
   for (const width of [360, 1280]) {
     await page.setViewportSize({ width, height: 800 });

@@ -6,7 +6,9 @@ import {
   type ArtId,
   Drawing,
   DrawnSection,
+  Heading,
   Paragraphs,
+  Terms,
   useRevealDrawings,
 } from "../how/Drawing.tsx";
 import type { Messages, Section } from "../i18n/en.ts";
@@ -17,68 +19,91 @@ type Technical = Messages["technical"];
 type Modes = Technical["modes"];
 
 /**
- * A piece of a step's detail: a text section with its drawing, a group of mode cards (each card
- * drawn with the drawing of the same name), or the protection table.
+ * A piece of a step's detail: a text section, with a drawing unless the step's own drawing already
+ * shows it; a group of mode cards (each drawn with the drawing of the same name); a table; or the
+ * word list.
  */
 type Block =
   | { section: keyof Technical["sections"]; art?: ArtId }
   | {
       [G in keyof Modes]: { modes: G; cards: ReadonlyArray<keyof Modes[G]["items"] & ArtId> };
     }[keyof Modes]
-  | { table: "protect" | "data" };
+  | { table: "protect" | "data" | "linkRisks" }
+  | { glossary: true };
 
-/** The /how steps in order, with their URL and the detail that goes with each. */
+/** The /how steps in order: their text on /how, their URL, drawing and technical detail. */
 export const STEPS = [
   {
     id: "stays",
     slug: "file",
+    art: "stays",
     detail: [
       { section: "parts", art: "parts" },
       { modes: "send", cards: ["file", "secret"] },
-      { section: "layers", art: "layers" },
-      { section: "frames", art: "frames" },
-      { section: "check", art: "check" },
-      { section: "padding", art: "padding" },
       { section: "secret" },
     ],
   },
   {
+    id: "encryption",
+    slug: "encryption",
+    art: "layers",
+    detail: [{ section: "keys", art: "keys" }, { section: "layers" }],
+  },
+  {
     id: "link",
     slug: "link",
+    art: "link",
     detail: [
       { modes: "link", cards: ["link", "emailed"] },
       { section: "link" },
-      { section: "keys", art: "keys" },
+      { table: "linkRisks" },
       { section: "recipients", art: "recipients" },
       { section: "email" },
     ],
   },
-  { id: "open", slug: "connect", detail: [{ section: "signal", art: "signal" }] },
+  { id: "open", slug: "connect", art: "open", detail: [{ section: "signal", art: "signal" }] },
   {
     id: "direct",
     slug: "direct",
+    art: "direct",
     detail: [{ modes: "route", cards: ["local", "stun"] }, { section: "travel" }],
   },
   {
     id: "relay",
     slug: "relay",
+    art: "relay",
     detail: [{ modes: "route", cards: ["relay", "norelay"] }, { section: "norelay" }],
   },
+  { id: "transfer", slug: "transfer", art: "frames", detail: [{ section: "frames" }] },
+  { id: "verification", slug: "verification", art: "check", detail: [{ section: "check" }] },
+  { id: "masking", slug: "masking", art: "padding", detail: [{ section: "padding" }] },
   {
     id: "never",
-    slug: "never",
+    slug: "traces",
+    art: "never",
     detail: [
-      { section: "seen", art: "never" },
+      { section: "seen" },
       { table: "data" },
+      { section: "sender" },
+      { section: "recipient" },
+    ],
+  },
+  {
+    id: "protection",
+    slug: "protection",
+    art: "site",
+    detail: [
       { table: "protect" },
-      { section: "site", art: "site" },
+      { section: "site" },
       { section: "limits" },
       { section: "planned" },
     ],
   },
+  { id: "tech", slug: "tech", art: "parts", detail: [{ glossary: true }] },
 ] as const satisfies ReadonlyArray<{
   id: keyof Messages["how"]["sections"];
   slug: string;
+  art: ArtId;
   detail: ReadonlyArray<Block>;
 }>;
 
@@ -125,7 +150,7 @@ function Table({
                 data-label={columns[i + 1]}
                 class="py-3 pr-4 max-md:block max-md:py-0 max-md:pt-2 max-md:before:block max-md:before:text-[0.8rem] max-md:before:font-semibold max-md:before:text-muted-foreground max-md:before:content-[attr(data-label)]"
               >
-                {cell}
+                <Terms text={cell} />
               </td>
             ))}
           </tr>
@@ -149,7 +174,9 @@ function ModeCards({ group, cards }: { group: keyof Modes; cards: ReadonlyArray<
               <Drawing id={card} />
             </div>
             <h3 class="m-0 mb-2 text-[1.05rem] font-bold">{text[card]?.heading}</h3>
-            <p class="mb-0 text-[0.95rem]">{text[card]?.body}</p>
+            <p class="mb-0 text-[0.95rem]">
+              <Terms text={text[card]?.body ?? ""} />
+            </p>
           </div>
         ))}
       </div>
@@ -170,7 +197,9 @@ function Frames({ body }: { body: readonly string[] }) {
               <div key={term[1]} class="mt-4">
                 <dt class="font-bold">{term[1]}</dt>
                 <dd class="m-0">
-                  {(term[2] ?? "").charAt(0).toUpperCase() + (term[2] ?? "").slice(1)}
+                  <Terms
+                    text={(term[2] ?? "").charAt(0).toUpperCase() + (term[2] ?? "").slice(1)}
+                  />
                 </dd>
               </div>
             ),
@@ -183,13 +212,25 @@ function Frames({ body }: { body: readonly string[] }) {
 /** The technical sections that explain one /how step. */
 export function Detail({ step }: { step: Step }) {
   const { t } = useI18n();
-  const { sections, protect, data } = t.technical;
+  const { sections } = t.technical;
   return step.detail.map((block: Block) => {
     if ("modes" in block) {
       return <ModeCards key={`modes-${block.cards[0]}`} group={block.modes} cards={block.cards} />;
     }
+    if ("glossary" in block) {
+      return Object.entries(t.technical.glossary).map(([id, [term, body]]) => (
+        <section key={id} id={id} aria-labelledby={`${id}-heading`} class="mt-8 scroll-mt-20">
+          <Heading id={id} class="m-0 mb-1 text-[1.15rem] font-bold">
+            {term}
+          </Heading>
+          <p class="mt-0 max-w-2xl">
+            <Terms text={body ?? ""} skip={id} />
+          </p>
+        </section>
+      ));
+    }
     if ("table" in block) {
-      const table = block.table === "data" ? data : protect;
+      const table = t.technical[block.table];
       return (
         <DrawnSection key={block.table} id={block.table} heading={table.heading}>
           <Paragraphs body={table.body} />

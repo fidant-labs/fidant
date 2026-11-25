@@ -178,10 +178,51 @@ export const en = {
         ],
       },
       never: {
-        heading: "What we never see",
+        heading: "What is left behind",
         body: [
-          "Not your file. Not its name. Not the key that unlocks it, unless you ask us to email the link.",
-          "That goes for our server and our relay. Our relay never sees the key at all.",
+          "We never see your file, its name or the key that unlocks it, unless you ask us to email the link. Our relay never sees the key at all.",
+          "What our server and relay do see, they keep in memory or in short logs. The two browsers keep a few traces too, and the recipient keeps the file.",
+        ],
+      },
+      encryption: {
+        heading: "It is locked twice",
+        body: [
+          "Your browser locks the file with a key that comes from the link. Without the link, nobody can unlock it.",
+          "The connection between the two browsers is locked as well, so the file is locked twice on its way.",
+        ],
+      },
+      transfer: {
+        heading: "It goes in small numbered pieces",
+        body: [
+          "Your browser sends the file in pieces of the same size, each locked and numbered.",
+          "No piece is sent until the recipient has said yes to the file.",
+        ],
+      },
+      verification: {
+        heading: "The recipient's browser checks it",
+        body: [
+          "When the last piece has arrived, the recipient's browser checks that the file is exactly the one you sent.",
+          "If anything is missing or changed, it throws the file away. You see that it arrived only when the check has passed.",
+        ],
+      },
+      masking: {
+        heading: "Its size is blurred",
+        body: [
+          "Anyone watching the traffic can see roughly how much is sent, but not the exact size of your file.",
+          "A shared secret always looks the same size, however long it is.",
+        ],
+      },
+      protection: {
+        heading: "What protects you, and what doesn't",
+        body: [
+          "Each risk, and what in Fidant stands against it.",
+          "And the risks Fidant can't protect you from, such as someone else getting hold of the link.",
+        ],
+      },
+      tech: {
+        heading: "The words, explained",
+        body: [
+          "Fidant is built on WebRTC, the technology browsers use for video calls. This page explains it and the other technical words on these pages, such as STUN and TURN.",
         ],
       },
     },
@@ -192,14 +233,22 @@ export const en = {
     steps: "Steps",
     overview: "Overview",
     next: "Next",
+    copyLink: "Copy link to this part",
+    copied: "Link copied",
     /** Short names for the steps in the side menu. */
     nav: {
-      stays: "The file",
-      link: "The link",
+      stays: "File",
+      encryption: "Encryption",
+      link: "Link",
       open: "Connecting",
       direct: "Direct",
-      relay: "The relay",
-      never: "What we don't see",
+      relay: "Relay",
+      transfer: "Transfer",
+      verification: "Verification",
+      masking: "Masking",
+      never: "Traces",
+      protection: "Protection",
+      tech: "Words",
     },
   },
   insecure: {
@@ -902,6 +951,22 @@ export const en = {
           "https://github.com/sigill-labs/sigill/tree/main/docs/decisions",
         ],
       },
+      sender: {
+        heading: "Traces in the sender's browser",
+        body: [
+          "The file is read from your disk and copied nowhere else. The links, the keys and the transfers exist only in the page's memory, and go when it closes.",
+          "A shared secret is typed into a text box. A browser can save what is in a text box with its session, to restore it after a crash or a reopened tab.",
+          "If you copy a link, it is on your clipboard. Fidant itself saves only your choice of language and theme in the browser.",
+        ],
+      },
+      recipient: {
+        heading: "Traces in the recipient's browser",
+        body: [
+          "The file is where the recipient saved it: Chrome and Edge write it to the place the recipient chose, and other browsers to their downloads. A shared secret is only in the page's memory, until the recipient copies it. Then it is on their clipboard too, where clipboard history, clipboard sync and other apps can read it.",
+          "The link, with its key, stays in the browser's history like any address. A link is refused once its file has been delivered, and works only while the sender's page is open.",
+          "For a link we email, the token that the right code gets is kept in that browser tab until the tab closes. Fidant itself saves only the choice of language and theme.",
+        ],
+      },
     } satisfies Record<string, Section>,
     modes: {
       send: {
@@ -951,6 +1016,89 @@ export const en = {
           },
         },
       },
+    },
+    glossary: {
+      webrtc: [
+        "WebRTC",
+        "The technology built into every modern browser for connecting two browsers directly, best known from video calls. Fidant uses it to carry the file between the browsers. The words below are its parts, and the ones Fidant adds.",
+      ],
+      signaling: [
+        "Signaling",
+        "Passing the setup messages between two browsers before they can reach each other. WebRTC leaves this to the app. Fidant passes them through our server, encrypted so the server can't read or change them.",
+      ],
+      websocket: [
+        "WebSocket",
+        "A lasting two-way connection between a page and a server. Fidant's pages keep one open to our server to pass the setup messages.",
+      ],
+      sdp: [
+        "Offer and answer",
+        "The setup messages that describe each side of a WebRTC connection, including the fingerprint of its DTLS certificate. The sender's browser makes the offer and the recipient's browser the answer.",
+      ],
+      ice: [
+        "Candidates",
+        "The addresses at which a browser might be reached: on the local network, its public address, or an address on a relay. The two browsers swap candidates and try pairs of them until one works.",
+      ],
+      stun: [
+        "STUN",
+        "A service that tells a browser its public address, the address the internet sees it from behind a router. Our STUN service runs on the same machine as our relay.",
+      ],
+      turn: [
+        "TURN",
+        "A relay that forwards the traffic between two browsers that can't reach each other directly. Our relay is a TURN server. It forwards encrypted packets that it can't read.",
+      ],
+      dtls: [
+        "DTLS",
+        "The encryption WebRTC always puts on the connection between two browsers, much like the TLS that HTTPS uses. Each browser checks the other's certificate against the fingerprint in the offer or answer.",
+      ],
+      channel: [
+        "Data channel",
+        "A WebRTC connection that carries data instead of sound and video. Fidant sends its frames over one.",
+      ],
+      aes: [
+        "AES-256-GCM",
+        "The encryption Fidant adds on top of DTLS, with a 256-bit key. It also detects any change to what it encrypted.",
+      ],
+      hkdf: [
+        "HKDF-SHA-256",
+        "A standard way to derive several keys from one secret. Fidant derives the signal key and the file key from the secret in the link.",
+      ],
+      sha: [
+        "SHA-256",
+        "A checksum: any change to a file, however small, gives a completely different value. The recipient's browser compares the file's checksum with the sender's.",
+      ],
+      nonce: [
+        "Nonce",
+        "A number that must never be used twice with the same key. Fidant builds it from the direction and the frame's sequence number.",
+      ],
+      fragment: [
+        "Fragment",
+        "The part of an address after the # sign. Browsers don't send it to servers, so that is where the link keeps its secret.",
+      ],
+      padme: [
+        "Padmé",
+        "A way to round a size up so that it shows only roughly. It adds at most 12 %.",
+      ],
+      hmac: [
+        "HMAC",
+        "A checksum made with a key. Our server keeps the email and IP addresses it counts for its limits only as HMACs, with a random key that exists only in its memory.",
+      ],
+    },
+    linkRisks: {
+      heading: "Who can see the key",
+      body: ["How the link reaches the recipient decides who else can see the key in it."],
+      columns: ["How the link travels", "Who else can see the key", "What limits the risk"],
+      rows: [
+        [
+          "The sender passes it on",
+          "Anyone who can read the channel the sender uses, such as the chat or email service.",
+          "The link works only until its file is delivered, and only while the sender's page is open. Send each link only to the person it is for, over a channel you trust.",
+        ],
+        [
+          "We email it",
+          "Our server while it sends the email, our mail service, anyone who reads the email on its way, the recipient's mailbox provider, and anyone who can read that mailbox.",
+          "The recipient's browser connects only after a 6-digit code sent to the same address, which works for 10 minutes and 5 tries. Until check words exist, our server could put itself between the two browsers for that link.",
+        ],
+      ],
     },
     protect: {
       heading: "How Fidant protects you",
