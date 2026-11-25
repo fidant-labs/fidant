@@ -1,11 +1,13 @@
 import { spawn } from "node:child_process";
-import { createHmac, generateKeyPairSync, randomBytes } from "node:crypto";
+import { generateKeyPairSync, randomBytes } from "node:crypto";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+// ponytail: relative import, not a workspace dependency on the server, for one small function.
+import { relaySecret } from "../../../server/src/relay-secret.ts";
 import { coturnLog, repoRoot } from "../paths.ts";
 import { freePort, terminate } from "./server.ts";
 import type { RunningService, Service } from "./service.ts";
@@ -107,11 +109,6 @@ async function startCoturn(): Promise<RunningService> {
     },
     stop,
   };
-}
-
-/** A relay's secret as the server derives it: HMAC-SHA256 of its id under the master, in hex. */
-export function relaySecret(master: string, id: string): string {
-  return createHmac("sha256", Buffer.from(master, "hex")).update(id).digest("hex");
 }
 
 /** The setting lines of a turnserver.conf, trimmed, without blank lines and comments. */

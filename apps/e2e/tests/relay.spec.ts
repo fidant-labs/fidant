@@ -2,9 +2,10 @@ import { constants, createHash, privateDecrypt } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { Page } from "@playwright/test";
+// ponytail: relative import, not a workspace dependency on the server, for one small function.
+import { relaySecret } from "../../server/src/relay-secret.ts";
 import { type Actor, canaryFile, expect, type Observed, test } from "../src/fixtures.ts";
 import { coturnLog, serverStderrLog, serverStdoutLog } from "../src/paths.ts";
-import { relaySecret } from "../src/stack/coturn.ts";
 
 // Recipients may use only relay candidates, once over UDP and once over TCP; the leak check scans coturn's log.
 
