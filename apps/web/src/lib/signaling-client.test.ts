@@ -11,10 +11,15 @@ class FakeWebSocket extends EventTarget {
   static OPEN = 1;
   static CLOSING = 2;
   static CLOSED = 3;
+  static throws = 0;
   readyState = 0;
   sent: string[] = [];
   constructor(_url: string) {
     super();
+    if (FakeWebSocket.throws > 0) {
+      FakeWebSocket.throws--;
+      throw new DOMException("blocked", "SecurityError");
+    }
     fake = this;
     created++;
   }
@@ -30,6 +35,7 @@ const original = globalThis.WebSocket;
 
 beforeEach(() => {
   created = 0;
+  FakeWebSocket.throws = 0;
   globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
 });
 afterEach(() => {
@@ -222,4 +228,61 @@ test("close() on an open socket reports byClient and does not reconnect", (t) =>
   t.mock.timers.tick(RETRY_MAX_MS);
   assert.equal(created, 1);
   assert.deepEqual(closes, [true]);
+});
+
+test("a socket the CSP blocks fails once the page has its listeners, then backs off", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  t.mock.method(Math, "random", () => 1);
+  FakeWebSocket.throws = 2;
+  const client = connectSignaling({ url: "wss://x/signal" });
+  const events: string[] = [];
+  client.onOpen(() => events.push("open"));
+  client.onClose(({ code, byClient }) => events.push(`close ${code} ${byClient}`));
+  assert.equal(client.send({ t: "host", links: [LINK], turn: true }), false);
+  assert.deepEqual(events, []);
+  t.mock.timers.tick(0);
+  assert.deepEqual(events, ["close 1006 false"]);
+  t.mock.timers.tick(1999);
+  assert.equal(FakeWebSocket.throws, 1);
+  t.mock.timers.tick(1);
+  assert.equal(FakeWebSocket.throws, 0);
+  assert.deepEqual(events, ["close 1006 false", "close 1006 false"]);
+  t.mock.timers.tick(3999);
+  assert.equal(created, 0);
+  t.mock.timers.tick(1);
+  assert.equal(created, 1);
+  open();
+  assert.deepEqual(events, ["close 1006 false", "close 1006 false", "open"]);
+});
+
+test("a socket that reports error and never close fails once and retries once", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  t.mock.method(Math, "random", () => 1);
+  const client = connectSignaling({ url: "wss://x/signal" });
+  const closes: string[] = [];
+  client.onClose(({ code, byClient }) => closes.push(`${code} ${byClient}`));
+  const first = fake;
+  first.readyState = 3;
+  first.dispatchEvent(new Event("error"));
+  assert.deepEqual(closes, ["1006 false"]);
+  t.mock.timers.tick(1999);
+  assert.equal(created, 1);
+  t.mock.timers.tick(1);
+  assert.equal(created, 2);
+  first.dispatchEvent(Object.assign(new Event("close"), { code: 1006 }));
+  t.mock.timers.tick(RETRY_MAX_MS);
+  assert.deepEqual(closes, ["1006 false"]);
+  assert.equal(created, 2);
+});
+
+test("close() while a blocked socket's failure waits reports nothing and stops", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  FakeWebSocket.throws = 1;
+  const client = connectSignaling({ url: "wss://x/signal" });
+  const closes: boolean[] = [];
+  client.onClose(({ byClient }) => closes.push(byClient));
+  client.close();
+  t.mock.timers.tick(RETRY_MAX_MS);
+  assert.deepEqual(closes, []);
+  assert.equal(created, 0);
 });
