@@ -366,6 +366,8 @@ When it ships, this document and the pages below get the new mode.
 
 A pull request that changes security or data flow updates this document in the same pull request. That covers keys, encryption, the link format, frames, signaling messages, the connection paths and relay, what the server or relay sees, keeps or logs, limits, HTTP headers, and any new mode of transfer.
 
+The same pull request updates `docs/transfer-paths.md`, the per-path audit of steps and traces, wherever the change makes it untrue.
+
 The web pages explain the same things for readers, and change with it:
 
 - The `/how/<step>` pages (`file`, `encryption`, `link`, `connect`, `direct`, `relay`, `transfer`, `verification`, `masking`, `traces`, `protection` and the word list `tech`): the `technical` text in `apps/web/src/i18n/en.ts` and `sv.ts`, a reader's version of this document, split over the steps by `STEPS` in `apps/web/src/how/steps.tsx`.
