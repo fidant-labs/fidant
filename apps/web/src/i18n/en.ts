@@ -542,6 +542,10 @@ export const en = {
         title: "Couldn't connect to the sender's computer",
         body: "Your two computers couldn't reach each other.",
       },
+      browser: {
+        title: "This browser can't connect to the sender",
+        body: "It may have WebRTC turned off, or be too old. Try another browser.",
+      },
       noRelay: {
         title: "Couldn't connect directly to the sender",
         body: "The sender doesn't allow our relay, and your networks probably couldn't connect directly. Ask the sender to allow the relay, or try another network, for example your phone's mobile data.",

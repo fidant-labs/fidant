@@ -248,7 +248,7 @@ async function harness(side: "s" | "r", check?: boolean) {
     peer.handleRelay(await sealSignal(key, linkId, otherAttempt, direction, payload));
   /** Every signal sent so far, once at least `count` went out. */
   const signals = async (count = 0) => {
-    for (let i = 0; i < 500 && sent.length < count; i++) {
+    for (let i = 0; i < 500 && sent.length < count && closes.length === 0; i++) {
       await settle();
     }
     await settle();
@@ -412,6 +412,14 @@ test("the recipient fails locally when its answer names another certificate", as
   assert.equal(h.closes[0]?.reason, "setup-failed");
   assert.equal(h.peer.answered, false);
   assert.equal((await h.signals(1)).length, 1);
+  resetFake();
+});
+
+test("a recipient whose certificate has no sha-256 fingerprint closes as unsupported", async () => {
+  resetFake("XX");
+  const h = await harness("r");
+  assert.equal(h.closes[0]?.reason, "unsupported");
+  assert.deepEqual(await h.signals(), []);
   resetFake();
 });
 

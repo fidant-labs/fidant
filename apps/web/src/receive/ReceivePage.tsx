@@ -502,7 +502,8 @@ export function ReceivePage({
               });
               onOpen(channel, info);
             },
-            onClose: () => lost(),
+            onClose: (reason) =>
+              reason === "unsupported" ? finish({ s: "failed", problem: "browser" }) : lost(),
           });
           break;
         case "relay":

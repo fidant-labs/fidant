@@ -421,6 +421,21 @@ harness("a recipient gives up connecting after 30 seconds", async ({ actor, leak
   await expect(recipient.getByRole("button", { name: "Try again" })).toBeVisible();
 });
 
+harness("a recipient whose browser has no WebRTC is told so", async ({ actor, leaks, canary }) => {
+  const demo: Demo = { open: async (name) => (await actor(name)).page };
+  const sender = await openSender(demo, makeFile(leaks, canary, 10));
+  const link = await addRecipient(leaks, sender, makeName(leaks, canary, "Anna"));
+
+  const recipient = await demo.open("recipient");
+  await recipient.addInitScript(() => {
+    delete (globalThis as { RTCPeerConnection?: unknown }).RTCPeerConnection;
+  });
+  await recipient.goto(link);
+  await expect(
+    recipient.getByRole("heading", { name: "This browser can't connect to the sender" }),
+  ).toBeVisible();
+});
+
 harness("a recipient who can't reach the server is told so", async ({ actor, leaks, canary }) => {
   const { page: recipient } = await actor("recipient");
   // Every socket closes before it opens, so the page keeps retrying and never reaches the server.

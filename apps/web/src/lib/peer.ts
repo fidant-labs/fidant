@@ -66,7 +66,9 @@ export type PeerCloseReason =
   /** Could not seal or send our own offer or answer. */
   | "signal-failed"
   /** Setting up the connection threw (createOffer, setRemoteDescription, ...). */
-  | "setup-failed";
+  | "setup-failed"
+  /** This browser can't build a connection: WebRTC is off or missing, or its certificate has no sha-256 fingerprint. */
+  | "unsupported";
 
 export type OpenPath = Exclude<ConnectionPath, "failed">;
 
@@ -553,7 +555,7 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
 
   // Relayed signals wait for the certificate and the connection.
   incoming = setup().catch((error: unknown) => {
-    failWith(error, "setup-failed");
+    failWith(error, "unsupported");
   });
 
   return {

@@ -521,6 +521,10 @@ export const sv: Messages = {
         title: "Det gick inte att ansluta till avsändarens dator",
         body: "Era två datorer kunde inte nå varandra.",
       },
+      browser: {
+        title: "Den här webbläsaren kan inte ansluta till avsändaren",
+        body: "WebRTC kan vara avstängt, eller så är webbläsaren för gammal. Prova en annan webbläsare.",
+      },
       noRelay: {
         title: "Det gick inte att ansluta direkt till avsändaren",
         body: "Avsändaren tillåter inte vårt relä, och era nätverk kunde troligen inte ansluta direkt till varandra. Be avsändaren att tillåta reläet, eller prova ett annat nätverk, till exempel mobildata i din telefon.",
