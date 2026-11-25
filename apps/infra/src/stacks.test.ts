@@ -1223,7 +1223,7 @@ test("the identity sends bounces and complaints to the feedback topic, then stop
 test("the function behind those settings may only set notification topics and forwarding", () => {
   const box = appBox();
   const functions = Object.entries(box.findResources("AWS::Lambda::Function")).filter(
-    ([id]) => !id.startsWith("RelayCap"),
+    ([id]) => !id.startsWith("RelayCap") && !id.startsWith("MailPause"),
   );
   assert.equal(functions.length, 1);
   const [functionId, fn] = functions[0] ?? [];
@@ -1320,9 +1320,19 @@ test("FidantApp outputs only the app box's and the relay's addresses and the thr
   }
 });
 
-test("SES bounce and complaint rates at AWS's review thresholds email the alert address", () => {
+function mailPause(box: Template) {
+  const functions = Object.entries(box.findResources("AWS::Lambda::Function")).filter(([id]) =>
+    id.startsWith("MailPause"),
+  );
+  assert.equal(functions.length, 1);
+  const [id, fn] = functions[0] ?? [];
+  return { id: id ?? "", properties: fn?.Properties };
+}
+
+test("SES bounce and complaint rates well below AWS's review thresholds pause mail and email the alert address", () => {
   const box = appBox();
   const notify = [alertTopic(box)];
+  const pause = { "Fn::GetAtt": [mailPause(box).id, "Arn"] };
   assert.deepEqual(
     alarmsNamed(box, "Fidant SES reputation").map((alarm) => [
       alarm.AlarmName,
@@ -1337,29 +1347,107 @@ test("SES bounce and complaint rates at AWS's review thresholds email the alert 
     ]),
     [
       [
-        "Fidant SES reputation: bounce rate 5 % or more",
+        "Fidant SES reputation: bounce rate 2 % or more, mail paused",
         "AWS/SES",
         "Reputation.BounceRate",
         undefined,
         "GreaterThanOrEqualToThreshold",
-        0.05,
+        0.02,
         "ignore",
-        notify,
+        [...notify, pause],
         notify,
       ],
       [
-        "Fidant SES reputation: complaint rate 0.1 % or more",
+        "Fidant SES reputation: complaint rate 0.05 % or more, mail paused",
         "AWS/SES",
         "Reputation.ComplaintRate",
         undefined,
         "GreaterThanOrEqualToThreshold",
-        0.001,
+        0.0005,
         "ignore",
-        notify,
+        [...notify, pause],
         notify,
       ],
     ],
   );
+});
+
+test("the mail pause may only turn off sending for the configuration set, and only the two SES alarms invoke it", () => {
+  const box = appBox();
+  const configSet = onlyId(box, "AWS::SES::ConfigurationSet");
+  const { id, properties } = mailPause(box);
+  assert.equal(properties.Runtime, "nodejs24.x");
+  assert.equal(properties.Handler, "index.handler");
+  assert.equal(properties.Timeout, 10);
+  assert.deepEqual(properties.Environment.Variables, { CONFIGURATION_SET: { Ref: configSet } });
+  const logGroup = properties.LoggingConfig.LogGroup.Ref;
+  assert.equal(box.findResources("AWS::Logs::LogGroup")[logGroup]?.Properties.RetentionInDays, 30);
+  const role = properties.Role["Fn::GetAtt"][0];
+  assert.deepEqual(
+    Object.values(box.findResources("AWS::IAM::Policy"))
+      .filter((policy) => policy.Properties.Roles?.[0].Ref === role)
+      .flatMap((policy) => policy.Properties.PolicyDocument.Statement),
+    [
+      {
+        Action: "ses:PutConfigurationSetSendingOptions",
+        Effect: "Allow",
+        Resource: {
+          "Fn::Join": [
+            "",
+            [
+              "arn:",
+              { Ref: "AWS::Partition" },
+              `:ses:eu-north-1:${pocAccount}:configuration-set/`,
+              { Ref: configSet },
+            ],
+          ],
+        },
+      },
+    ],
+  );
+  const alarms = Object.entries(box.findResources("AWS::CloudWatch::Alarm"))
+    .filter(([, alarm]) => String(alarm.Properties.AlarmName).startsWith("Fidant SES reputation"))
+    .map(([alarmId]) => ({ "Fn::GetAtt": [alarmId, "Arn"] }));
+  assert.equal(alarms.length, 2);
+  assert.deepEqual(
+    Object.values(box.findResources("AWS::Lambda::Permission"))
+      .map((permission) => permission.Properties)
+      .filter((permission) => permission.FunctionName["Fn::GetAtt"]?.[0] === id)
+      .map((permission) => [permission.Action, permission.Principal, permission.SourceArn]),
+    alarms.map((alarm) => [
+      "lambda:InvokeFunction",
+      "lambda.alarms.cloudwatch.amazonaws.com",
+      alarm,
+    ]),
+  );
+});
+
+test("the mail pause turns off sending for fidant-mail and nothing else", async () => {
+  const { properties } = mailPause(appBox());
+  const sent: unknown[] = [];
+  class PutConfigurationSetSendingOptionsCommand {
+    input: unknown;
+    constructor(input: unknown) {
+      this.input = input;
+    }
+  }
+  const fakeRequire = (name: string) => {
+    assert.equal(name, "@aws-sdk/client-sesv2");
+    return {
+      SESv2Client: class {
+        async send(command: { input: unknown }) {
+          sent.push(command.input);
+        }
+      },
+      PutConfigurationSetSendingOptionsCommand,
+    };
+  };
+  const exports: { handler?: () => Promise<void> } = {};
+  new Function("require", "exports", "process", properties.Code.ZipFile)(fakeRequire, exports, {
+    env: { CONFIGURATION_SET: "fidant-mail" },
+  });
+  await exports.handler?.();
+  assert.deepEqual(sent, [{ ConfigurationSetName: "fidant-mail", SendingEnabled: false }]);
 });
 
 test("the cap's Lambda code loads the way Lambda loads it: no package.json, no syntax detection", () => {

@@ -1,4 +1,4 @@
-import { FRAME_OVERHEAD_BYTES } from "./send-file.ts";
+import { FRAME_OVERHEAD_BYTES } from "./frames.ts";
 
 export const TEXT_TYPE = "application/x-fidant-text";
 export const TEXT_NAME = "secret.txt";
