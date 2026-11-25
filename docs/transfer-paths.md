@@ -187,7 +187,7 @@ The one path where a link's secret leaves the browser (`docs/decisions/0012-emai
 
 ### Steps
 
-1. The sender gives the recipient's address. The page hosts the link as in P1, then sends one `email` message: link ID, address, the link's secret, the sender's typed name and the page language.
+1. The sender ticks "Email the link for me (less private)", which is off on every page load and first shows what emailing costs (`docs/decisions/0013-email-link-opt-in.md`), then gives the recipient's address. The page hosts the link as in P1, then sends one `email` message: link ID, address, the link's secret, the sender's typed name and the page language.
 2. The server checks limits, picks a random value (16 bytes, never derived from the secret), binds the link to the address, language and value, and makes one attempt to hand the notice to the mail service: `<PUBLIC_ORIGIN>/r/<link ID>#e.<value>.<secret>` with the typed name marked as not verified (`apps/server/src/mail.ts`).
 3. The server answers the sender with `email {status, mark}`: the value, never the secret. The sender's page builds the same marked link.
 4. The recipient opens the emailed link and sends `gate` with the value. The server answers with the masked address.
