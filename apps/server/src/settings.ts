@@ -1,12 +1,20 @@
 import { BlockList, isIP } from "node:net";
 
-export type SiteSettings = { pages: boolean; origin: string | undefined; proxies: BlockList };
+export type SiteSettings = {
+  pages: boolean;
+  origin: string | undefined;
+  proxies: BlockList;
+  keepAliveMs: number | undefined;
+};
 
 const badOrigin = "PUBLIC_ORIGIN must be an https:// origin with no path, like https://fidant.se.";
 const badRanges = "TRUSTED_PROXIES must be address ranges like 10.0.0.0/24, separated by commas.";
 
 const badLoose =
   "TRUSTED_PROXIES ranges must start at their first address, like 10.0.0.0/24, not 10.0.0.5/24.";
+
+const badKeepAlive =
+  "HTTP_KEEP_ALIVE_MS must be a whole number of milliseconds from 1000 to 299000.";
 
 function toNumber(address: string, family: number): bigint {
   if (family === 4) {
@@ -61,5 +69,20 @@ export function siteSettings(env: Record<string, string | undefined>): SiteSetti
     }
   }
 
-  return { pages: only !== "1", origin, proxies };
+  const keepAlive = env.HTTP_KEEP_ALIVE_MS || undefined;
+  const keepAliveMs = Number(keepAlive);
+  // headersTimeout, 1 s above this, must stay within Node's 300 s requestTimeout.
+  if (
+    keepAlive !== undefined &&
+    !(/^\d+$/.test(keepAlive) && keepAliveMs >= 1000 && keepAliveMs <= 299_000)
+  ) {
+    throw new Error(badKeepAlive);
+  }
+
+  return {
+    pages: only !== "1",
+    origin,
+    proxies,
+    keepAliveMs: keepAlive === undefined ? undefined : keepAliveMs,
+  };
 }

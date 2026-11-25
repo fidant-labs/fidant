@@ -137,6 +137,7 @@ const { server, signaling } = await startServer({
   log,
   mail,
   startingMs: startingEnv === undefined ? undefined : Number(startingEnv),
+  keepAliveMs: site.keepAliveMs,
 });
 
 const { port } = server.address() as AddressInfo;

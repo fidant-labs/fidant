@@ -10,6 +10,19 @@ test("serves pages and trusts no proxy when nothing is set", () => {
   assert.equal(site.pages, true);
   assert.equal(site.origin, undefined);
   assert.equal(site.proxies.check("10.0.1.5", "ipv4"), false);
+  assert.equal(site.keepAliveMs, undefined);
+});
+
+const keepAlive = "HTTP_KEEP_ALIVE_MS must be a whole number of milliseconds from 1000 to 299000.";
+
+test("HTTP_KEEP_ALIVE_MS takes whole milliseconds from 1000 to 299000", () => {
+  assert.equal(siteSettings({ HTTP_KEEP_ALIVE_MS: "" }).keepAliveMs, undefined);
+  for (const ms of [1000, 125_000, 299_000]) {
+    assert.equal(siteSettings({ HTTP_KEEP_ALIVE_MS: String(ms) }).keepAliveMs, ms);
+  }
+  for (const value of ["abc", "999", "300000", "1e5", " 125000", "125000 ", "-1000", "1000.5"]) {
+    assert.throws(() => siteSettings({ HTTP_KEEP_ALIVE_MS: value }), { message: keepAlive }, value);
+  }
 });
 
 test("SIGNALING_ONLY=1 turns the pages off and any other value stops the server", () => {
