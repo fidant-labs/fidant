@@ -118,7 +118,7 @@ async function openSender(
 /** Adds a recipient on the sender page and returns their link, with its secret watched. */
 async function addRecipient(leaks: Leaks, sender: Page, name: string): Promise<string> {
   await sender.getByLabel("Who is it for?").fill(name);
-  await sender.getByRole("button", { name: "Add", exact: true }).click();
+  await sender.getByRole("button", { name: "Create link", exact: true }).click();
   const link = (await sender.getByLabel(`Link for ${name}`, { exact: true }).textContent()) ?? "";
   const secret = new URL(link).hash.slice(1);
   expect(secret, `link secret for ${name}`).toMatch(/^[A-Za-z0-9_-]{43}$/);
@@ -431,7 +431,7 @@ test("the sender's name must fit with the file name, and stray drops are ignored
   expect(await cancelled("#recipient-name", someFile)).toEqual([true, true]);
   const name = makeName(leaks, canary, "Anna");
   await page.getByLabel("Who is it for?").fill(name);
-  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByRole("button", { name: "Create link", exact: true }).click();
   await expect(page.getByText("Your name and the file name are too long together")).toBeVisible();
   await expect(page.getByRole("list", { name: "Recipients" })).toHaveCount(0);
 
@@ -921,7 +921,7 @@ async function addEmailed(
 ): Promise<Emailed> {
   await sender.getByLabel("Who is it for?").fill(name);
   await sender.getByLabel("Their email address").fill(to);
-  await sender.getByRole("button", { name: "Add", exact: true }).click();
+  await sender.getByRole("button", { name: "Create link", exact: true }).click();
   await expect(
     recipientRow(sender, name).getByText(`Email sent to ${maskAddress(to)}`),
   ).toBeVisible();

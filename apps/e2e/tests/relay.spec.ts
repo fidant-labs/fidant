@@ -111,7 +111,7 @@ for (const transport of ["udp", "tcp"] as const) {
       buffer: file.bytes,
     });
     await sender.getByLabel("Who is it for?").fill("Anna");
-    await sender.getByRole("button", { name: "Add", exact: true }).click();
+    await sender.getByRole("button", { name: "Create link", exact: true }).click();
     const link = (await sender.getByLabel("Link for Anna", { exact: true }).textContent()) ?? "";
     leaks.watchKey("link secret", new URL(link).hash.slice(1));
 
@@ -180,7 +180,7 @@ test("a sender who refuses the relay: no credentials, no bytes, plain words on b
   const allowRelay = sender.getByLabel("Allow our relay if a direct connection isn't possible");
   await allowRelay.uncheck();
   await sender.getByLabel("Who is it for?").fill("Anna");
-  await sender.getByRole("button", { name: "Add", exact: true }).click();
+  await sender.getByRole("button", { name: "Create link", exact: true }).click();
   const link = (await sender.getByLabel("Link for Anna", { exact: true }).textContent()) ?? "";
   leaks.watchKey("link secret", new URL(link).hash.slice(1));
   const hostTurn = async () =>
@@ -262,7 +262,7 @@ test("a sender who refuses the relay and fails setup shows the refused relay", a
   });
   await sender.getByLabel("Allow our relay if a direct connection isn't possible").uncheck();
   await sender.getByLabel("Who is it for?").fill("Anna");
-  await sender.getByRole("button", { name: "Add", exact: true }).click();
+  await sender.getByRole("button", { name: "Create link", exact: true }).click();
   const link = (await sender.getByLabel("Link for Anna", { exact: true }).textContent()) ?? "";
   leaks.watchKey("link secret", new URL(link).hash.slice(1));
 

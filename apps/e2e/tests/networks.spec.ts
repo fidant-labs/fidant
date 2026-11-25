@@ -233,7 +233,7 @@ for (const row of scenarios) {
           buffer: file.bytes,
         });
         await sender.page.getByLabel("Who is it for?").fill("Anna");
-        await sender.page.getByRole("button", { name: "Add", exact: true }).click();
+        await sender.page.getByRole("button", { name: "Create link", exact: true }).click();
         const link =
           (await sender.page.getByLabel("Link for Anna", { exact: true }).textContent()) ?? "";
         leaks.watchKey("link secret", new URL(link).hash.slice(1));
@@ -288,7 +288,7 @@ for (const row of scenarios) {
         buffer: file.bytes,
       });
       await sender.page.getByLabel("Who is it for?").fill("Anna");
-      await sender.page.getByRole("button", { name: "Add", exact: true }).click();
+      await sender.page.getByRole("button", { name: "Create link", exact: true }).click();
       const link =
         (await sender.page.getByLabel("Link for Anna", { exact: true }).textContent()) ?? "";
       leaks.watchKey("link secret", new URL(link).hash.slice(1));
@@ -369,7 +369,7 @@ test.describe("the box", () => {
       buffer: file.bytes,
     });
     await sender.page.getByLabel("Who is it for?").fill("Anna");
-    await sender.page.getByRole("button", { name: "Add", exact: true }).click();
+    await sender.page.getByRole("button", { name: "Create link", exact: true }).click();
     const link =
       (await sender.page.getByLabel("Link for Anna", { exact: true }).textContent()) ?? "";
     leaks.watchKey("link secret", new URL(link).hash.slice(1));
