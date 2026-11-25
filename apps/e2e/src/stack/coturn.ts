@@ -1,11 +1,13 @@
 import { spawn } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { generateKeyPairSync, randomBytes } from "node:crypto";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+// ponytail: relative import, not a workspace dependency on the server, for one small function.
+import { relaySecret } from "../../../server/src/relay-secret.ts";
 import { coturnLog, repoRoot } from "../paths.ts";
 import { freePort, terminate } from "./server.ts";
 import type { RunningService, Service } from "./service.ts";
@@ -14,11 +16,7 @@ const host = "127.0.0.1";
 const startTimeoutMs = 10_000;
 const missing = "coturn not found; brew install coturn (macOS) or apt-get install coturn";
 
-/**
- * coturn on a free loopback port with a secret made for this run. It hands the server
- * TURN_URLS and TURN_SECRET_FILE. Without `turnserver` on PATH the stack runs without it,
- * except in CI, where that fails the run.
- */
+// Relay list of `bad`, whose secret coturn lacks, then `loc`, whose secret it has. Skipped without turnserver, except in CI.
 export const coturn: Service = { name: "coturn", start: startCoturn };
 
 async function startCoturn(): Promise<RunningService> {
@@ -33,10 +31,36 @@ async function startCoturn(): Promise<RunningService> {
   const dir = await mkdtemp(join(tmpdir(), "sigill-e2e-coturn-"));
   const removeDir = () => rmSync(dir, { recursive: true, force: true });
   const port = await freePort();
-  const secret = randomBytes(32).toString("hex");
+  const master = randomBytes(32).toString("hex");
+  const masterFile = join(dir, "relay-master");
+  await writeFile(masterFile, `${master}\n`, { mode: 0o600 });
+  const secret = relaySecret(master, "loc");
   const secretFile = join(dir, "secret");
   const config = join(dir, "turnserver.conf");
   await writeFile(secretFile, secret, { mode: 0o600 });
+  // The same shape as production's TURN_URLS (apps/infra/box/user-data.sh).
+  const urls = [
+    `stun:${host}:${port}`,
+    `turn:${host}:${port}?transport=udp`,
+    `turn:${host}:${port}?transport=tcp`,
+  ];
+  const list = [];
+  for (const [id, relayUrls] of [
+    ["bad", [`turn:${host}:${port}?transport=udp`]],
+    ["loc", urls],
+  ] as const) {
+    const { publicKey, privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+    await writeFile(join(dir, `${id}.key`), privateKey.export({ type: "pkcs8", format: "pem" }), {
+      mode: 0o600,
+    });
+    list.push({
+      id,
+      urls: relayUrls,
+      publicKey: publicKey.export({ type: "spki", format: "pem" }),
+    });
+  }
+  const listFile = join(dir, "relays.json");
+  await writeFile(listFile, JSON.stringify(list));
   // In a config file rather than flags, so the secret does not show in `ps`.
   await writeFile(config, coturnConfig({ ip: host, port, secret, stateDir: dir }), { mode: 0o600 });
 
@@ -74,16 +98,15 @@ async function startCoturn(): Promise<RunningService> {
     await stop();
     throw new Error(`${(error as Error).message} See ${coturnLog}.`);
   }
-  // The same shape as production's TURN_URLS (apps/infra/box/user-data.sh).
-  const urls = [
-    `stun:${host}:${port}`,
-    `turn:${host}:${port}?transport=udp`,
-    `turn:${host}:${port}?transport=tcp`,
-  ];
   return {
     name: "coturn",
     port,
-    env: { TURN_URLS: urls.join(","), TURN_SECRET_FILE: secretFile },
+    env: {
+      TURN_URLS: urls.join(","),
+      TURN_SECRET_FILE: secretFile,
+      RELAYS_FILE: listFile,
+      RELAY_MASTER_FILE: masterFile,
+    },
     stop,
   };
 }

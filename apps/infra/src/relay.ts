@@ -6,7 +6,7 @@ import { renderRelayUserData } from "./user-data.ts";
 
 const anywhere = { cidrs: ["0.0.0.0/0"], ipv6Cidrs: ["::/0"] };
 
-const ports: lightsail.CfnInstance.PortProperty[] = [
+export const ports: lightsail.CfnInstance.PortProperty[] = [
   { protocol: "tcp", fromPort: 22, toPort: 22, cidrListAliases: ["lightsail-connect"] },
   { protocol: "tcp", fromPort: 80, toPort: 80, ...anywhere },
   { protocol: "tcp", fromPort: 443, toPort: 443, ...anywhere },

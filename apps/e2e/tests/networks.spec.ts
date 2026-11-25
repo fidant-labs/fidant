@@ -6,10 +6,12 @@ import {
   randomBytes,
 } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { buffer } from "node:stream/consumers";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { Page } from "@playwright/test";
-// ponytail: relative import, not a workspace dependency on the server, for one small function.
+// ponytail: relative imports, not a workspace dependency on the server, for two small functions.
+import { relaySecret } from "../../server/src/relay-secret.ts";
 import { turnCredentials } from "../../server/src/turn.ts";
 import {
   type Actor,
@@ -39,6 +41,7 @@ import {
   resumeRelay,
   routerMode,
   sendToRelay,
+  serverIp,
 } from "../src/stack/networks.ts";
 
 // Transfers between browsers in Docker networks behind NAT routers (networks/compose.yaml).
@@ -407,9 +410,7 @@ test.describe("the box", () => {
     await expect(recipient.page.getByText(verifiedText)).toBeVisible({ timeout: 60_000 });
     const download = await downloading;
     expect(sha256Hex(await buffer(await download.createReadStream()))).toBe(sha256Hex(file.bytes));
-    // Relayed by the box's coturn over TLS on 443, through HAProxy, as in production. The box
-    // hands out only turn.fidant.se, and Chrome resolves that name through --host-resolver-rules
-    // for TCP only: its UDP STUN and TURN lookups fail here.
+    // Only turn.fidant.se is offered, and Chrome resolves it for TCP only, so this is TURN over TLS.
     await expect
       .poll(async () => `${await pathOf(sender.page)} ${await pathOf(recipient.page)}`)
       .toMatch(/relay\+tls\//);
@@ -1045,7 +1046,7 @@ test.describe("the relay box", () => {
       expect(await apply("/tmp/hand-out")).toBe("exit 0\n");
       expect(await apply("/tmp/garbage")).toBe("exit 1\n");
       let lines: string[] = [];
-      // The fetch ran, offline here, and exited cleanly. The timer first fires 10 s after install.
+      // The timer's fetch (10 s after install) got no hand-out from the server and exited cleanly.
       await expect
         .poll(
           async () => {
@@ -1068,6 +1069,66 @@ test.describe("the relay box", () => {
           lines.filter((line) => addressPattern(ip).test(line)),
           ip,
         ).toEqual([]);
+      }
+    });
+
+    test("takes its secret from the server's hand-out, which then finds it up", async () => {
+      test.setTimeout(240_000);
+      const master = await readFile(
+        join(process.env.SIGILL_E2E_COTURN_DIR ?? "", "relay-master"),
+        "utf8",
+      );
+      const derived = relaySecret(master.trim(), "sto");
+      const status = async () =>
+        JSON.parse(
+          await inRelay(
+            ..."curl -fsS --max-time 10 --cacert /tmp/app.pem".split(" "),
+            `https://${serverIp}/relay-status`,
+          ),
+        ) as { id: string; up: boolean }[];
+      const marker = randomBytes(8).toString("hex");
+      try {
+        // The relay's timer can't verify the server's self-signed certificate, so pin it.
+        await inRelay(
+          "sh",
+          "-c",
+          `timeout 5 openssl s_client -connect ${serverIp}:443 </dev/null 2>/dev/null \
+            | openssl x509 >/tmp/app.pem`,
+        );
+        expect(await inRelay("cat", "/var/lib/fidant-relay/current")).toBe(`${secret}\n`);
+        expect(await status()).toContainEqual({ id: "sto", up: false });
+
+        // As the timer runs it, plus a line from the same unit that shows its output is journaled.
+        await inRelay(
+          "sh",
+          "-c",
+          `systemd-run --wait --collect --quiet --setenv=CURL_CA_BUNDLE=/tmp/app.pem \
+            sh -c 'fidant-relay-secret; echo "fidant-e2e ${marker} exit $?"'`,
+        );
+        const hash = createHash("sha256").update(`${derived}\n`).digest("hex");
+        expect(await inRelay("sha256sum", "/var/lib/fidant-relay/current")).toBe(
+          `${hash}  /var/lib/fidant-relay/current\n`,
+        );
+        // The server checks each relay once a minute.
+        await expect
+          .poll(status, { timeout: 150_000, intervals: [5_000] })
+          .toContainEqual({ id: "sto", up: true });
+
+        let lines: string[] = [];
+        await expect
+          .poll(
+            async () => {
+              lines = (await inRelay("journalctl", "-o", "export", "--no-pager")).split("\n");
+              return lines.includes(`MESSAGE=fidant-e2e ${marker} exit 0`);
+            },
+            { timeout: 20_000 },
+          )
+          .toBe(true);
+        for (const value of [master.trim(), derived, secret]) {
+          expect(lines.filter((line) => line.includes(value))).toEqual([]);
+        }
+      } finally {
+        await applyRelaySecret(secret);
       }
     });
   });
