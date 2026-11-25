@@ -48,8 +48,11 @@
 //
 // Version 3 is the first whose file key includes the attempt ID. A sender and
 // recipient on different versions (one on a cached old page) would derive
-// different keys, so the version is checked first: INIT and every other frame
-// of another version fail as "unknown frame version", not as a bad key.
+// different keys, so the version is checked first. A frame of another version
+// fails as "unknown frame version" at INIT, on the recipient's side,
+// before any key is derived; the sender sees only the channel close. The
+// recipient's page shows the same text as for unreadable data, so only a reload
+// of the older page fixes it, and neither page says which.
 //
 // Writers and readers keep state: await each encrypt or decrypt before
 // starting the next one. A reader stops accepting frames after any failure.

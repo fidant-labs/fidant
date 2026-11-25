@@ -112,7 +112,7 @@ iv     = direction(1: 0 sender, 1 recipient) ‖ 00 00 00 ‖ seq(8)
 - The two directions use different nonces because the direction is in the IV.
 - Changing INIT changes the derived key, so META then fails to decrypt. Replaying a recorded INIT and META into a later attempt fails the same way, because that attempt's new attempt ID gives the recipient a different key, and the recipient sends nothing back.
 - Each kind has a fixed direction and body size range; anything else is rejected.
-- Version 2 added CREDIT, and version 3 added the attempt ID to the file key's salt. A browser rejects a frame of any other version as an unknown version, INIT included, so both pages must run the same release, and a page from an older release fails as such rather than as a wrong key.
+- Version 2 added CREDIT, and version 3 added the attempt ID to the file key's salt. A browser rejects a frame of any other version as an unknown version, INIT included, so both pages must run the same release. A page from another release fails at INIT on the recipient's side, and the sender sees only the connection close. The recipient's page shows the same message as for unreadable data. Only the page on the older release needs to reload, but neither page says which one that is.
 
 ## The transfer
 
