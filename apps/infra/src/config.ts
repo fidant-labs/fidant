@@ -4,6 +4,11 @@ export const mailRegion = "eu-north-1";
 export const mailFrom = `noreply@${mailDomain}`;
 export const zoneNames = ["fidant.se", "fidant.eu", "fidant.org"];
 export const siteNames = zoneNames.flatMap((zone) => [zone, `www.${zone}`]);
+export const relays: readonly { id: string }[] = [{ id: "sto" }];
+
+export function relayName(id: string): string {
+  return `${id}.relay.${primaryDomain}`;
+}
 
 export type DnsRecord = { name: string; value: string };
 

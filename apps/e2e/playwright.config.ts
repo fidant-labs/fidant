@@ -1,5 +1,13 @@
 import { defineConfig } from "@playwright/test";
-import { boxIp, remoteBrowsers, serverIp, turnHost, turnIp } from "./src/stack/networks.ts";
+import {
+  boxIp,
+  relayHost,
+  relayIp,
+  remoteBrowsers,
+  serverIp,
+  turnHost,
+  turnIp,
+} from "./src/stack/networks.ts";
 
 // `pnpm e2e:networks` runs only tests/networks.spec.ts, in browsers inside Docker networks.
 const networks = Boolean(process.env.SIGILL_E2E_NETWORKS);
@@ -39,11 +47,11 @@ export default defineConfig({
           args: [
             // Resolve every host except the server's to nothing, so a stray request cannot reach the
             // internet. The rule catches IP literals too, and TURN over TCP goes through the resolver,
-            // so the TURN server's address is excluded as well (127.0.0.1 locally). The first
+            // so the TURN servers' addresses are excluded as well (127.0.0.1 locally). The first
             // matching MAP wins, so coturn's TLS name maps to its address before `*` catches it, and
-            // the box's names resolve to its container.
+            // the box's and the relay box's names resolve to their containers.
             networks
-              ? `--host-resolver-rules=MAP ${turnHost} ${turnIp}, MAP fidant.se ${boxIp}, MAP turn.fidant.se ${boxIp}, MAP * ~NOTFOUND, EXCLUDE ${serverIp}, EXCLUDE ${turnIp}`
+              ? `--host-resolver-rules=MAP ${turnHost} ${turnIp}, MAP fidant.se ${boxIp}, MAP turn.fidant.se ${boxIp}, MAP ${relayHost} ${relayIp}, MAP * ~NOTFOUND, EXCLUDE ${serverIp}, EXCLUDE ${turnIp}, EXCLUDE ${relayIp}`
               : "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1",
             // TURN over TLS ignores ignoreHTTPSErrors, so trust coturn's per-run certificate by its
             // public key. Set by global setup; workers inherit it.
