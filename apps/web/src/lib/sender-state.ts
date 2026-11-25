@@ -122,7 +122,7 @@
 // - The server answers every `email` it refuses with `failed` or `limit`, naming
 //   the link and with no mark, so a refusal never needs guessing which card it was for.
 //
-// - A recipient added with `check` shows the check number once its channel
+// - A recipient added with `check` shows the safety number once its channel
 //   opens ("checking") and reaches "offered" only when both sides said the
 //   numbers match (`checked`). `check-differs` returns it to "waiting" with
 //   CHECK_DIFFERS, which the next join clears; the link still works, because a
@@ -191,7 +191,7 @@ export type Recipient = {
   readonly mark?: string;
   /** The server dropped this link's email binding, so the link is dead and no longer hosted. */
   readonly unbound?: true;
-  /** Both people compare the check number before anything about the file goes. */
+  /** Both people compare the safety number before anything about the file goes. */
   readonly check?: true;
   /** Checked attempts that ended before both sides confirmed. Never lowered. */
   readonly checkFailures?: number;
@@ -246,14 +246,14 @@ export type SenderUpdate = { state: SenderState; effects: SenderEffect[] };
 
 /** How long after a join the data channel may take to open before the attempt is dropped. */
 export const SETUP_TIMEOUT_MS = 20_000;
-/** How long both people have to compare the check number before the attempt ends as a failed check. */
+/** How long both people have to compare the safety number before the attempt ends as a failed check. */
 export const CHECK_TIMEOUT_MS = 5 * 60_000;
 
 export const CHECKSUM_MISMATCH = "The recipient's checksum did not match.";
 export const TOO_SMALL_FOR_TEXT = "The connection can't carry a text in one chunk.";
-export const CHECK_DIFFERS = "The check numbers didn't match, so nothing was sent.";
+export const CHECK_DIFFERS = "The safety numbers didn't match, so nothing was sent.";
 export const CHECK_LIMIT = "The check failed too many times, so this link no longer works.";
-export const CHECK_EXPIRED = "The check number wasn't confirmed in time, so nothing was sent.";
+export const CHECK_EXPIRED = "The safety number wasn't confirmed in time, so nothing was sent.";
 
 export const initialSenderState: SenderState = { recipients: [] };
 

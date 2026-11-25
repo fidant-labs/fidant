@@ -18,16 +18,16 @@
 // |    2 | CHUNK   |  s  | exactly chunkSize bytes: file bytes, then zeros  |
 // |      |         |     | after the end of the file (see Padding)          |
 // |    3 | END     |  s  | sha256(32) || size(8, u64 big-endian)            |
-// |    4 | CHECK   |  s  | 1 byte: 1 the check number matches, 0 it differs |
+// |    4 | CHECK   |  s  | 1 byte: 1 the safety number matches, 0 it differs |
 // |   16 | ACCEPT  |  r  | empty (proves the recipient holds the key)       |
 // |   17 | RECEIPT |  r  | sha256(32) the recipient computed                |
 // |   18 | DECLINE |  r  | empty                                            |
 // |   19 | CREDIT  |  r  | granted(8, u64 big-endian): cumulative count of  |
 // |      |         |     | CHUNKs the sender may send; it may send CHUNK i  |
 // |      |         |     | (0-based) only while i < granted                 |
-// |   20 | CHECK   |  r  | 1 byte: 1 the check number matches, 0 it differs |
+// |   20 | CHECK   |  r  | 1 byte: 1 the safety number matches, 0 it differs |
 //
-// CHECK: with the check number on, each side's first frame after INIT is its CHECK,
+// CHECK: with the safety number on, each side's first frame after INIT is its CHECK,
 // sent once its own person compared the numbers; META waits for both to say 1.
 //
 // Padding: anyone who can see frame sizes (the network, a TURN relay) learns
@@ -470,7 +470,7 @@ export function decodeCredit(body: Uint8Array): number {
   return readU64(new DataView(body.buffer, body.byteOffset, 8), 0);
 }
 
-/** CHECK body: whether this side's user said the check numbers match. */
+/** CHECK body: whether this side's user said the safety numbers match. */
 export function encodeCheck(matches: boolean): Uint8Array<ArrayBuffer> {
   return new Uint8Array([matches ? 1 : 0]);
 }

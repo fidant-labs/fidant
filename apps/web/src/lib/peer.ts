@@ -18,11 +18,11 @@
 // Each side makes a fresh DTLS certificate for every connection. The recipient
 // commits to its certificate's fingerprint before the sender's offer exists, so
 // someone in the middle must fix both certificates before it can learn the
-// check number they give (check.ts). Every fingerprint line of an SDP, in any
+// safety number they give (check.ts). Every fingerprint line of an SDP, in any
 // spelling, must be the exact `a=fingerprint:sha-256 <value>` form and all must
 // name one certificate; after setRemoteDescription the page reads the
 // fingerprint back from the browser's own copy and refuses any difference.
-// `check` says whether the sender's page will ask for the check number; the
+// `check` says whether the sender's page will ask for the safety number; the
 // server can flip it only for an emailed link, and then the two pages disagree
 // and nothing about the file is shown (see frames.ts).
 //
@@ -84,9 +84,9 @@ export type PeerOpenInfo = {
    * Resolves shortly after the channel opens; never rejects.
    */
   path: Promise<OpenPath>;
-  /** Whether the check number is on: the sender's own setting, or the recipient's from the offer. */
+  /** Whether the safety number is on: the sender's own setting, or the recipient's from the offer. */
   check: boolean;
-  /** The check number from the two fingerprints, "ddd ddd". Show it; never send or log it. */
+  /** The safety number from the two fingerprints, "ddd ddd". Show it; never send or log it. */
   checkNumber: Promise<string>;
 };
 
@@ -100,7 +100,7 @@ export type PeerOptions = {
   signalKey: CryptoKey;
   /** From this pairing's `joined`, fresh for each peer: TURN credentials expire. */
   iceServers: RTCIceServer[];
-  /** Sender only: whether this recipient's check number is on. The recipient reads it from the offer. */
+  /** Sender only: whether this recipient's safety number is on. The recipient reads it from the offer. */
   check?: boolean;
   /** The channel is open, ordered, reliable, binaryType "arraybuffer". */
   onOpen(channel: RTCDataChannel, info: PeerOpenInfo): void;
@@ -119,7 +119,7 @@ export type Peer = {
    * the answer ignores a signal that does not open or parse. Calls are processed in order.
    */
   handleRelay(data: string): Promise<void>;
-  /** Recipient only: the answer went out, so this connection's check number is fixed. */
+  /** Recipient only: the answer went out, so this connection's safety number is fixed. */
   readonly answered: boolean;
   /** Closes the channel and the connection. Safe to call more than once. */
   close(): void;
@@ -319,7 +319,7 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
   let gotAnswer = false;
   let commit: string | undefined;
   let offerFingerprint: string | undefined;
-  /** The other side's fingerprint in the check number; a restart must carry the same one. */
+  /** The other side's fingerprint in the safety number; a restart must carry the same one. */
   let theirFingerprint: string | undefined;
   let answered = false;
   let answerAccepted = false;

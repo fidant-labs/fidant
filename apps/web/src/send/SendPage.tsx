@@ -23,7 +23,7 @@
 //   one chunk (textFitsOneChunk) gets nothing: reducer `unsendable` fails the
 //   recipient's card and refuses the joiner.
 // - A peer that closes or fails before delivery → `dropped`; a data channel
-//   that has not opened SETUP_TIMEOUT_MS after the join, or a check number
+//   that has not opened SETUP_TIMEOUT_MS after the join, or a safety number
 //   not confirmed CHECK_TIMEOUT_MS after it opened → `timeout`. Both refuse
 //   the joiner so the server unbinds it (see sender-state.ts).
 // - Each connection reports its path to the server once: direct, stun or
@@ -87,7 +87,17 @@ import {
 import { addRelay, NO_RELAYS } from "../lib/server-facts.ts";
 import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
 import { MAX_TEXT_LENGTH, textFile, textFitsOneChunk } from "../lib/text-secret.ts";
-import { FileCard, Icon, Link, lede, Page, ServerPanel, TechDetails } from "../ui.tsx";
+import {
+  FileCard,
+  field,
+  formRows,
+  Icon,
+  Link,
+  lede,
+  Page,
+  ServerPanel,
+  TechDetails,
+} from "../ui.tsx";
 import { type CheckView, RecipientList } from "./RecipientList.tsx";
 
 type Hash =
@@ -101,9 +111,9 @@ type Connection = {
   peer?: Peer;
   /** Relayed signals that arrived before the peer existed, such as the recipient's commit. */
   early: string[];
-  /** With the check number on: the sender's own verdict, from the card's buttons. */
+  /** With the safety number on: the sender's own verdict, from the card's buttons. */
   confirm?: (matches: boolean) => void;
-  /** What the sender said about the check number, once they said it. */
+  /** What the sender said about the safety number, once they said it. */
   said?: boolean;
   /** Fires `timeout` if the data channel has not opened in time, and later the 5-minute check deadline. */
   deadline?: ReturnType<typeof setTimeout>;
@@ -120,11 +130,44 @@ const LOST_AFTER_MS = 10_000;
 /** How long to wait before hosting again when the server still holds a link for our old socket. */
 const REHOST_AFTER_MS = 5000;
 
-const field = "flex flex-1 flex-col gap-1";
-const fieldError = "mt-1 mb-0 text-destructive";
+const fieldError = "m-0 text-destructive";
 const hint = "text-[0.9rem] text-muted-foreground";
 const stepLabel = "m-0 mb-1 text-[0.85rem] font-medium text-muted-foreground";
 const GLIDE_MS = 450;
+
+function Choice(props: {
+  id: string;
+  title: string;
+  description: string;
+  name?: string;
+  class?: string;
+  checked: boolean;
+  disabled?: boolean;
+  onChange(checked: boolean): void;
+}) {
+  return (
+    <div class={`flex basis-full items-start gap-2.5 ${props.class ?? ""}`}>
+      <input
+        type="checkbox"
+        id={props.id}
+        name={props.name}
+        class="mt-0.5 size-4 flex-none accent-primary"
+        checked={props.checked}
+        disabled={props.disabled}
+        aria-describedby={`${props.id}-description`}
+        onChange={(event) => props.onChange(event.currentTarget.checked)}
+      />
+      <div class="flex flex-col gap-1">
+        <Label htmlFor={props.id} className="leading-snug">
+          {props.title}
+        </Label>
+        <p id={`${props.id}-description`} class={`m-0 leading-snug ${hint}`}>
+          {props.description}
+        </p>
+      </div>
+    </div>
+  );
+}
 
 /** Scrolls the window to `el` with an ease-in-out curve; stops if the user scrolls, jumps if they prefer less motion. */
 function glideTo(el: HTMLElement) {
@@ -183,9 +226,6 @@ export function SendPage({
   const [mail, setMail] = useState(false);
   // Emailing a link is opt-in: until the sender ticks it, there is no email field.
   const [useEmail, setUseEmail] = useState(false);
-  // The check number follows the email choice until the sender sets it for this add.
-  const [checkChoice, setCheckChoice] = useState<boolean | undefined>(undefined);
-  const checkOn = checkChoice ?? useEmail;
   // Each open check's number, by link ID: on screen only, gone with its connection.
   const [checks, setChecks] = useState<Readonly<Record<string, CheckView>>>({});
   const [emailError, setEmailError] = useState(false);
@@ -610,7 +650,9 @@ export function SendPage({
       fromRef.current = typed;
     }
     const link = createLink(location.origin);
-    dispatchRef.current({ type: "add", link, name, check: checkOn, ...(email && { email }) });
+    const submitter = (event as SubmitEvent).submitter;
+    const check = submitter instanceof HTMLButtonElement ? submitter.value === "check" : !!email;
+    dispatchRef.current({ type: "add", link, name, check, ...(email && { email }) });
     // After `add`, so the server already hosts the link this names.
     if (email && findRecipient(senderRef.current, link.linkId)) {
       const sent = signalingRef.current?.send({
@@ -628,7 +670,6 @@ export function SendPage({
       }
     }
     form.reset();
-    setCheckChoice(undefined);
     setMore(false);
     setTyped(false);
     input.focus();
@@ -748,7 +789,7 @@ export function SendPage({
               {t.secret.hint(MAX_TEXT_LENGTH)}
             </p>
             {/* Always rendered so the status is announced; the count stays outside it so each key isn't read out. */}
-            <p id="secret-text-error" class={tooLong ? fieldError : "-mt-1 mb-0"}>
+            <p id="secret-text-error" class={tooLong ? fieldError : "-mt-2 mb-0"}>
               {tooLong && `${t.secret.count(textLength, MAX_TEXT_LENGTH)} `}
               <span role="status">{tooLong && t.secret.tooLong}</span>
             </p>
@@ -910,7 +951,7 @@ export function SendPage({
               </p>
             </div>
             <form
-              class="mt-6 flex flex-wrap items-end gap-2"
+              class={`mt-6 ${formRows}`}
               ref={formRef}
               onSubmit={onAdd}
               onInput={(event) =>
@@ -931,7 +972,7 @@ export function SendPage({
               }}
               noValidate
             >
-              <div class={field}>
+              <div class={`basis-full ${field}`}>
                 <Label htmlFor={id("recipient-name")}>{t.send.recipientLabel}</Label>
                 <Input
                   id={id("recipient-name")}
@@ -947,6 +988,11 @@ export function SendPage({
                     nameError ? `${id("name-error")} ${id("recipient-hint")}` : id("recipient-hint")
                   }
                 />
+                {nameError && (
+                  <p id={id("name-error")} class={fieldError}>
+                    {t.send.nameError[nameError]}
+                  </p>
+                )}
               </div>
               {mail && (
                 <div class="flex basis-full flex-col gap-2">
@@ -1006,24 +1052,37 @@ export function SendPage({
                   )}
                 </div>
               )}
-              <Label className="basis-full items-start leading-snug font-normal">
-                <input
-                  type="checkbox"
-                  name="check"
-                  class="mt-0.5 size-4 flex-none accent-primary"
-                  checked={checkOn}
-                  disabled={!file || full}
-                  onChange={(event) => setCheckChoice(event.currentTarget.checked)}
-                />
-                {text ? t.secret.checkChoice : t.send.check.choice}
-              </Label>
-              <Button type="submit" disabled={!file || full}>
-                {useEmail ? t.send.addEmail : t.send.add}
-              </Button>
+              <div class="flex basis-full flex-wrap gap-2">
+                {useEmail ? (
+                  <>
+                    <Button type="submit" value="check" disabled={!file || full}>
+                      {t.send.addEmailCheck}
+                    </Button>
+                    <Button type="submit" variant="outline" value="plain" disabled={!file || full}>
+                      {t.send.addEmail}
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button type="submit" value="plain" disabled={!file || full}>
+                      {t.send.add}
+                    </Button>
+                    <Button
+                      type="submit"
+                      variant="outline"
+                      value="check"
+                      disabled={!file || full}
+                      aria-describedby={id("check-hint")}
+                    >
+                      {t.send.addCheck}
+                    </Button>
+                  </>
+                )}
+              </div>
             </form>
-            {nameError && (
-              <p id={id("name-error")} class={fieldError}>
-                {t.send.nameError[nameError]}
+            {file && !full && (
+              <p id={id("check-hint")} class={`mb-0 ${hint}`}>
+                {t.send.check.hint}
               </p>
             )}
             <p id={id("recipient-hint")} class={hint}>
@@ -1049,19 +1108,18 @@ export function SendPage({
         )}
         <details class="mt-6 text-[0.9rem]">
           <summary class="cursor-pointer text-muted-foreground">{t.send.connectionOptions}</summary>
-          <Label className="mt-4 items-start leading-snug font-normal">
-            <input
-              type="checkbox"
-              class="mt-0.5 size-4 flex-none accent-primary"
-              checked={allowRelay}
-              onChange={(event) => {
-                allowRelayRef.current = event.currentTarget.checked;
-                setAllowRelay(allowRelayRef.current);
-                host();
-              }}
-            />
-            {t.send.allowRelay}
-          </Label>
+          <Choice
+            id={id("allow-relay")}
+            class="mt-4"
+            title={t.send.allowRelay}
+            description={t.send.allowRelayHint(text ? "secret" : "file")}
+            checked={allowRelay}
+            onChange={(checked) => {
+              allowRelayRef.current = checked;
+              setAllowRelay(checked);
+              host();
+            }}
+          />
         </details>
       </section>
 

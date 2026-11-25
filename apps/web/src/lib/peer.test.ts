@@ -725,7 +725,7 @@ test("a replayed first offer or answer can't stand in for a restart one", async 
   assert.deepEqual(recipient.closes, [{ reason: "bad-signal", detail: "unexpected offer" }]);
 });
 
-test("a restart must name the same two certificates as the check number", async (t) => {
+test("a restart must name the same two certificates as the safety number", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const recipient = await answeredRecipient();
   await recipient.relay({ kind: "restart-offer", sdp: sdpWith(OTHER_FP, "s2") });

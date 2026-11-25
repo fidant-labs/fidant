@@ -295,6 +295,7 @@ export const sv: Messages = {
     fromSummary: (name: string) => `från ${name}`,
     connectionOptions: "Anslutningsalternativ",
     addEmail: "Skapa och mejla länk",
+    addEmailCheck: "Skapa och mejla länk med kontrollnummer",
     share: "Dela",
     shareFor: (name: string) => `Dela länken till ${name}`,
     sendingBar: (delivered: number, total: number) =>
@@ -317,7 +318,9 @@ export const sv: Messages = {
     fromHint: "Visas för dem du skickar till.",
     fromHintEmail:
       "Om vi mejlar en länk står ditt namn också i mejlet, markerat som inte verifierat. Vår server lägger in det där och sparar det inte.",
-    allowRelay: "Tillåt vårt relä om en direkt anslutning inte går",
+    allowRelay: "Använd vårt relä vid behov",
+    allowRelayHint: (kind: Kind) =>
+      `Vissa nätverk stoppar direkta anslutningar. Då går det via vårt relä i Stockholm, fortfarande krypterat. Reläet ser båda IP-adresserna${kind === "file" ? " och ungefär storleken" : ""}, men kan inte öppna det.`,
     fromError: {
       unsafe:
         "Ditt namn innehåller tecken som inte kan skickas, eller tre eller fler mellanslag i rad. Ta bort dem och försök igen.",
@@ -338,6 +341,7 @@ export const sv: Messages = {
     recipientLabel: "Vem ska få den?",
     recipientPlaceholder: "Mottagarens namn",
     add: "Skapa länk",
+    addCheck: "Skapa länk med kontrollnummer",
     nameError: {
       missing: "Skriv ett namn.",
       taken: "Det namnet finns redan på listan.",
@@ -347,9 +351,9 @@ export const sv: Messages = {
     emailLabel: "Mottagarens e-postadress",
     emailError: "Skriv en giltig e-postadress, till exempel namn@example.se.",
     emailNotice:
-      "Vår server ser den här länkens nyckel en gång, för att skriva mejlet. Den sparar eller loggar den inte, men vår e-posttjänst och den som läser mejlet på vägen kan också se den, och länken, med nyckeln, ligger kvar i mottagarens inkorg: den som kan läsa den inkorgen kan ta emot filen. Vår server skulle också kunna ställa sig mellan er för den här länken: låt kontrollnumret vara ikryssat och jämför det med mottagaren, så ser du om den gör det. Om du skickar länken själv slipper du allt detta.",
+      "Vår server ser den här länkens nyckel en gång, för att skriva mejlet. Den sparar eller loggar den inte, men vår e-posttjänst och den som läser mejlet på vägen kan också se den, och länken, med nyckeln, ligger kvar i mottagarens inkorg: den som kan läsa den inkorgen kan ta emot filen. Vår server skulle också kunna ställa sig mellan er för den här länken: skapa länken med kontrollnummer och jämför det med mottagaren, så ser du om den gör det. Om du skickar länken själv slipper du allt detta.",
     check: {
-      choice: "Jämför ett nummer med mottagaren innan filen skickas",
+      hint: "Med kontrollnummer jämför ni sex siffror i telefon eller på plats innan något skickas, så att du vet att ingen är emellan.",
       number: "Kontrollnummer",
       ask: (name: string) => `Be ${name} läsa upp numret på sin skärm. Stämmer det?`,
       matches: "Det stämmer",
@@ -588,9 +592,8 @@ export const sv: Messages = {
       `${done} av ${total} länkar har levererat hemligheten`,
     doneOne: (name: string) => `Hemligheten kom fram oskadd via länken till ${name}.`,
     doneMany: (n: number) => `Hemligheten kom fram oskadd via alla ${n} länkar.`,
-    checkChoice: "Jämför ett nummer med mottagaren innan hemligheten skickas",
     emailNotice:
-      "Vår server ser den här länkens nyckel en gång, för att skriva mejlet. Den sparar eller loggar den inte, men vår e-posttjänst och den som läser mejlet på vägen kan också se den, och länken, med nyckeln, ligger kvar i mottagarens inkorg: den som kan läsa den inkorgen kan ta emot hemligheten. Vår server skulle också kunna ställa sig mellan er för den här länken: låt kontrollnumret vara ikryssat och jämför det med mottagaren, så ser du om den gör det. Om du skickar länken själv slipper du allt detta.",
+      "Vår server ser den här länkens nyckel en gång, för att skriva mejlet. Den sparar eller loggar den inte, men vår e-posttjänst och den som läser mejlet på vägen kan också se den, och länken, med nyckeln, ligger kvar i mottagarens inkorg: den som kan läsa den inkorgen kan ta emot hemligheten. Vår server skulle också kunna ställa sig mellan er för den här länken: skapa länken med kontrollnummer och jämför det med mottagaren, så ser du om den gör det. Om du skickar länken själv slipper du allt detta.",
     status: {
       declined: (name: string) =>
         `Länken till ${name} öppnades och hemligheten avböjdes. Länken fungerar fortfarande.`,
@@ -907,7 +910,7 @@ export const sv: Messages = {
       norelay: {
         heading: "Att neka reläet",
         body: [
-          'Avsändaren kan bocka ur "Tillåt vårt relä om en direkt anslutning inte går". Vår server ger då inga inloggningsuppgifter till reläet för den sändningen, bara STUN-adressen, så en omodifierad webbläsare kan inte använda reläet. Avsändarens webbläsare upprätthåller också själv valet: den startar förbindelsen utan inloggningsuppgifter till reläet, vad vår server än skickar. Som extra skydd avslutar avsändarens webbläsare förbindelsen om den ändå ser att den går via reläet. Fildata skickas först när mottagaren har tackat ja, så i praktiken sker det innan något av den har passerat.',
+          'Avsändaren kan bocka ur "Använd vårt relä vid behov". Vår server ger då inga inloggningsuppgifter till reläet för den sändningen, bara STUN-adressen, så en omodifierad webbläsare kan inte använda reläet. Avsändarens webbläsare upprätthåller också själv valet: den startar förbindelsen utan inloggningsuppgifter till reläet, vad vår server än skickar. Som extra skydd avslutar avsändarens webbläsare förbindelsen om den ändå ser att den går via reläet. Fildata skickas först när mottagaren har tackat ja, så i praktiken sker det innan något av den har passerat.',
           "Gränsen: en modifierad mottagare kan ändå skicka sin del via vårt relä med uppgifter från en annan ihopkoppling, eller via vilket offentligt relä som helst. Den mottagaren har ju nyckeln ändå. Valet avgör vilken infrastruktur som bär den krypterade trafiken, inte vem som kan läsa filen.",
         ],
       },
@@ -1269,7 +1272,7 @@ export const sv: Messages = {
             ],
             [
               "email",
-              "Eftersom den hade nyckeln kunde den läsa länkens uppkopplingsmeddelanden och försöka ställa sig emellan. Kontrollnumret visar dig om den gör det, om du inte har stängt av det.",
+              "Eftersom den hade nyckeln kunde den läsa länkens uppkopplingsmeddelanden och försöka ställa sig emellan. Kontrollnumret visar dig om den gör det, om du inte skapade länken utan det.",
             ],
             [
               "email",
