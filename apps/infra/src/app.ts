@@ -1,7 +1,7 @@
 import type { App } from "aws-cdk-lib";
 import { BoxStack } from "./box.ts";
 import { CiStack } from "./ci.ts";
-import { alertEmail, boxAddress, hostedZoneIds, mail } from "./config.ts";
+import { alertEmail, boxAddress, hostedZoneIds, mail, relayAddresses } from "./config.ts";
 import { DnsStack } from "./dns.ts";
 import { DnssecStack } from "./dnssec.ts";
 
@@ -24,6 +24,7 @@ export function addStacks(app: App, env: Record<string, string | undefined>): vo
       terminationProtection: true,
       mail,
       boxAddress,
+      relayAddresses,
     });
     new CiStack(app, "FidantCi", { env: { account, region: "eu-north-1" } });
     new DnssecStack(app, "FidantDnssec", {
