@@ -63,6 +63,15 @@ export class BoxStack extends Stack {
       (relay) => new RelayBox(this, `Relay-${relay.id}`, { relayId: relay.id }),
     );
 
+    const capBoxes = [
+      { instance: box, openPorts: [...otherPorts, ...relayPorts], cappedPorts: otherPorts },
+      ...relayBoxes.map((relay) => ({
+        instance: relay.instance,
+        openPorts: relayBoxPorts,
+        cappedPorts: relayBoxPorts.filter((port) => port.fromPort === 22 || port.fromPort === 80),
+      })),
+    ];
+
     const fn = new lambda.Function(this, "RelayCap", {
       runtime: lambda.Runtime.NODEJS_24_X,
       handler: "index.handler",
@@ -76,16 +85,13 @@ export class BoxStack extends Stack {
         removalPolicy: RemovalPolicy.DESTROY,
       }),
       environment: {
-        BOXES: this.toJsonString([
-          { box: box.ref, openPorts: [...otherPorts, ...relayPorts], cappedPorts: otherPorts },
-          ...relayBoxes.map((relay) => ({
-            box: relay.instance.ref,
-            openPorts: relayBoxPorts,
-            cappedPorts: relayBoxPorts.filter(
-              (port) => port.fromPort === 22 || port.fromPort === 80,
-            ),
+        BOXES: this.toJsonString(
+          capBoxes.map(({ instance, openPorts, cappedPorts }) => ({
+            box: instance.ref,
+            openPorts,
+            cappedPorts,
           })),
-        ]),
+        ),
         LIMIT_BYTES: String(relayCapBytes),
         RELAYS: JSON.stringify(relays.map((relay) => relay.id)),
         STATUS_URL: `https://${primaryDomain}/relay-status`,
@@ -101,9 +107,7 @@ export class BoxStack extends Stack {
     fn.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ["lightsail:PutInstancePublicPorts"],
-        resources: [box, ...relayBoxes.map((relay) => relay.instance)].map(
-          (instance) => instance.attrInstanceArn,
-        ),
+        resources: capBoxes.map(({ instance }) => instance.attrInstanceArn),
       }),
     );
     fn.addToRolePolicy(
