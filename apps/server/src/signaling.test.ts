@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { createServer, request, type Server } from "node:http";
-import { type AddressInfo, type Socket, connect as tcpConnect } from "node:net";
+import { type AddressInfo, BlockList, type Socket, connect as tcpConnect } from "node:net";
+import { networkInterfaces } from "node:os";
 import { after, before, test } from "node:test";
 import {
   CODE_RESULTS,
@@ -539,6 +540,23 @@ test("keys clients by address, trusting X-Forwarded-For only from loopback", () 
   assert.equal(clientAddress("127.0.0.1", "2001:db8:1:2::9"), "2001:db8:1:2::/64");
 });
 
+test("trusts X-Forwarded-For from a configured range and from no other peer", () => {
+  const proxies = new BlockList();
+  proxies.addSubnet("10.0.1.0", 24, "ipv4");
+  proxies.addSubnet("2001:db8:aa::", 48, "ipv6");
+  assert.equal(clientAddress("10.0.1.5", "198.51.100.1", proxies), "198.51.100.1");
+  assert.equal(clientAddress("::ffff:10.0.1.5", "198.51.100.1", proxies), "198.51.100.1");
+  assert.equal(clientAddress("10.0.1.5", "203.0.113.9, 198.51.100.1", proxies), "198.51.100.1");
+  assert.equal(clientAddress("2001:db8:aa::7", "198.51.100.1", proxies), "198.51.100.1");
+  assert.equal(clientAddress("10.0.1.5", "2001:db8:1:2::9", proxies), "2001:db8:1:2::/64");
+  assert.equal(clientAddress("10.0.2.5", "198.51.100.1", proxies), "10.0.2.5");
+  assert.equal(clientAddress("203.0.113.7", "198.51.100.1", proxies), "203.0.113.7");
+  assert.equal(clientAddress("10.0.1.5", "not-an-ip", proxies), "10.0.1.5");
+  assert.equal(clientAddress("10.0.1.5", undefined, proxies), "10.0.1.5");
+  assert.equal(clientAddress("127.0.0.1", "198.51.100.1", proxies), "198.51.100.1");
+  assert.equal(clientAddress(undefined, "198.51.100.1", proxies), "");
+});
+
 /**
  * Starts a second signaling server with lowered limits on 127.0.0.1, so every client in the test
  * counts against the same address.
@@ -546,16 +564,42 @@ test("keys clients by address, trusting X-Forwarded-For only from loopback", () 
 async function limitedServer(
   t: { after(fn: () => void): void },
   limits: { sockets?: number; socketsPerAddress?: number },
+  extra: { host?: string; proxies?: BlockList } = {},
 ): Promise<{ host: string; port: number; server: Server }> {
+  const host = extra.host ?? "127.0.0.1";
   const limited = createServer();
-  const limitedSignaling = attachSignaling(limited, { log: () => {}, limits });
+  const limitedSignaling = attachSignaling(limited, {
+    log: () => {},
+    limits,
+    proxies: extra.proxies,
+  });
   t.after(() => {
     limitedSignaling.close();
     limited.close();
   });
-  await new Promise<void>((done) => limited.listen(0, "127.0.0.1", done));
-  return { host: "127.0.0.1", port: (limited.address() as AddressInfo).port, server: limited };
+  await new Promise<void>((done) => limited.listen(0, host, done));
+  return { host, port: (limited.address() as AddressInfo).port, server: limited };
 }
+
+test("counts a socket behind a configured proxy against the forwarded address", async (t) => {
+  const lan = Object.values(networkInterfaces())
+    .flat()
+    .find((a) => a?.family === "IPv4" && !a.internal)?.address;
+  if (!lan) {
+    t.skip("no LAN address");
+    return;
+  }
+  const proxies = new BlockList();
+  proxies.addAddress(lan, "ipv4");
+  const trusting = await limitedServer(t, { socketsPerAddress: 1 }, { host: lan, proxies });
+  const plain = await limitedServer(t, { socketsPerAddress: 1 }, { host: lan });
+  const forwarded = { "x-forwarded-for": "198.51.100.1" };
+  await connect(`ws://${lan}:${trusting.port}/signal`);
+  assert.equal(await upgradeStatus("/signal", {}, trusting), 429);
+  assert.equal(await upgradeStatus("/signal", forwarded, trusting), 101);
+  await connect(`ws://${lan}:${plain.port}/signal`);
+  assert.equal(await upgradeStatus("/signal", forwarded, plain), 429);
+});
 
 /** Retries an upgrade until the server has noticed a close and freed the slot. */
 async function upgradeAfterClose(

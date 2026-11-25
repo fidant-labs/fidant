@@ -10,7 +10,7 @@
 import { createHmac, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import type { Server as HttpServer, IncomingMessage } from "node:http";
 import type { Server as HttpsServer } from "node:https";
-import { isIP } from "node:net";
+import { type BlockList, isIP } from "node:net";
 import type { Duplex } from "node:stream";
 import {
   type ClientMessage,
@@ -168,16 +168,22 @@ function prefix64(ip: string): string {
 
 /**
  * The address a socket counts against for the per-address cap. X-Forwarded-For is trusted only
- * from loopback (a reverse proxy on the same host), and only its rightmost entry, which that
- * proxy wrote. IPv6 clients are keyed by their /64, since one host usually owns a whole /64.
+ * from loopback (a reverse proxy on the same host) or a peer in `proxies`, and only its rightmost
+ * entry, which that proxy wrote. IPv6 clients are keyed by their /64, since one host usually owns a whole /64.
  * The result is used only as a map key and is never logged.
  */
 export function clientAddress(
   remote: string | undefined,
   forwardedFor: string | string[] | undefined,
+  proxies?: BlockList,
 ): string {
   let ip = normalize(remote ?? "");
-  if (ip === "::1" || ip.startsWith("127.")) {
+  const family = isIP(ip);
+  if (
+    ip === "::1" ||
+    ip.startsWith("127.") ||
+    (proxies !== undefined && family !== 0 && proxies.check(ip, family === 4 ? "ipv4" : "ipv6"))
+  ) {
     const header = Array.isArray(forwardedFor) ? forwardedFor.join(",") : (forwardedFor ?? "");
     const forwarded = normalize(header.split(",").at(-1)?.trim() ?? "");
     if (isIP(forwarded) !== 0) {
@@ -210,6 +216,8 @@ export function attachSignaling(
     iceServers?: (turn: boolean) => IceServer[];
     /** Sends notices that link to `${origin}/r/<link>#e.<mark>.<secret>`. Without it, no mail goes out. */
     mail?: { send: Mailer; origin: string } | undefined;
+    /** Peers in these ranges are trusted to write X-Forwarded-For, as a loopback peer is. */
+    proxies?: BlockList | undefined;
   },
 ): { close(): void } {
   const { log, iceServers = () => [], mail } = options;
@@ -266,7 +274,11 @@ export function attachSignaling(
       rejectUpgrade(socket, 503);
       return;
     }
-    const address = clientAddress(req.socket.remoteAddress, req.headers["x-forwarded-for"]);
+    const address = clientAddress(
+      req.socket.remoteAddress,
+      req.headers["x-forwarded-for"],
+      options.proxies,
+    );
     if ((perAddress.get(address) ?? 0) >= limits.socketsPerAddress) {
       log("upgrade-rejected", { reason: "address" });
       rejectUpgrade(socket, 429);
