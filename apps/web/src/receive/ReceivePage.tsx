@@ -584,6 +584,7 @@ export function ReceivePage({
         channel,
         maxMessageSize: info.maxMessageSize,
         secret,
+        attempt: attemptId,
         signal: attempt.abort.signal,
         ...(confirm && { confirm }),
         onOffer(received) {

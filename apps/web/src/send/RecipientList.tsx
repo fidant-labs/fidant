@@ -74,7 +74,8 @@ export function RecipientList({
       <ul class="mt-3 mb-4 grid gap-3" aria-label={t.send.recipients}>
         {ordered.map((recipient) => (
           <RecipientRow
-            key={recipient.linkId}
+            // Names are unique (onAdd refuses a taken one) and survive a link swap, so the card keeps its live regions and focus.
+            key={recipient.name}
             recipient={recipient}
             fileSize={fileSize}
             statusText={statusText}
