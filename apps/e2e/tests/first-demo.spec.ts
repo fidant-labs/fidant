@@ -575,6 +575,44 @@ test("a lost sender says whether the file may have been saved", async ({ demo, l
   await expect(bo.getByText("The file may not have been saved.")).toBeVisible();
 });
 
+test("a recipient who leaves mid-download returns the sender's card to waiting", async ({
+  demo,
+  leaks,
+  canary,
+}) => {
+  const file = makeFile(leaks, canary, 100_001);
+  const sender = await openSender(demo, file, "", (page) => page.addInitScript(breakableSender));
+  const stall = (stalled: boolean) =>
+    sender.evaluate((on) => {
+      (globalThis as { stalled?: boolean }).stalled = on;
+    }, stalled);
+  const name = makeName(leaks, canary, "Anna");
+  const link = await addRecipient(leaks, sender, name);
+  const card = recipientRow(sender, name);
+
+  const first = await demo.open("recipient-1");
+  await first.goto(link);
+  await expect(first.getByRole("button", { name: "Download" })).toBeVisible();
+  await stall(true);
+  await first.getByRole("button", { name: "Download" }).click();
+  await expect(first.getByRole("heading", { name: "Downloading…" })).toBeVisible();
+  await expect(card.getByText(`Sending through ${name}'s link`)).toBeVisible();
+
+  // The receive page has no pagehide that closes its peer (SIG-266), so the sender notices only
+  // when ICE consent expires, about 15 s later.
+  await first.close();
+  await expect(card.getByText(`Waiting for ${name}'s link to be opened`)).toBeVisible({
+    timeout: 45_000,
+  });
+
+  await stall(false);
+  const second = await demo.open("recipient-2");
+  await second.goto(link);
+  const bytes = await download(second, file);
+  expect(sha256Hex(bytes)).toBe(sha256Hex(file.bytes));
+  await expect(delivered(sender, name)).toBeAttached();
+});
+
 type Tamper = "flip" | "other";
 
 /**
