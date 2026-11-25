@@ -23,6 +23,7 @@ export const mail: Mail = {
   apexTxt: [
     "protonmail-verification=14191306dac563a6cf145d0c0777d212920f3bf6",
     "v=spf1 include:_spf.protonmail.ch ~all",
+    "google-site-verification=j_NhK4gVOu5Zuhu5RISrTo5KEJ2fXd_SFm09d2rQjOs",
   ],
   mx: [
     { priority: 10, hostName: "mail.protonmail.ch" },

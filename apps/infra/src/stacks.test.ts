@@ -557,6 +557,16 @@ test("the committed config keeps fidant.se's Proton mail records", () => {
   });
 });
 
+test("the committed config keeps fidant.se verified in Google Search Console", () => {
+  committed.hasResourceProperties(recordSet, {
+    Name: "fidant.se.",
+    Type: "TXT",
+    ResourceRecords: Match.arrayWith([
+      Match.stringLikeRegexp('^"google-site-verification=[A-Za-z0-9_-]{43}"$'),
+    ]),
+  });
+});
+
 test("the hosted zones survive the stack being deleted", () => {
   const zones = Object.values(dns.findResources("AWS::Route53::HostedZone"));
   assert.equal(zones.length, 3);
