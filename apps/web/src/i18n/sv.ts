@@ -95,7 +95,7 @@ export const sv: Messages = {
   },
   landing: {
     title: "Skicka en fil som bara mottagaren kan öppna.",
-    lede: "Fidant krypterar filen i din webbläsare innan den går till den du väljer. Den sparas aldrig, och om du inte ber oss mejla länken kan ingen på vägen, inte heller vi, läsa den.",
+    lede: "Fidant krypterar filen i din webbläsare innan den går till den du väljer. Den sparas aldrig, och du skickar länken själv, så ingen på vägen, inte heller vi, kan läsa den.",
     cta: "Skicka en fil",
     how: "Läs hur det fungerar",
     noAccount: "Inget konto. Inget sparas.",
@@ -120,7 +120,7 @@ export const sv: Messages = {
   },
   how: {
     title: "Så fungerar det",
-    lede: "Vad som händer med din fil, steg för steg. Kort sagt: den låses på din dator. Bara den som har länken kan låsa upp den. Om du ber oss mejla länken gäller det även oss.",
+    lede: "Vad som händer med din fil, steg för steg. Kort sagt: den låses på din dator. Bara den som har länken kan låsa upp den.",
     sections: {
       stays: {
         heading: "Din fil stannar på din dator",
@@ -306,10 +306,12 @@ export const sv: Messages = {
       missing: "Skriv ett namn.",
       taken: "Det namnet finns redan på listan.",
     },
+    emailChoice: "Mejla länken åt mig (mindre privat)",
+    emailMore: "Vad det innebär att mejla en länk",
     emailLabel: "Mottagarens e-postadress",
     emailError: "Skriv en giltig e-postadress, till exempel namn@example.se.",
     emailNotice:
-      "Fidant mejlar länken åt dig, så vår server ser länkens nyckel en gång. Nyckeln sparas inte och loggas inte. Länken, nyckeln också, ligger kvar i mottagarens inkorg, så alla som kan läsa den inkorgen skulle kunna ta emot filen.",
+      "Vår server ser den här länkens nyckel en gång, för att skriva mejlet. Den sparar eller loggar den inte, men vår e-posttjänst ser den också, och länken, med nyckeln, ligger kvar i mottagarens inkorg: den som kan läsa den inkorgen kan ta emot filen. Tills kontrollord finns skulle vår server också kunna ställa sig mellan er för den här länken. Om du skickar länken själv slipper du allt detta.",
     fileFirst: "Välj en fil först.",
     full: (max: number) => `Du kan skicka till högst ${max} personer åt gången.`,
     oneLinkEach: "Varje person får en egen länk, som fungerar en gång.",
@@ -517,7 +519,7 @@ export const sv: Messages = {
     locked: "Ta bort alla mottagare för att ändra ditt namn eller din hemlighet.",
     keepOpen: "Ha fliken öppen tills alla har fått hemligheten. Den skickas härifrån.",
     emailNotice:
-      "Fidant mejlar länken åt dig, så vår server ser länkens nyckel en gång. Nyckeln sparas inte och loggas inte. Länken, nyckeln också, ligger kvar i mottagarens inkorg, så alla som kan läsa den inkorgen skulle kunna ta emot hemligheten.",
+      "Vår server ser den här länkens nyckel en gång, för att skriva mejlet. Den sparar eller loggar den inte, men vår e-posttjänst ser den också, och länken, med nyckeln, ligger kvar i mottagarens inkorg: den som kan läsa den inkorgen kan ta emot hemligheten. Tills kontrollord finns skulle vår server också kunna ställa sig mellan er för den här länken. Om du skickar länken själv slipper du allt detta.",
     status: {
       declined: (name: string) =>
         `Länken till ${name} öppnades och hemligheten avböjdes. Länken fungerar fortfarande.`,
@@ -640,8 +642,7 @@ export const sv: Messages = {
   },
   footer: {
     label: "Webbplats",
-    tagline:
-      "Filer krypteras i din webbläsare och kan bara läsas av mottagaren, om du inte ber oss mejla länken.",
+    tagline: "Filer krypteras i din webbläsare. Bara länken kan låsa upp dem.",
     about: "Om Fidant",
     terms: "Villkor",
     security: "Säkerhet",
@@ -656,7 +657,7 @@ export const sv: Messages = {
   },
   about: {
     title: "Om Fidant",
-    lede: "Fidant är ett sätt att skicka en fil till någon utan att behöva lita på någon på vägen, inte heller på oss, så länge du inte ber oss mejla länken.",
+    lede: "Fidant är ett sätt att skicka en fil till någon utan att behöva lita på någon på vägen, inte heller på oss.",
     sections: [
       {
         heading: "Vem som driver det",

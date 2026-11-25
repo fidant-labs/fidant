@@ -110,7 +110,7 @@ export const en = {
   },
   landing: {
     title: "Send a file only the recipient can open.",
-    lede: "Fidant encrypts the file in your browser before it goes to the person you choose. It is never stored, and unless you ask us to email the link, nobody in between, us included, can read it.",
+    lede: "Fidant encrypts the file in your browser before it goes to the person you choose. It is never stored, and you send the link yourself, so nobody in between, us included, can read it.",
     cta: "Send a file",
     how: "Read how it works",
     noAccount: "No account. Nothing stored.",
@@ -135,7 +135,7 @@ export const en = {
   },
   how: {
     title: "How it works",
-    lede: "What happens to your file, step by step. In short: it is locked on your computer, and only someone with the link can unlock it. If you ask us to email the link, that includes us.",
+    lede: "What happens to your file, step by step. In short: it is locked on your computer, and only someone with the link can unlock it.",
     sections: {
       stays: {
         heading: "Your file stays on your computer",
@@ -322,10 +322,12 @@ export const en = {
       missing: "Enter a name.",
       taken: "That name is already on the list.",
     },
+    emailChoice: "Email the link for me (less private)",
+    emailMore: "What emailing a link means",
     emailLabel: "Their email address",
     emailError: "Enter a valid email address, like name@example.com.",
     emailNotice:
-      "Fidant emails this link for you, so our server sees its key once. The key isn't stored or logged. The link, key included, stays in their mailbox, so anyone who can read that mailbox could receive the file.",
+      "Our server will see this link's key once, to write the email. It doesn't store or log it, but our mail service sees it too, and the link, key included, stays in their mailbox: anyone who can read that mailbox could receive the file. Until check words exist, our server could also put itself between you and them for this link. Sending the link yourself avoids all of this.",
     fileFirst: "Choose a file first.",
     full: (max: number) => `You can send to up to ${max} people at a time.`,
     oneLinkEach: "Each person gets their own link, which works once.",
@@ -534,7 +536,7 @@ export const en = {
     locked: "Remove everyone to change your name or secret.",
     keepOpen: "Keep this tab open until everyone has the secret. It's sent from here.",
     emailNotice:
-      "Fidant emails this link for you, so our server sees its key once. The key isn't stored or logged. The link, key included, stays in their mailbox, so anyone who can read that mailbox could receive the secret.",
+      "Our server will see this link's key once, to write the email. It doesn't store or log it, but our mail service sees it too, and the link, key included, stays in their mailbox: anyone who can read that mailbox could receive the secret. Until check words exist, our server could also put itself between you and them for this link. Sending the link yourself avoids all of this.",
     // Only the statuses whose file wording would be wrong; the rest come from send.status.
     status: {
       declined: (name: string) =>
@@ -682,8 +684,7 @@ export const en = {
   },
   footer: {
     label: "Site",
-    tagline:
-      "Files encrypted in your browser, readable only by the recipient unless you ask us to email the link.",
+    tagline: "Files encrypted in your browser. Only the link can unlock them.",
     about: "About",
     terms: "Terms",
     security: "Security",
@@ -698,7 +699,7 @@ export const en = {
   },
   about: {
     title: "About Fidant",
-    lede: "Fidant is a way to send a file to someone without trusting anyone in between, including us, unless you ask us to email the link.",
+    lede: "Fidant is a way to send a file to someone without having to trust anyone in between, including us.",
     sections: [
       {
         heading: "Who runs it",

@@ -920,6 +920,8 @@ async function addEmailed(
   from = "",
 ): Promise<Emailed> {
   await sender.getByLabel("Who is it for?").fill(name);
+  // Emailing is opt-in; the choice stays ticked for the next recipient.
+  await sender.getByLabel("Email the link for me (less private)").check();
   await sender.getByLabel("Their email address").fill(to);
   await sender.getByRole("button", { name: "Add", exact: true }).click();
   await expect(
@@ -1247,6 +1249,7 @@ test.describe("emailed links", () => {
     const sender = await demo.open("sender");
     await sender.goto("/secret");
     await sender.getByLabel("Your secret").fill(text);
+    await sender.getByLabel("Email the link for me (less private)").check();
     const email = sender.getByLabel("Their email address");
     await expect(email).toHaveId("secret-recipient-email");
     const name = makeName(leaks, canary, "Anna");
@@ -1281,6 +1284,22 @@ harness(
     await expect.poll(async () => (await hello()).length).toBe(1);
     const mail = (await hello())[0]?.mail;
     expect(mail).toBe(Boolean(process.env.SIGILL_E2E_MAILPIT));
-    await expect(page.getByLabel("Their email address")).toHaveCount(mail ? 1 : 0);
+    // The address field appears only once the sender chooses to have the link emailed.
+    const choice = page.getByLabel("Email the link for me (less private)");
+    await expect(choice).toHaveCount(mail ? 1 : 0);
+    await expect(page.getByLabel("Their email address")).toHaveCount(0);
+    if (mail) {
+      await page.getByLabel("Choose a file").setInputFiles({
+        name: "a.bin",
+        mimeType: "application/octet-stream",
+        buffer: Buffer.from("x"),
+      });
+      await expect(choice).not.toBeChecked();
+      await choice.check();
+      await expect(page.getByLabel("Their email address")).toHaveCount(1);
+      await expect(
+        page.getByRole("note").filter({ hasText: "Sending the link yourself avoids all of this." }),
+      ).toBeVisible();
+    }
   },
 );
