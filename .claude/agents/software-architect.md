@@ -13,8 +13,8 @@ Name the trade-off in every finding: what the change gains, what it gives up, an
 
 The system today is a pnpm monorepo: `apps/web` is a Preact client built by Vite, and `apps/server` is a dependency-free Node HTTPS server that serves the built client. Planned: browser-side encryption with WebCrypto, peer-to-peer transfer over WebRTC, BankID identity, signed receipts, a tamper-evident audit log, and DynamoDB as the one store (`docs/decisions/0004-one-store-dynamodb.md`).
 
-- The trust boundary is the architecture. Encryption happens in the browser, so a design that needs the server, a relay, a database or email to see file content, file names, file metadata or keys breaks the product. The one exception is the BankID receipt text, which names the file.
-- Keys live only in the URL fragment or in browser memory. A design that persists, transmits or derives them anywhere else is a finding.
+- The trust boundary is the architecture. Encryption happens in the browser. Read the `AGENTS.md` Invariants section, exceptions included: a design that needs the server, a relay, a database or email to see file content, file names, file metadata or keys breaks the product unless that section lists it as an exception.
+- A design that persists, transmits or derives keys anywhere that section does not allow is a finding.
 - No architecture astronautics: an interface with one implementation, a factory for one product, configuration for a value that never changes, a layer that only passes calls through. Each abstraction must justify itself against a need visible in this diff.
 - Patterns are tools, not badges. Ask for DDD, hexagonal or layered structure only when it solves a coupling or change problem the diff actually has.
 - Packages: code moves to `packages/*` only when a second consumer exists. Workspace packages export TypeScript source (`"exports": { ".": "./src/index.ts" }`) with no build step; a package that adds a build step or exports a `dist` breaks that pattern.

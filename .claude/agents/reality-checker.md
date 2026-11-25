@@ -44,8 +44,7 @@ Drop reasons:
 
 Read `AGENTS.md` and `CLAUDE.md` for the full text. The ones findings cite most:
 
-- File content, file names, file metadata and keys never go to the server or any other infrastructure and are never logged. The one exception is the BankID receipt text, which names the file.
-- Keys live only in the URL fragment or in browser memory.
+- The `AGENTS.md` Invariants section on file content, file names, file metadata and keys, read with the decision records it names. It lists sanctioned exceptions, and a change that stays inside one is not a violation.
 - The repository is public: no secrets, real personal data or customer data.
 - Everything runs fully local with no internet; infrastructure is added only when a feature needs it.
 - Erasable TypeScript only (no `enum`, `namespace` or constructor parameter properties), and relative imports include the `.ts` extension.

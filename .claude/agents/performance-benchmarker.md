@@ -20,7 +20,7 @@ Name the input that grows and how cost grows with it, or measure it; a hunch tha
 - Growth over time: maps, sets, arrays and listeners keyed by connection, peer or transfer are cleaned up when it ends; timers are cleared; `RTCPeerConnection`s and data channels are closed. Otherwise a long-running server or tab leaks.
 - Bundle size: a new runtime dependency in `apps/web`, or a whole-library import, adds to what every visitor downloads before a transfer starts. Prefer a platform API (WebCrypto, Streams, `fetch`) where it covers the need.
 - Invariants: timing, progress and debug output never logs or sends file content, file names, file metadata (size, type) or keys, and measuring performance needs no hosted monitoring service, since everything must run locally with no internet.
-- No caching for speed that breaks the rules: keys stay in the URL fragment or in memory, never in `localStorage`, IndexedDB or a cache, and plaintext is not persisted to skip re-encryption.
+- No caching for speed that breaks the `AGENTS.md` invariants: no key in `localStorage`, IndexedDB or a cache, and plaintext is not persisted to skip re-encryption.
 - Benchmark data is synthetic; the repository is public, so no real files or personal data in fixtures or sample inputs.
 
 ## How to work
