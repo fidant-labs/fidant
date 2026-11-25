@@ -101,31 +101,66 @@ export function fileSecrets(
 }
 
 /**
- * A key and its SHA-256. A string key, such as a fragment secret, is searched as text (any 20
- * characters) and as the SHA-256 of that text, and also as the bytes it encodes when it is
- * base64url.
+ * A key as every byte value it stands for, and the SHA-256 of each. A string key, such as a
+ * fragment secret, is also searched as text (any 20 characters), and its byte values are every
+ * decoding of it as hex, base64url or base64 (padded or not) that encodes back to it and is at
+ * least 8 bytes. The key's text forms (the given text, and the base64url, base64 and lowercase hex
+ * of each byte value) are searched as their SHA-256 and the SHA-256 of `#` and the text, as a
+ * lookup ID derived from a fragment would be.
  */
 export function keySecrets(
   label: string,
   key: Uint8Array | string,
   cls: "K" | "S" = "K",
 ): Secret[] {
-  if (typeof key !== "string") {
-    return [
-      { class: cls, label, bytes: key },
-      { class: cls, label: `${label} sha256`, bytes: sha256(key) },
-    ];
+  const secrets: Secret[] = [];
+  const texts = new Map<string, string>();
+  if (typeof key === "string") {
+    secrets.push({
+      class: cls,
+      label: `${label} text`,
+      bytes: Buffer.from(key),
+      window: keyTextWindow,
+    });
+    texts.set(key, "text");
   }
-  // The string's own SHA-256 always counts: hashing a fragment string into a lookup ID is common.
-  const secrets: Secret[] = [
-    { class: cls, label: `${label} text`, bytes: Buffer.from(key), window: keyTextWindow },
-    { class: cls, label: `${label} text sha256`, bytes: sha256(key) },
-  ];
-  const decoded = Buffer.from(key, "base64url");
-  if (decoded.toString("base64url") === key && decoded.length >= minWindow) {
-    secrets.push(...keySecrets(label, decoded, cls));
+  for (const bytes of typeof key === "string" ? decodings(key) : [key]) {
+    secrets.push(
+      { class: cls, label, bytes },
+      { class: cls, label: `${label} sha256`, bytes: sha256(bytes) },
+    );
+    for (const encoding of ["base64url", "base64", "hex"] as const) {
+      const text = Buffer.from(bytes).toString(encoding);
+      if (!texts.has(text)) {
+        texts.set(text, encoding);
+      }
+    }
+  }
+  for (const [text, form] of texts) {
+    secrets.push(
+      { class: cls, label: `${label} ${form} sha256`, bytes: sha256(text) },
+      { class: cls, label: `${label} #${form} sha256`, bytes: sha256(`#${text}`) },
+    );
   }
   return secrets;
+}
+
+/** The distinct byte values of `text` as hex, base64url or base64, at least 8 bytes each. */
+function decodings(text: string): Buffer[] {
+  const values = new Map<string, Buffer>();
+  for (const encoding of ["base64url", "base64", "hex"] as const) {
+    // Node decodes leniently (base64 takes - and _, hex stops at a bad pair): keep round trips.
+    const bytes = Buffer.from(text, encoding);
+    const back = bytes.toString(encoding);
+    const exact =
+      encoding === "hex"
+        ? back === text.toLowerCase()
+        : back === text || back.replace(/=+$/, "") === text;
+    if (exact && bytes.length >= minWindow) {
+      values.set(bytes.toString("hex"), bytes);
+    }
+  }
+  return [...values.values()];
 }
 
 /** Text such as a recipient label, in NFC and NFD UTF-8. By default it must appear whole. */
@@ -251,7 +286,15 @@ export class Needles {
     this.sizes = secrets.filter((secret): secret is SizeSecret => "size" in secret);
     const byteSecrets = secrets
       .filter((secret): secret is ByteSecret => "bytes" in secret)
-      .flatMap((secret) => [secret, ...base64Secrets(secret)]);
+      .flatMap((secret) => [
+        secret,
+        ...base64Secrets(secret),
+        // The text is case-insensitive, its base64 is not: uppercase text encodes differently.
+        // Mixed case stays unwatched in base64 (see SIG-275).
+        ...(secret.caseInsensitive
+          ? base64Secrets({ ...secret, bytes: asciiUpper(secret.bytes) })
+          : []),
+      ]);
     const anchors = { exact: 0, folded: 0 };
     let offset = 0;
     for (const secret of byteSecrets) {
@@ -469,6 +512,9 @@ function hashSlot(lo: number, hi: number): number {
   h = Math.imul(h, 0xc2b2ae35);
   return h ^ (h >>> 16);
 }
+
+const asciiUpper = (bytes: Uint8Array) =>
+  Buffer.from(bytes.map((byte) => (byte >= 0x61 && byte <= 0x7a ? byte & ~0x20 : byte)));
 
 const lower = (byte: number) => (byte >= 0x41 && byte <= 0x5a ? byte | 0x20 : byte);
 

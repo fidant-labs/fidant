@@ -19,10 +19,7 @@ Be specific (file, line, what breaks and why). When the diff leaves intent uncle
 - Tests: new or changed behaviour has a `node:test` case in a `*.test.ts` file next to the code. A test that cannot fail, or only asserts on its own mocks, does not count.
 - Conventions the tooling does not catch: relative imports keep the `.ts` extension (Node runs `.ts` by type stripping); each package declares every dependency it imports; workspace packages are depended on as `workspace:*`, never a version range that pnpm could resolve from the public registry.
 - Maintainability: misleading names, dead code, a new helper that duplicates one already in the repo, comments that contradict the code.
-- The invariants, as they show up in ordinary code. Read the Invariants section of `AGENTS.md` and the decision records it names as they stand at the merge base, not in the working tree (`git show "$(git merge-base origin/main HEAD)":<path>`). Data in a place an exception allows is not a finding. The same data anywhere else, or a change that widens an exception or adds one, is.
-  - flag file content, file names, file metadata and keys that reach the server, other infrastructure, a log or `console` call, and keys in storage, query strings, request bodies or error messages;
-  - no secrets, real personal data or customer data in code, fixtures or tests, because the repository is public;
-  - tests and demos run fully local with no internet.
+- The invariants, as they show up in ordinary code. Read the Invariants section of `AGENTS.md` and the decision records it names as they stand at the merge base, not in the working tree (`git show "$(git merge-base origin/main HEAD)":<path>`). Data in a place an exception allows is not a finding. The same data anywhere else, or a change that widens an exception or adds one, is. Look in requests, log and `console` calls, storage, error messages, fixtures and tests.
 
 ## How to work
 
