@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
 import { test } from "node:test";
+import { encodeBase64url } from "./base64url.ts";
 import {
   encodeEnd,
   encodeInit,
   encodeMeta,
   FRAME_OVERHEAD_BYTES,
+  FrameReader,
   FrameWriter,
   HEADER_BYTES,
   MAX_CHUNK_BYTES,
@@ -95,6 +97,11 @@ function channelPair(transit: Transit = {}): Pair {
   return pair;
 }
 
+/** A fresh attempt ID, as the receive page makes one per join. */
+function newAttempt(): string {
+  return encodeBase64url(crypto.getRandomValues(new Uint8Array(16)));
+}
+
 /** A sink that records what happened to it. */
 class RecordingSink extends BlobSink {
   aborted = false;
@@ -145,6 +152,7 @@ const failedWith = (reason: ReceiveFailure) => (error: unknown) =>
 /** Runs the real sendFile against receiveFile over a channel pair. */
 function run(options: RunOptions) {
   const { secret } = createLink("https://localhost");
+  const attempt = newAttempt();
   const pair = options.pair ?? channelPair();
   const sink = options.sink ?? new RecordingSink();
   const offers: FileOffer[] = [];
@@ -161,6 +169,7 @@ function run(options: RunOptions) {
     file,
     from: "Anna",
     secret,
+    attempt,
     sha256: Promise.resolve(options.senderSha256 ?? sha256(options.bytes)),
     signal: new AbortController().signal,
     ...(options.senderConfirm ? { confirm: options.senderConfirm } : {}),
@@ -172,6 +181,7 @@ function run(options: RunOptions) {
     channel: pair.recipient,
     maxMessageSize,
     secret: options.recipientSecret ?? secret,
+    attempt,
     signal: options.signal ?? new AbortController().signal,
     ...(options.recipientConfirm ? { confirm: options.recipientConfirm } : {}),
     onOffer:
@@ -525,6 +535,7 @@ test("rejects when aborted during the offer and discards a late sink", async () 
 for (const early of ["CHUNK", "END"] as const) {
   test(`fails when the sender sends ${early} before the recipient answers`, async () => {
     const { secret } = createLink("https://localhost");
+    const attempt = newAttempt();
     const pair = channelPair();
     const sent: number[] = [];
     pair.sender.addEventListener("message", (event) => {
@@ -536,6 +547,7 @@ for (const early of ["CHUNK", "END"] as const) {
       channel: pair.recipient,
       maxMessageSize: 65536,
       secret,
+      attempt,
       signal: new AbortController().signal,
       onOffer: () => {
         offered = true;
@@ -548,7 +560,7 @@ for (const early of ["CHUNK", "END"] as const) {
 
     // A sender that does not wait for ACCEPT.
     const transferId = createTransferId();
-    const writer = new FrameWriter(await deriveFileKey(secret, transferId), "s");
+    const writer = new FrameWriter(await deriveFileKey(secret, transferId, attempt), "s");
     const meta = { name: "a.bin", size: 1, type: "", chunkSize: MAX_CHUNK_BYTES, from: "" };
     pair.sender.send(encodeInit(transferId));
     pair.sender.send(await writer.encrypt(SenderKind.META, encodeMeta(meta)));
@@ -572,6 +584,7 @@ for (const early of ["CHUNK", "END"] as const) {
 
 test("aborts when the sender ignores the credit window", async () => {
   const { secret } = createLink("https://localhost");
+  const attempt = newAttempt();
   const pair = channelPair();
   let accepted: (() => void) | undefined;
   const acceptance = new Promise<void>((resolve) => {
@@ -588,6 +601,7 @@ test("aborts when the sender ignores the credit window", async () => {
     channel: pair.recipient,
     maxMessageSize: 65536,
     secret,
+    attempt,
     signal: new AbortController().signal,
     onOffer: async () => sink,
     onProgress: () => {},
@@ -596,7 +610,7 @@ test("aborts when the sender ignores the credit window", async () => {
 
   // A sender that sends far more CHUNKs than it was granted.
   const transferId = createTransferId();
-  const writer = new FrameWriter(await deriveFileKey(secret, transferId), "s");
+  const writer = new FrameWriter(await deriveFileKey(secret, transferId, attempt), "s");
   const count = CREDIT_WINDOW_CHUNKS * 4;
   const meta = {
     name: "a.bin",
@@ -638,6 +652,65 @@ function inFlight() {
   });
   return { pair, count };
 }
+
+test("a replayed INIT does not make the recipient use one key and nonce twice (SIG-231)", async () => {
+  const { secret } = createLink("https://localhost");
+  const transferId = createTransferId();
+  const recorded = newAttempt();
+  const key = await deriveFileKey(secret, transferId, recorded);
+  const init = encodeInit(transferId);
+  const meta = await new FrameWriter(key, "s").encrypt(
+    SenderKind.META,
+    encodeMeta({ name: "report.pdf", size: 5, type: "", chunkSize: MAX_CHUNK_BYTES, from: "" }),
+  );
+  /** Plays the recorded INIT and META to a recipient attempt; returns its first frame, if any. */
+  const firstReply = async (accept: boolean, attempt: string) => {
+    let got: (frame: Uint8Array<ArrayBuffer>) => void = () => {};
+    const first = new Promise<Uint8Array<ArrayBuffer>>((done) => {
+      got = done;
+    });
+    const pair = channelPair({ afterToSender: (frame) => got(frame) });
+    const abort = new AbortController();
+    const receiving = receiveFile({
+      channel: pair.recipient,
+      maxMessageSize: 65536,
+      secret,
+      attempt,
+      signal: abort.signal,
+      onOffer: async () => (accept ? new BlobSink() : undefined),
+      onProgress: () => {},
+    });
+    pair.sender.send(init);
+    pair.sender.send(meta);
+    // A recipient that cannot open META rejects without sending anything.
+    const frame = await Promise.race([
+      first,
+      receiving.then(
+        () => new Promise<never>(() => {}),
+        () => undefined,
+      ),
+    ]);
+    abort.abort();
+    pair.close();
+    return frame;
+  };
+  // DECLINE in the recorded attempt and ACCEPT in the next would both be the recipient's frame 0.
+  const declined = await firstReply(false, recorded);
+  const accepted = await firstReply(true, newAttempt());
+  const opens = (frame: Uint8Array<ArrayBuffer> | undefined) =>
+    frame
+      ? new FrameReader(key, "r").decrypt(frame).then(
+          () => true,
+          () => false,
+        )
+      : false;
+  assert.equal(await opens(declined), true, "the recorded attempt answers as usual");
+  assert.equal(
+    await opens(accepted),
+    false,
+    "both attempts sealed their first frame under the same key, so with the same nonce",
+  );
+});
 
 test("a slow sink holds the sender to the credit window", async () => {
   const maxMessageSize = 4096;

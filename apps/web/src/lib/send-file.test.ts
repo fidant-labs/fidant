@@ -33,6 +33,9 @@ import {
 } from "./send-file.ts";
 import { MAX_TEXT_BYTES, MAX_TEXT_LENGTH, TEXT_TYPE, textFile } from "./text-secret.ts";
 
+/** The recipient's attempt ID (22 base64url characters, like a link ID). */
+const ATTEMPT = "A".repeat(22);
+
 type Behaviour =
   | "accept"
   | "decline"
@@ -103,11 +106,11 @@ function fakeChannel(secret: string, behaviour: Behaviour) {
     received.frames++;
     if (!reader) {
       const transferId = decodeInit(data);
-      const key = await deriveFileKey(secret, transferId);
+      const key = await deriveFileKey(secret, transferId, ATTEMPT);
       reader = new FrameReader(key, "s");
       const replyKey =
         behaviour === "wrong-key"
-          ? await deriveFileKey(createLink("https://localhost").secret, transferId)
+          ? await deriveFileKey(createLink("https://localhost").secret, transferId, ATTEMPT)
           : key;
       writer = new FrameWriter(replyKey, "r");
       return;
@@ -203,6 +206,7 @@ function options(channel: FrameChannel, secret: string, bytes: Uint8Array, signa
       file,
       from: "Anna",
       secret,
+      attempt: ATTEMPT,
       sha256: Promise.resolve(sha256(bytes)),
       signal: signal ?? new AbortController().signal,
       onAccepted: () => {
