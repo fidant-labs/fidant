@@ -31,6 +31,7 @@ import {
   encodeEnd,
   encodeInit,
   encodeMeta,
+  FRAME_OVERHEAD_BYTES,
   FrameReader,
   FrameWriter,
   MAX_CHUNK_BYTES,
@@ -52,8 +53,6 @@ export const BUFFER_HIGH_BYTES = 4 * 1024 * 1024;
 export const BUFFER_LOW_BYTES = 1024 * 1024;
 /** Progress is reported at most this often. */
 export const PROGRESS_INTERVAL_MS = 100;
-/** Bytes of each message that chunkSize leaves for the frame around a CHUNK body: the 10-byte header and 16-byte tag (HEADER_BYTES + TAG_BYTES), with room to spare. */
-export const FRAME_OVERHEAD_BYTES = 64;
 
 /** The part of RTCDataChannel that sending uses, so tests can pass a fake. */
 export type FrameChannel = Pick<

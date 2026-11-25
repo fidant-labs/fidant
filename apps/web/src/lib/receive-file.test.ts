@@ -6,6 +6,7 @@ import {
   encodeEnd,
   encodeInit,
   encodeMeta,
+  FRAME_OVERHEAD_BYTES,
   FrameReader,
   FrameWriter,
   HEADER_BYTES,
@@ -24,13 +25,7 @@ import {
   type ReceiveFileOptions,
   receiveFile,
 } from "./receive-file.ts";
-import {
-  FRAME_OVERHEAD_BYTES,
-  type FrameChannel,
-  type SendFileOptions,
-  type SendResult,
-  sendFile,
-} from "./send-file.ts";
+import { type FrameChannel, type SendFileOptions, type SendResult, sendFile } from "./send-file.ts";
 import { BlobSink, type Sink } from "./sink.ts";
 
 type Transit = {

@@ -1012,6 +1012,16 @@ function ShownText({ blob, onUnreadable }: { blob: Blob; onUnreadable(): void })
         // biome-ignore lint/a11y/noNoninteractiveTabindex: the box scrolls, so keyboard users must reach it.
         tabIndex={0}
         translate={false}
+        // Select-all would take the whole page, which is not a form field: keep it to the text.
+        onKeyDown={(e) => {
+          const pre = e.currentTarget.firstElementChild;
+          // Shift or Alt with A is another shortcut, such as tab search; toLowerCase keeps Caps Lock working.
+          const ctrlOrCmdOnly = (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey;
+          if (ctrlOrCmdOnly && e.key.toLowerCase() === "a" && pre) {
+            e.preventDefault();
+            getSelection()?.selectAllChildren(pre);
+          }
+        }}
       >
         <pre class="whitespace-pre-wrap wrap-anywhere">{text}</pre>
       </section>

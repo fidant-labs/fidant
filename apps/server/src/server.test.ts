@@ -283,9 +283,13 @@ after(() => {
 
 type Reply = { status: number; headers: IncomingHttpHeaders; body: string };
 
-function call(port: number, path: string, { method = "GET", tls = false } = {}): Promise<Reply> {
+function call(
+  port: number,
+  path: string,
+  { method = "GET", ca }: { method?: string; ca?: Buffer } = {},
+): Promise<Reply> {
   return new Promise((done, fail) => {
-    const options = { host: "localhost", port, path, method, rejectUnauthorized: false };
+    const options = { host: "localhost", port, path, method, ca };
     const onResponse = (res: IncomingMessage) => {
       let body = "";
       res.on("data", (chunk) => {
@@ -293,7 +297,7 @@ function call(port: number, path: string, { method = "GET", tls = false } = {}):
       });
       res.on("end", () => done({ status: res.statusCode ?? 0, headers: res.headers, body }));
     };
-    const req = tls ? httpsRequest(options, onResponse) : request(options, onResponse);
+    const req = ca ? httpsRequest(options, onResponse) : request(options, onResponse);
     req.on("error", fail).end();
   });
 }
@@ -408,11 +412,12 @@ test("without a relay list, /relay-status is empty and no secret is handed out",
   });
   try {
     const { port } = server.address() as AddressInfo;
-    const status = await call(port, "/relay-status", { tls: true });
+    const ca = ensureCert(join(dir, "certs"), []).cert;
+    const status = await call(port, "/relay-status", { ca });
     assert.equal(status.status, 200);
     assert.equal(status.headers["content-type"], "application/json");
     assert.equal(status.body, "[]");
-    assert.equal((await call(port, "/relay-secret/loc", { tls: true })).status, 404);
+    assert.equal((await call(port, "/relay-secret/loc", { ca })).status, 404);
   } finally {
     server.close();
   }
@@ -429,8 +434,9 @@ test("hands the first relay up's ICE servers, with its own credentials, in joine
     log: (event, fields) => logs.push(JSON.stringify({ event, fields })),
   });
   const { port } = server.address() as AddressInfo;
-  const host = await rawSocket(port);
-  const guest = await rawSocket(port);
+  const ca = ensureCert(join(dir, "certs"), []).cert;
+  const host = await rawSocket(port, ca);
+  const guest = await rawSocket(port, ca);
   try {
     const link = "AAAAAAAAAAAAAAAAAAAAAA";
     const attempt = "ZZZZZZZZZZZZZZZZZZZZZZ";
