@@ -8,30 +8,33 @@ cwd=$(jq -r '.cwd // ""' <<<"$input")
 cmd=${cmd//$'\\\n'/ }
 cmd=${cmd//[\"\']/}
 cmd=${cmd//[;&|()<>\`]/$'\n'}
-push='(^|[[:space:]/])git([[:space:]]+(-[Cc][[:space:]]+[^[:space:]]+|-[^[:space:]]+))*[[:space:]]+push([[:space:]]|$)'
+opt='[[:space:]]+((-[Cc]|--(git-dir|work-tree|namespace|config-env|attr-source|shallow-file))[[:space:]]+[^[:space:]]+|-[^[:space:]]+)'
+push="(^|[[:space:]/])git((${opt})*)[[:space:]]+push([[:space:]]|\$)"
 refspec='[[:space:]][+]?([^[:space:]:]*:)?((refs/)?heads/)?production([[:space:]]|$)'
 mirror='[[:space:]]--mirror([[:space:]]|$)'
 chdir='^[[:space:]]*cd[[:space:]]+([^[:space:]]+)'
-dashc='[[:space:]]-C[[:space:]]+([^[:space:]]+)'
 api='(^|[[:space:]/])gh[[:space:]]+api([[:space:]]|$)'
-ref='refs/heads/production([^[:alnum:]._/-]|$)'
-write='(^|[[:space:]])(-[fFX]|--field|--raw-field|--input|--method)'
-get='(^|[[:space:]])(-X|--method)([[:space:]]+|=)?GET([[:space:]]|$)'
+ref='(refs/heads/|=)production([^[:alnum:]._/-]|$)|branches/production/'
+write='(^|[[:space:]])(-[[:alpha:]]*[fFX]|--field|--raw-field|--input|--method)'
+get='(^|[[:space:]/])gh[[:space:]]+api[[:space:]]+(-X|--method)([[:space:]]+|=)?GET([[:space:]]|$)'
+notget='(^|[[:space:]])(-[[:alpha:]]*X|--method)([[:space:]]+|=)?([^G=[:space:]]|G[^E]|GE[^T]|GET[^[:space:]])'
+base='(^|[[:space:]/])gh[[:space:]]+pr[[:space:]]+(create|edit)[[:space:]](.*[[:space:]])?(-B|--base)(=|[[:space:]]+)?(refs/heads/)?production([[:space:]]|$)'
 block() {
   echo "Blocked: agents never update the production branch, and a local production branch blocks every push; a maintainer promotes releases (AGENTS.md, Releasing). If the command only mentions it in text, pass that text in a file." >&2
   exit 2
 }
 gitcmd='(^|[[:space:]/])git[[:space:]]'
 named=
-while IFS= read -r part; do
+IFS=$'\n' read -rd '' -a parts <<<"$cmd"
+for part in ${parts[@]+"${parts[@]}"}; do
   [[ -n $cwd && $part =~ $chdir ]] && d=$(cd "$cwd" 2>/dev/null && cd "${BASH_REMATCH[1]}" 2>/dev/null && pwd) && cwd=$d
   [[ $part =~ $gitcmd && $part =~ $refspec ]] && named=1
   if [[ $part =~ $push ]]; then
+    read -ra opts <<<"${BASH_REMATCH[2]}"
     [[ -n $named || $part =~ $mirror ]] && block
-    dir=.
-    [[ $part =~ $dashc ]] && dir=${BASH_REMATCH[1]}
-    [[ -n $cwd ]] && git -C "$cwd" -C "$dir" show-ref --verify --quiet refs/heads/production 2>/dev/null && block
+    [[ -n $cwd ]] && git -C "$cwd" ${opts[@]+"${opts[@]}"} show-ref --verify --quiet refs/heads/production </dev/null &>/dev/null && block
   fi
-  [[ $part =~ $api && $part =~ $ref && $part =~ $write && ! $part =~ $get ]] && block
-done <<<"$cmd"
+  [[ $part =~ $api && $part =~ $ref && $part =~ $write ]] && [[ ! $part =~ $get || $part =~ $notget ]] && block
+  [[ $part =~ $base ]] && block
+done
 exit 0

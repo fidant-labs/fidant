@@ -35,14 +35,13 @@ const git = (dir: string, ...args: string[]) => {
   );
   assert.equal(result.status, 0, `git ${args.join(" ")}: ${result.stderr}`);
 };
-function makeRepo(withProduction: boolean): string {
+function makeRepo(...setup: string[]): string {
   const dir = mkdtempSync(join(tmpdir(), "production-guard-"));
   dirs.push(dir);
   git(dir, "init", "-q", "-b", "main");
   git(dir, "commit", "--allow-empty", "-qm", "x");
-  if (withProduction) {
-    git(dir, "branch", "production");
-    git(dir, "tag", "production");
+  if (setup.length > 0) {
+    git(dir, ...setup);
   }
   return dir;
 }
@@ -66,6 +65,33 @@ test("blocks commands that update the production branch", () => {
     "gh api -X DELETE repos/sigill-labs/sigill/git/refs/heads/production",
     "gh api --method=PATCH repos/sigill-labs/sigill/git/refs/heads/production",
     "gh api repos/sigill-labs/sigill/git/refs -f ref=refs/heads/production -f sha=abc",
+    "git push origin refs/remotes/origin/main:refs/heads/production",
+    "git fetch origin && git push origin refs/remotes/origin/main:refs/heads/production",
+    "git push origin 0123abc:refs/heads/production",
+    "git --git-dir /x/.git push origin main:production",
+    "git --git-dir=/x/.git push origin main:production",
+    "git --work-tree /x push origin main:production",
+    "git --namespace X push origin main:production",
+    "git --config-env core.x=HOME --attr-source HEAD push origin main:production",
+    "git --no-pager -c push.default=current --git-dir /x/.git -C /tmp push origin main:production",
+    "git --shallow-file /dev/null push origin main:production",
+    "gh api repos/sigill-labs/sigill/merges -f base=production -f head=main",
+    "gh api -X PUT repos/sigill-labs/sigill/contents/x -f branch=production -f message=x -f content=eA==",
+    "gh api repos/sigill-labs/sigill/merges -F base=production -F head=main",
+    "gh api repos/sigill-labs/sigill/merges --field base=production --raw-field head=main",
+    "gh api repos/sigill-labs/sigill/merges --raw-field=base=production -fhead=main",
+    "gh api -X POST repos/sigill-labs/sigill/branches/main/rename -f new_name=production",
+    "gh api -X POST repos/sigill-labs/sigill/branches/production/rename -f new_name=x",
+    "gh api -X GET -X PATCH repos/sigill-labs/sigill/git/refs/heads/production -f sha=abc",
+    "gh api -X GET -X patch repos/sigill-labs/sigill/git/refs/heads/production -f sha=abc",
+    "gh api --method=GET -XPATCH repos/sigill-labs/sigill/git/refs/heads/production -f sha=abc",
+    "gh api -iX DELETE repos/sigill-labs/sigill/git/refs/heads/production",
+    "gh api repos/sigill-labs/sigill/merges -f base=production -f head=main -tXGET",
+    "gh api repos/sigill-labs/sigill/merges -f base=production -f head=main -t -XGET",
+    "gh pr create --base production --fill",
+    "gh pr create -B production",
+    'gh pr create --title "x" --base=production',
+    "gh pr edit 96 --base production",
   ]) {
     assert.equal(guard(command), 2, command);
   }
@@ -82,6 +108,17 @@ test("allows commands that leave the production branch alone", () => {
     "gh api repos/sigill-labs/sigill/git/refs/heads/production --jq .object.sha",
     "gh api -X GET repos/sigill-labs/sigill/git/refs/heads/production",
     "gh api -X PUT repos/sigill-labs/sigill/environments/production",
+    "gh api repos/sigill-labs/sigill/environments/production",
+    "gh api -X GET repos/sigill-labs/sigill/pulls -f base=production",
+    "gh api --method=GET repos/sigill-labs/sigill/pulls -f base=production",
+    "gh api repos/sigill-labs/sigill/branches/production/protection",
+    "gh api -X POST repos/sigill-labs/sigill/branches/production-docs/rename -f new_name=x",
+    "gh api repos/sigill-labs/sigill/merges -f base=production-docs -f head=main",
+    "gh pr create --base main --title production",
+    "gh pr list --base production",
+    "git push origin sig-1",
+    "git --git-dir .git status",
+    "git --git-dir .git push origin sig-1",
     'git commit -m "docs: agents never push production"',
     "git log --oneline origin/production..origin/main",
     "git ls-remote origin refs/heads/production",
@@ -94,8 +131,9 @@ test("allows commands that leave the production branch alone", () => {
 });
 
 test("blocks every push from a repository that has a local production branch", () => {
-  const withProd = makeRepo(true);
-  const withoutProd = makeRepo(false);
+  const withProd = makeRepo("branch", "production");
+  const tagOnly = makeRepo("tag", "production");
+  const withoutProd = makeRepo();
   const elsewhere = mkdtempSync(join(tmpdir(), "production-guard-"));
   dirs.push(elsewhere);
   const expect = (command: string, cwd: string, status: number) =>
@@ -118,6 +156,9 @@ test("blocks every push from a repository that has a local production branch", (
     expect(command, withoutProd, 0);
   }
   expect("git push --mirror origin", withoutProd, 2);
+  for (const command of ["git push", "git push origin --tags"]) {
+    expect(command, tagOnly, 0);
+  }
 
   for (const command of [
     "git checkout production && git merge --ff-only origin/main && git push",
@@ -137,4 +178,17 @@ test("blocks every push from a repository that has a local production branch", (
   expect(`git -C ${withProd} push`, elsewhere, 2);
   expect(`cd ${withProd} && git push`, elsewhere, 2);
   expect(`git -C ${withoutProd} push`, elsewhere, 0);
+  expect(`git --git-dir ${withProd}/.git push`, elsewhere, 2);
+  expect(`git -c push.default=current -C ${elsewhere} -C ${withProd} push`, elsewhere, 2);
+  expect(`git --git-dir ${withoutProd}/.git push`, elsewhere, 0);
+  expect("git --shallow-file /dev/null push", withProd, 2);
+
+  expect(
+    "git -c include.path=/dev/stdin push origin sig-1; git push origin main:production",
+    withoutProd,
+    2,
+  );
+  expect("git -c include.path=/dev/stdin push origin sig-1; git push --all", withProd, 2);
+  expect("git -c include.path=/dev/stdin push origin sig-1", withoutProd, 0);
+  expect("git push origin sig-1", withoutProd, 0);
 });
