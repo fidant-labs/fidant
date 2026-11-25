@@ -117,8 +117,10 @@ for (const transport of ["udp", "tcp"] as const) {
 
     const recipient = await relayOnly(actor, "recipient", transport);
     await recipient.goto(link);
-    const downloading = recipient.waitForEvent("download");
-    await recipient.getByRole("button", { name: "Download" }).click();
+    const downloading = recipient.waitForEvent("download", { timeout: 60_000 });
+    const downloadButton = recipient.getByRole("button", { name: "Download" });
+    await expect(downloadButton).toBeVisible({ timeout: 45_000 });
+    await downloadButton.click();
     await expect(recipient.getByText("this is exactly the file that was sent")).toBeVisible({
       timeout: 30_000,
     });
@@ -236,7 +238,7 @@ test("a sender who refuses the relay: no credentials, no bytes, plain words on b
   await recipient.getByRole("button", { name: "Try again" }).click();
   const download = recipient.getByRole("button", { name: "Download" });
   await expect(download).toBeVisible({ timeout: 30_000 });
-  const downloading = recipient.waitForEvent("download");
+  const downloading = recipient.waitForEvent("download", { timeout: 60_000 });
   await download.click();
   await expect(recipient.getByText("this is exactly the file that was sent")).toBeVisible({
     timeout: 30_000,

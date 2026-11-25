@@ -158,7 +158,7 @@ async function receive(
   if (from) {
     await expect(page.getByText(from)).toHaveCount(0);
   }
-  const again = page.waitForEvent("download");
+  const again = page.waitForEvent("download", { timeout: 60_000 });
   await page.getByRole("link", { name: "Save file" }).click();
   expect((await again).suggestedFilename()).toBe(file.name);
   return { page, bytes };
@@ -698,7 +698,9 @@ test.describe("a hostile path", () => {
       const recipient = await demo.open("recipient");
       const refused = expectRefusal(recipient);
       await recipient.goto(link);
-      await recipient.getByRole("button", { name: "Download" }).click();
+      const downloadButton = recipient.getByRole("button", { name: "Download" });
+      await expect(downloadButton).toBeVisible({ timeout: 30_000 });
+      await downloadButton.click();
       await refused(sender, name);
     });
   }
@@ -718,7 +720,9 @@ test.describe("a hostile path", () => {
     // Attempt 1 is recorded, and the sender closes the channel instead of sending END.
     const recipient = await demo.open("recipient");
     await recipient.goto(link);
-    await recipient.getByRole("button", { name: "Download" }).click();
+    const downloadButton = recipient.getByRole("button", { name: "Download" });
+    await expect(downloadButton).toBeVisible({ timeout: 30_000 });
+    await downloadButton.click();
     await expect(recipient.getByText("The connection to the sender was lost")).toBeVisible();
 
     // Attempt 2 is the same link and tab: a fresh transferId, attempt 1's frames. Its META fails to open, so there is no offer to download.

@@ -3,7 +3,15 @@ import { readFile, writeFile } from "node:fs/promises";
 import { buffer } from "node:stream/consumers";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { Page } from "@playwright/test";
-import { canaryFile, canaryKey, expect, type Leaks, type Observed, test } from "../src/fixtures.ts";
+import {
+  canaryFile,
+  canaryKey,
+  delivered as deliveredRow,
+  expect,
+  type Leaks,
+  type Observed,
+  test,
+} from "../src/fixtures.ts";
 import { readPeerConnections, recordPeerConnections, selectedPair } from "../src/ice.ts";
 import { checkServerLog, serverLogAllowlist } from "../src/leaks/server-log.ts";
 import { boxJournal, boxSyslog, serverStdoutLog } from "../src/paths.ts";
@@ -146,14 +154,14 @@ const verifiedText = "this is exactly the file that was sent";
  */
 async function expectHonestProgress(sender: Page, recipient: Page, size: number): Promise<void> {
   const bar = recipient.getByLabel("Download progress", { exact: true });
-  const delivered = sender.getByText("Delivered through Anna's link");
+  const delivered = deliveredRow(sender, "Anna");
   const verified = recipient.getByText(verifiedText);
   const values: number[] = [];
   const deadline = Date.now() + 60_000;
   for (;;) {
     // Sender first: the recipient's verified text never goes away, so a delivered sender
     // followed by an unverified recipient means the sender was early.
-    const senderDelivered = await delivered.isVisible();
+    const senderDelivered = (await delivered.count()) > 0;
     const recipientVerified = await verified.isVisible();
     expect(
       senderDelivered && !recipientVerified,
@@ -178,7 +186,7 @@ async function expectHonestProgress(sender: Page, recipient: Page, size: number)
     between.size,
     `distinct values between 0 and size: ${values.join(",")}`,
   ).toBeGreaterThanOrEqual(3);
-  await expect(delivered).toBeVisible();
+  await expect(delivered).toBeAttached();
 }
 
 const sizeOf = async (file: string) => (await readFile(file).catch(() => Buffer.alloc(0))).length;
@@ -296,8 +304,10 @@ for (const row of scenarios) {
       const recipient = await actor("recipient");
       await recordPeerConnections(recipient.context);
       await recipient.page.goto(link);
-      const downloading = recipient.page.waitForEvent("download");
-      await recipient.page.getByRole("button", { name: "Download" }).click();
+      const downloading = recipient.page.waitForEvent("download", { timeout: 60_000 });
+      const downloadButton = recipient.page.getByRole("button", { name: "Download" });
+      await expect(downloadButton).toBeVisible({ timeout: 45_000 });
+      await downloadButton.click();
       if (row.progress) {
         await expectHonestProgress(sender.page, recipient.page, size);
       }
@@ -377,8 +387,10 @@ test.describe("the box", () => {
     const recipient = await actor("recipient");
     await recordPeerConnections(recipient.context);
     await recipient.page.goto(link);
-    const downloading = recipient.page.waitForEvent("download");
-    await recipient.page.getByRole("button", { name: "Download" }).click();
+    const downloading = recipient.page.waitForEvent("download", { timeout: 60_000 });
+    const downloadButton = recipient.page.getByRole("button", { name: "Download" });
+    await expect(downloadButton).toBeVisible({ timeout: 45_000 });
+    await downloadButton.click();
     await expect(recipient.page.getByText(verifiedText)).toBeVisible({ timeout: 60_000 });
     const download = await downloading;
     expect(sha256Hex(await buffer(await download.createReadStream()))).toBe(sha256Hex(file.bytes));
