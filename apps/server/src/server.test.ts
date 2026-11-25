@@ -429,8 +429,9 @@ test("hands the first relay up's ICE servers, with its own credentials, in joine
     log: (event, fields) => logs.push(JSON.stringify({ event, fields })),
   });
   const { port } = server.address() as AddressInfo;
-  const host = await rawSocket(port);
-  const guest = await rawSocket(port);
+  const ca = ensureCert(join(dir, "certs"), []).cert;
+  const host = await rawSocket(port, ca);
+  const guest = await rawSocket(port, ca);
   try {
     const link = "AAAAAAAAAAAAAAAAAAAAAA";
     const attempt = "ZZZZZZZZZZZZZZZZZZZZZZ";
