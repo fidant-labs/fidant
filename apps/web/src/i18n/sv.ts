@@ -1267,7 +1267,7 @@ export const sv: Messages = {
             ],
             [
               "email",
-              "För att upprätthålla gränser, i upp till en timme: sändningstider, sparade under nyckelstyrda hashar (HMAC) av mottagarens adress och av din IP-adress, och två räknare för hela servern, en för alla mejl och en för alla koder, utan koppling till någon adress.",
+              "För att upprätthålla gränser, i upp till en timme: sändningstider, sparade under nyckelstyrda hashar (HMAC) av mottagarens adress, av din IP-adress och av mottagarens IP-adress, och två räknare för hela servern, en för alla mejl och en för alla koder, utan koppling till någon adress.",
             ],
             ["email", "Token som rätt kod ger, medan din sida är öppen."],
           ],
@@ -1332,7 +1332,7 @@ export const sv: Messages = {
         },
         relay: {
           name: "Vårt relä",
-          kept: "Inget när trafiken har passerat. En fellogg, bara om vi slår på en: högst 7 dagar",
+          kept: "Inget när trafiken har passerat. En tillfällig logg, bara om vi slår på en: högst 7 dagar",
           never:
             "Nyckeln, filen eller hemligheten. Reläet kan inte låsa upp något av det som passerar.",
           lines: [

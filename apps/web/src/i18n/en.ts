@@ -1311,7 +1311,7 @@ export const en = {
             ],
             [
               "email",
-              "To enforce limits, for up to an hour: send times, filed under keyed hashes (HMAC) of the recipient's address and of your IP address, and two server-wide counters, one for all emails and one for all codes, not tied to any address.",
+              "To enforce limits, for up to an hour: send times, filed under keyed hashes (HMAC) of the recipient's address, of your IP address and of the recipient's IP address, and two server-wide counters, one for all emails and one for all codes, not tied to any address.",
             ],
             ["email", "The token that the right code gets, while your page is open."],
           ],
@@ -1367,7 +1367,7 @@ export const en = {
         },
         relay: {
           name: "Our relay",
-          kept: "Nothing once the traffic has passed. A fault log, only if we turn one on: at most 7 days",
+          kept: "Nothing once the traffic has passed. A temporary log, only if we turn one on: at most 7 days",
           never: "The key, the file or the secret. It can't decrypt what it carries.",
           lines: [
             [
