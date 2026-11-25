@@ -148,7 +148,7 @@ export const en = {
     neverHeading: "Our server never gets",
     seesHeading: "Our server only sees",
     relayNote:
-      "If the two browsers can't connect directly, the file passes through our relay instead, still encrypted. The relay then sees both IP addresses and roughly how big the file is, and can't unlock it.",
+      "If the two browsers can't connect directly and our relay is available, the file passes through the relay instead, still encrypted. The relay then sees both IP addresses and roughly how big the file is, and can't unlock it.",
     caveat: "The catch: since nothing is stored, keep your tab open until the file has arrived.",
     tryHeading: "Try it on yourself",
     tryBody:
@@ -195,7 +195,7 @@ export const en = {
         heading: "Sometimes it goes through our relay",
         body: [
           "Some networks can't connect directly to each other. This is common on mobile data and office networks.",
-          "Then the file goes through our relay in Stockholm instead, still locked.",
+          "Then, if the relay is available, the file goes through our relay in Stockholm instead, still locked.",
           "The relay can't open the file, and it doesn't keep it.",
           "It sees the internet address of each device and roughly how big the file is.",
         ],
@@ -835,7 +835,7 @@ export const en = {
         heading: "How the file is protected",
         body: [
           "Your browser encrypts the file with AES-256-GCM before it leaves your computer. The key is in the part of the link after #, which browsers never send to a server. If you ask us to email a link, your browser gives that link's key to our server once, to put in the email, and the server doesn't store or log it.",
-          "The file goes directly between the two browsers. If a network blocks that, it passes through our relay instead, still encrypted. Our server only passes on a few small setup messages, which are encrypted so it can't read them, except for a link it emailed, whose key it had.",
+          "The file goes directly between the two browsers. If a network blocks that and our relay is available, it passes through the relay instead, still encrypted. Our server only passes on a few small setup messages, which are encrypted so it can't read them, except for a link it emailed, whose key it had.",
           "The recipient's browser checks the file's SHA-256 checksum, so a file that was changed or damaged on the way is not saved.",
         ],
         link: ["How it works, step by step", "/how"],
@@ -943,7 +943,7 @@ export const en = {
         heading: "How the file travels",
         body: [
           "Both browsers start with only our STUN service, so WebRTC tries the direct routes first, without the relay: over the local network, or through each side's public address, which the browser learns from that service. The file then goes straight between the browsers. The sender's page shows which route each connection took.",
-          "When no direct route works, which is common on mobile data and office networks, the traffic goes through our TURN relay in Stockholm. The browsers add the relay only if the sender allows it, it is available and nothing has connected 3 seconds after the recipient answers. A page opened before we began adding the relay this way still reserves relay addresses from the start, until it is reloaded. To add the relay, the browsers start the connection setup again, with a new offer and answer, encrypted just like the first. A direct route can still win after that. So a connection that needs the relay starts about 3 seconds later, and a direct route that is still connecting 3 seconds after the recipient answers, for example on a network that loses many packets, may end up on the relay. The relay forwards encrypted packets. It can't decrypt them and doesn't store them.",
+          "When no direct route works, which is common on mobile data and office networks, the traffic goes through our TURN relay in Stockholm. The browsers add the relay only if the sender allows it, it is available and nothing has connected 3 seconds after the recipient answers. A page opened before we began adding the relay this way still reserves relay addresses from the start, until it is reloaded. To add the relay, the browsers start the connection setup again, with a new offer and answer, encrypted just like the first. A direct route can still win after that. So a connection that needs the relay starts about 3 seconds later, and a direct route that is still connecting 3 seconds after the recipient answers, for example on a network that loses many packets, may end up on the relay. The relay forwards encrypted packets. It can't decrypt them and doesn't store them. Once the estimated cost of our traffic for the month reaches our budget, the relay and our STUN service switch off until the month ends, unless we switch them on again sooner, for example by raising the budget. Until then, a new transfer connects only where it can without them, for example on the same local network, and often fails elsewhere.",
           "To use the relay a browser needs credentials, which our server creates for each pairing and gives only to the two paired pages. They expire after 5 minutes. Our server checks every minute that the relay can carry traffic, and offers it once a check passes. The server stops offering it after two failed checks in a row. The relay gets the secret behind the credentials from our server, sealed so that only the relay can open it. Browsers reach the relay over UDP, or over TLS on port 443 where a network allows only web traffic. The relay forwards only over UDP, and only from its own address. It refuses to forward to other machines on private or internal networks (with one accepted exception: the relay's own box, see decision 0007), and limits how many relayed connections run at once.",
           "On every route, each browser sees the other's IP address, like on a video call.",
         ],
@@ -1083,7 +1083,7 @@ export const en = {
           },
           relay: {
             heading: "Through our relay",
-            body: "When nothing has connected 3 seconds after the recipient answers, the browsers add our TURN relay in Stockholm. Unless a direct route still wins, the encrypted traffic then goes through the relay, over UDP or over TLS on port 443. The relay forwards packets it can't decrypt and doesn't store them.",
+            body: "When nothing has connected 3 seconds after the recipient answers and the relay is available, the browsers add our TURN relay in Stockholm. Unless a direct route still wins, the encrypted traffic then goes through the relay, over UDP or over TLS on port 443. The relay forwards packets it can't decrypt and doesn't store them.",
           },
           norelay: {
             heading: "Relay refused",
@@ -1388,6 +1388,22 @@ export const en = {
             ],
           ],
         },
+        relayCap: {
+          name: "Our monthly traffic count",
+          kept: "The month's totals until the next month starts, and their last 100 versions, about 8 hours. The month's total as of every 5 minutes for 63 days, every hour for 15 months, and in its own log for 30 days. Our host, Amazon Lightsail, keeps how much traffic our server and our relay carry, for 455 days.",
+          never:
+            "Which transfer the traffic belongs to, IP addresses, the key, the file or the secret.",
+          lines: [
+            [
+              "",
+              "The pages your browser loads and the messages it exchanges with our server, and its requests to our relay, counted with all their other traffic, so that we can switch the relay off when the estimated cost reaches our budget.",
+            ],
+            [
+              "relay",
+              "Your transfer's encrypted size, rounded up, in the traffic of the relay that carried it. Every 5 minutes we save the month's totals for our server and our relay. On a quiet relay, the step between two saved values can match your transfer's size and time.",
+            ],
+          ],
+        },
         mail: {
           name: "Our mail service and the recipient's mailbox",
           kept: "Until the mail service and the recipient's mail provider delete the emails, by their own policies",
@@ -1569,7 +1585,7 @@ export const en = {
     logFields,
     logRetention: "Log lines are deleted after 30 days.",
     relayLog:
-      "Our relay, which carries the locked file when two browsers can't connect directly, keeps no log of the traffic. Only to fix a fault or stop abuse do we turn one on. It then records, for each relayed connection, both IP addresses and ports, when it started and ended, and how much data passed through. Never names, keys or file data. We turn it off and delete it within 7 days. Separately, while the relay renews its certificate, a few seconds every two months or so, it logs the addresses that reach it on port 80. Those are Let's Encrypt's checks and internet scanners, never browsers, and they are deleted within about five weeks.",
+      "Our relay, which can carry the locked file when two browsers can't connect directly, keeps no log of the traffic. Only to fix a fault or stop abuse do we turn one on. It then records, for each relayed connection, both IP addresses and ports, when it started and ended, and how much data passed through. Never names, keys or file data. We turn it off and delete it within 7 days. Separately, while the relay renews its certificate, a few seconds every two months or so, it logs the addresses that reach it on port 80. Those are Let's Encrypt's checks and internet scanners, never browsers, and they are deleted within about five weeks.",
     limitsHeading: "What we can't protect you from",
     limits: [
       "Anyone who has the link can open the file. A link we email also needs a code we send to the same address, so anyone who can read that mailbox can open it. Send each link only to the person it is for.",

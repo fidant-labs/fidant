@@ -38,7 +38,7 @@ test("each path shows exactly the places it uses", () => {
   for (const choice of choices) {
     const used = (id: keyof typeof places) => tracesFor(places[id].lines, choice).length > 0;
     const path = JSON.stringify(choice);
-    // Every path touches both browsers, our server, its two proxies, its log, the STUN relay and the networks.
+    // Every path touches both browsers, our server, its two proxies, its log, the STUN relay, the traffic count and the networks.
     for (const id of [
       "sender",
       "recipient",
@@ -47,6 +47,7 @@ test("each path shows exactly the places it uses", () => {
       "caddy",
       "log",
       "relay",
+      "relayCap",
       "networks",
     ] as const) {
       assert.ok(used(id), `${path}: ${id}`);

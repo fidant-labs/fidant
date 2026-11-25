@@ -6,17 +6,19 @@ export type Port = {
   ipv6Cidrs?: string[];
   cidrListAliases?: string[];
 };
-export type CapState = { month: string; boxes: Record<string, number>; capped: boolean };
-export type BoxPorts = { box: string; openPorts: Port[]; cappedPorts: Port[] };
-export type CapConfig = {
-  boxes: BoxPorts[];
-  limitBytes: number;
-  relays: string[];
-  statusUrl: string;
+export type Traffic = { in: number; out: number };
+export type CapState = { month: string; boxes: Record<string, Traffic>; capped: boolean };
+export type StoredState = {
+  month: string;
+  boxes: Record<string, Traffic | number>;
+  capped: boolean;
 };
+export type BoxPorts = { box: string; openPorts: Port[]; cappedPorts: Port[] };
+export type Pricing = { allowanceBytes: number; budgetUsd: number; usdPerGb: number };
+export type CapConfig = Pricing & { boxes: BoxPorts[]; relays: string[]; statusUrl: string };
 export type RelayStatus = { id: string; up: boolean }[];
 export type CapDeps = {
-  boxBytes(box: string, start: Date, end: Date): Promise<number>;
+  boxTraffic(box: string, start: Date, end: Date): Promise<Traffic>;
   readState(): Promise<string | undefined>;
   writeState(json: string): Promise<void>;
   putPorts(box: string, ports: Port[]): Promise<void>;
@@ -31,7 +33,24 @@ export function monthStart(now: Date): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 }
 
-export function parseState(json: string | undefined): CapState | undefined {
+function validNumber(n: unknown): boolean {
+  return typeof n === "number" && Number.isFinite(n) && n >= 0;
+}
+
+function validCount(value: unknown): boolean {
+  if (validNumber(value)) {
+    return true;
+  }
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    Object.keys(value).sort().join() === "in,out" &&
+    validNumber((value as Traffic).in) &&
+    validNumber((value as Traffic).out)
+  );
+}
+
+export function parseState(json: string | undefined): StoredState | undefined {
   if (json === undefined) {
     return undefined;
   }
@@ -42,28 +61,44 @@ export function parseState(json: string | undefined): CapState | undefined {
     !/^\d{4}-\d{2}$/.test(value.month) ||
     typeof boxes !== "object" ||
     boxes === null ||
-    !Object.values(boxes).every((n) => typeof n === "number" && Number.isFinite(n) && n >= 0) ||
+    !Object.values(boxes).every(validCount) ||
     typeof value.capped !== "boolean"
   ) {
     throw new Error("relay cap state is malformed");
   }
-  return { month: value.month, boxes: { ...boxes }, capped: value.capped };
+  return { month: value.month, boxes, capped: value.capped };
 }
 
 export function decide(
-  previous: CapState | undefined,
+  previous: StoredState | undefined,
   month: string,
-  counts: Record<string, number>,
-  limitBytes: number,
-): { state: CapState; total: number; ports: "keep" | "open" | "capped" } {
-  const boxes = previous?.month === month ? { ...previous.boxes } : {};
-  for (const [box, bytes] of Object.entries(counts)) {
-    boxes[box] = Math.max(boxes[box] ?? 0, bytes);
+  counts: Record<string, Traffic>,
+  pricing: Pricing,
+): { state: CapState; total: number; overageUsd: number; ports: "keep" | "open" | "capped" } {
+  const boxes: Record<string, Traffic> = {};
+  if (previous?.month === month) {
+    for (const [box, count] of Object.entries(previous.boxes)) {
+      if (typeof count !== "number") {
+        boxes[box] = { ...count };
+      } else if (!Object.hasOwn(counts, box)) {
+        // ponytail: the old number shape (in plus out, from the byte cap and its rollback) is kept as outbound for a box no longer listed
+        boxes[box] = { in: 0, out: count };
+      }
+    }
   }
-  const total = Object.values(boxes).reduce((sum, n) => sum + n, 0);
-  const capped = total >= limitBytes;
+  for (const [box, fresh] of Object.entries(counts)) {
+    boxes[box] = {
+      in: Math.max(boxes[box]?.in ?? 0, fresh.in),
+      out: Math.max(boxes[box]?.out ?? 0, fresh.out),
+    };
+  }
+  const total = Object.values(boxes).reduce((sum, t) => sum + t.in + t.out, 0);
+  const out = Object.values(boxes).reduce((sum, t) => sum + t.out, 0);
+  const overageBytes = Math.min(out, Math.max(0, total - pricing.allowanceBytes));
+  const overageUsd = (overageBytes / 1e9) * pricing.usdPerGb;
+  const capped = overageUsd >= pricing.budgetUsd;
   const ports = capped ? "capped" : previous?.capped ? "open" : "keep";
-  return { state: { month, boxes, capped }, total, ports };
+  return { state: { month, boxes, capped }, total, overageUsd, ports };
 }
 
 function boxList(json: string): BoxPorts[] {
@@ -93,12 +128,19 @@ function required(env: Record<string, string | undefined>, name: string): string
   return value;
 }
 
+function positive(env: Record<string, string | undefined>, name: string): number {
+  const value = required(env, name);
+  if (!/^\d+(\.\d+)?$/.test(value) || Number(value) <= 0) {
+    throw new Error(`${name} must be a positive number`);
+  }
+  return Number(value);
+}
+
 export function configFromEnv(env: Record<string, string | undefined>): CapConfig {
   const boxes = boxList(required(env, "BOXES"));
-  const limit = required(env, "LIMIT_BYTES");
-  if (!/^[1-9]\d*$/.test(limit)) {
-    throw new Error("LIMIT_BYTES must be a positive integer");
-  }
+  const allowanceBytes = positive(env, "ALLOWANCE_BYTES");
+  const budgetUsd = positive(env, "BUDGET_USD");
+  const usdPerGb = positive(env, "USD_PER_GB");
   const relays = JSON.parse(required(env, "RELAYS"));
   if (!Array.isArray(relays) || !relays.every((id) => typeof id === "string" && id !== "")) {
     throw new Error("RELAYS must be an array of relay ids");
@@ -107,7 +149,7 @@ export function configFromEnv(env: Record<string, string | undefined>): CapConfi
   if (URL.parse(statusUrl)?.protocol !== "https:") {
     throw new Error("STATUS_URL must be an https URL");
   }
-  return { boxes, limitBytes: Number(limit), relays, statusUrl };
+  return { boxes, allowanceBytes, budgetUsd, usdPerGb, relays, statusUrl };
 }
 
 function metric(
@@ -135,6 +177,10 @@ function metric(
 
 export function metricLine(total: number, now: Date): string {
   return metric({ Service: "relay" }, "RelayMonthBytes", total, "Bytes", now);
+}
+
+export function overageLine(overageUsd: number, now: Date): string {
+  return metric({ Service: "relay" }, "RelayMonthOverageUsd", overageUsd, "None", now);
 }
 
 export function parseStatus(
@@ -214,11 +260,11 @@ export function statusLines(
 
 export async function runCap(deps: CapDeps, config: CapConfig, now: Date): Promise<void> {
   const previous = parseState(await deps.readState());
-  const counts: Record<string, number> = {};
+  const counts: Record<string, Traffic> = {};
   for (const { box } of config.boxes) {
-    counts[box] = await deps.boxBytes(box, monthStart(now), now);
+    counts[box] = await deps.boxTraffic(box, monthStart(now), now);
   }
-  const { state, total, ports } = decide(previous, monthOf(now), counts, config.limitBytes);
+  const { state, total, overageUsd, ports } = decide(previous, monthOf(now), counts, config);
   if (ports !== "keep") {
     for (const { box, openPorts, cappedPorts } of config.boxes) {
       await deps.putPorts(box, ports === "capped" ? cappedPorts : openPorts);
@@ -226,6 +272,7 @@ export async function runCap(deps: CapDeps, config: CapConfig, now: Date): Promi
   }
   await deps.writeState(JSON.stringify(state));
   deps.log(metricLine(total, now));
+  deps.log(overageLine(overageUsd, now));
 }
 
 export async function runOnce(
