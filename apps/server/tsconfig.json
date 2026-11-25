@@ -3,5 +3,6 @@
   "compilerOptions": {
     "types": ["node"]
   },
-  "include": ["src"]
+  // The root has no Node types, so the root's hook test is typechecked here.
+  "include": ["src", "../../.claude/scripts/*.test.ts"]
 }
