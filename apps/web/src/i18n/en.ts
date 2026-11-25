@@ -171,8 +171,8 @@ export const en = {
         heading: "You get a link with the key inside",
         body: [
           "You get one link for each person. Each link works once. You send it yourself, for example by email or chat, or give us their email address and we email it to them.",
-          "The key that unlocks the file is the part after the # sign. Browsers never send that part to us, so we never see the key, unless you ask us to email the link. Then your browser gives it to our server once, to put in the email.",
-          "Anyone with the link can open the file. A link we email also asks for a code that we email to the same address, so it works for anyone who can read that mailbox. Send each link only to the person it is for.",
+          "The key that unlocks the file is the part after the # sign. Browsers never send that part to us, so we never see the key, unless you ask us to email the link. Then your browser gives the key to our server once, to put in the email.",
+          "Anyone with the link can open the file. A link we email also asks for a code that we email to the same address. So the emailed link works for anyone who can read that mailbox. Send each link only to the person it is for.",
         ],
       },
       open: {
@@ -196,7 +196,7 @@ export const en = {
         body: [
           "Some networks can't connect directly to each other. This is common on mobile data and office networks.",
           "Then, if the relay is available, the file goes through our relay in Stockholm instead, still locked.",
-          "The relay can't open the file, and it doesn't keep it.",
+          "The relay can't open the file and doesn't keep it.",
           "It sees the internet address of each device and roughly how big the file is.",
         ],
       },
@@ -225,7 +225,7 @@ export const en = {
         heading: "The recipient's browser checks it",
         body: [
           "When the last piece has arrived, the recipient's browser checks that the file is exactly the one you sent.",
-          "If anything is missing or changed, it throws the file away. You see that it arrived only when the check has passed.",
+          "If anything is missing or changed, the recipient's browser throws the file away. You see that it arrived only when the check has passed.",
         ],
       },
       masking: {
@@ -371,7 +371,7 @@ export const en = {
     emailLabel: "Their email address",
     emailError: "Enter a valid email address, like name@example.com.",
     emailNotice:
-      "Our server will see this link's key once, to write the email. It doesn't store or log it, but our mail service and anyone who reads the email on its way can see it too, and the link, key included, stays in their mailbox: anyone who can read that mailbox could receive the file. Our server could also put itself between you and them for this link: create the link with a safety number and compare it with them, and you'll see if it does. Sending the link yourself avoids all of this.",
+      "Our server will see this link's key once, to write the email. It doesn't store or log the key, but our mail service and anyone who reads the email on its way can see the key too. The link, key included, stays in the recipient's mailbox: anyone who can read that mailbox could receive the file. For this link, our server could also put itself between you and the recipient. To see if it does, create the link with a safety number and compare it with the recipient. Sending the link yourself avoids all of this.",
     check: {
       hint: (kind: Kind) =>
         `With a safety number, you compare 6 digits with them by phone or in person before ${items[kind].the} is sent, so you know nobody is in between.`,
@@ -420,7 +420,7 @@ export const en = {
       failed: (to: string) =>
         `Email not sent to ${to}. To try again, remove this recipient and add them again, or add them without an email address and share the link yourself.`,
       limit: (to: string) =>
-        `Email not sent to ${to}: too many emails right now. Copy the link below and share it yourself. Our server had seen the first link's secret, so this one is new.`,
+        `Email not sent to ${to}: too many emails right now. Copy the link below and share it yourself. It's a new link, because our server had seen the first link's secret.`,
       verifying: (to: string) => `Code sent to ${to}`,
       verified: (to: string) => `Verified with the code sent to ${to}`,
       lost: (to: string) =>
@@ -626,7 +626,7 @@ export const en = {
     doneOne: (name: string) => `The secret arrived intact through ${name}'s link.`,
     doneMany: (n: number) => `The secret arrived intact through all ${n} links.`,
     emailNotice:
-      "Our server will see this link's key once, to write the email. It doesn't store or log it, but our mail service and anyone who reads the email on its way can see it too, and the link, key included, stays in their mailbox: anyone who can read that mailbox could receive the secret. Our server could also put itself between you and them for this link: create the link with a safety number and compare it with them, and you'll see if it does. Sending the link yourself avoids all of this.",
+      "Our server will see this link's key once, to write the email. It doesn't store or log the key, but our mail service and anyone who reads the email on its way can see the key too. The link, key included, stays in the recipient's mailbox: anyone who can read that mailbox could receive the secret. For this link, our server could also put itself between you and the recipient. To see if it does, create the link with a safety number and compare it with the recipient. Sending the link yourself avoids all of this.",
     // Only the statuses whose file wording would be wrong; the rest come from send.status.
     status: {
       declined: (name: string) =>
@@ -852,8 +852,8 @@ export const en = {
       {
         heading: "How the file is protected",
         body: [
-          "Your browser encrypts the file with AES-256-GCM before it leaves your computer. The key is in the part of the link after #, which browsers never send to a server. If you ask us to email a link, your browser gives that link's key to our server once, to put in the email, and the server doesn't store or log it.",
-          "The file goes directly between the two browsers. If a network blocks that and our relay is available, it passes through the relay instead, still encrypted. Our server only passes on a few small setup messages, which are encrypted so it can't read them, except for a link it emailed, whose key it had.",
+          "Your browser encrypts the file with AES-256-GCM before it leaves your computer. The key is in the part of the link after #, which browsers never send to a server. If you ask us to email a link, your browser gives that link's key to our server once, to put in the email. The server doesn't store or log the key.",
+          "The file goes directly between the two browsers. If a network blocks that and our relay is available, it passes through the relay instead, still encrypted. Our server only passes on a few small setup messages. They are encrypted, so the server can't read them, except for a link it emailed, whose key it had.",
           "The recipient's browser checks the file's SHA-256 checksum, so a file that was changed or damaged on the way is not saved.",
         ],
         link: ["How it works, step by step", "/how"],
@@ -861,8 +861,8 @@ export const en = {
       {
         heading: "What it doesn't protect against",
         body: [
-          "Anyone who gets hold of a link can open the file, and a link we email also needs a code we send to the same address. Send each link only to the person it is for, over a channel you trust.",
-          "A link we email stays in the recipient's mailbox. Anyone who can read that mailbox can also get the code, and so the file. And because our server had that link's key, you have to trust us not to read the file on its way, unless you create the link with a safety number and compare it with the recipient. To avoid both, leave “Email the link for me” unticked and send the link yourself.",
+          "Anyone who gets hold of a link can open the file. A link we email also needs a code we send to the same address. Send each link only to the person it is for, over a channel you trust.",
+          "A link we email stays in the recipient's mailbox. Anyone who can read that mailbox can also get the code, and so the file. And our server had that link's key. So you have to trust us not to read the file on its way, unless you create the link with a safety number and compare it with the recipient. To avoid both, leave “Email the link for me” unticked and send the link yourself.",
           "The sender's name is typed by the sender and not verified.",
           "The two browsers see each other's IP address, the same as on a video call. When the file goes through our relay, the relay sees both IP addresses and roughly how big the file is.",
           "A computer that is already compromised can read the file before it is encrypted or after it is unlocked.",
@@ -887,8 +887,8 @@ export const en = {
       parts: {
         heading: "The parts",
         body: [
-          "Fidant has three parts. The web app runs in the sender's and the recipient's browsers and does all the encryption. Our server, in Stockholm, serves the web app and passes setup messages between the two browsers over a WebSocket. Our relay, on a machine of its own in Stockholm, tells browsers their public address (STUN). If the sender allows it and it is available, the relay also carries encrypted traffic when two browsers haven't reached each other directly 3 seconds after the recipient answers (TURN). If a sender asks us to email a link, our server also sends emails through a mail service.",
-          "There are no accounts, no file storage and no database of people or transfers. The server holds what it knows about pages and transfers only in memory. On disk the server keeps secrets of its own, among them the one the relay's secret comes from, and the relay keeps its current and previous secret in a small database file.",
+          "Fidant has three parts. The web app runs in the sender's and the recipient's browsers and does all the encryption. Our server, in Stockholm, serves the web app and passes setup messages between the two browsers over a WebSocket. Our relay, on a machine of its own in Stockholm, tells browsers their public address (STUN). If the sender allows it and the relay is available, the relay also carries encrypted traffic (TURN). It does this when two browsers haven't reached each other directly 3 seconds after the recipient answers. If a sender asks us to email a link, our server also sends emails through a mail service.",
+          "There are no accounts, no file storage and no database of people or transfers. The server holds what it knows about pages and transfers only in memory. On disk the server keeps secrets of its own, among them the one the relay's secret comes from. The relay keeps its current and previous secret in a small database file.",
           "All of it is open source, so every statement on this page can be checked against the code.",
         ],
         link: ["The code on GitHub", "https://github.com/sigill-labs/sigill"],
@@ -897,7 +897,7 @@ export const en = {
         heading: "The link",
         body: [
           "For each recipient, the sender's browser creates a link of the form https://fidant.se/r/<link ID>#<secret>. The link ID is 16 random bytes and the secret 32 random bytes, both from the browser's cryptographic random number generator.",
-          "The link ID only names the link: our server uses it to pair the sender with the recipient. The secret is in the fragment, the part after #, which browsers don't send to servers, and the site tells browsers not to send the page address on to other sites either. The app never sends the secret anywhere, unless the sender asks us to email the link (see Emailed links below). Apart from that, it only derives keys from it and keeps the receive page's first address, secret included, in memory, so the \"Go back to it\" bar can return you to an unfinished transfer. The link in that bar carries only the path; following it puts the secret back in the address bar.",
+          "The link ID only names the link: our server uses it to pair the sender with the recipient. The secret is in the fragment, the part after #, which browsers don't send to servers. The site also tells browsers not to send the page address on to other sites. The app never sends the secret anywhere, unless the sender asks us to email the link (see Emailed links below). Apart from that, the app only derives keys from the secret and keeps the receive page's first address, secret included, in memory. That lets the \"Go back to it\" bar return you to an unfinished transfer. The link in that bar carries only the path; following it puts the secret back in the address bar.",
           "Every recipient gets their own link ID and secret, so one recipient's link says nothing about another's.",
         ],
       },
@@ -906,24 +906,24 @@ export const en = {
         body: [
           "Two keys are derived from the secret with HKDF-SHA-256. Both are AES-256-GCM keys that the browser marks as non-extractable: the page can use them, but can't read them out.",
           "The signal key encrypts the setup messages. Its salt is the link ID.",
-          "The file key encrypts every frame between the browsers except the first, INIT, which carries only the random transfer ID. Its salt is made of two random values: a transfer ID that the sender picks for every attempt, and an attempt ID that the recipient's page picks every time it connects. So neither a retried transfer nor a replayed first frame ever reuses a key and nonce pair.",
+          "The file key encrypts every frame between the browsers except the first, INIT, which carries only the random transfer ID. The file key's salt is made of two random values: a transfer ID that the sender picks for every attempt, and an attempt ID that the recipient's page picks every time it connects. So neither a retried transfer nor a replayed first frame ever reuses a key and nonce pair.",
         ],
       },
       signal: {
         heading: "Connecting the two browsers",
         body: [
           "The sender's page opens a WebSocket to our server and registers its link IDs. When the recipient opens their link, their page joins with the link ID and a random attempt ID, new for each page load and each retry. The server pairs at most one recipient page with a link at a time and tells both sides.",
-          "The browsers then set up a WebRTC connection. The offer, the answer and the network candidates are encrypted with the signal key before they reach our server. Each message is bound to its link, attempt and direction, so the server can't read or change them, can't send a message back to the side that sent it, can't move it to another link and can't replay it into another attempt. Replaying old messages can at most make one attempt fail, which dropping them would do anyway.",
-          "This matters beyond privacy: the setup messages carry the fingerprints of WebRTC's own DTLS encryption. Because the server can't change them, it can't put itself between the two browsers. All of this rests on our server not having the key. For a link we email it had the key, so it could read and change that link's setup messages and put itself in between.",
-          "That is what the safety number is for. Each browser makes a new certificate for every connection, and the recipient's browser first sends a commitment to its fingerprint, a hash, before the sender's browser makes its offer. Both browsers then compute six digits from the two fingerprints of their own connection. With someone in between there are two connections, so the two screens show different numbers, and because of the commitment a party in the middle can only guess: one chance in a million per connection. The number is shown on screen only, never sent or stored.",
-          "With a safety number, which a link we email gets by default, the recipient reads their number aloud and the sender compares it. Nothing about the file is sent until both have said it matches, and “It differs” on either side stops the attempt. Once the recipient's browser has answered an offer, it connects again only when the recipient clicks Try again, and the sender's page stops offering a link after 5 attempts that ended before both confirmed, each limited to 5 minutes. The check shows that nobody sat between the two browsers. It can't show that the page code itself is honest.",
-          "If the connection to our server drops, both pages try to reconnect by themselves. The sender's page registers its links again, except links we emailed: our server forgot those with the old connection, so they stop working and the sender's page says so. A recipient who was still connecting tries again a few times before giving up. For a minute after our server starts, it tells a recipient whose link it doesn't know yet to wait, so the recipient keeps trying while the sender's page registers the link again. A transfer that has already started doesn't need our server and carries on.",
+          "The browsers then set up a WebRTC connection. The offer, the answer and the network candidates are encrypted with the signal key before they reach our server. Each message is bound to its link, attempt and direction, so the server can't read or change the messages. The server also can't send a message back to the side that sent it, move it to another link or replay it into another attempt. Replaying old messages can at most make one attempt fail, which dropping them would do anyway.",
+          "This matters beyond privacy: the setup messages carry the fingerprints of WebRTC's own DTLS encryption. Because the server can't change them, it can't put itself between the two browsers. All of this rests on our server not having the key. For a link we email, our server had the key, so it could read and change that link's setup messages and put itself in between.",
+          "That is what the safety number is for. Each browser makes a new certificate for every connection. The recipient's browser first sends a commitment to its fingerprint, a hash, before the sender's browser makes its offer. Both browsers then compute six digits from the two fingerprints of their own connection. With someone in between there are two connections, so the two screens show different numbers. Because of the commitment, a party in the middle can only guess: one chance in a million per connection. The number is shown on screen only, never sent or stored.",
+          "With a safety number, which a link we email gets by default, the recipient reads their number aloud and the sender compares it. Nothing about the file is sent until both have said it matches, and “It differs” on either side stops the attempt. Once the recipient's browser has answered an offer, it connects again only when the recipient clicks Try again. The sender's page stops offering a link after 5 attempts that ended before both confirmed, each limited to 5 minutes. The check shows that nobody sat between the two browsers. It can't show that the page code itself is honest.",
+          "If the connection to our server drops, both pages try to reconnect by themselves. The sender's page registers its links again, except links we emailed: our server forgot those with the old connection, so they stop working and the sender's page says so. A recipient who was still connecting tries again a few times before giving up. For a minute after our server starts, it tells a recipient whose link it doesn't know yet to wait. So the recipient keeps trying while the sender's page registers the link again. A transfer that has already started doesn't need our server and carries on.",
         ],
       },
       layers: {
         heading: "Two layers of encryption",
         body: [
-          "WebRTC encrypts the connection between the browsers with DTLS. Fidant doesn't rely on that alone: every frame after INIT is also encrypted with AES-256-GCM under the file key, which only the two browsers have. For a link we email, our server had the link's secret, which the file key comes from, so it could decrypt the frames by putting itself in the middle; with the safety number on, it would see no more than INIT and CHECK.",
+          "WebRTC encrypts the connection between the browsers with DTLS. Fidant doesn't rely on that alone: every frame after INIT is also encrypted with AES-256-GCM under the file key, which only the two browsers have. For a link we email, our server had the link's secret, which the file key comes from. So it could decrypt the frames by putting itself in the middle. With the safety number on, it would see no more than INIT and CHECK.",
           "Each frame starts with a 10-byte header with its version, kind and sequence number. The header is authenticated with the frame, and the nonce is built from the direction and the sequence number, so the two directions never share a nonce. A browser accepts only the next sequence number, so a dropped, reordered, repeated or altered frame stops the transfer.",
         ],
       },
@@ -932,7 +932,7 @@ export const en = {
         body: [
           "When the sender chooses the file, their browser computes its SHA-256 checksum.",
           "INIT: the sender sends the transfer ID. It is the only frame not encrypted. Changing it changes the file key, so the next frame fails to decrypt. Replaying it in a later attempt doesn't work either, because the recipient's new attempt ID changes the key.",
-          "CHECK: with the safety number on, each side's answer once its person compared the numbers, encrypted: matches or differs. META waits for both.",
+          "CHECK: with the safety number on, each side's answer, encrypted, once the person on that side has compared the numbers: matches or differs. META waits for both answers.",
           "META: the file name, size and type and the sender's typed name, encrypted. The recipient sees them and chooses.",
           "ACCEPT or DECLINE: the recipient's answer, encrypted. ACCEPT also proves that the recipient has the key. No file data is sent before it.",
           "CREDIT: how many chunks the sender may send, encrypted. The recipient grants 128 at a time and more as it writes them, so a slow recipient never has more than about 6 MiB waiting. A sender that gets further ahead than that is stopped.",
@@ -946,7 +946,7 @@ export const en = {
         body: [
           "The recipient's browser hashes the file as it arrives, and checks the size, the number of chunks, the padding and the checksum against END. Only when everything matches is the file kept. Any other ending, such as a frame that fails to decrypt or a connection that closes early, throws away what was written.",
           "Chrome and Edge can write the file straight to a place on the disk the recipient chooses. Other browsers collect it in memory and start the download at the end, and for a file over 256 MiB the recipient is warned first. The download is always marked as plain binary data, whatever type the sender claims, so a file can't run as a web page on Fidant's site.",
-          "Names with control characters, line separators, the Unicode characters that override or isolate text direction, blank filler characters or long runs of spaces are refused, so a name ending in .exe can't be made to look like one ending in .pdf.",
+          "Names are refused if they contain control characters, line separators, the Unicode characters that override or isolate text direction, blank filler characters or long runs of spaces. So a name ending in .exe can't be made to look like one ending in .pdf.",
         ],
       },
       padding: {
@@ -960,16 +960,26 @@ export const en = {
       travel: {
         heading: "How the file travels",
         body: [
-          "Both browsers start with only our STUN service, so WebRTC tries the direct routes first, without the relay: over the local network, or through each side's public address, which the browser learns from that service. The file then goes straight between the browsers. The sender's page shows which route each connection took.",
-          "When no direct route works, which is common on mobile data and office networks, the traffic goes through our TURN relay in Stockholm. The browsers add the relay only if the sender allows it, it is available and nothing has connected 3 seconds after the recipient answers. A page opened before we began adding the relay this way still reserves relay addresses from the start, until it is reloaded. To add the relay, the browsers start the connection setup again, with a new offer and answer, encrypted just like the first. A direct route can still win after that. So a connection that needs the relay starts about 3 seconds later, and a direct route that is still connecting 3 seconds after the recipient answers, for example on a network that loses many packets, may end up on the relay. The relay forwards encrypted packets. It can't decrypt them and doesn't store them. Once the estimated cost of our traffic for the month reaches our budget, the relay and our STUN service switch off until the month ends, unless we switch them on again sooner, for example by raising the budget. Until then, a new transfer connects only where it can without them, for example on the same local network, and often fails elsewhere.",
-          "To use the relay a browser needs credentials, which our server creates for each pairing and gives only to the two paired pages. They expire after 5 minutes. Our server checks every minute that the relay can carry traffic, and offers it once a check passes. The server stops offering it after two failed checks in a row. The relay gets the secret behind the credentials from our server, sealed so that only the relay can open it. Browsers reach the relay over UDP, or over TLS on port 443 where a network allows only web traffic. The relay forwards only over UDP, and only from its own address. It refuses to forward to other machines on private or internal networks (with one accepted exception: the relay's own box, see decision 0007), and limits how many relayed connections run at once.",
+          "Both browsers start with only our STUN service, so WebRTC tries the direct routes first, without the relay. The direct routes go over the local network, or through each side's public address, which the browser learns from our STUN service. The file then goes straight between the browsers. The sender's page shows which route each connection took.",
+          "On both direct routes, each browser's request shows our STUN service its public IP address. The two browsers ask at about the same time, so our STUN service can usually tell which two addresses belong together. The browsers add the relay if you allow it, the relay is available and nothing has connected 3 seconds after the recipient answers. The relay can then learn that the two addresses belong together.",
           "On every route, each browser sees the other's IP address, like on a video call.",
+        ],
+      },
+      relaying: {
+        heading: "When the relay is used",
+        body: [
+          "When no direct route works, which is common on mobile data and office networks, the traffic goes through our TURN relay in Stockholm. The browsers add the relay only if the sender allows it, the relay is available and nothing has connected 3 seconds after the recipient answers. A page opened before we began adding the relay this way still reserves relay addresses from the start, until it is reloaded.",
+          "To add the relay, the browsers start the connection setup again, with a new offer and answer, encrypted just like the first. A direct route can still win after that. So a connection that needs the relay starts about 3 seconds later. A direct route that is still connecting 3 seconds after the recipient answers, for example on a network that loses many packets, may end up on the relay.",
+          "The relay forwards encrypted packets. It can't decrypt them and doesn't store them.",
+          "To use the relay a browser needs credentials, which our server creates for each pairing and gives only to the two paired pages. The credentials expire after 5 minutes. Our server checks every minute that the relay can carry traffic, and offers it once a check passes. The server stops offering it after two failed checks in a row. The relay gets the secret behind the credentials from our server, sealed so that only the relay can open it.",
+          "Browsers reach the relay over UDP, or over TLS on port 443 where a network allows only web traffic. The relay forwards only over UDP, and only from its own address. It refuses to forward to other machines on private or internal networks, with one accepted exception: the relay's own box (see decision 0007). It also limits how many relayed connections run at once.",
+          "Once the estimated cost of our traffic for the month reaches our budget, the relay and our STUN service switch off. They stay off until the month ends, unless we switch them on again sooner, for example by raising the budget. Until then, a new transfer connects only where it can without them, for example on the same local network, and often fails elsewhere.",
         ],
       },
       norelay: {
         heading: "Refusing the relay",
         body: [
-          "The sender can untick \"Use our relay if needed\". Our server then gives that send no relay credentials, only the STUN address, so an unmodified browser can't use the relay. The sender's browser also enforces the choice itself: it starts the connection without relay credentials, whatever our server sends. As a backstop, if the sender's browser still sees a relayed connection, it ends it. File data only flows after the recipient accepts, so in practice that happens before any of it has passed.",
+          "The sender can untick \"Use our relay if needed\". Our server then gives that send no relay credentials, only the STUN address, so an unmodified browser can't use the relay. The sender's browser also enforces the choice itself: it starts the connection without relay credentials, whatever our server sends. As a backstop, if the sender's browser still sees a relayed connection, it ends it. File data only flows after the recipient accepts, so in practice the browser ends such a connection before any file data has passed.",
           "The limit: a modified recipient can still send its side through our relay with credentials from another pairing, or through any public relay. That recipient has the key anyway. The choice decides which infrastructure carries the encrypted traffic, not who can read the file.",
         ],
       },
@@ -985,12 +995,12 @@ export const en = {
       secret: {
         heading: "Sharing a secret",
         body: [
-          "The Share a secret page sends a secret the sender types or pastes the same way as a file: the same keys, frames, checks and one-time links. Nothing is stored, so the sender's page must stay open until each recipient has the shared secret.",
+          "The Share a secret page sends a secret that the sender types or pastes. The shared secret is sent the same way as a file: the same keys, frames, checks and one-time links. Nothing is stored, so the sender's page must stay open until each recipient has the shared secret.",
           "The sender's browser turns the shared secret into a file that exists only in memory, with a fixed name and a type that marks it as a shared secret. Like any file's, the name and type travel only inside the encrypted META. A shared secret can have up to 10,000 characters, which is at most 30,000 bytes.",
           "The text box tells the browser to turn off spell checking, autocorrect, automatic capitals, autocomplete, writing suggestions and translation for it.",
           "The recipient's browser treats an offer as a shared secret only if it has exactly that type and is at most 32 KiB. Anything else is offered as a file. For a shared secret, the recipient sees the sender's typed name but not the size, and chooses Show or Decline. After Decline the link still works.",
           "Show keeps the shared secret in the browser's memory, never in a save dialog or a download. Only once the checks against END pass is it decoded and shown, as plain text with translation off. The page inserts it as text and never reads it as HTML. It isn't in a form field, whose contents a browser can save with the session. The Copy secret button puts it on the clipboard.",
-          "Our server and relay handle a shared secret like any file. When the Share a secret page is loaded from our server, by typing its address, reloading or following a link, our server can see that someone opened it. The page then opens a signaling connection like every sender page, and moving to it inside the app opens one too. The server never gets the shared secret or its length, and a connection doesn't say which page opened it, but after a full load the server can tie the connection that follows from the same address to the visit and infer that this visitor shares a secret and with how many links. A full load of any other page can give away that the visitor shares a secret too. Each sender page connects when it is first shown and stays connected while the tab is open, so two sender connections open at once from the same address, with no page load between them, most likely mean the visitor opened both the Send a file page and the Share a secret page in one tab. After a full load of the Send a file page, the second connection comes from the Share a secret page. Page visits aren't logged.",
+          "Our server and relay handle a shared secret like any file. When the Share a secret page is loaded from our server, by typing its address, reloading or following a link, our server can see that someone opened it. The page then opens a signaling connection like every sender page, and moving to it inside the app opens one too. The server never gets the shared secret or its length, and a connection doesn't say which page opened it. But after a full load, the server can tie the connection that follows from the same address to the visit. It can then infer that this visitor shares a secret, and with how many links. A full load of any other page can give away that the visitor shares a secret too. Each sender page connects when it is first shown and stays connected while the tab is open. So when two sender connections are open at once from the same address, with no page load between them, the visitor most likely opened both the Send a file page and the Share a secret page in one tab. After a full load of the Send a file page, the second connection comes from the Share a secret page. Page visits aren't logged.",
         ],
       },
       email: {
@@ -999,8 +1009,8 @@ export const en = {
           "Whoever sends a file or shares a secret can give a recipient's email address. Their page then sends our server one message with the link ID, the address, the link's secret, the name the sender typed and the page's language. This is the one case where a link's secret leaves the browser. If our server refuses to send the email, the sender's page replaces the link with a new one, because our server has seen the old link's secret.",
           "Our server picks a random value and emails the recipient the link with that value in front of the link's secret: https://fidant.se/r/<link ID>#e.<value>.<secret>. It makes one attempt, with a time limit, and never retries. It has the link's secret and the sender's name only until that attempt ends, and never stores or logs them. The email is plain text. It gives the name the sender typed, marked as not verified, and says nothing about what is sent, not even whether it is a file or a shared secret.",
           "Before it connects, the recipient's page sends the value to our server. Only if it matches does the server show a masked address, like a***@example.se, and on request email a 6-digit code there. A code works for 10 minutes, and 5 wrong tries end it. The right code gets a random token that only that browser tab keeps, and the server connects nobody to an emailed link without one. Someone with only the link ID, or an emailed link that has stopped working, can't see the address, can't make us send codes and can't connect.",
-          "Our server keeps the address, the value, the codes and the tokens in memory while the sender's page has the link. When the sender removes the recipient, closes the page or loses the connection to our server, or when the server restarts, all of it is gone and the emailed link stops working. To limit abuse, the server counts emails for an hour under a scrambled form of each address (an HMAC with a random key), never the address itself: at most 20 emails an hour from one connection, 50 from one IP address and 5 to one email address, and at most 5 codes per link, 30 seconds apart, 5 an hour asked for by one IP address and 10 an hour to one email address. Both IP address limits count an IPv6 address by its first 48 bits. The whole server sends at most 500 emails and 500 codes an hour, counted with send times only, tied to no address. Anyone can use up the limits for one email address, or for the whole server, for up to an hour.",
-          "The catch: the key is in the email. Our server had it, our mail service and anyone who reads the email on its way can see it, and it stays in the recipient's mailbox. The code stops a forwarded link or a mail scanner from receiving the file or the shared secret, but not someone who can read that mailbox. And because our server had the key, it could put itself between the two browsers for that link, or open the link itself. The safety number, which a link we email gets by default, lets you catch that: the recipient reads the number on their screen, and if it isn't the one on yours, neither the file nor the shared secret is sent. If you don't want any of this, leave “Email the link for me” unticked and send the link yourself.",
+          "Our server keeps the address, the value, the codes and the tokens in memory while the sender's page has the link. When the sender removes the recipient, closes the page or loses the connection to our server, or when the server restarts, all of it is gone and the emailed link stops working. To limit abuse, the server counts emails for an hour under a scrambled form of each address (an HMAC with a random key), never the address itself. It allows at most 20 emails an hour from one connection, 50 from one IP address and 5 to one email address. For codes, it allows at most 5 per link, 30 seconds apart, 5 an hour asked for by one IP address and 10 an hour to one email address. Both IP address limits count an IPv6 address by its first 48 bits. The whole server sends at most 500 emails and 500 codes an hour, counted with send times only, tied to no address. Anyone can use up the limits for one email address, or for the whole server, for up to an hour.",
+          "The catch: the key stays in the recipient's mailbox. The code stops a forwarded link or a mail scanner from receiving the file or the shared secret, but not someone who can read that mailbox. Because our server had the key, it could also put itself between the two browsers for that link, or open the link itself. The safety number, which a link we email gets by default, lets you catch that. The recipient reads the number on their screen, and if it isn't the one on yours, neither the file nor the shared secret is sent. If you don't want any of this, leave “Email the link for me” unticked and send the link yourself.",
         ],
       },
       site: {
@@ -1008,17 +1018,8 @@ export const en = {
         body: [
           "The site is served only over HTTPS, and browsers are told never to use plain HTTP for it. Sending and receiving refuse to run without a secure connection.",
           "A Content Security Policy lets the pages load code, styles, fonts and connections only from our own site, and stops other sites from showing them in a frame. There are no cookies, no third-party scripts and no trackers.",
-          "The setup WebSocket refuses connections opened from other sites, and limits protect the server from overload: connections in total and per address, messages per connection, links per sender, the size of each setup message, and the emails and codes described above.",
+          "The setup WebSocket refuses connections opened from other sites. Limits protect the server from overload: connections in total and per address, messages per connection, links per sender, the size of each setup message, and how many emails and codes it sends.",
         ],
-      },
-      seen: {
-        heading: "What our server and relay see and keep",
-        body: [
-          "Our server sees each page's IP address and browser details, the link IDs, the sender's relay choice, the connection path the sender reports for each attempt (direct, STUN, relay or failed), whether a link was already used, when each side connects and disconnects, and the encrypted setup messages and their sizes. It never sees the file, its name, its type or its exact size, or a shared secret or its length. It never sees a link's secret or the keys and can't read the setup messages, except for a link we email: then it gets that link's secret once to write the email, along with the recipient's email address and the sender's typed name. It keeps what it knows about pages in memory only, and forgets a page within a minute after it disconnects. The exceptions are an emailed link's address, codes and tokens, which stay until the sender's page lets the link go, and the email counts, which last an hour.",
-          "Its log lines use a fixed list of fields, such as the first 6 characters of a link ID and whether a connection was direct. Never names, email addresses, codes, keys, file data or IP addresses. They are deleted after 30 days.",
-          "Our relay sees each browser's IP address when the browser asks it for its public address (STUN). The two browsers ask at about the same time, so it can usually tell which two addresses belong together. When the browsers add the relay, it can also learn that from the relay addresses they reserve, and on the relay route it sees the encrypted traffic, so the file's size only roughly and nothing of a shared secret's length. It keeps no log of the traffic. Only to fix a fault or stop abuse do we turn one on, with connection times, IP addresses and data volumes, for at most 7 days. It keeps its current and previous secret, and nothing of the file. While it renews its certificate, a few seconds every two months or so, it logs the addresses that reach it on port 80. Those are Let's Encrypt's checks and internet scanners, never browsers, and they are deleted within about five weeks.",
-        ],
-        link: ["Every log field, on the privacy page", "/privacy"],
       },
       limits: {
         heading: "What it doesn't protect against",
@@ -1027,7 +1028,7 @@ export const en = {
           "For a link we email, our server, our mail service and the recipient's mailbox have the key. Our server could put itself between the two browsers; with the safety number on, you would see it, because the two numbers would differ.",
           "Your browser runs the code our server sends it. A server that sent different code could read files, and could skip the safety number. The code is public, but browsers can't yet check that what they got matches it.",
           "The sender's name is typed by the sender and not verified.",
-          "The other browser sees your IP address. The networks on the way, and our relay when it is used, see both IP addresses, when the transfer happens and roughly how big the file is. Our server sees both IP addresses, which recipient connects to which sender and when, and how many recipients a sender has, and for a link we email, the recipient's email address. So it learns who sends to whom, though not what, unless it puts itself in the middle of a link we emailed without a safety number.",
+          "The other browser sees your IP address. The networks on the way, and our relay when it is used, see both IP addresses, when the transfer happens and roughly how big the file is. Our server sees both IP addresses, which recipient connects to which sender and when, and how many recipients a sender has. For a link we email, it also sees the recipient's email address. So it learns who sends to whom, though not what, unless it puts itself in the middle of a link we emailed without a safety number.",
           "Malware on either computer can read the file before it is encrypted or after it is decrypted.",
           "When the recipient copies a shared secret, it goes to the device's clipboard, where clipboard history, clipboard sync to other devices and other apps can read it. Once a shared secret has been shown, Fidant can't reach it: it can't take it back or delete it.",
           "Fidant has not been independently audited yet.",
@@ -1042,22 +1043,6 @@ export const en = {
         link: [
           "The design records on GitHub",
           "https://github.com/sigill-labs/sigill/tree/main/docs/decisions",
-        ],
-      },
-      sender: {
-        heading: "Traces in the sender's browser",
-        body: [
-          "The file is read from your disk and copied nowhere else. The links, the keys and the transfers exist only in the page's memory, and go when it closes.",
-          "A shared secret is typed into a text box. A browser can save what is in a text box with its session, to restore it after a crash or a reopened tab.",
-          "If you copy a link, it is on your clipboard. Fidant itself saves only your choice of language and theme in the browser.",
-        ],
-      },
-      recipient: {
-        heading: "Traces in the recipient's browser",
-        body: [
-          "The file is where the recipient saved it: Chrome and Edge write it to the place the recipient chose, and other browsers to their downloads. A shared secret is only in the page's memory, until the recipient copies it. Then it is on their clipboard too, where clipboard history, clipboard sync and other apps can read it.",
-          "The link, with its key, stays in the browser's history like any address. A link is refused once its file has been delivered, and works only while the sender's page is open.",
-          "For a link we email, the token that the right code gets is kept in that browser tab until the tab closes. Fidant itself saves only the choice of language and theme.",
         ],
       },
     } satisfies Record<string, Section>,
@@ -1093,11 +1078,11 @@ export const en = {
         items: {
           local: {
             heading: "Direct, on the same network",
-            body: "When both browsers are on the same local network, they connect over their local addresses. The file goes straight between them, and our server and relay see none of it. Each browser still asks our STUN service for its public address, which shows it that IP address. The two browsers ask at about the same time, so our STUN service can usually tell which two addresses belong together. If you allow the relay and it is available, and this route hasn't connected 3 seconds after the recipient answers, the browsers add the relay, which can then learn that the two addresses belong together.",
+            body: "When both browsers are on the same local network, they connect over their local addresses. The file goes straight between them, and our server and relay see none of it. Each browser still asks our STUN service for its public address.",
           },
           stun: {
             heading: "Direct, through public addresses",
-            body: "Each browser asks our STUN service for its public address, which shows our STUN service that IP address. The two browsers ask at about the same time, so our STUN service can usually tell which two addresses belong together. The file then goes straight between the browsers over the internet. If you allow the relay and it is available, and this route hasn't connected 3 seconds after the recipient answers, the browsers add the relay, which can then learn that the two addresses belong together.",
+            body: "Each browser asks our STUN service for its public address. The file then goes straight between the browsers over the internet.",
           },
           relay: {
             heading: "Through our relay",
@@ -1117,7 +1102,7 @@ export const en = {
       ],
       signaling: [
         "Signaling",
-        "Passing the setup messages between two browsers before they can reach each other. WebRTC leaves this to the app. Fidant passes them through our server, encrypted so the server can't read or change them, except for a link we email.",
+        "Passing the setup messages between two browsers before they can reach each other. WebRTC leaves this to the app. Fidant passes them through our server, encrypted so the server can't read or change them. The exception is a link we email.",
       ],
       websocket: [
         "WebSocket",
@@ -1133,7 +1118,7 @@ export const en = {
       ],
       stun: [
         "STUN",
-        "A service that tells a browser its public address, the address the internet sees it from behind a router. Our STUN service runs on the same machine as our relay.",
+        "A service that tells a browser its public address: the address the internet sees when the browser is behind a router. Our STUN service runs on the same machine as our relay.",
       ],
       turn: [
         "TURN",
@@ -1173,7 +1158,7 @@ export const en = {
       ],
       hmac: [
         "HMAC",
-        "A checksum made with a key. Our server keeps the email and IP addresses it counts for its limits only as HMACs, with a random key that exists only in its memory.",
+        "A checksum made with a key. For its limits, our server counts emails and codes per email address and per IP address, and files those counts only under HMACs of the addresses. The key is random and exists only in the server's memory.",
       ],
     },
     linkRisks: {
@@ -1189,15 +1174,13 @@ export const en = {
         [
           "We email it",
           "Our server while it sends the email, our mail service, anyone who reads the email on its way, the recipient's mailbox provider, and anyone who can read that mailbox.",
-          "The recipient's browser connects only after a 6-digit code sent to the same address, which works for 10 minutes and 5 tries. Our server could put itself between the two browsers for that link, which the safety number shows unless you created the link without one.",
+          "The recipient's browser connects only after a 6-digit code sent to the same address. The code works for 10 minutes, and 5 wrong tries end it. Our server could put itself between the two browsers for that link, which the safety number shows unless you created the link without one.",
         ],
       ],
     },
     protect: {
       heading: "How Fidant protects you",
-      body: [
-        "Each risk, and what in Fidant stands against it. The sections above explain each part.",
-      ],
+      body: ["The earlier steps explain each part."],
       columns: ["The risk", "What Fidant does"],
       rows: [
         [
@@ -1206,11 +1189,11 @@ export const en = {
         ],
         [
           "Our server puts itself between the two browsers",
-          "The setup messages are encrypted and bound to their link, attempt and direction. They carry the fingerprints of the WebRTC encryption, which the server therefore can't swap for its own. For a link we email, the server had the key and could swap them; then the two screens show different safety numbers, so with the safety number on you'd catch it.",
+          "The setup messages are encrypted and bound to their link, attempt and direction. They carry the fingerprints of the WebRTC encryption, which the server therefore can't swap for its own. For a link we email, the server had the key and could swap the fingerprints. Then the two screens show different safety numbers, so with the safety number on you'd catch it.",
         ],
         [
           "The networks on the way or our relay read the traffic",
-          "Two layers of encryption: WebRTC's DTLS, and AES-256-GCM under a file key only the two browsers have, new for every attempt. For a link we email, our server could also get the file key by putting itself in the middle (see above), which the safety number shows when it is on.",
+          "Two layers of encryption: WebRTC's DTLS, and AES-256-GCM under a file key only the two browsers have, new for every attempt. For a link we email, our server could also get the file key by putting itself in the middle (see above). The safety number shows this when it is on.",
         ],
         [
           "The traffic gives away the file name, the exact size or a secret's length",
@@ -1234,11 +1217,11 @@ export const en = {
         ],
         [
           "A shared secret lingers in the browser",
-          "On the recipient's side it is never downloaded or put in a form field, and translation is off. The sender's text box tells the browser to keep spelling, autocomplete, writing suggestions and translation off it. It still lingers in two ways: a browser can save the sender's text box with its session, and a copied secret stays on the clipboard (see What it doesn't protect against).",
+          "On the recipient's side it is never downloaded or put in a form field, and translation is off. The sender's text box tells the browser to keep spelling, autocomplete, writing suggestions and translation off it. The shared secret can still linger in two ways: a browser can save the sender's text box with its session, and a copied secret stays on the clipboard (see What it doesn't protect against).",
         ],
         [
           "Data left behind on our machines",
-          "No accounts, file storage or database of people or transfers. The server holds what it knows about pages only in memory and forgets a page within a minute after it disconnects, apart from scrambled counts of emails and codes, and two server-wide counters of send times, which it keeps for an hour. Its logs have fixed fields, never names, email addresses, codes, keys, file data or IP addresses, and are deleted after 30 days. The relay keeps no log of the traffic by default. While it renews its certificate, it logs the addresses that reach it on port 80, never browsers', for about five weeks.",
+          "No accounts, file storage or database of people or transfers. The server holds what it knows about pages only in memory, and forgets a page within a minute after the page disconnects. The exceptions, which it keeps for an hour, are scrambled counts of emails and codes and two server-wide counters of send times. The server's logs have fixed fields and never hold names, email addresses, codes, keys, file data or IP addresses. They are deleted after 30 days. The relay keeps no log of the traffic by default. While the relay renews its certificate, it logs the addresses that reach it on port 80, never browsers', and keeps them for about five weeks.",
         ],
         [
           "Tracking, or code from other sites",
@@ -1253,7 +1236,7 @@ export const en = {
     explorer: {
       heading: "See what your transfer leaves behind",
       body: [
-        "Pick how you send, and see every place a trace of it is kept: what, and for how long. Places that aren't part of that path say so.",
+        "Pick how you send to see every place that keeps a trace of it: what it keeps, and for how long. Places your path doesn't use say so.",
       ],
       questions: {
         what: { legend: "What do you send?", options: { file: "A file", secret: "A secret" } },
@@ -1273,15 +1256,20 @@ export const en = {
       kept: "Kept",
       never: "Never",
       notUsed: "Not part of this path.",
+      link: ["Every log field, on the privacy page", "/privacy"] as readonly [string, string],
       places: {
         sender: {
           name: "Your browser",
-          kept: "Mostly until you close the tab; see each line",
+          kept: "Mostly until you close the tab",
           never: "Fidant saves no file, secret, link or key on your device.",
           lines: [
             [
               "",
-              "The link and its key, in this tab's memory until you close it. If you copy a link, it also stays on your clipboard until you replace it, or longer with clipboard history, clipboard sync and other apps.",
+              "The links, their keys and the transfers, only in this tab's memory, until you close it.",
+            ],
+            [
+              "",
+              "A link you copy, on your clipboard until you copy something else. Clipboard history, clipboard sync and other apps can keep it longer.",
             ],
             [
               "file",
@@ -1289,7 +1277,7 @@ export const en = {
             ],
             [
               "secret",
-              "The secret in its text box, until you close the tab. A browser can save it with its session.",
+              "The secret, in its text box until you close the tab. The browser can also save it with the session, to restore it after a crash or a reopened tab.",
             ],
             [
               "",
@@ -1297,7 +1285,7 @@ export const en = {
             ],
             [
               "direct,relay",
-              "While our relay is available, relay credentials for this pair, valid 5 minutes to start a relay, in memory while the page is open.",
+              "While our relay is available: credentials for it, made for this pair of browsers, in memory while the page is open. A relay connection can start with them for 5 minutes.",
             ],
           ],
         },
@@ -1308,24 +1296,24 @@ export const en = {
           lines: [
             [
               "self",
-              "The full link, key included, in the chat, mail or messaging service you send it with. Its link preview may open the address, but never gets the key, which is after the #.",
+              "The full link, key included, in the chat, mail or messaging service you send it with. The service's link preview may open the address, but never gets the key, which is after the #.",
             ],
           ],
         },
         server: {
           name: "Our server, in memory",
-          kept: "While the pages are open, and gone within a minute after. On an emailed link, counters for up to an hour.",
+          kept: "While the pages are open, and up to a minute after. On an emailed link: counters for up to an hour",
           never:
-            "Your file, its name, size or type, or the secret, except on an emailed link as below.",
+            "Your file, its name, size or type, or the secret or its length, except on an emailed link as below.",
           lines: [
             ["", "Both IP addresses, the link ID and which page is paired with which link."],
             [
               "",
-              "Encrypted setup messages pass through it and aren't kept. On a link you pass on, it can't read them.",
+              "Encrypted setup messages pass through it and aren't kept. On a link you pass on yourself, it can't read them.",
             ],
             [
               "direct,relay",
-              "While our relay is available, makes relay credentials for this pair, valid for 5 minutes, and sends them to both pages without keeping them.",
+              "While our relay is available, it makes relay credentials for this pair of browsers, valid for 5 minutes, and sends them to both pages without keeping them.",
             ],
             [
               "email",
@@ -1337,8 +1325,9 @@ export const en = {
             ],
             [
               "email",
-              "Send times, for up to an hour, under keyed hashes (HMAC) of the recipient's address and of your IP address, and two server-wide counters, one for all emails and one for all codes, not tied to any address, to enforce limits. The token a right code gets, while your page is open.",
+              "To enforce limits, for up to an hour: send times, filed under keyed hashes (HMAC) of the recipient's address, of your IP address and of the recipient's IP address, and two server-wide counters, one for all emails and one for all codes, not tied to any address.",
             ],
+            ["email", "The token that the right code gets, while your page is open."],
           ],
         },
         proxy: {
@@ -1349,7 +1338,7 @@ export const en = {
           lines: [
             [
               "",
-              "Each source IP address (an IPv6 address by its /64) and its connection count, in memory.",
+              "Each source IP address (for IPv6, its /64 block) and how many connections it has, in memory.",
             ],
           ],
         },
@@ -1360,7 +1349,7 @@ export const en = {
           lines: [
             [
               "",
-              "It decrypts HTTPS: it sees each request's path, such as /r/ with the link ID, each browser's IP address, and every message the pages send our server, in memory only. Setup messages stay encrypted.",
+              "It decrypts HTTPS, so it sees, in memory only, each request's path (such as /r/ with the link ID), each browser's IP address and every message the pages send our server. Setup messages stay encrypted.",
             ],
             [
               "email",
@@ -1368,7 +1357,7 @@ export const en = {
             ],
             [
               "",
-              "Its own log, about starting, goes to the journal. It keeps no access log, and its error and TLS logs are off.",
+              "Its own log, about starting up, goes to the system journal. It keeps no access log, and its error and TLS logs are off.",
             ],
           ],
         },
@@ -1379,46 +1368,72 @@ export const en = {
           lines: [
             [
               "",
-              "Short lines: that a sender registered and how many links, that a recipient joined, the size of each setup message, and the route taken. A link shows only by its first 6 characters.",
+              "Short lines with a fixed list of fields: that a sender registered and how many links, that a recipient joined, the size of each setup message, and the route taken. A link shows only by its first 6 characters.",
             ],
             ["email", "Whether the email was sent, each code sent or refused, and a right code."],
             ["", "That a recipient left, and that your page closed, with how many links it had."],
             [
               "direct,relay",
-              "If our relay is available and nothing has connected 3 seconds after the recipient answers: lines for about a dozen more setup messages, from adding the relay. They hint that you allowed it.",
+              "If our relay is available and the browsers still haven't connected 3 seconds after the recipient answers, they add the relay. That adds lines for about a dozen more setup messages, which hint that you allowed the relay.",
             ],
-            ["norelay", "If a relayed connection comes up anyway, that your page ended it."],
+            ["norelay", "If a relayed connection comes up anyway: that your page ended it."],
           ],
         },
         relay: {
           name: "Our relay",
-          kept: "Nothing once the traffic has passed. No log of the traffic. Only to fix a fault or stop abuse do we turn one on, with connection times, IP addresses and data volumes, for at most 7 days. While it renews its certificate, it also logs the addresses that reach it on port 80, never browsers', for about five weeks.",
+          kept: "Nothing once the traffic has passed. A temporary log, only if we turn one on: at most 7 days",
           never: "The key, the file or the secret. It can't decrypt what it carries.",
           lines: [
-            ["", "Each browser's public IP address, when the browser asks for it."],
+            [
+              "",
+              "Each browser's public IP address, when the browser asks for it. The two browsers ask at about the same time, so the relay can usually tell which two addresses belong together.",
+            ],
             [
               "direct",
-              "If our relay is available and nothing has connected 3 seconds after the recipient answers: both IP addresses together, even if a direct route wins after all. Both browsers then reserve a relay address, or only your browser's if the recipient's browser had already connected when your page's request to add the relay reached it. Either way the relay can learn both IP addresses.",
+              "If our relay is available and the browsers still haven't connected 3 seconds after the recipient answers: both IP addresses together, even if a direct route wins after all. Both browsers then reserve a relay address. Only yours does if the recipient's browser had already connected when your page's request to add the relay reached it. Either way the relay can learn both IP addresses.",
             ],
             [
               "relay",
               "Both IP addresses, and the encrypted traffic, which it forwards and doesn't store.",
             ],
+            ["relay file", "The file's size, only roughly."],
+            ["relay secret", "Not the secret's length: every secret is the same size on the wire."],
+            [
+              "",
+              "No log of the traffic. We turn one on only to fix a fault or stop abuse, for at most 7 days, with connection times, IP addresses and data volumes.",
+            ],
+            [
+              "",
+              "While it renews its certificate, a few seconds every two months or so, it logs the addresses that reach it on port 80. They come from Let's Encrypt's checks and internet scanners, never from browsers, and are deleted within about five weeks.",
+            ],
+            ["", "Its own current and previous secret, which hold no trace of your transfer."],
           ],
         },
         relayCap: {
           name: "Our monthly traffic count",
-          kept: "The month's totals until the next month starts, and their last 100 versions, about 8 hours. The month's total as of every 5 minutes for 63 days, every hour for 15 months, and in its own log for 30 days. Our host, Amazon Lightsail, keeps how much traffic our server and our relay carry, for 455 days.",
+          kept: "Up to 15 months; at our host, 455 days",
           never:
             "Which transfer the traffic belongs to, IP addresses, the key, the file or the secret.",
           lines: [
             [
               "",
-              "The pages your browser loads and the messages it exchanges with our server, and its requests to our relay, counted with all their other traffic, so that we can switch the relay off when the estimated cost reaches our budget.",
+              "The pages your browser loads, the messages it exchanges with our server and its requests to our relay. They are counted together with all other traffic through them, so that we can switch the relay off when the estimated cost reaches our budget.",
             ],
             [
               "relay",
-              "Your transfer's encrypted size, rounded up, in the traffic of the relay that carried it. Every 5 minutes we save the month's totals for our server and our relay. On a quiet relay, the step between two saved values can match your transfer's size and time.",
+              "Your transfer's encrypted size, rounded up, is counted in the traffic of the relay that carried it. We save the month's totals for our server and our relay every 5 minutes, so on a quiet relay, the step between two saved values can match your transfer's size and time.",
+            ],
+            [
+              "",
+              "The month's totals until the next month starts, and their last 100 versions, which cover about 8 hours.",
+            ],
+            [
+              "",
+              "The month's total as it stood every 5 minutes, for 63 days, and every hour, for 15 months. The count's own log keeps it for 30 days.",
+            ],
+            [
+              "",
+              "Our host, Amazon Lightsail, keeps how much traffic our server and our relay carry, for 455 days.",
             ],
           ],
         },
@@ -1435,20 +1450,29 @@ export const en = {
         },
         recipient: {
           name: "The recipient's browser",
-          kept: "Mostly until the tab closes; see each line",
+          kept: "Mostly until the tab closes",
           never:
             "Fidant saves no key on their device, apart from what the browser's history keeps.",
           lines: [
-            ["", "The link, key included, in the browser's history."],
-            ["file", "The file, where they save it."],
+            [
+              "",
+              "The link, key included, in the browser's history like any address. Your page refuses the link once the delivery is done, and the link works only while your page is open.",
+            ],
+            [
+              "file",
+              "The file, where they save it: Chrome and Edge write it where the recipient chooses, other browsers to their downloads.",
+            ],
             [
               "secret",
-              "The secret, only in the page's memory, until they copy it. Then it's on their clipboard too.",
+              "The secret, only in the page's memory until they copy it. Then it's also on their clipboard, where clipboard history, clipboard sync and other apps can read it.",
             ],
-            ["email", "A token for the right code, in that tab's session storage."],
+            [
+              "email",
+              "A token for the right code, in that tab's session storage until the tab closes.",
+            ],
             [
               "direct,relay",
-              "While our relay is available, relay credentials for this pair, valid 5 minutes to start a relay, in memory while the page is open.",
+              "While our relay is available: credentials for it, made for this pair of browsers, in memory while the page is open. A relay connection can start with them for 5 minutes.",
             ],
             ["", "Their theme and language choice, in the browser's local storage, until cleared."],
           ],
@@ -1468,14 +1492,14 @@ export const en = {
     data: {
       heading: "Step by step",
       body: [
-        "The same, for each step of a transfer: what our server sees, keeps and logs, and what our relay sees. A shared secret goes through the same steps as a file.",
+        "The same facts in the order a transfer happens: what our server sees, keeps and logs at each step, and what our relay sees. A shared secret goes through the same steps as a file.",
       ],
       columns: ["Step", "Our server sees", "Our server keeps", "Our server logs", "Our relay"],
       rows: [
         [
           "You open the site",
           "Your IP address and browser details, like any website.",
-          "Nothing. A send page also opens a connection to our server, which it holds in memory while the page is open.",
+          "Nothing. A send page also opens a connection to our server, which the server holds in memory while the page is open.",
           "Nothing.",
           "Nothing.",
         ],
@@ -1519,7 +1543,7 @@ export const en = {
           "Encrypted setup messages and their sizes. It can't read them, except for a link we emailed.",
           "Nothing. It passes them on.",
           "Each message's size, with the first 6 characters of the link ID.",
-          "Each browser's IP address, when it asks for its public address (STUN). If you allow the relay and it is available, and nothing has connected 3 seconds after the recipient answers, the browsers add the relay. Both then reserve a relay address, or only your browser's if the recipient's browser had already connected when your page's request to add the relay reached it. Either way the relay can learn both IP addresses, even if a direct route wins after all.",
+          "Each browser's IP address, when it asks for its public address (STUN). If you allow the relay and it is available, and the browsers still haven't connected 3 seconds after the recipient answers, they add the relay. Both then reserve a relay address. Only yours does if the recipient's browser had already connected when your page's request to add the relay reached it. Either way the relay can learn both IP addresses, even if a direct route wins after all.",
         ],
         [
           "The file or secret travels",
@@ -1547,7 +1571,7 @@ export const en = {
           "Nothing.",
           "Only the scrambled counts of emails and codes, and two server-wide counters of when emails and codes were sent, not tied to any address, for up to an hour.",
           "Log lines are deleted after 30 days.",
-          "No log of the traffic. Only to fix a fault or stop abuse do we turn one on, with connection times, IP addresses and data volumes, for at most 7 days. Separately, while it renews its certificate, it logs the addresses that reach it on port 80, never browsers', for about five weeks.",
+          "No log of the traffic. We turn one on only to fix a fault or stop abuse, for at most 7 days, with connection times, IP addresses and data volumes. While it renews its certificate, it also logs the addresses that reach it on port 80, never browsers', for about five weeks.",
         ],
       ],
     },
@@ -1575,7 +1599,7 @@ export const en = {
     sees: [
       [
         "Your IP address and browser details",
-        "Like any website you visit, along with which page you open, whose address names the language you chose. We use them only to show you this page and connect you. Our server never writes them to its logs. Our relay doesn't log them either, except while we fix a fault or stop abuse (see below).",
+        "Like any website you visit, we see them, along with which page you open. That page's address names the language you chose. We use them only to show you this page and connect you. Our server never writes them to its logs. Our relay doesn't log them either, except while we fix a fault or stop abuse (see below).",
       ],
       [
         "A link ID",
@@ -1587,11 +1611,11 @@ export const en = {
       ],
       [
         "The sender's relay choice",
-        "Whether the sender allows our relay, so we only give recipients access to it when they do. We forget it within a minute after the sender's page closes, and never write it to our logs.",
+        "Whether the sender allows our relay, so we only give recipients access to it when the sender does. We forget it within a minute after the sender's page closes, and never write it to our logs.",
       ],
       [
         "If we email a link: the address, the link's key and your name",
-        "If you ask us to email a link, your browser sends our server the recipient's email address, the link with its key, and your name. We keep the key and your name only until the email has gone. We keep the address in memory while your page is open, so we can email the recipient a code when they open the link. We also keep the latest code and which browser tabs entered the right one. We never log the address or write it to disk. Our mail service, Amazon SES, delivers the emails, and bounces go only to it, never to a mailbox of ours. Amazon SES keeps an email with a link, and so the key and your name, only until it is delivered: if the recipient's mail server doesn't accept it at once, Amazon SES tries again for at most 15 minutes and then drops it. An address that bounces as undeliverable goes on a list that Amazon SES keeps for all its customers, for up to 14 days, so that nobody sends it more mail. We can't turn that list off.",
+        "If you ask us to email a link, your browser sends our server the recipient's email address, the link with its key, and your name. We keep the key and your name only until the email has gone. We keep the address in memory while your page is open, so we can email the recipient a code when they open the link. We also keep the latest code and which browser tabs entered the right one. We never log the address or write it to disk. Our mail service, Amazon SES, delivers the emails, and bounces go only to it, never to a mailbox of ours. Amazon SES keeps an email with a link, and so the key and your name, only until it is delivered. If the recipient's mail server doesn't accept the email at once, Amazon SES tries again for at most 15 minutes and then drops it. An address that bounces as undeliverable goes on a list that Amazon SES keeps for all its customers, for up to 14 days, so that nobody sends it more mail. We can't turn that list off.",
       ],
       [
         "Counts of emails and codes",
@@ -1599,11 +1623,11 @@ export const en = {
       ],
     ] as ReadonlyArray<readonly [string, string]>,
     keepHeading: "What we keep",
-    keep: "We have no accounts, no database of people or transfers, no cookies and no tracking. Apart from the log lines below, a relay log while we fix a fault or stop abuse, the email and code counts above, which last an hour, and our mail service's list of bounced addresses, nothing about you is kept once the sender's page is closed, within 2 minutes at most.",
+    keep: "We have no accounts, no database of people or transfers, no cookies and no tracking. Once the sender's page is closed, nothing about you is kept, within 2 minutes at most, apart from the log lines below, a relay log while we fix a fault or stop abuse, the email and code counts above, which last an hour, and our mail service's list of bounced addresses.",
     logFields,
     logRetention: "Log lines are deleted after 30 days.",
     relayLog:
-      "Our relay, which can carry the locked file when two browsers can't connect directly, keeps no log of the traffic. Only to fix a fault or stop abuse do we turn one on. It then records, for each relayed connection, both IP addresses and ports, when it started and ended, and how much data passed through. Never names, keys or file data. We turn it off and delete it within 7 days. Separately, while the relay renews its certificate, a few seconds every two months or so, it logs the addresses that reach it on port 80. Those are Let's Encrypt's checks and internet scanners, never browsers, and they are deleted within about five weeks.",
+      "Our relay, which can carry the locked file when two browsers can't connect directly, keeps no log of the traffic. We turn one on only to fix a fault or stop abuse. The log then records, for each relayed connection, both IP addresses and ports, when the connection started and ended, and how much data passed through. Never names, keys or file data. We turn it off and delete it within 7 days. Separately, while the relay renews its certificate, a few seconds every two months or so, it logs the addresses that reach it on port 80. Those are Let's Encrypt's checks and internet scanners, never browsers, and they are deleted within about five weeks.",
     limitsHeading: "What we can't protect you from",
     limits: [
       "Anyone who has the link can open the file. A link we email also needs a code we send to the same address, so anyone who can read that mailbox can open it. Send each link only to the person it is for.",
