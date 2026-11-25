@@ -171,8 +171,8 @@ export const en = {
         heading: "You get a link with the key inside",
         body: [
           "You get one link for each person. Each link works once. You send it yourself, for example by email or chat, or give us their email address and we email it to them.",
-          "The key that unlocks the file is the part after the # sign. Browsers never send that part to us, so we never see the key, unless you ask us to email the link. Then your browser gives it to our server once, to put in the email.",
-          "Anyone with the link can open the file. A link we email also asks for a code that we email to the same address, so it works for anyone who can read that mailbox. Send each link only to the person it is for.",
+          "The key that unlocks the file is the part after the # sign. Browsers never send that part to us, so we never see the key, unless you ask us to email the link. Then your browser gives the key to our server once, to put in the email.",
+          "Anyone with the link can open the file. A link we email also asks for a code that we email to the same address. So the emailed link works for anyone who can read that mailbox. Send each link only to the person it is for.",
         ],
       },
       open: {
@@ -196,7 +196,7 @@ export const en = {
         body: [
           "Some networks can't connect directly to each other. This is common on mobile data and office networks.",
           "Then, if the relay is available, the file goes through our relay in Stockholm instead, still locked.",
-          "The relay can't open the file, and it doesn't keep it.",
+          "The relay can't open the file and doesn't keep it.",
           "It sees the internet address of each device and roughly how big the file is.",
         ],
       },
@@ -225,7 +225,7 @@ export const en = {
         heading: "The recipient's browser checks it",
         body: [
           "When the last piece has arrived, the recipient's browser checks that the file is exactly the one you sent.",
-          "If anything is missing or changed, it throws the file away. You see that it arrived only when the check has passed.",
+          "If anything is missing or changed, the recipient's browser throws the file away. You see that it arrived only when the check has passed.",
         ],
       },
       masking: {
@@ -834,8 +834,8 @@ export const en = {
       {
         heading: "How the file is protected",
         body: [
-          "Your browser encrypts the file with AES-256-GCM before it leaves your computer. The key is in the part of the link after #, which browsers never send to a server. If you ask us to email a link, your browser gives that link's key to our server once, to put in the email, and the server doesn't store or log it.",
-          "The file goes directly between the two browsers. If a network blocks that and our relay is available, it passes through the relay instead, still encrypted. Our server only passes on a few small setup messages, which are encrypted so it can't read them, except for a link it emailed, whose key it had.",
+          "Your browser encrypts the file with AES-256-GCM before it leaves your computer. The key is in the part of the link after #, which browsers never send to a server. If you ask us to email a link, your browser gives that link's key to our server once, to put in the email. The server doesn't store or log the key.",
+          "The file goes directly between the two browsers. If a network blocks that and our relay is available, it passes through the relay instead, still encrypted. Our server only passes on a few small setup messages. They are encrypted, so the server can't read them, except for a link it emailed, whose key it had.",
           "The recipient's browser checks the file's SHA-256 checksum, so a file that was changed or damaged on the way is not saved.",
         ],
         link: ["How it works, step by step", "/how"],
@@ -843,8 +843,8 @@ export const en = {
       {
         heading: "What it doesn't protect against",
         body: [
-          "Anyone who gets hold of a link can open the file, and a link we email also needs a code we send to the same address. Send each link only to the person it is for, over a channel you trust.",
-          "A link we email stays in the recipient's mailbox. Anyone who can read that mailbox can also get the code, and so the file. And because our server had that link's key, you have to trust us not to read the file on its way, unless you keep the check number on and compare it with the recipient. To avoid both, leave “Email the link for me” unticked and send the link yourself.",
+          "Anyone who gets hold of a link can open the file. A link we email also needs a code we send to the same address. Send each link only to the person it is for, over a channel you trust.",
+          "A link we email stays in the recipient's mailbox. Anyone who can read that mailbox can also get the code, and so the file. And our server had that link's key. So you have to trust us not to read the file on its way, unless you keep the check number on and compare it with the recipient. To avoid both, leave “Email the link for me” unticked and send the link yourself.",
           "The sender's name is typed by the sender and not verified.",
           "The two browsers see each other's IP address, the same as on a video call. When the file goes through our relay, the relay sees both IP addresses and roughly how big the file is.",
           "A computer that is already compromised can read the file before it is encrypted or after it is unlocked.",

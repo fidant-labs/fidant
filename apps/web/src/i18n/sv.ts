@@ -109,7 +109,7 @@ export const sv: Messages = {
   },
   landing: {
     title: "Skicka en fil som bara mottagaren kan öppna.",
-    lede: "Fidant krypterar filen i din webbläsare innan den går till den du väljer. Den sparas aldrig, och bara den som har länken kan öppna den.",
+    lede: "Fidant krypterar filen i din webbläsare innan den går till personen du väljer. Filen sparas aldrig, och bara den som har länken kan öppna den.",
     cta: "Skicka en fil",
     how: "Läs hur det fungerar",
     noAccount: "Inget konto. Inget sparas.",
@@ -151,9 +151,9 @@ export const sv: Messages = {
       link: {
         heading: "Du får en länk med nyckeln i",
         body: [
-          "Du får en länk per person. Varje länk fungerar en gång. Du skickar den själv, till exempel via mejl eller chatt, eller ger oss mottagarens e-postadress så mejlar vi den.",
-          "Nyckeln som låser upp filen är delen efter tecknet #. Webbläsare skickar aldrig den delen till oss. Därför ser vi aldrig nyckeln, om du inte ber oss mejla länken. Då ger din webbläsare den till vår server en gång, för att lägga den i mejlet.",
-          "Alla som har länken kan öppna filen. En länk som vi mejlar kräver också en kod som vi mejlar till samma adress, så den fungerar för alla som kan läsa den inkorgen. Skicka varje länk bara till den som den är avsedd för.",
+          "Du får en länk per person. Varje länk fungerar en gång. Du skickar den själv, till exempel via mejl eller chatt, eller ger oss mottagarens mejladress så mejlar vi den.",
+          "Nyckeln som låser upp filen är delen efter tecknet #. Webbläsare skickar aldrig den delen till oss. Därför ser vi aldrig nyckeln, om du inte ber oss mejla länken. Då ger din webbläsare nyckeln till vår server en gång, för att lägga den i mejlet.",
+          "Alla som har länken kan öppna filen. En länk som vi mejlar kräver också en kod som vi mejlar till samma adress. Den mejlade länken fungerar alltså för alla som kan läsa den inkorgen. Skicka varje länk bara till personen den är avsedd för.",
         ],
       },
       open: {
@@ -790,8 +790,8 @@ export const sv: Messages = {
       {
         heading: "Så skyddas filen",
         body: [
-          "Din webbläsare krypterar filen med AES-256-GCM innan den lämnar din dator. Nyckeln finns i den del av länken som står efter #, och den skickar webbläsare aldrig till någon server. Om du ber oss mejla en länk ger din webbläsare länkens nyckel till vår server en gång, för att lägga den i mejlet, och servern sparar eller loggar den inte.",
-          "Filen går direkt mellan de två webbläsarna. Om ett nätverk stoppar det och vårt relä är tillgängligt går den i stället krypterad via reläet. Vår server skickar bara vidare några små meddelanden för att koppla upp, och de är krypterade så att servern inte kan läsa dem, utom för en länk som den har mejlat och därför haft nyckeln till.",
+          "Din webbläsare krypterar filen med AES-256-GCM innan den lämnar din dator. Nyckeln finns i den del av länken som står efter #. Den delen skickar webbläsare aldrig till någon server. Om du ber oss mejla en länk ger din webbläsare länkens nyckel till vår server en gång, för att lägga den i mejlet. Servern varken sparar eller loggar nyckeln.",
+          "Filen går direkt mellan de två webbläsarna. Om ett nätverk stoppar det och vårt relä är tillgängligt går den i stället krypterad via reläet. Vår server skickar bara vidare några små meddelanden för att koppla upp. De är krypterade så att servern inte kan läsa dem, utom för en länk som den har mejlat och därför haft nyckeln till.",
           "Mottagarens webbläsare kontrollerar filens SHA-256-kontrollsumma, så en fil som ändrats eller skadats på vägen sparas inte.",
         ],
         link: ["Så fungerar det, steg för steg", "/how"],
@@ -799,8 +799,8 @@ export const sv: Messages = {
       {
         heading: "Det här skyddar den inte mot",
         body: [
-          "Den som får tag på en länk kan öppna filen, och en länk som vi mejlar kräver också en kod som vi skickar till samma adress. Skicka varje länk bara till den den är till, på ett sätt du litar på.",
-          "En länk som vi mejlar ligger kvar i mottagarens inkorg. Den som kan läsa inkorgen kan också få koden, och därmed filen. Och eftersom vår server har haft länkens nyckel måste du lita på att vi inte läser filen på vägen, om du inte låter kontrollnumret vara på och jämför det med mottagaren. Vill du undvika båda, låt ”Mejla länken åt mig” vara urkryssad och skicka länken själv.",
+          "Den som får tag på en länk kan öppna filen. En länk som vi mejlar kräver också en kod som vi skickar till samma adress. Skicka varje länk bara till personen den är avsedd för, på ett sätt du litar på.",
+          "En länk som vi mejlar ligger kvar i mottagarens inkorg. Den som kan läsa inkorgen kan också få koden, och därmed filen. Och vår server har haft länkens nyckel. Därför måste du lita på att vi inte läser filen på vägen, om du inte låter kontrollnumret vara på och jämför det med mottagaren. Vill du undvika båda, låt ”Mejla länken åt mig” vara urkryssad och skicka länken själv.",
           "Avsändarens namn skrivs av avsändaren och kontrolleras inte.",
           "De två webbläsarna ser varandras IP-adress, precis som i ett videosamtal. När filen går via vårt relä ser reläet båda IP-adresserna och ungefär hur stor filen är.",
           "En dator som redan är kapad kan läsa filen innan den krypteras eller efter att den låsts upp.",
