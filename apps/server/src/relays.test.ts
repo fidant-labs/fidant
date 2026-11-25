@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { constants, generateKeyPairSync, type KeyObject, privateDecrypt } from "node:crypto";
+import {
+  constants,
+  createHash,
+  createPublicKey,
+  generateKeyPairSync,
+  type KeyObject,
+  privateDecrypt,
+} from "node:crypto";
 import { mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -50,12 +57,35 @@ test("an empty list parses to no relays", () => {
   assert.deepEqual(parseRelays("[]"), []);
 });
 
-test("on the app box the committed list is empty, so there is no relay list", () => {
+test("the app box's committed list trusts only the Stockholm relay box's key", () => {
   const config = relayConfig({}, true);
   assert.ok(config);
-  const text = readFileSync(config.file, "utf8");
-  assert.equal(text, "[]\n");
-  assert.deepEqual(parseRelays(text), []);
+  const relays = parseRelays(readFileSync(config.file, "utf8"));
+  assert.deepEqual(
+    relays.map(({ id, urls, host, port }) => ({ id, urls, host, port })),
+    [
+      {
+        id: "sto",
+        urls: [
+          "stun:sto.relay.fidant.se:3478",
+          "turn:sto.relay.fidant.se:3478?transport=udp",
+          "turns:sto.relay.fidant.se:443?transport=tcp",
+        ],
+        host: "sto.relay.fidant.se",
+        port: 3478,
+      },
+    ],
+  );
+  const key = createPublicKey(relays[0]?.publicKey ?? "");
+  assert.equal(key.asymmetricKeyType, "rsa");
+  assert.equal(key.asymmetricKeyDetails?.modulusLength, 3072);
+  // openssl pkey -pubin -in /etc/fidant-relay/relay.pub -outform DER | sha256sum, on the relay box
+  assert.equal(
+    createHash("sha256")
+      .update(key.export({ type: "spki", format: "der" }))
+      .digest("hex"),
+    "ac845f931c29cd3b36a3b01700f354e765f8f4c0cd2625241100090dce6f0c26",
+  );
 });
 
 const rejections: [string, string, RegExp][] = [
@@ -204,11 +234,13 @@ test("a relay starts down, comes up on a success and goes down after two failure
   assert.deepEqual(ups, [false, true, true, true, true, false, false, true]);
 });
 
-test("on the app box the committed empty list leaves TURN_URLS in charge", () => {
-  assert.equal(
-    loadRelays({ TURN_URLS: "turn:turn.fidant.se:3478?transport=udp" }, true),
-    undefined,
+test("on the app box the committed list replaces TURN_URLS", () => {
+  const loaded = loadRelays({ TURN_URLS: "turn:turn.fidant.se:3478?transport=udp" }, true);
+  assert.deepEqual(
+    loaded?.relays.map(({ id }) => id),
+    ["sto"],
   );
+  assert.equal(loaded?.masterFile, boxMaster);
 });
 
 test("a relay list in RELAYS_FILE that isn't empty replaces TURN_URLS", () => {
@@ -220,10 +252,11 @@ test("a relay list in RELAYS_FILE that isn't empty replaces TURN_URLS", () => {
   });
 });
 
-test("an empty list in RELAYS_FILE, or no list, leaves TURN_URLS in charge", () => {
+test("rolling back to an empty list, or having no list, leaves TURN_URLS in charge", () => {
   const file = join(dir, "no-relays.json");
-  writeFileSync(file, "[]");
-  assert.equal(loadRelays({ RELAYS_FILE: file }, true), undefined);
+  writeFileSync(file, "[]\n");
+  const turnUrls = "turn:turn.fidant.se:3478?transport=udp";
+  assert.equal(loadRelays({ RELAYS_FILE: file, TURN_URLS: turnUrls }, true), undefined);
   assert.equal(loadRelays({}, false), undefined);
 });
 
