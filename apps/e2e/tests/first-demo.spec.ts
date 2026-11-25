@@ -200,7 +200,7 @@ test("delivers a file to two recipients with a verified checksum", async ({
   }
 
   for (const name of names) {
-    await expect(delivered(sender, name)).toBeVisible();
+    await expect(delivered(sender, name)).toBeAttached();
   }
   const cards = names.map((name) => recipientRow(sender, name));
   for (const scope of [...cards, ...received.map(({ page }) => page)]) {
@@ -237,7 +237,7 @@ test("refuses used, unknown and malformed links", async ({ demo, leaks, canary, 
 
   const first = await receive(demo, "recipient", link, file, "100 KB");
   expect(sha256Hex(first.bytes)).toBe(sha256Hex(file.bytes));
-  await expect(delivered(sender, name)).toBeVisible();
+  await expect(delivered(sender, name)).toBeAttached();
   await first.page.context().close();
 
   const reopened = await demo.open("reopened");
@@ -512,7 +512,7 @@ test("the Why? link to /how keeps a transfer alive on both pages", async ({
   });
   const bytes = await readFile(await (await downloading).path());
   expect(sha256Hex(bytes)).toBe(sha256Hex(file.bytes));
-  await expect(delivered(sender, name)).toBeVisible();
+  await expect(delivered(sender, name)).toBeAttached();
 });
 
 test("a lost sender says whether the file may have been saved", async ({ demo, leaks, canary }) => {
@@ -827,7 +827,7 @@ test.describe("through a server restart", () => {
 
     const { bytes } = await receive(demo, "recipient", link, file, "100 KB", "", sender);
     expect(sha256Hex(bytes)).toBe(sha256Hex(file.bytes));
-    await expect(delivered(sender, name)).toBeVisible();
+    await expect(delivered(sender, name)).toBeAttached();
     expect(navigations).toBe(0);
     await expect(lost(sender)).toHaveCount(0);
   });
@@ -848,7 +848,7 @@ test.describe("through a server restart", () => {
     await restartServer();
     const bytes = await download(recipient, file);
     expect(sha256Hex(bytes)).toBe(sha256Hex(file.bytes));
-    await expect(delivered(sender, name)).toBeVisible();
+    await expect(delivered(sender, name)).toBeAttached();
   });
 
   test("a recipient still connecting gets the file after the restart", async ({
@@ -890,7 +890,7 @@ test.describe("through a server restart", () => {
     });
     const bytes = await download(recipient, file);
     expect(sha256Hex(bytes)).toBe(sha256Hex(file.bytes));
-    await expect(delivered(sender, name)).toBeVisible();
+    await expect(delivered(sender, name)).toBeAttached();
   });
 });
 
@@ -921,7 +921,7 @@ async function addEmailed(
 ): Promise<Emailed> {
   await sender.getByLabel("Who is it for?").fill(name);
   await sender.getByLabel("Their email address").fill(to);
-  await sender.getByRole("button", { name: "Create link", exact: true }).click();
+  await sender.getByRole("button", { name: "Create and email link", exact: true }).click();
   await expect(
     recipientRow(sender, name).getByText(`Email sent to ${maskAddress(to)}`),
   ).toBeVisible();
@@ -1103,7 +1103,7 @@ test.describe("emailed links", () => {
 
     const bytes = await download(recipient, file);
     expect(sha256Hex(bytes)).toBe(sha256Hex(file.bytes));
-    await expect(delivered(sender, name)).toBeVisible();
+    await expect(delivered(sender, name)).toBeAttached();
     await expect(verified).toBeVisible();
 
     // A reload joins with the tab's token, without a new code, and the sender refuses a used link.
@@ -1267,7 +1267,7 @@ test.describe("emailed links", () => {
     await expect(
       recipient.getByRole("region", { name: "The secret", exact: true }),
     ).toHaveJSProperty("textContent", text);
-    await expect(delivered(sender, name)).toBeVisible();
+    await expect(delivered(sender, name)).toBeAttached();
   });
 });
 

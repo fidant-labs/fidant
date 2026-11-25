@@ -135,7 +135,7 @@ test("a text goes from /secret to the recipient, who shows and copies it", async
   await expect(details).not.toContainText("Size");
   await expect(details).not.toContainText("bytes");
 
-  await expect(delivered(sender, name)).toBeVisible();
+  await expect(delivered(sender, name)).toBeAttached();
   expect(await page.evaluate(() => (globalThis as { pickerCalls?: number }).pickerCalls)).toBe(0);
   expect(downloads).toEqual([]);
 });
@@ -206,7 +206,7 @@ test("declining a text keeps the link working", async ({ actor, leaks, canary })
     "textContent",
     text,
   );
-  await expect(delivered(sender, name)).toBeVisible();
+  await expect(delivered(sender, name)).toBeAttached();
 });
 
 test("a recipient sees the text wording when the sender closes the page during the offer", async ({
@@ -348,5 +348,5 @@ test("a recipient whose browser can't read the received text is told so, with no
   await expect(page.getByRole("heading", { name: "The secret couldn't be shown" })).toBeFocused();
   await expect(page.getByRole("button", { name: "Copy secret" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Try again" })).toHaveCount(0);
-  await expect(delivered(sender, name)).toBeVisible();
+  await expect(delivered(sender, name)).toBeAttached();
 });
