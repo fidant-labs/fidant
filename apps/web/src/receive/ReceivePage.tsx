@@ -648,7 +648,12 @@ export function ReceivePage({
   // Runs once on mount; "Try again" calls start() again.
   useEffect(() => {
     start();
+    // Once the page is really going, close the peer so the sender hears it now, not when ICE
+    // consent runs out about 15 s later.
+    const onPageHide = () => attemptRef.current?.peer?.close();
+    addEventListener("pagehide", onPageHide);
     return () => {
+      removeEventListener("pagehide", onPageHide);
       const attempt = attemptRef.current;
       attemptRef.current = undefined;
       if (attempt) {
