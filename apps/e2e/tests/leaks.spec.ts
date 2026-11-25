@@ -263,7 +263,7 @@ test.describe("an emailed link", () => {
 
 test.describe("the detector stays quiet on", () => {
   test("the same requests carrying unrelated data", async ({ page, leaks, canary }) => {
-    // The canaries are watched but never sent. No expectLeaks: nothing may match.
+    // The canaries are watched but never sent. No expectLeaks: the teardown must pass too.
     const file = leaks.watch(canaryFile(canary.fork("file"), fileOptions));
     leaks.watchKey("fragment secret", canaryKey(canary.fork("key")));
     const other = canaryFile(canary.fork("other"), { size: file.size + 7 });
