@@ -100,8 +100,8 @@ function App() {
     kept.current.add(route);
   }
   return (
-    <div class="flex min-h-dvh flex-col">
-      <Header current={route} theme={theme} onTheme={chooseTheme} />
+    <div class="flex min-h-dvh flex-col has-[[data-bottom-bar]:not([hidden]_*)]:pb-24">
+      <Header current={route} />
       <div class="flex-1">
         {route === "landing" && <LandingPage />}
         {/* The privacy page uses no crypto, so it opens even without a secure connection. */}

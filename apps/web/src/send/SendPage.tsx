@@ -590,7 +590,7 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
 
   return (
     <Page>
-      <div class="pb-28">
+      <div>
         <section aria-labelledby={id("send-title")}>
           <p class={stepLabel}>{t.send.step(1)}</p>
           <h1 id={id("send-title")} class="mt-0">
@@ -940,7 +940,10 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
       </div>
 
       {hasRecipients && (
-        <div class="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-background/80 p-4 backdrop-blur-xl">
+        <div
+          data-bottom-bar
+          class="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-background/80 p-4 backdrop-blur-xl"
+        >
           <p class="m-0 mx-auto flex max-w-xl items-center gap-2 text-[0.9rem] font-medium">
             {unfinished ? (
               <span
