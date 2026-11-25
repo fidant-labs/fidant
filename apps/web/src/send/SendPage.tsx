@@ -80,7 +80,7 @@ import {
 import { addRelay, NO_RELAYS } from "../lib/server-facts.ts";
 import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
 import { MAX_TEXT_LENGTH, textFile, textFitsOneChunk } from "../lib/text-secret.ts";
-import { FileCard, Icon, lede, Page, ServerPanel, TechDetails } from "../ui.tsx";
+import { FileCard, Icon, Link, lede, Page, ServerPanel, TechDetails } from "../ui.tsx";
 import { RecipientList } from "./RecipientList.tsx";
 
 type Hash =
@@ -168,7 +168,8 @@ export function SendPage({
   const [viaRelay, setViaRelay] = useState(false);
   const [nameError, setNameError] = useState<ErrorOf<"nameError">>("");
   const [mail, setMail] = useState(false);
-  const [emailFilled, setEmailFilled] = useState(false);
+  // Emailing a link is opt-in: until the sender ticks it, there is no email field.
+  const [useEmail, setUseEmail] = useState(false);
   const [emailError, setEmailError] = useState(false);
   // ponytail: sticky for the page, since the server saw the key and keeps email counts for an hour
   const [mailed, setMailed] = useState(false);
@@ -510,7 +511,8 @@ export function SendPage({
     setNameError("");
     const emailInput = form.elements.namedItem("email") as HTMLInputElement | null;
     const email = emailInput?.value.trim() ?? "";
-    if (email && !isAddress(email)) {
+    // The field exists only once the sender opted in to email, and then it needs a real address.
+    if (emailInput && !isAddress(email)) {
       setEmailError(true);
       emailInput?.focus();
       return;
@@ -550,7 +552,6 @@ export function SendPage({
     form.reset();
     setMore(false);
     setTyped(false);
-    setEmailFilled(false);
     input.focus();
   };
 
@@ -593,7 +594,6 @@ export function SendPage({
     if (!finished) {
       return;
     }
-    setEmailFilled(false);
     setNameError("");
     setEmailError(false);
     const active = document.activeElement;
@@ -835,7 +835,10 @@ export function SendPage({
               onInput={(event) =>
                 setTyped(
                   Array.from(event.currentTarget.elements).some(
-                    (el) => el instanceof HTMLInputElement && el.value.trim() !== "",
+                    (el) =>
+                      el instanceof HTMLInputElement &&
+                      el.type !== "checkbox" &&
+                      el.value.trim() !== "",
                   ),
                 )
               }
@@ -865,39 +868,65 @@ export function SendPage({
                 />
               </div>
               {mail && (
-                <div class="flex basis-full flex-col gap-1">
-                  <Label htmlFor={id("recipient-email")}>
-                    {t.send.emailLabel}{" "}
-                    <span class="font-normal text-muted-foreground">{t.send.optional}</span>
+                <div class="flex basis-full flex-col gap-2">
+                  {/* Off by default: the safe way is to pass the link on yourself. */}
+                  <Label className="items-start leading-snug font-normal">
+                    <input
+                      type="checkbox"
+                      class="mt-0.5 size-4 flex-none accent-primary"
+                      checked={useEmail}
+                      disabled={!file || full}
+                      onChange={(event) => {
+                        const checked = event.currentTarget.checked;
+                        setUseEmail(checked);
+                        setEmailError(false);
+                        // Unticking removes the address field, so only the name still counts as typed.
+                        if (!checked) {
+                          const name = formRef.current?.elements.namedItem("name");
+                          setTyped(name instanceof HTMLInputElement && name.value.trim() !== "");
+                        }
+                      }}
+                    />
+                    {t.send.emailChoice}
                   </Label>
-                  <Input
-                    id={id("recipient-email")}
-                    name="email"
-                    type="email"
-                    autoComplete="off"
-                    maxLength={MAX_ADDRESS}
-                    disabled={!file || full}
-                    onInput={(event) => {
-                      setEmailFilled(event.currentTarget.value.trim() !== "");
-                      setEmailError(false);
-                    }}
-                    aria-invalid={emailError ? "true" : "false"}
-                    aria-describedby={
-                      emailError ? `${id("email-error")} ${id("email-notice")}` : id("email-notice")
-                    }
-                  />
-                  {emailError && (
-                    <p id={id("email-error")} class={fieldError}>
-                      {t.send.emailError}
-                    </p>
+                  {useEmail && (
+                    <>
+                      <Alert role="note" id={id("email-notice")}>
+                        <AlertDescription>
+                          {text ? t.secret.emailNotice : t.send.emailNotice}{" "}
+                          <Link href="/how/link" class="font-medium underline underline-offset-4">
+                            {t.send.emailMore}
+                          </Link>
+                        </AlertDescription>
+                      </Alert>
+                      <Label htmlFor={id("recipient-email")}>{t.send.emailLabel}</Label>
+                      <Input
+                        id={id("recipient-email")}
+                        name="email"
+                        type="email"
+                        required
+                        autoComplete="off"
+                        maxLength={MAX_ADDRESS}
+                        disabled={!file || full}
+                        onInput={() => setEmailError(false)}
+                        aria-invalid={emailError ? "true" : "false"}
+                        aria-describedby={
+                          emailError
+                            ? `${id("email-error")} ${id("email-notice")}`
+                            : id("email-notice")
+                        }
+                      />
+                      {emailError && (
+                        <p id={id("email-error")} class={fieldError}>
+                          {t.send.emailError}
+                        </p>
+                      )}
+                    </>
                   )}
-                  <p id={id("email-notice")} class={`m-0 ${hint}`} aria-live="polite">
-                    {emailFilled && (text ? t.secret.emailNotice : t.send.emailNotice)}
-                  </p>
                 </div>
               )}
               <Button type="submit" disabled={!file || full}>
-                {emailFilled ? t.send.addEmail : t.send.add}
+                {useEmail ? t.send.addEmail : t.send.add}
               </Button>
             </form>
             {nameError && (
