@@ -1,10 +1,18 @@
 // Keys derived from a link secret, and sealing of relayed signaling messages.
 //
 // Signal key = HKDF-SHA256(secret, salt = linkId bytes,  info "sigill/v1/signal")
-// File key   = HKDF-SHA256(secret, salt = transferId,    info "sigill/v1/file")
+// File key   = HKDF-SHA256(secret, salt = transferId || attempt bytes,
+//                          info "sigill/v2/file")
 // Both are AES-GCM-256 CryptoKeys, non-extractable, used only for encrypt and
-// decrypt. A fresh 16-byte transferId per attempt means a restarted transfer
-// never reuses a (file key, nonce) pair.
+// decrypt. The salt holds a value each side picks: the sender's fresh 16-byte
+// transferId (sent in clear in INIT) and the recipient's attempt ID for this
+// join (16 bytes, the base64url text decoded; the sender learns it from
+// `joined`). Both sides number their frames from 0 in every attempt, so each
+// needs a key it has never used before: a sender restarting a transfer gets
+// one from its new transferId, and a recipient shown a replayed INIT gets one
+// from its new attempt ID, so neither ever reuses a (file key, nonce) pair.
+// The info changed from "sigill/v1/file" (salt = transferId alone), so a key
+// made the old way never equals one made this way.
 //
 // Sealed signal = base64url(iv(12 random) || AES-GCM ciphertext with 16-byte tag)
 // over the UTF-8 JSON payload, AAD "sigill/v1/signal|<linkId>|<attempt>|<dir>".
@@ -61,12 +69,26 @@ export function deriveSignalKey(secret: string, linkId: string): Promise<CryptoK
   return deriveKey(secret, salt, "sigill/v1/signal");
 }
 
-/** Key for the data channel frames of one transfer attempt. */
-export function deriveFileKey(secret: string, transferId: Uint8Array): Promise<CryptoKey> {
+/**
+ * Key for the data channel frames of one transfer attempt: the sender's transferId from INIT and
+ * the recipient's attempt ID from its `join`.
+ */
+export function deriveFileKey(
+  secret: string,
+  transferId: Uint8Array,
+  attempt: string,
+): Promise<CryptoKey> {
   if (transferId.length !== TRANSFER_ID_BYTES) {
     return Promise.reject(new Error("transferId must be 16 bytes"));
   }
-  return deriveKey(secret, new Uint8Array(transferId), "sigill/v1/file");
+  const attemptBytes = isLinkId(attempt) ? decodeBase64url(attempt) : undefined;
+  if (!attemptBytes) {
+    return Promise.reject(new Error("invalid attempt ID"));
+  }
+  const salt = new Uint8Array(TRANSFER_ID_BYTES + attemptBytes.length);
+  salt.set(transferId);
+  salt.set(attemptBytes, TRANSFER_ID_BYTES);
+  return deriveKey(secret, salt, "sigill/v2/file");
 }
 
 /** Makes a fresh random transferId. */

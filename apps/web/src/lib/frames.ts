@@ -1,7 +1,7 @@
 // Data channel framing and per-frame encryption.
 //
 // Frame  = header(10) || body
-// Header = version(1) = 2 || kind(1) || seq(8, u64 big-endian). Plaintext, and
+// Header = version(1) = 3 || kind(1) || seq(8, u64 big-endian). Plaintext, and
 //          the AES-GCM additional data of its frame.
 // Body   = AES-GCM-256(fileKey, iv, aad = header, plaintext body), 16-byte tag
 //          appended. Only INIT is sent in clear.
@@ -18,12 +18,17 @@
 // |    2 | CHUNK   |  s  | exactly chunkSize bytes: file bytes, then zeros  |
 // |      |         |     | after the end of the file (see Padding)          |
 // |    3 | END     |  s  | sha256(32) || size(8, u64 big-endian)            |
+// |    4 | CHECK   |  s  | 1 byte: 1 the check number matches, 0 it differs |
 // |   16 | ACCEPT  |  r  | empty (proves the recipient holds the key)       |
 // |   17 | RECEIPT |  r  | sha256(32) the recipient computed                |
 // |   18 | DECLINE |  r  | empty                                            |
 // |   19 | CREDIT  |  r  | granted(8, u64 big-endian): cumulative count of  |
 // |      |         |     | CHUNKs the sender may send; it may send CHUNK i  |
 // |      |         |     | (0-based) only while i < granted                 |
+// |   20 | CHECK   |  r  | 1 byte: 1 the check number matches, 0 it differs |
+//
+// CHECK: with the check number on, each side's first frame after INIT is its CHECK,
+// sent once its own person compared the numbers; META waits for both to say 1.
 //
 // Padding: anyone who can see frame sizes (the network, a TURN relay) learns
 // only paddedLength(size, chunkSize) of the file, never its exact size, and
@@ -35,12 +40,24 @@
 // depends on the data channel's max message size, which observers see anyway.
 //
 // Sequence numbers: INIT carries the transferId that the file key is derived
-// from, so it has to be sent before either side has the key. It sits outside
+// from (with the recipient's attempt ID, see keys.ts), so it has to be sent
+// before either side has the key. It sits outside
 // the encrypted sequence: its header always says seq 0 and it uses no nonce.
 // Encrypted frames are numbered from 0 in each direction (the sender's META is
 // seq 0, the recipient's ACCEPT is seq 0). A reader accepts only the next
 // seq, so dropped, reordered or replayed frames fail. Altering INIT changes
-// the derived key, so META then fails to decrypt.
+// the derived key, so META then fails to decrypt. Replaying a whole recorded
+// INIT and META into a later attempt fails the same way: the recipient's new
+// attempt ID gives it a new key, so it never seals its frame 0 twice under one
+// key.
+//
+// Version 3 is the first whose file key includes the attempt ID. A sender and
+// recipient on different versions (one on a cached old page) would derive
+// different keys, so the version is checked first. A frame of another version
+// fails as "unknown frame version" at INIT, on the recipient's side,
+// before any key is derived; the sender sees only the channel close. The
+// recipient's page shows the same text as for unreadable data, so only a reload
+// of the older page fixes it, and neither page says which.
 //
 // Writers and readers keep state: await each encrypt or decrypt before
 // starting the next one. A reader stops accepting frames after any failure.
@@ -51,7 +68,7 @@ import { Sha256 } from "./sha256.ts";
 
 export { hasForbiddenCharacters, MAX_FROM_LENGTH };
 
-export const FRAME_VERSION = 2;
+export const FRAME_VERSION = 3;
 export const HEADER_BYTES = 10;
 export const TAG_BYTES = 16;
 export const MAX_CHUNK_BYTES = 48 * 1024;
@@ -76,8 +93,14 @@ export const MIN_CHUNK_BYTES = HEADER_BYTES + META_PADDED_BYTES + TAG_BYTES - FR
  */
 export const MAX_TYPE_LENGTH = 255;
 
-export const SenderKind = { INIT: 0, META: 1, CHUNK: 2, END: 3 } as const;
-export const RecipientKind = { ACCEPT: 16, RECEIPT: 17, DECLINE: 18, CREDIT: 19 } as const;
+export const SenderKind = { INIT: 0, META: 1, CHUNK: 2, END: 3, CHECK: 4 } as const;
+export const RecipientKind = {
+  ACCEPT: 16,
+  RECEIPT: 17,
+  DECLINE: 18,
+  CREDIT: 19,
+  CHECK: 20,
+} as const;
 
 export type SenderKind = (typeof SenderKind)[keyof typeof SenderKind];
 export type RecipientKind = (typeof RecipientKind)[keyof typeof RecipientKind];
@@ -92,10 +115,12 @@ const RULES: Record<EncryptedKind, { dir: Direction; min: number; max: number }>
   [SenderKind.META]: { dir: "s", min: META_PADDED_BYTES, max: META_PADDED_BYTES },
   [SenderKind.CHUNK]: { dir: "s", min: 1, max: MAX_CHUNK_BYTES },
   [SenderKind.END]: { dir: "s", min: 40, max: 40 },
+  [SenderKind.CHECK]: { dir: "s", min: 1, max: 1 },
   [RecipientKind.ACCEPT]: { dir: "r", min: 0, max: 0 },
   [RecipientKind.RECEIPT]: { dir: "r", min: 32, max: 32 },
   [RecipientKind.DECLINE]: { dir: "r", min: 0, max: 0 },
   [RecipientKind.CREDIT]: { dir: "r", min: 8, max: 8 },
+  [RecipientKind.CHECK]: { dir: "r", min: 1, max: 1 },
 };
 
 function rule(kind: number, dir: Direction) {
@@ -161,12 +186,10 @@ export function encodeInit(transferId: Uint8Array): Uint8Array<ArrayBuffer> {
 /** Reads the transferId from an INIT frame. Throws if `frame` is not a well-formed INIT. */
 export function decodeInit(frame: Uint8Array): Uint8Array<ArrayBuffer> {
   const header = decodeHeader(frame);
-  if (
-    header.version !== FRAME_VERSION ||
-    header.kind !== SenderKind.INIT ||
-    header.seq !== 0 ||
-    frame.length !== HEADER_BYTES + 16
-  ) {
+  if (header.version !== FRAME_VERSION) {
+    throw new Error("unknown frame version");
+  }
+  if (header.kind !== SenderKind.INIT || header.seq !== 0 || frame.length !== HEADER_BYTES + 16) {
     throw new Error("malformed INIT frame");
   }
   return frame.slice(HEADER_BYTES);
@@ -445,6 +468,18 @@ export function decodeCredit(body: Uint8Array): number {
     throw new Error("malformed CREDIT body");
   }
   return readU64(new DataView(body.buffer, body.byteOffset, 8), 0);
+}
+
+/** CHECK body: whether this side's user said the check numbers match. */
+export function encodeCheck(matches: boolean): Uint8Array<ArrayBuffer> {
+  return new Uint8Array([matches ? 1 : 0]);
+}
+
+export function decodeCheck(body: Uint8Array): boolean {
+  if (body.length !== 1 || (body[0] !== 0 && body[0] !== 1)) {
+    throw new Error("malformed CHECK body");
+  }
+  return body[0] === 1;
 }
 
 /**

@@ -4,6 +4,7 @@
 // Frames on the channel (see frames.ts):
 //
 //   sender → recipient   INIT(transferId)                     plaintext
+//   both directions      CHECK(matches)                       only with the check number on
 //   sender → recipient   META{name, size, type, chunkSize, from}  encrypted
 //   recipient → sender   ACCEPT  (or DECLINE: stop here)
 //   recipient → sender   CREDIT(granted)                      again as chunks are written
@@ -11,13 +12,19 @@
 //   sender → recipient   END(sha256, size)
 //   recipient → sender   RECEIPT(sha256 the recipient computed)
 //
+// With the check number on, each side sends CHECK once its own user compared
+// the numbers, and META goes only after both said they match. Either side's
+// CHECK(0) ends the transfer before anything about the file was sent.
+//
 // The sender sends CHUNK i (0-based) only while i < the highest CREDIT so far,
 // so a recipient that writes slowly holds at most its credit window in memory.
 // END needs no credit, and CREDITs that arrive after END change nothing. The
 // channel's bufferedAmount still paces sending as well.
 //
-// Every attempt gets a fresh transferId, so a restart after a drop never
-// reuses a (file key, nonce) pair. Encryption happens in one sequential loop
+// The file key comes from the link secret, a fresh transferId per attempt and
+// the recipient's attempt ID (see keys.ts), so a restart after a drop never
+// reuses a (file key, nonce) pair, and neither does a recipient shown a
+// replayed INIT. Encryption happens in one sequential loop
 // and incoming frames are decrypted through one promise queue, because frame
 // writers and readers assign sequence numbers per call.
 //
@@ -25,7 +32,9 @@
 // fake channel. The file name only travels inside the encrypted META frame.
 
 import {
+  decodeCheck,
   decodeCredit,
+  encodeCheck,
   encodeEnd,
   encodeInit,
   encodeMeta,
@@ -38,8 +47,8 @@ import {
   RecipientKind,
   SenderKind,
 } from "./frames.ts";
-import { createInbox } from "./inbox.ts";
-import { createTransferId, deriveFileKey } from "./keys.ts";
+import { createInbox, type Inbox } from "./inbox.ts";
+import { createTransferId, type Direction, deriveFileKey } from "./keys.ts";
 import { assertFrameFits } from "./peer.ts";
 import { Sha256 } from "./sha256.ts";
 
@@ -51,6 +60,8 @@ export const BUFFER_HIGH_BYTES = 4 * 1024 * 1024;
 export const BUFFER_LOW_BYTES = 1024 * 1024;
 /** Progress is reported at most this often. */
 export const PROGRESS_INTERVAL_MS = 100;
+/** After sending its own CHECK(0), a side waits at most this long for the other to close the channel. */
+const CHECK_LINGER_MS = 2000;
 
 /** The part of RTCDataChannel that sending uses, so tests can pass a fake. */
 export type FrameChannel = Pick<
@@ -71,10 +82,16 @@ export type SendFileOptions = {
   from: string;
   /** The recipient's link secret. */
   secret: string;
+  /** The recipient's attempt ID for this connection, from the server's `joined`. */
+  attempt: string;
   /** The file's SHA-256 from hashFile. Awaited before END. */
   sha256: Promise<Uint8Array>;
   /** Aborting stops the transfer; sendFile then rejects. */
   signal: AbortSignal;
+  /** With the check number on: resolves with whether the sender said the numbers match. */
+  confirm?: Promise<boolean>;
+  /** Both sides said the numbers match; META goes next. */
+  onChecked?(): void;
   /** The recipient accepted; streaming starts. */
   onAccepted(): void;
   /** File bytes that have left the channel's buffer so far. Throttled. */
@@ -82,6 +99,8 @@ export type SendFileOptions = {
 };
 
 export type SendResult =
+  /** Someone said the check numbers differ, so nothing about the file was sent. */
+  | { type: "check-differs"; by: "sender" | "recipient" }
   /** The recipient declined the offer. */
   | { type: "declined" }
   /** The recipient sent a RECEIPT; `match` says whether its checksum equals ours. */
@@ -93,7 +112,7 @@ export type SendResult =
  * decrypt, or the recipient sends something out of order.
  */
 export async function sendFile(options: SendFileOptions): Promise<SendResult> {
-  const { channel, maxMessageSize, file, secret, from } = options;
+  const { channel, maxMessageSize, file, secret, attempt, from } = options;
   const abort = new AbortController();
   const signal = anySignal([options.signal, abort.signal]);
   const onClose = () => abort.abort(new Error("data channel closed"));
@@ -120,9 +139,23 @@ export async function sendFile(options: SendFileOptions): Promise<SendResult> {
 
     const transferId = createTransferId();
     send(encodeInit(transferId));
-    const key = await abortable(deriveFileKey(secret, transferId), signal);
+    const key = await abortable(deriveFileKey(secret, transferId, attempt), signal);
     const writer = new FrameWriter(key, "s");
     inbox.start(new FrameReader(key, "r"));
+
+    if (options.confirm) {
+      const differs = await exchangeCheck(options.confirm, "s", {
+        channel,
+        inbox,
+        writer,
+        send,
+        signal,
+      });
+      if (differs) {
+        return { type: "check-differs", by: differs };
+      }
+      options.onChecked?.();
+    }
 
     const chunkSize = Math.min(MAX_CHUNK_BYTES, maxMessageSize - FRAME_OVERHEAD_BYTES);
     if (chunkSize < MIN_CHUNK_BYTES) {
@@ -216,6 +249,72 @@ export async function sendFile(options: SendFileOptions): Promise<SendResult> {
     inbox.stop();
     abort.abort();
   }
+}
+
+const SIDE = { s: "sender", r: "recipient" } as const;
+const CHECK_OF = { s: SenderKind.CHECK, r: RecipientKind.CHECK } as const;
+
+/**
+ * The CHECK exchange for side `mine`: sends its own verdict once `own`
+ * resolves, and reads the other side's CHECK meanwhile. Resolves undefined when
+ * both said the numbers match, or with who said they differ, at once for the
+ * other side's CHECK(0). After its own CHECK(0) it waits for the other side to
+ * close, so that frame is not lost to its own page closing the connection.
+ */
+export async function exchangeCheck(
+  own: Promise<boolean>,
+  mine: Direction,
+  io: {
+    channel: Pick<FrameChannel, "readyState" | "addEventListener" | "removeEventListener">;
+    inbox: Inbox;
+    writer: FrameWriter;
+    send(frame: Uint8Array<ArrayBuffer>): void;
+    signal: AbortSignal;
+  },
+): Promise<"sender" | "recipient" | undefined> {
+  const other: Direction = mine === "s" ? "r" : "s";
+  const theirs = io.inbox.next().then((frame) => {
+    if (frame.kind !== CHECK_OF[other]) {
+      throw new Error("expected CHECK");
+    }
+    return decodeCheck(frame.body);
+  });
+  theirs.catch(() => {});
+  const first = await Promise.race([
+    abortable(own, io.signal).then((matches) => ({ mine: matches })),
+    theirs.then((matches) => ({ theirs: matches })),
+  ]);
+  if ("theirs" in first && !first.theirs) {
+    return SIDE[other];
+  }
+  const matches = "mine" in first ? first.mine : await abortable(own, io.signal);
+  io.send(await io.writer.encrypt(CHECK_OF[mine], encodeCheck(matches)));
+  if (!matches) {
+    await closedOrLater(io.channel, io.signal);
+    return SIDE[mine];
+  }
+  return (await abortable(theirs, io.signal)) ? undefined : SIDE[other];
+}
+
+/** Resolves when the channel closes, `signal` aborts or CHECK_LINGER_MS passed. */
+function closedOrLater(
+  channel: Pick<FrameChannel, "readyState" | "addEventListener" | "removeEventListener">,
+  signal: AbortSignal,
+): Promise<void> {
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      channel.removeEventListener("close", done);
+      signal.removeEventListener("abort", done);
+      resolve();
+    };
+    const timer = setTimeout(done, CHECK_LINGER_MS);
+    channel.addEventListener("close", done);
+    signal.addEventListener("abort", done);
+    if (channel.readyState !== "open" || signal.aborted) {
+      done();
+    }
+  });
 }
 
 /** Waits for the channel's "bufferedamountlow" event. */
