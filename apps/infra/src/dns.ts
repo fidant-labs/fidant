@@ -1,4 +1,4 @@
-import { CfnOutput, Fn, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
+import { CfnOutput, Duration, Fn, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
 import * as route53 from "aws-cdk-lib/aws-route53";
 import type { Construct } from "constructs";
 import {
@@ -99,11 +99,16 @@ export class DnsStack extends Stack {
       });
 
       const target = route53.RecordTarget.fromIpAddresses(props.boxAddress);
-      const recordNames = [zoneName, `www.${zoneName}`];
-      if (zoneName === primaryDomain) {
-        recordNames.push(`turn.${zoneName}`);
+      for (const recordName of [zoneName, `www.${zoneName}`]) {
+        new route53.ARecord(zone, `${recordName} A`, {
+          zone,
+          recordName,
+          target,
+          ttl: Duration.seconds(60),
+        });
       }
-      for (const recordName of recordNames) {
+      if (zoneName === primaryDomain) {
+        const recordName = `turn.${zoneName}`;
         new route53.ARecord(zone, `${recordName} A`, { zone, recordName, target });
       }
       if (zoneName === primaryDomain) {

@@ -159,14 +159,23 @@ const committed = Template.fromStack(stacksFor(dnsAccount)[0] as Stack);
 
 test("the committed config points every site name and the relay at the box, over IPv4 only", () => {
   assert.equal(isIP(boxAddress), 4);
-  for (const name of [...siteNames, "turn.fidant.se"]) {
+  for (const [name, ttl] of [
+    ...siteNames.map((site) => [site, "60"]),
+    ["turn.fidant.se", "1800"],
+  ]) {
     committed.hasResourceProperties(recordSet, {
       Name: `${name}.`,
       Type: "A",
       ResourceRecords: [boxAddress],
+      TTL: ttl,
     });
     committed.resourcePropertiesCountIs(recordSet, { Name: `${name}.`, Type: "AAAA" }, 0);
   }
+  committed.hasResourceProperties(recordSet, {
+    Name: "sto.relay.fidant.se.",
+    Type: "A",
+    TTL: "1800",
+  });
 });
 
 test("the app box is open only on 80, 443 and the relay's ports, and on 22 only to Lightsail's browser SSH", () => {
@@ -672,12 +681,13 @@ test("fidant.se holds the SES records for notify with SPF and MX, and no other z
   }
 });
 
-test("every site name points at the box over IPv4 only", () => {
+test("every site name points at the box over IPv4 only, with a 60-second lifetime", () => {
   for (const name of siteNames) {
     dns.hasResourceProperties("AWS::Route53::RecordSet", {
       Name: `${name}.`,
       Type: "A",
       ResourceRecords: ["192.0.2.10"],
+      TTL: "60",
     });
   }
   dns.resourcePropertiesCountIs("AWS::Route53::RecordSet", { Type: "AAAA" }, 0);
