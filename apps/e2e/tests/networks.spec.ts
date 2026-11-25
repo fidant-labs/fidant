@@ -673,6 +673,19 @@ test.describe("the relay box", () => {
     expect(await inRelay("systemctl", "show", "-p", "NRestarts", "--value", "coturn")).toBe("0\n");
   });
 
+  test("keeps certbot's log for 29 days like the journal", async () => {
+    const dir = "/var/log/letsencrypt";
+    await inRelay(
+      "sh",
+      "-c",
+      `install -d -m 700 ${dir} && touch -d '40 days ago' ${dir}/fidant-old && touch ${dir}/fidant-new`,
+    );
+    await inRelay("systemd-tmpfiles", "--clean");
+    const left = (await inRelay("ls", dir)).split("\n");
+    expect(left).toContain("fidant-new");
+    expect(left).not.toContain("fidant-old");
+  });
+
   test.describe("with a secret", () => {
     let secret = "";
     const rotated = randomBytes(32).toString("hex");

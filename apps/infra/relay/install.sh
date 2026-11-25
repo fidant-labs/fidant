@@ -260,6 +260,8 @@ OnUnitInactiveSec=15min
 [Install]
 WantedBy=timers.target
 EOF
+# certbot logs each address that reaches port 80. By mtime: every certbot run renames all its logs.
+echo 'e /var/log/letsencrypt - - - m:29d' >/etc/tmpfiles.d/fidant-relay-letsencrypt.conf
 
 # Logging off: each blocked packet would put its source address in the journal.
 ufw logging off
