@@ -202,6 +202,7 @@ test("delivers a file to two recipients with a verified checksum", async ({
   for (const name of names) {
     await expect(delivered(sender, name)).toBeAttached();
   }
+  await sender.getByText("Show details", { exact: true }).click();
   const cards = names.map((name) => recipientRow(sender, name));
   for (const scope of [...cards, ...received.map(({ page }) => page)]) {
     await expect(scope.getByText("Direct connection", { exact: true })).toBeVisible();
@@ -1104,6 +1105,7 @@ test.describe("emailed links", () => {
     const bytes = await download(recipient, file);
     expect(sha256Hex(bytes)).toBe(sha256Hex(file.bytes));
     await expect(delivered(sender, name)).toBeAttached();
+    await sender.getByText("Show details", { exact: true }).click();
     await expect(verified).toBeVisible();
 
     // A reload joins with the tab's token, without a new code, and the sender refuses a used link.

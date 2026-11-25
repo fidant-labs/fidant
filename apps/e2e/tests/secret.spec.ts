@@ -125,7 +125,7 @@ test("a text goes from /secret to the recipient, who shows and copies it", async
   // The canary repeats under --repeat-each, so a clipboard left by an earlier run would pass.
   await page.evaluate(() => navigator.clipboard.writeText("not the text"));
   await page.getByRole("button", { name: "Copy secret" }).click();
-  await expect(page.getByText("Copied", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Copied" })).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(text);
 
   const details = page.locator("details").filter({ hasText: "Technical details" });

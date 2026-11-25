@@ -125,6 +125,7 @@ for (const transport of ["udp", "tcp"] as const) {
     const download = await downloading;
     expect(sha256Hex(await readFile(await download.path()))).toBe(sha256Hex(file.bytes));
 
+    await sender.getByText("Show details", { exact: true }).click();
     for (const page of [sender, recipient]) {
       await expect(panel(page)).toContainText(relayed);
       await expect(panel(page)).toContainText("Our relay sees");
@@ -177,6 +178,7 @@ test("a sender who refuses the relay: no credentials, no bytes, plain words on b
     mimeType: file.mime,
     buffer: file.bytes,
   });
+  await sender.getByText("Connection options", { exact: true }).click();
   const allowRelay = sender.getByLabel("Allow our relay if a direct connection isn't possible");
   await allowRelay.uncheck();
   await sender.getByLabel("Who is it for?").fill("Anna");
@@ -260,6 +262,7 @@ test("a sender who refuses the relay and fails setup shows the refused relay", a
     mimeType: file.mime,
     buffer: file.bytes,
   });
+  await sender.getByText("Connection options", { exact: true }).click();
   await sender.getByLabel("Allow our relay if a direct connection isn't possible").uncheck();
   await sender.getByLabel("Who is it for?").fill("Anna");
   await sender.getByRole("button", { name: "Create link", exact: true }).click();
