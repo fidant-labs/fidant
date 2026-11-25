@@ -613,8 +613,8 @@ async function relayedChannel(
 ): Promise<{ path: string; echoed: boolean }> {
   const config: RTCConfiguration = { iceServers: [ice], iceTransportPolicy: "relay" };
   // Each callback runs in a page, so it repeats the helpers it needs.
-  // Each connection gets a certificate made beforehand. Without one, Chromium makes it
-  // asynchronously, and a second connection on the same page could set its offer before the
+  // Each connection gets a certificate made beforehand, which WebRTC applies in the constructor.
+  // Without one, Chromium makes it asynchronously, and in CI an offer was once set before the
   // certificate reached the transport: "Fingerprint provided but no identity available" (SIG-274).
   const offer = await sender.evaluate(async (config) => {
     const certificates = [
