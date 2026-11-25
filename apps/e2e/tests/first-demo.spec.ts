@@ -408,6 +408,40 @@ harness("a recipient gives up connecting after 30 seconds", async ({ actor, leak
   await expect(recipient.getByRole("button", { name: "Try again" })).toBeVisible();
 });
 
+harness("a recipient who can't reach the server is told so", async ({ actor, leaks, canary }) => {
+  const { page: recipient } = await actor("recipient");
+  // Every socket closes before it opens, so the page keeps retrying and never reaches the server.
+  await recipient.addInitScript(() => {
+    const g = globalThis as { closes?: number };
+    g.closes = 0;
+    globalThis.WebSocket = class extends globalThis.WebSocket {
+      constructor(url: string | URL, protocols?: string | string[]) {
+        super(url, protocols);
+        this.addEventListener("close", () => {
+          g.closes = (g.closes ?? 0) + 1;
+        });
+        this.close();
+      }
+    };
+  });
+  const secret = canaryKey(canary.fork("unreachable secret")).text;
+  leaks.watchKey("unreachable link secret", secret);
+  const linkId = canary.fork("unreachable link id").bytes(16).toString("base64url");
+  await recipient.clock.install();
+  await recipient.goto(`/r/${linkId}#${secret}`);
+  await recipient.waitForFunction(() => ((globalThis as { closes?: number }).closes ?? 0) > 0);
+
+  await recipient.clock.fastForward(30_000);
+  await expect(recipient.getByRole("heading", { name: "Couldn't reach the server" })).toBeVisible();
+  await expect(
+    recipient.getByText("The server connects you to the sender. Check your internet connection."),
+  ).toBeVisible();
+  await expect(recipient.getByRole("button", { name: "Try again" })).toBeVisible();
+  await expect(
+    recipient.getByRole("region", { name: "What our server has right now" }),
+  ).toHaveCount(0);
+});
+
 test("the sender's name must fit with the file name, and stray drops are ignored", async ({
   demo,
   leaks,
