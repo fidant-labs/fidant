@@ -3,6 +3,7 @@
 // Frames on the channel (see frames.ts and send-file.ts):
 //
 //   sender → recipient   INIT(transferId)                     plaintext
+//   both directions      CHECK(matches)                       only with the check number on
 //   sender → recipient   META{name, size, type, chunkSize, from}  → onOffer, user decides
 //   recipient → sender   ACCEPT  (or DECLINE: stop here)
 //   recipient → sender   CREDIT(granted)                      after ACCEPT, then as chunks are written
@@ -50,7 +51,13 @@ import {
 import { createInbox } from "./inbox.ts";
 import { deriveFileKey } from "./keys.ts";
 import { assertFrameFits } from "./peer.ts";
-import { abortable, anySignal, type FrameChannel, PROGRESS_INTERVAL_MS } from "./send-file.ts";
+import {
+  abortable,
+  anySignal,
+  exchangeCheck,
+  type FrameChannel,
+  PROGRESS_INTERVAL_MS,
+} from "./send-file.ts";
 import type { Sink } from "./sink.ts";
 
 /** CHUNKs the sender may have sent beyond those the sink has written. */
@@ -75,6 +82,11 @@ export type ReceiveFileOptions = {
   attempt: string;
   /** Aborting stops the transfer; receiveFile then rejects. */
   signal: AbortSignal;
+  /**
+   * With the check number on: resolves with whether the recipient said the
+   * numbers match. Nothing about the file arrives before both sides said so.
+   */
+  confirm?: Promise<boolean>;
   /**
    * The sender offers a file. Resolve with a Sink to accept or undefined to
    * decline. Leaving it pending is fine: the transfer waits.
@@ -106,6 +118,8 @@ export class ReceiveError extends Error {
 }
 
 export type ReceiveResult =
+  /** Someone said the check numbers differ, so nothing about the file arrived. */
+  | { type: "check-differs"; by: "sender" | "recipient" }
   /** The recipient declined; DECLINE was sent. */
   | { type: "declined" }
   /** The file arrived intact and RECEIPT was sent. `blob` is set for a BlobSink. */
@@ -152,6 +166,19 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
     const key = await abortable(deriveFileKey(secret, transferId, attempt), signal);
     const writer = new FrameWriter(key, "r");
     inbox.start(new FrameReader(key, "s"));
+
+    if (options.confirm) {
+      const differs = await exchangeCheck(options.confirm, "r", {
+        channel,
+        inbox,
+        writer,
+        send,
+        signal,
+      });
+      if (differs) {
+        return { type: "check-differs", by: differs };
+      }
+    }
 
     const first = await inbox.next();
     if (first.kind !== SenderKind.META) {

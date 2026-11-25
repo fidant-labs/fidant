@@ -17,7 +17,7 @@ import {
 } from "@sigill/protocol";
 import { WebSocket as WsClient } from "ws";
 import type { Mail, Mailer } from "./mail.ts";
-import { attachSignaling, clientAddress, HEARTBEAT_MS } from "./signaling.ts";
+import { attachSignaling, clientAddress, HEARTBEAT_MS, LIMITS } from "./signaling.ts";
 
 const logLines: { event: string; fields: LogFields | undefined }[] = [];
 const RELAY = { urls: ["turn:relay.example:3478"], username: "1700000000", credential: "hmac" };
@@ -136,6 +136,11 @@ async function joinAs(
   assert.deepEqual(await host.next(), joined);
   return Object.assign(guest, { attempt });
 }
+
+// One client asking for codes on its own links must not be able to lock an address out.
+test("keeps a client's code cap below an address's", () => {
+  assert.ok(LIMITS.codesPerClient < LIMITS.codesPerRecipient);
+});
 
 test("says hello first with whether the server can email links", async (t) => {
   await connect((await mailServer(t)).url, true);
