@@ -309,7 +309,9 @@ test("the recipient commits to its certificate before anything else", async () =
 test("the recipient answers an offer, keeps its check flag and refuses a commitment", async () => {
   FakePeerConnection.fingerprints = [RECIPIENT_FP];
   const h = await harness("r");
+  assert.equal(h.peer.answered, false);
   await h.relay({ kind: "offer", sdp: fakeSdp(`a=fingerprint:sha-256 ${SENDER_FP}`), check: true });
+  assert.equal(h.peer.answered, true);
   const [, answer] = (await h.signals(2)) as Array<{ kind: string }>;
   assert.equal(answer?.kind, "answer");
   const pc = FakePeerConnection.last as unknown as {

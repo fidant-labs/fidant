@@ -109,6 +109,8 @@ export type Peer = {
    * signal closes the peer with "bad-signal". Calls are processed in order.
    */
   handleRelay(data: string): Promise<void>;
+  /** Recipient only: the answer went out, so this connection's check number is fixed. */
+  readonly answered: boolean;
   /** Closes the channel and the connection. Safe to call more than once. */
   close(): void;
 };
@@ -293,6 +295,7 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
   let gotAnswer = false;
   let commit: string | undefined;
   let offerFingerprint: string | undefined;
+  let answered = false;
   let check = side === "s" && options.check === true;
   let resolveNumber: (value: string) => void = () => {};
   const number = new Promise<string>((resolve) => {
@@ -463,6 +466,7 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
         await setRemote("offer", payload.sdp);
         const answer = await describe("answer");
         sendSignal({ kind: "answer", sdp: answer.sdp }, true);
+        answered = true;
         resolveNumber(await checkNumber(theirs, answer.fingerprint));
         return;
       }
@@ -564,6 +568,9 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
         }
       });
       return incoming;
+    },
+    get answered() {
+      return answered;
     },
     close() {
       if (!closed) {

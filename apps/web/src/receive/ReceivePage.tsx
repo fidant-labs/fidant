@@ -25,7 +25,11 @@
 //   the sender's tab really closed, the peer drops too (at the latest when ICE
 //   consent runs out) and the drop is reported as the sender's page closing.
 // - If the signaling socket drops before the data channel opens, a new
-//   attempt starts (new socket, new attempt ID). A socket that never opened is
+//   attempt starts (new socket, new attempt ID), unless this page already
+//   answered the sender's offer: the answer gave anyone in the middle this
+//   connection's check number, so every new connection would be another guess, and only
+//   the recipient's "Try again" makes one. A `token` counts only as the
+//   answer to a code this page sent. A socket that never opened is
 //   left to the signaling client's own retries. A server that restarted no
 //   longer knows the sender's link until the sender re-hosts, so `refused:
 //   unknown` after a drop or failed connect waits retryDelay and tries again,
@@ -184,6 +188,8 @@ type Attempt = {
   confirm?: ((matches: boolean) => void) | undefined;
   /** The recipient said the numbers differ, so whatever ends the attempt now ends it as "differed". */
   saidDiffers?: boolean;
+  /** Set when this page sends a code; only then may a `token` answer it. */
+  codeSent?: boolean;
   timers: Array<ReturnType<typeof setTimeout>>;
 };
 
@@ -383,6 +389,12 @@ export function ReceivePage({
         }
         return;
       }
+      // The answer gave anyone in the middle this connection's check number, so
+      // a new one would be another guess: only the recipient's Try again makes it.
+      if (attempt.peer?.answered) {
+        finish({ s: "failed", problem: lostMessage() });
+        return;
+      }
       if (rejoins < MAX_REJOINS) {
         start(rejoins + 1);
       } else {
@@ -445,9 +457,10 @@ export function ReceivePage({
           }
           break;
         case "token":
-          if (!current() || message.link !== linkId || joinSent) {
+          if (!current() || message.link !== linkId || joinSent || !attempt.codeSent) {
             break;
           }
+          attempt.codeSent = false;
           storeToken(linkId, message.token);
           codeAsked.current = undefined;
           setView({ s: "connecting" });
@@ -757,6 +770,7 @@ export function ReceivePage({
       return;
     }
     setView({ ...view, result: undefined });
+    attempt.codeSent = true;
     attempt.signaling.send({ t: "code", link: link.linkId, code, mark: link.mark });
   };
 

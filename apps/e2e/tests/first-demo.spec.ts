@@ -955,6 +955,74 @@ test.describe("check number", () => {
     await expect(recipient.getByRole("heading", { name: "This link isn't active" })).toBeVisible();
   });
 
+  // Someone in the middle learns the recipient's number from its answer, before the channel opens,
+  // so every new connection would be another guess: none may happen without the recipient's click.
+  test("a recipient page doesn't reconnect by itself once it answered the sender's offer", async ({
+    demo,
+    leaks,
+    canary,
+  }) => {
+    const sender = await openSender(demo, makeFile(leaks, canary, 10));
+    const name = makeName(leaks, canary, "Anna");
+    const link = await addRecipient(leaks, sender, name, true);
+    const recipient = await demo.open("recipient");
+    let joins = 0;
+    await recipient.routeWebSocket("/signal", (ws) => {
+      const server = ws.connectToServer();
+      let relays = 0;
+      ws.onMessage((text) => {
+        const message = JSON.parse(text.toString()) as Signal;
+        joins += message.t === "join" ? 1 : 0;
+        server.send(text);
+        // The commit, then the answer: drop the socket as soon as the answer went out.
+        if (message.t === "relay" && ++relays === 2) {
+          ws.close();
+          server.close();
+        }
+      });
+      server.onMessage((text) => ws.send(text));
+    });
+    await recipient.goto(link);
+    await expect(recipient.getByText("Couldn't connect to the sender's computer")).toBeVisible({
+      timeout: 10_000,
+    });
+    expect(joins, "joins").toBe(1);
+  });
+
+  test("a recipient page ignores a token it didn't ask for", async ({ demo, leaks, canary }) => {
+    test.skip(!process.env.SIGILL_E2E_MAILPIT, "needs Mailpit");
+    const sender = await openSender(demo, makeFile(leaks, canary, 10));
+    const name = makeName(leaks, canary, "Anna");
+    const emailed = await addEmailed(leaks, sender, name, addressFor(canary, "Anna"), "", true);
+    const recipient = await demo.open("recipient");
+    let joins = 0;
+    let injected = false;
+    await recipient.routeWebSocket("/signal", (ws) => {
+      const server = ws.connectToServer();
+      ws.onMessage((text) => {
+        joins += (JSON.parse(text.toString()) as Signal).t === "join" ? 1 : 0;
+        server.send(text);
+      });
+      server.onMessage((text) => {
+        ws.send(text);
+        if ((JSON.parse(text.toString()) as Signal).t === "gate" && !injected) {
+          injected = true;
+          ws.send(JSON.stringify({ t: "token", link: emailed.linkId, token: "A".repeat(22) }));
+        }
+      });
+    });
+    await recipient.goto(emailed.link);
+    await expect(
+      recipient.getByRole("heading", { name: "Confirm your email to open this link" }),
+    ).toBeVisible();
+    await recipient.waitForTimeout(1000);
+    await expect(
+      recipient.getByRole("heading", { name: "Confirm your email to open this link" }),
+    ).toBeVisible();
+    expect(injected, "injected a token").toBe(true);
+    expect(joins, "joins").toBe(0);
+  });
+
   test("a copied link without the check shows no number", async ({ demo, leaks, canary }) => {
     const file = makeFile(leaks, canary, 100_001);
     const sender = await openSender(demo, file);
