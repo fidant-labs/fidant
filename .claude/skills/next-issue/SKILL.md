@@ -70,7 +70,7 @@ Each subagent prompt contains:
 
 - The worktree's absolute path, and the rule to work only there.
 - The full plan, with its own commit marked, and the commits already made (`git log --oneline origin/main..HEAD`).
-- The `AGENTS.md` invariants, verbatim. Especially: never send or log file content, file names, metadata or keys; keys live only in the URL fragment or browser memory; everything must run locally without internet.
+- The `AGENTS.md` Invariants section, verbatim.
 - The instructions: implement only this commit; write `node:test` tests next to the code; run `pnpm check` in the worktree until green; then stage only the files for this commit and commit with the planned subject plus the attribution trailer from the system reminder. No `--no-verify`. Report the commit hash, what changed, and anything it deviated from or found surprising.
 
 After each subagent returns, check `git -C <worktree> log -1 --stat` yourself. If the commit is too big, mixes ideas, or breaks the plan, fix it before moving on (amend while it is still the latest commit, or add a follow-up commit). If the plan turns out wrong, update the remaining commits instead of forcing them.

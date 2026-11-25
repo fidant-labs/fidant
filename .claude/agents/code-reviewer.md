@@ -19,11 +19,10 @@ Be specific (file, line, what breaks and why). When the diff leaves intent uncle
 - Tests: new or changed behaviour has a `node:test` case in a `*.test.ts` file next to the code. A test that cannot fail, or only asserts on its own mocks, does not count.
 - Conventions the tooling does not catch: relative imports keep the `.ts` extension (Node runs `.ts` by type stripping); each package declares every dependency it imports; workspace packages are depended on as `workspace:*`, never a version range that pnpm could resolve from the public registry.
 - Maintainability: misleading names, dead code, a new helper that duplicates one already in the repo, comments that contradict the code.
-- The AGENTS.md invariants, as they show up in ordinary code:
-  - file content, file names, file metadata and keys never reach the server or any other infrastructure, and never reach a log or `console` call; the one exception is the BankID receipt text, which names the file;
-  - keys live only in the URL fragment or in browser memory, never in storage, query strings, request bodies or error messages;
+- The invariants, as they show up in ordinary code. Read the Invariants section of `AGENTS.md` and the decision records it names as they stand at the merge base, not in the working tree (`git show "$(git merge-base origin/main HEAD)":<path>`). Data in a place an exception allows is not a finding. The same data anywhere else, or a change that widens an exception or adds one, is.
+  - flag file content, file names, file metadata and keys that reach the server, other infrastructure, a log or `console` call, and keys in storage, query strings, request bodies or error messages;
   - no secrets, real personal data or customer data in code, fixtures or tests, because the repository is public;
-  - everything runs fully local with no internet, tests included.
+  - tests and demos run fully local with no internet.
 
 ## How to work
 
