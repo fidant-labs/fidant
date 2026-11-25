@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { maskAddress } from "@sigill/protocol";
 import {
   breakableSender,
@@ -1093,6 +1093,17 @@ async function sameNumber(sender: Page, name: string, recipient: Page): Promise<
   return theirs;
 }
 
+/** Presses Tab until `target` has focus, as a keyboard user would reach it. */
+async function tabTo(page: Page, target: Locator): Promise<void> {
+  for (let i = 0; i < 60; i++) {
+    if (await target.evaluate((el) => el === document.activeElement)) {
+      break;
+    }
+    await page.keyboard.press("Tab");
+  }
+  await expect(target, "reached with Tab").toBeFocused();
+}
+
 /** The recipient says the numbers differ; both pages say so and nothing was offered. */
 async function differ(sender: Page, name: string, recipient: Page): Promise<void> {
   await recipient.getByRole("button", { name: "They said it differs" }).click();
@@ -1176,7 +1187,7 @@ test.describe("check number", () => {
     await sameNumber(sender, name, recipient);
     expect(await recipient.locator("#receive [role=status]:empty").count()).toBeGreaterThan(0);
 
-    await recipient.getByRole("button", { name: "They said it matches" }).focus();
+    await tabTo(recipient, recipient.getByRole("button", { name: "They said it matches" }));
     await recipient.keyboard.press("Enter");
     await expect(recipient.getByRole("heading", { name: "Check number" })).toBeFocused();
     await expect(
@@ -1201,7 +1212,7 @@ test.describe("check number", () => {
     expect(await card.locator("[role=status]:empty").count()).toBeGreaterThan(0);
 
     await expect(card.getByRole("button", { name: `It differs for ${name}` })).toBeVisible();
-    await card.getByRole("button", { name: `It matches for ${name}` }).focus();
+    await tabTo(sender, card.getByRole("button", { name: `It matches for ${name}` }));
     await sender.keyboard.press("Enter");
     await expect(card.locator("[data-status]")).toBeFocused();
     await expect(
@@ -1238,9 +1249,12 @@ test.describe("check number", () => {
       await page.goto(link);
       pages.push(page);
     }
+    const numbers: string[] = [];
     for (const [i, name] of names.entries()) {
-      await sameNumber(sender, name, pages[i] as Page);
+      numbers.push(await sameNumber(sender, name, pages[i] as Page));
     }
+    // Six digits from each connection's own fingerprints: a clash is one chance in a million.
+    expect(numbers[0]).not.toBe(numbers[1]);
   });
 
   test("a recipient who reloads mid-check gets a new number on both sides", async ({
@@ -1259,7 +1273,7 @@ test.describe("check number", () => {
     expect(second).not.toBe(first);
   });
 
-  test("five checks that differ end the link", async ({ demo, leaks, canary }) => {
+  test("five failed checks, a reload among them, end the link", async ({ demo, leaks, canary }) => {
     test.setTimeout(120_000);
     const sender = await openSender(demo, makeFile(leaks, canary, 10));
     const name = makeName(leaks, canary, "Anna");
@@ -1268,7 +1282,10 @@ test.describe("check number", () => {
     await recipient.goto(link);
     for (let i = 1; i <= 5; i++) {
       await sameNumber(sender, name, recipient);
-      if (i < 5) {
+      if (i === 2) {
+        // A reload drops the attempt, which counts like a check that differs.
+        await recipient.reload();
+      } else if (i < 5) {
         await differ(sender, name, recipient);
         await recipient.getByRole("button", { name: "Try again" }).click();
       }
@@ -1282,6 +1299,30 @@ test.describe("check number", () => {
     await expect(recipientRow(sender, name).getByRole("button", { name: /^Copy/ })).toHaveCount(0);
     await recipient.getByRole("button", { name: "Try again" }).click();
     await expect(recipient.getByRole("heading", { name: "This link isn't active" })).toBeVisible();
+  });
+
+  test("an unconfirmed check ends 5 minutes after it opens", async ({ demo, leaks, canary }) => {
+    const sender = await openSender(demo, makeFile(leaks, canary, 10), "", (page) =>
+      page.clock.install(),
+    );
+    const name = makeName(leaks, canary, "Anna");
+    const link = await addRecipient(leaks, sender, name, true);
+    const recipient = await demo.open("recipient");
+    await recipient.goto(link);
+    const number = await sameNumber(sender, name, recipient);
+    await expect(recipient.getByText("The check expires after 5 minutes.")).toBeVisible();
+    const card = recipientRow(sender, name);
+    const expired = card.getByText("The check number wasn't confirmed within 5 minutes");
+
+    await sender.clock.fastForward(290_000);
+    await expect(card.getByText(number)).toBeVisible();
+    await expect(expired).toHaveCount(0);
+    await sender.clock.fastForward(10_000);
+    await expect(expired).toBeVisible();
+    await expect(card.getByText(number)).toHaveCount(0);
+    await expect(
+      recipient.getByRole("heading", { name: "The connection to the sender was lost" }),
+    ).toBeVisible();
   });
 
   // Someone in the middle learns the recipient's number from its answer, before the channel opens,
