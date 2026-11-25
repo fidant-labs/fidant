@@ -18,6 +18,7 @@ function guard(command: string, cwd?: string): number | null {
   return spawnSync("bash", [script], {
     env,
     input: JSON.stringify({ tool_input: { command }, cwd }),
+    timeout: 5000,
   }).status;
 }
 
@@ -67,6 +68,7 @@ test("blocks commands that update the production branch", () => {
     "gh api repos/sigill-labs/sigill/git/refs -f ref=refs/heads/production -f sha=abc",
     "git push origin refs/remotes/origin/main:refs/heads/production",
     "git fetch origin && git push origin refs/remotes/origin/main:refs/heads/production",
+    "git push origin sig-1 && git fetch origin production",
     "git push origin 0123abc:refs/heads/production",
     "git --git-dir /x/.git push origin main:production",
     "git --git-dir=/x/.git push origin main:production",
@@ -90,10 +92,15 @@ test("blocks commands that update the production branch", () => {
     "gh api repos/sigill-labs/sigill/merges -f base=production -f head=main -t -XGET",
     "gh pr create --base production --fill",
     "gh pr create -B production",
+    "gh pr create -fB production",
+    "gh pr create -dB production",
+    "gh pr edit 96 -dBproduction",
     'gh pr create --title "x" --base=production',
     "gh pr edit 96 --base production",
+    `echo ${"x".repeat(32768)}; git push origin main:production`,
+    `git${" -a".repeat(4000)} status; git push origin main:production`,
   ]) {
-    assert.equal(guard(command), 2, command);
+    assert.equal(guard(command), 2, command.slice(0, 80));
   }
 });
 
@@ -115,6 +122,7 @@ test("allows commands that leave the production branch alone", () => {
     "gh api -X POST repos/sigill-labs/sigill/branches/production-docs/rename -f new_name=x",
     "gh api repos/sigill-labs/sigill/merges -f base=production-docs -f head=main",
     "gh pr create --base main --title production",
+    "gh pr create -fB main --title production",
     "gh pr list --base production",
     "git push origin sig-1",
     "git --git-dir .git status",
@@ -191,4 +199,18 @@ test("blocks every push from a repository that has a local production branch", (
   expect("git -c include.path=/dev/stdin push origin sig-1; git push --all", withProd, 2);
   expect("git -c include.path=/dev/stdin push origin sig-1", withoutProd, 0);
   expect("git push origin sig-1", withoutProd, 0);
+});
+
+test("checks every part for production before the hook runs git", () => {
+  const repo = makeRepo();
+  const fifo = join(repo, "fifo");
+  assert.equal(spawnSync("mkfifo", [fifo]).status, 0);
+  try {
+    for (const separator of [";", " &"]) {
+      const command = `git -c include.path=${fifo} push origin sig-1${separator} git push origin main:production`;
+      assert.equal(guard(command, repo), 2, command);
+    }
+  } finally {
+    spawnSync("pkill", ["-f", fifo]);
+  }
 });
