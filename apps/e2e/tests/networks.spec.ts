@@ -276,6 +276,13 @@ for (const row of scenarios) {
         expect(downloads).toBe(0);
         expect(await pathOf(sender.page)).toBe("none");
         expect(await pathOf(recipient.page)).toBe("none");
+        // The sender learns someone tried, and the link stays on offer.
+        await expect(
+          sender.page
+            .getByRole("list", { name: "Recipients" })
+            .getByText("Anna's link was opened but couldn't connect to your computer."),
+        ).toBeVisible({ timeout: 30_000 });
+        await expect(sender.page.getByLabel("Link for Anna", { exact: true })).toBeVisible();
 
         // The sender reported the failed path; no fallback carried the file.
         await expect

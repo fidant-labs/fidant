@@ -392,6 +392,8 @@ export const en = {
       failed: (name: string) =>
         `The file didn't arrive intact through ${name}'s link. The link can be opened again to retry.`,
     },
+    noConnect: (name: string) =>
+      `${name}'s link was opened but couldn't connect to your computer. The link still works if they try again.`,
     noRelay: (name: string) =>
       `${name}'s link was opened but couldn't connect directly. Allowing our relay may let it connect when they try again.`,
     /** `to` is the masked address, like a***@example.se. */
