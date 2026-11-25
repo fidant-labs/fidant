@@ -32,7 +32,8 @@ trap 'rc=$?; [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ] || exit 2' EXIT
 
 if ! command -v jq >/dev/null; then
   # Broad on purpose: gh, pr, then create or new anywhere in the raw JSON, with quotes and
-  # backslashes (JSON's \t among them) dropped first. A false block is fine, a false pass is not.
+  # backslashes (JSON's \t among them) dropped first. Coarse: it also blocks commands that only
+  # mention the words.
   input=$(cat)
   input=${input//[\"\'\\]/}
   [[ $input =~ gh.*pr.*(create|new) ]] || exit 0
@@ -47,12 +48,15 @@ cmd=${cmd//\$\'/\'}
 cmd=${cmd//[\"\'\\\{\}]/}
 cmd=${cmd//,/ }
 
-# Broad on purpose: the words gh, pr and create or new, in that order, anywhere. Only one plain shape
-# goes on to the mark check, because a false block is fine and a false pass is not.
-loose=$'(^|[^[:alnum:]_.-])gh([^[:alnum:]_-].*)?[^[:alnum:]_-]pr([^[:alnum:]_-].*)?[^[:alnum:]_-](create|new)([^[:alnum:]_-]|$)'
+# Broad on purpose: the words gh, pr and create or new, in that order, with only options (and their
+# values) between pr and the subcommand, also inside quotes and heredocs. Only one plain shape goes on
+# to the mark check. The gate guards against mistakes, not deliberate evasion: $c, gh api and the like
+# are not followed. Text that only mentions the command, such as a --body, blocks: use --body-file.
+_o=$'([[:space:]]+-[^[:space:]]*([[:space:]]+[^-[:space:]][^[:space:]]*)?)*'
+loose=$'(^|[^[:alnum:]_.-])gh([^[:alnum:]_-].*)?[^[:alnum:]_-]pr'"$_o"$'[[:space:]]+(create|new)([^[:alnum:]_-]|$)'
 [[ $cmd =~ $loose ]] || exit 0
 shape() {
-  echo "Blocked: the review gate cannot tell which branch this pull request is for. Run it as its own command, \`cd <worktree> && gh pr create ...\` or plain \`gh pr create ...\`, with the literal worktree path and nothing else before gh." >&2
+  echo "Blocked: the review gate cannot tell which branch this pull request is for. Run it as its own command, \`cd <worktree> && gh pr create ...\` or plain \`gh pr create ...\`, with the literal worktree path and nothing else before gh. If the title or body mentions gh pr create, put the body in a file and pass --body-file <file>." >&2
   exit 2
 }
 runs "${GH_PR}(create|new)" || shape
@@ -77,7 +81,7 @@ fi
 branch=$(git branch --show-current)
 while IFS= read -r head; do
   if [ -z "$head" ] || [ "$head" != "$branch" ]; then
-    echo "Blocked: --head '$head' is not the checked-out branch ($branch), or is a cross-repo head, so the gate cannot check its diff. cd into the worktree of the branch and retry without an owner prefix." >&2
+    echo "Blocked: --head '$head' is not the checked-out branch ($branch), or is a cross-repo head, so the gate cannot check its diff. cd into the worktree of the branch and retry without an owner prefix. If the title or body only mentions --head or -H, put the body in a file and pass --body-file <file>." >&2
     exit 2
   fi
 done < <(head_values "${cmd#*"$match"}")

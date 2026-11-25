@@ -131,6 +131,31 @@ describe("review gate", () => {
     }
   });
 
+  test("passes a marked branch for gh pr commands that create nothing", () => {
+    for (const c of [
+      "gh pr list --search new",
+      "gh pr comment 5 --body 'new findings'",
+      "git commit -m 'gh pr: create new flow'",
+      "gh pr create --title 'a b' --head sig-12-thing",
+      "gh pr create --title x --body-file body.md",
+    ]) {
+      const r = gate(`cd ${repo} && ${c}`);
+      assert.equal(r.code, 0, `${c}: ${r.err}`);
+    }
+  });
+
+  test("blocks a body that mentions the command or --head, and points at --body-file", () => {
+    for (const c of [
+      "gh pr create --title x --body 'gh pr create is now gated'",
+      "gh pr create --title x --body 'use -H to pick'",
+      "gh pr create --body-file - <<EOF\nuse --head foo\nEOF",
+    ]) {
+      const r = gate(`cd ${repo} && ${c}`);
+      assert.equal(r.code, 2, c);
+      assert.match(r.err, /--body-file/, c);
+    }
+  });
+
   test("blocks when --head names another branch", () => {
     const r = gate(`cd ${repo} && gh pr create --base main --head sig-99-other`);
     assert.equal(r.code, 2);
@@ -149,6 +174,8 @@ describe("review gate", () => {
       'gh pr create "--head" other',
       "gh pr create '-H' other",
       "gh pr create --head sig-12-thing --head other",
+      "gh pr create --title 'a b' --head other",
+      "gh pr create --body 'x y' -H other --body 'p q'",
       "gh pr create --head",
       "gh pr create --head me:sig-12-thing",
       "gh pr create $'--head' other",
@@ -162,6 +189,20 @@ describe("review gate", () => {
     }
   });
 
+  test("blocks a hidden --head or second create that escaped quotes or bash -c could hide", () => {
+    for (const c of [
+      "gh pr create --title 'Don'\\''t x' --head other --body 'c d'",
+      "gh pr create --title $'it\\'s a' --head other --body 'c d'",
+      'gh pr create --title "Fix \\"x" --head other --body "y z"',
+      "gh pr create --title it\\'s --head other --body 'a b'",
+      'gh pr create && bash -c "gh pr create --head other"',
+      'gh pr create; sh -c "cd /tmp && gh pr create --fill"',
+      'gh pr create && bash -c -- "gh pr create --head other"',
+    ]) {
+      assert.equal(gate(`cd ${repo} && ${c}`).code, 2, c);
+    }
+  });
+
   test("blocks gh pr new and -R between pr and the subcommand", () => {
     rmSync(join(repo, ".git", "deep-review-clean"));
     for (const c of [
@@ -172,6 +213,25 @@ describe("review gate", () => {
       "gh -R o/r pr --repo=o/r new",
     ]) {
       assert.match(gate(`cd ${repo} && ${c}`).err, /no clean review/, c);
+    }
+  });
+
+  test("blocks a real gh pr create after a heredoc", () => {
+    const r = gate(`cd ${repo}\ncat > f <<'EOF'\ntext\nEOF\ngh pr create`);
+    assert.equal(r.code, 2);
+  });
+
+  test("blocks a real create after a heredoc start it cannot close", () => {
+    for (const c of [
+      'git commit -m "docs: explain <<EOF parsing"\ngh pr create',
+      "cat > f <<EOF-BODY\nx\nEOF-BODY\ngh pr create",
+      `cat > f <<EOF-BODY\nx\nEOF-BODY\ncd ${repo} && gh pr create`,
+      "cat > f <<END.\nx\nEND.\ngh pr create",
+      "echo $((a<<b))\ngh pr create",
+      "x=\"$(cat <<'EOF'\nbody\nEOF)\"\ngh pr create",
+      'git commit -qm "docs: explain <<EOF parsing"\ngh pr create --body-file - <<EOF\nbody\nEOF',
+    ]) {
+      assert.equal(gate(`cd ${repo}\n${c}`).code, 2, c);
     }
   });
 
