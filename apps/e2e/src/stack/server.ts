@@ -7,7 +7,13 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { finished } from "node:stream/promises";
 import { setTimeout as sleep } from "node:timers/promises";
-import { repoRoot, runDir, serverPidFile, serverStderrLog, serverStdoutLog } from "../paths.ts";
+import {
+  repoRoot,
+  serverPidFile,
+  serverStderrLog,
+  serverStdoutLog,
+  stackEventsLog,
+} from "../paths.ts";
 import { parsePort } from "./port.ts";
 import type { RunningService, Service } from "./service.ts";
 
@@ -78,7 +84,7 @@ export async function startServer(
   process.once("exit", cleanUpOnExit);
 
   const event = (line: string) => {
-    appendFileSync(join(runDir, "stack-events.log"), `${new Date().toISOString()} ${line}\n`);
+    appendFileSync(stackEventsLog, `${new Date().toISOString()} ${line}\n`);
     console.error(`[e2e stack] ${line}`);
   };
 

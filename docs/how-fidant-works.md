@@ -41,7 +41,7 @@ https://fidant.se/r/<link ID>#<secret>
 ```
 
 - **Link ID**: 16 random bytes, base64url (22 characters). The server sees it and uses it only to pair the two browsers.
-- **Secret**: 32 random bytes, base64url (43 characters), in the URL fragment. Browsers don't send the fragment to servers, and the site sets `Referrer-Policy: no-referrer`. The app sends the secret nowhere except in the one message that asks our server to email that link (see "Emailed links"); apart from that it only derives keys from it. The router reads the fragment on `/how`, where it is a section anchor, and on the receive page, where it keeps the page's first address, fragment included, in memory only. That lets the "Go back to it" bar return to an unfinished transfer: the link it shows carries only the path, and following it puts the secret back in the address bar and the session history. Nothing more reaches the server.
+- **Secret**: 32 random bytes, base64url (43 characters), in the URL fragment. Browsers don't send the fragment to servers, and the site sets `Referrer-Policy: no-referrer`. The app sends the secret nowhere except in the one message that asks our server to email that link (see "Emailed links"); apart from that it only derives keys from it. The router reads the fragment on `/how`, where it is a section anchor, and on the receive page, where it keeps the page's first address, fragment included, in memory only. That lets the "Go back to it" bar return to an unfinished transfer: the link it shows carries only the path, and following it puts the secret back in the address bar and the session history. On other pages, switching language (and back or forward after a switch) and the pre-paint script carry the fragment unchanged into the new address in the same tab; on a receive link neither changes the address or reads the fragment. Nothing more reaches the server.
 
 Both come from `crypto.getRandomValues`. Every recipient gets their own link ID and secret. A link Fidant emails carries a marked fragment, `#e.<value>.<secret>` (see "Emailed links").
 
@@ -238,6 +238,7 @@ The relay is its own service, so that relays can run on any Ubuntu server and in
 The send page has "Allow our relay if a direct connection isn't possible", on by default, for that send only.
 
 - When it is off, the server mints no TURN credential and `joined` carries only the `stun:` URLs. An unmodified browser can't use our relay.
+- The sender's page enforces its own choice as well: with the box unticked it keeps only the `stun:` URLs from `joined`, without credentials, and treats the attempt as refused, whatever `turn` the server sent.
 - Backstop: if the sender's selected candidate pair still reads `relay` on a refused attempt, the sender ends the attempt and reports `failed`. It runs after the channel opens, so INIT and META may have passed; file data only flows after ACCEPT.
 - Limit: a modified recipient can route its own side through our relay with credentials from another pairing, or through any public TURN server. That recipient holds the key anyway. The choice decides which infrastructure carries the encrypted traffic, not who can read the file.
 
@@ -357,7 +358,7 @@ On the relay box (see "The relay box"):
 
 ## What stays on the two devices
 
-`apps/web/src/theme.ts`, `apps/web/src/i18n/language.ts`, `apps/web/src/send/SendPage.tsx`, `apps/web/src/receive/ReceivePage.tsx`
+`apps/web/src/theme.ts`, `apps/web/src/i18n/language.ts`, `apps/web/src/prepaint.js`, `apps/web/src/send/SendPage.tsx`, `apps/web/src/receive/ReceivePage.tsx`
 
 - Both pages keep the links, keys, transfers and file data only in memory. Fidant writes only two things to storage that outlasts the tab: the chosen theme and language, in `localStorage`.
 - Sender: the file is read from where it is and copied nowhere else. A shared secret is typed into a `<textarea>`, whose value a browser can save with its session. A link the sender copies is on their clipboard.
@@ -366,14 +367,15 @@ On the relay box (see "The relay box"):
 
 ## The web app and the server
 
-`apps/server/src/server.ts`, `apps/server/src/relays.ts`, `apps/server/src/settings.ts`, `apps/web/src/lib/signaling-list.ts`, `apps/web/src/main.tsx`, `apps/web/src/i18n/preview.ts`, `apps/web/vite.config.ts`, `apps/infra/box/user-data.sh`
+`apps/server/src/server.ts`, `apps/server/src/relays.ts`, `apps/server/src/settings.ts`, `apps/web/src/lib/signaling-list.ts`, `apps/web/src/main.tsx`, `apps/web/src/prerender.tsx`, `apps/web/src/prepaint.js`, `apps/web/src/i18n/preview.ts`, `apps/web/vite.config.ts`, `apps/infra/box/user-data.sh`
 
 - HTTPS only, with `Strict-Transport-Security` (Caddy, Let's Encrypt). Send and receive refuse to run outside a secure context.
 - HAProxy holds TCP 443 and passes every connection not for `turn.fidant.se` to Caddy on port 8444, without decrypting it. It adds a PROXY protocol header, which Caddy accepts only from 127.0.0.1, so Caddy and the server still see the real client address (`docs/decisions/0010-turn-tls-443.md`). HAProxy logs nothing and stores nothing on disk; it holds only addresses and connection counts in memory, for its per-source cap.
 - `Content-Security-Policy: default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`: code, styles, fonts and connections only from our own origin, and no framing. `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`.
 - No cookies, no third-party scripts, fonts or trackers.
 - Static files are served only from the build directory; path traversal is refused.
-- A path without a file extension gets one of four copies of `index.html` whose link preview (Open Graph tags) holds only fixed text: a receive link (`/r/<link ID>`) says something was sent to you, any other path says what Fidant is. The server picks the copy by path and by whether `Accept-Language` starts with `sv`, and sends `Vary: Accept-Language`. Like a browser, a preview fetcher sends us the path but never the part after `#`.
+- Each public page is a file the build renders from the app (`apps/web/src/prerender.tsx`), English at `/...` and Swedish at `/sv/...`, so the path of a public page names the page's language. When the visitor has chosen a language, the path tells the server that choice, which can differ from the browser's language. Its head holds only fixed text: the page's title and description, its link preview (Open Graph tags), and its canonical and hreflang links. A path under `/r/` is not a public page: it has one path for both languages and gets one of two copies of `index.html`, picked by whether `Accept-Language` starts with `sv`, with `Vary: Accept-Language` and `X-Robots-Tag: noindex`; its link preview says something was sent to you. Files with an extension other than `.html` are served from the build directory, and a missing one gets an empty 404. A trailing slash on a page's path and the old `/technical` get a permanent redirect within the site; any other path (no extension, or `.html`) gets the 404 page, the Swedish one under `/sv`. Like a browser, a preview fetcher sends us the path but never the part after `#`.
+- A script in the head of each public page (`apps/web/src/prepaint.js`) applies the stored theme before the page paints and, on an English page, opens the Swedish one when the stored choice is Swedish, or when nothing is stored and the browser language is. Receive pages don't load it.
 - The WebSocket accepts upgrades only on `/signal`, and refuses one whose `Origin` is another site. Our site is the host the request names and, when `PUBLIC_ORIGIN` is set, that origin too, so the server can run on another name than the pages.
 - The per-address limits count a client by the address its connection comes from. When that is a proxy the server trusts, they count the rightmost `X-Forwarded-For` entry instead, the one that proxy wrote. An entry that is not a plain address, such as one with a port, is ignored, and the connection then counts against the proxy's own address. A proxy on the same host is always trusted, which is how the server sees addresses behind Caddy. `TRUSTED_PROXIES` names address ranges that are trusted as well. fidant.se sets none.
 - With `SIGNALING_ONLY=1` the server serves no pages. It answers `/signal` and the two relay routes, and 404 for every other path. fidant.se does not set it.
