@@ -37,7 +37,7 @@ export const SIGNAL_PATH = "/signal";
 export const HEARTBEAT_MS = 30_000;
 
 /** Caps on open sockets, incoming messages, bytes queued to a socket, and notices and codes emailed. Tests lower them through the `limits` option. */
-const LIMITS = {
+export const LIMITS = {
   sockets: 1000,
   socketsPerAddress: 32,
   // ponytail: fixed window reset by the heartbeat, so a socket can send twice this across a
