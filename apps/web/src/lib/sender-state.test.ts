@@ -171,6 +171,7 @@ test("a drop before delivery returns the recipient to waiting and frees the link
       ...findRecipient(s0, linkId),
       status: "waiting",
       bytesSent: 0,
+      ...(reached === "connecting" && { noConnect: true }),
     });
     assert.deepEqual(
       dropped.effects,
@@ -219,7 +220,10 @@ test("a channel that does not open in time is dropped and its joiner refused", (
   const { state: s0, linkId } = withRecipient();
   const connecting = run(s0, joined(linkId, A)).state;
   const result = update(connecting, { type: "timeout", linkId });
-  assert.deepEqual(findRecipient(result.state, linkId), findRecipient(s0, linkId));
+  assert.deepEqual(findRecipient(result.state, linkId), {
+    ...findRecipient(s0, linkId),
+    noConnect: true,
+  });
   assert.deepEqual(result.effects, [
     { type: "refuse", linkId, attempt: A, reason: "drop" },
     { type: "close", linkId },
@@ -246,7 +250,10 @@ test("left while connecting returns the recipient to waiting", () => {
   const { state: s0, linkId } = withRecipient();
   const { state } = run(s0, joined(linkId, A));
   const result = update(state, { type: "left", linkId });
-  assert.deepEqual(findRecipient(result.state, linkId), findRecipient(s0, linkId));
+  assert.deepEqual(findRecipient(result.state, linkId), {
+    ...findRecipient(s0, linkId),
+    noConnect: true,
+  });
   assert.deepEqual(result.effects, [{ type: "close", linkId }]);
 });
 
@@ -520,6 +527,31 @@ test("noRelay is not set under an allowed relay, or once the channel opened", ()
       assert.equal(recipient && "noRelay" in recipient, false, `${end} after ${steps}, ${turn}`);
     }
   }
+});
+
+test("an attempt that ends while connecting under an allowed relay marks the recipient noConnect", () => {
+  for (const end of ["dropped", "timeout", "left"] as const) {
+    const { state: s0, linkId } = withRecipient();
+    const connecting = run(s0, joined(linkId, A, true)).state;
+    const ended = update(connecting, { type: end, linkId }).state;
+    assert.deepEqual(
+      findRecipient(ended, linkId),
+      { ...findRecipient(s0, linkId), noConnect: true },
+      end,
+    );
+
+    const recipient = findRecipient(update(ended, joined(linkId, B)).state, linkId);
+    assert.equal(recipient?.status, "connecting", end);
+    assert.equal(recipient && "noConnect" in recipient, false, `the join after ${end} clears it`);
+  }
+  // Not once the channel opened, and not when our own server dropped.
+  const { state: s0, linkId } = withRecipient();
+  const open = run(s0, joined(linkId, A, true), { type: "channel-open", linkId }).state;
+  const dropped = findRecipient(update(open, { type: "dropped", linkId }).state, linkId);
+  assert.equal(dropped && "noConnect" in dropped, false);
+  const connecting = run(s0, joined(linkId, A, true)).state;
+  const lost = findRecipient(update(connecting, { type: "server-lost" }).state, linkId);
+  assert.equal(lost && "noConnect" in lost, false);
 });
 
 test("a busy join keeps the relay choice of the attempt in progress", () => {
