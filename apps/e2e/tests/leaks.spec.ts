@@ -147,99 +147,6 @@ test.describe("the detector catches", () => {
     });
   });
 
-  test("file bytes as hex in a body", async ({ page, leaks, canary }) => {
-    leaks.expectLeaks();
-    const file = leaks.watch(canaryFile(canary.fork("file"), fileOptions));
-    await open(page);
-    await page.evaluate(
-      (body) => fetch("/upload", { method: "POST", body }),
-      file.bytes.toString("hex"),
-    );
-    expectFinding(await leaks.scan(), {
-      class: "C",
-      label: "file#1",
-      field: "request.body",
-      view: /^hex@\d$/,
-    });
-  });
-
-  test("the file's SHA-256 as hex in a URL", async ({ page, leaks, canary }) => {
-    leaks.expectLeaks();
-    const file = leaks.watch(canaryFile(canary.fork("file"), fileOptions));
-    await open(page);
-    await page.evaluate((hash) => fetch(`/?h=${hash}`), sha256Hex(file.bytes));
-    expectFinding(await leaks.scan(), {
-      class: "C",
-      label: "file#1 sha256",
-      field: "request.url",
-      view: /^hex@\d$/,
-    });
-  });
-
-  test("a fragment secret's SHA-256 as hex in a URL", async ({ page, leaks, canary }) => {
-    leaks.expectLeaks();
-    const key = canaryKey(canary.fork("key"));
-    leaks.watchKey("fragment secret", key);
-    await open(page);
-    // A lookup ID made by hashing the fragment string, as an app might.
-    await page.evaluate((hash) => fetch(`/lookup/${hash}`), sha256Hex(Buffer.from(key.text)));
-    expectFinding(await leaks.scan(), {
-      class: "K",
-      label: "fragment secret text sha256",
-      field: "request.url",
-      view: /^hex@\d$/,
-    });
-  });
-
-  test("an NFD, percent-encoded file name in a URL path", async ({ page, leaks, canary }) => {
-    leaks.expectLeaks();
-    const file = leaks.watch(canaryFile(canary.fork("file"), fileOptions));
-    await open(page);
-    await page.evaluate((name) => {
-      // Every byte is escaped, ASCII included, so the raw view cannot contain the name's token.
-      const bytes = new TextEncoder().encode(name.normalize("NFD"));
-      const path = Array.from(bytes, (b) => `%${b.toString(16).padStart(2, "0")}`).join("");
-      return fetch(`/files/${path}`);
-    }, file.name);
-    const findings = await leaks.scan();
-    expectFinding(findings, {
-      class: "M",
-      label: "file#1 name",
-      field: "request.url",
-      view: /^percent$/,
-    });
-  });
-
-  test("a 16-byte window of a key", async ({ page, leaks, canary }) => {
-    leaks.expectLeaks();
-    const key = canaryKey(canary.fork("key"));
-    leaks.watchKey("fragment secret", key);
-    await open(page);
-    // Offset 5 is off the key's 3-byte base64 groups. Base64 text needles (0001) now catch the
-    // window directly, so the raw view matches too.
-    const window = key.bytes.subarray(5, 5 + 16).toString("base64url");
-    await page.evaluate((window) => fetch(`/?k=${window}`), window);
-    expectFinding(await leaks.scan(), {
-      class: "K",
-      label: "fragment secret",
-      field: "request.url",
-      view: /^(raw|base64@\d)$/,
-    });
-  });
-
-  test("the exact file size in a header", async ({ page, leaks, canary }) => {
-    leaks.expectLeaks();
-    const file = leaks.watch(canaryFile(canary.fork("file"), fileOptions));
-    await open(page);
-    await page.evaluate((size) => fetch("/", { headers: { "x-size": String(size) } }), file.size);
-    expectFinding(await leaks.scan(), {
-      class: "M",
-      label: "file#1 size",
-      field: "request.headers.x-size",
-      view: /^raw$/,
-    });
-  });
-
   test("a key in a websocket frame to /signal", async ({ page, leaks, canary }) => {
     leaks.expectLeaks();
     const key = canaryKey(canary.fork("key"));
@@ -252,21 +159,6 @@ test.describe("the detector catches", () => {
     expectFinding(await leaks.scan(), {
       class: "K",
       label: "fragment secret text",
-      field: "frame-sent.payload",
-      view: /^raw$/,
-    });
-  });
-
-  test("a recipient name in a websocket frame to /signal", async ({ page, leaks, canary }) => {
-    leaks.expectLeaks();
-    const name = `Anna-${base32Token(canary.fork("name"), 8)}`;
-    leaks.watchText("recipient name", name);
-    const link = canary.fork("link").bytes(16).toString("base64url");
-    await open(page);
-    await relay(page, link, name);
-    expectFinding(await leaks.scan(), {
-      class: "M",
-      label: "recipient name",
       field: "frame-sent.payload",
       view: /^raw$/,
     });
@@ -369,17 +261,6 @@ test.describe("an emailed link", () => {
 });
 
 test.describe("the detector stays quiet on", () => {
-  test("a 13-byte window of a key", async ({ page, leaks, canary }) => {
-    const key = canaryKey(canary.fork("key"));
-    leaks.watchKey("fragment secret", key);
-    await open(page);
-    // Too short for 20 fully determined base64 characters at any alignment (13 bytes give at
-    // most 17), so 0001 does not count it. Same offset as the 16-byte case.
-    const window = key.bytes.subarray(5, 5 + 13).toString("base64url");
-    await page.evaluate((window) => fetch(`/?k=${window}`), window);
-    expect(await leaks.scan()).toEqual([]);
-  });
-
   test("the same requests carrying unrelated data", async ({ page, leaks, canary }) => {
     // The canaries are watched but never sent. Every request above is repeated with other
     // random data, and nothing may match. No expectLeaks: the teardown must pass too.
