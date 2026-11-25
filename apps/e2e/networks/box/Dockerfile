@@ -1,7 +1,6 @@
 # The POC box (apps/infra/box/user-data.sh) as a container: systemd as PID 1, with the app server,
 # HAProxy, Caddy, coturn and rsyslog as services. compose.yaml mounts the repo at /opt/sigill/current and
 # the files from boxFiles() in src/stack/box.ts at /box.
-# Built as sigill-e2e-box:5; bump that tag in compose.yaml when this file changes.
 # The node stage is also the server container's image (serverImage in src/stack/networks.ts), and
 # its major is .node-version's. The Ubuntu release matches the Lightsail blueprint. box.test.ts
 # checks all three. Dependabot moves both pins (.github/dependabot.yml).

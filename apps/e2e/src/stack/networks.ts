@@ -282,24 +282,17 @@ async function startNetworks(): Promise<RunningService> {
   };
 }
 
-/** Pulls missing images while rebuilding the three built ones; compose up would pull, then build. */
+/**
+ * Pulls missing images and builds the built ones on every run, so a Dockerfile change takes effect
+ * without a new tag. The layer cache makes an unchanged build take seconds.
+ */
 async function fetchImages(): Promise<void> {
-  const { stdout } = await run("docker", [...compose, "config", "--images"]);
-  const images = [...stdout.split("\n").filter(Boolean), serverImage];
-  if (
-    await run("docker", ["image", "inspect", ...images]).then(
-      () => true,
-      () => false,
-    )
-  ) {
-    return;
-  }
   await Promise.all([
     run("docker", [...compose, "pull", "--policy", "missing", "--ignore-buildable", "--quiet"]),
-    // Built once serverImage is here: the box build copies node out of it.
-    run("docker", ["image", "inspect", serverImage])
-      .catch(() => run("docker", ["pull", "--quiet", serverImage]))
-      .then(() => run("docker", [...compose, "build", "--quiet"])),
+    run("docker", ["image", "inspect", serverImage]).catch(() =>
+      run("docker", ["pull", "--quiet", serverImage]),
+    ),
+    run("docker", [...compose, "build", "--quiet"]),
   ]);
 }
 

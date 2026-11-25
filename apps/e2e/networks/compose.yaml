@@ -35,7 +35,7 @@ networks:
         - subnet: 10.89.2.0/24
 
 x-tools: &tools
-  image: sigill-e2e-net:1
+  image: sigill-e2e-net
   build: .
   cap_add: [NET_ADMIN]
   init: true
@@ -168,7 +168,7 @@ services:
   # The POC box: systemd with the app server, HAProxy, Caddy, coturn and rsyslog, configured from the
   # rendered user data (box/Dockerfile). The browsers reach it as fidant.se and turn.fidant.se.
   box:
-    image: sigill-e2e-box:5
+    image: sigill-e2e-box
     build: box
     privileged: true
     tmpfs: [/run, /run/lock]
@@ -189,7 +189,7 @@ services:
 
   # The relay box: a new Ubuntu server that runs apps/infra/relay/install.sh at boot (relay/Dockerfile).
   relay:
-    image: sigill-e2e-relay:2
+    image: sigill-e2e-relay
     build: relay
     privileged: true
     tmpfs: [/run, /run/lock]
