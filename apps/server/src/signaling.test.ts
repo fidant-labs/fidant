@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { createServer, request, type Server } from "node:http";
-import { type AddressInfo, connect as tcpConnect } from "node:net";
+import { type AddressInfo, type Socket, connect as tcpConnect } from "node:net";
 import { after, before, test } from "node:test";
 import {
   CODE_RESULTS,
@@ -720,7 +720,13 @@ async function mailServer(
   send: Mailer = async () => {},
   options: {
     heartbeatMs?: number;
-    limits?: { noticesPerSocket?: number; noticesPerClient?: number; noticesPerRecipient?: number };
+    limits?: {
+      noticesPerSocket?: number;
+      noticesPerClient?: number;
+      noticesPerRecipient?: number;
+      noticesTotal?: number;
+      codesTotal?: number;
+    };
   } = {},
 ) {
   const mails: Mail[] = [];
@@ -815,7 +821,13 @@ async function heardNothing(host: Client): Promise<void> {
 }
 
 /** Asks for a code, checks the host hears `verifying`, and returns the code that was mailed. */
-async function codeFor(guest: Client, host: Client, link: string, mails: Mail[], mark: string) {
+async function codeFor(
+  guest: Pick<Client, "send" | "next">,
+  host: Client,
+  link: string,
+  mails: Mail[],
+  mark: string,
+) {
   guest.send({ t: "send-code", link, mark });
   assert.deepEqual(await guest.next(), { t: "code", link, result: "sent" });
   assert.deepEqual(await host.next(), { t: "email", link, status: "verifying" });
@@ -1307,12 +1319,15 @@ test("caps codes to one address at 10 an hour, in any case, across links", async
   for (const [i, link] of links.entries()) {
     marks.push(await emailLink(host, link, { to: addresses[i] ?? "" }));
   }
-  const guest = await connect(url, true);
+  // Two clients, so that neither reaches its own cap of 5 codes an hour.
+  const one = await connectFrom(t, url, "192.0.2.1");
+  const two = await connectFrom(t, url, "192.0.2.2");
+  const guest = await connectFrom(t, url, "192.0.2.3");
   const [first = "", second = "", third = ""] = links;
   const [firstMark = "", secondMark = "", thirdMark = ""] = marks;
   for (let i = 0; i < 5; i += 1) {
-    await codeFor(guest, host, first, mails, firstMark);
-    await codeFor(guest, host, second, mails, secondMark);
+    await codeFor(one, host, first, mails, firstMark);
+    await codeFor(two, host, second, mails, secondMark);
     t.mock.timers.tick(CODE_GAP_MS);
   }
   guest.send({ t: "send-code", link: third, mark: thirdMark });
@@ -1477,4 +1492,199 @@ test("never logs an emailed link's address, mark, code or token", async (t) => {
       assert.ok(!line.includes(value), `a code leaked into the log: ${line}`);
     }
   }
+});
+
+// The tests below come from the security audit of 2026-11-25.
+
+test("closes a socket that never reads once the replies queued for it pass the limit (SIG-234)", {}, async (t) => {
+  const relay = await bufferedRelay(t);
+  relay.guest.pause();
+  await relay.flood(500);
+  assert.ok(relay.events.includes("relay-dropped"), "the guest's queue never reached the limit");
+  // The queue is at the limit. Each message below earns the guest an `error` reply it never
+  // reads, and unlike a relay those replies are queued whatever is already waiting.
+  const count = (event: string) => relay.events.filter((e) => e === event).length;
+  const [asked, before] = [5000, count("error")];
+  const message = JSON.stringify({ t: "relay", link: linkId(), data: "sync" });
+  for (let i = 0; i < asked; i += 1) {
+    relay.guest.send(message);
+  }
+  const deadline = Date.now() + 5000;
+  while (count("left") === 0 && count("error") < before + asked && Date.now() < deadline) {
+    await new Promise((done) => setTimeout(done, 5));
+  }
+  assert.equal(count("left"), 1, `the server queued ${count("error") - before} more replies`);
+});
+
+test("closes a client that floods pings and never reads the pongs", async (t) => {
+  const quiet = createServer();
+  const accepted: Socket[] = [];
+  quiet.on("connection", (socket) => accepted.push(socket));
+  const quietSignaling = attachSignaling(quiet, { log: () => {} });
+  await new Promise<void>((done) => quiet.listen(0, "127.0.0.1", done));
+  const client = tcpConnect((quiet.address() as AddressInfo).port, "127.0.0.1");
+  client.on("error", () => {});
+  t.after(() => {
+    client.destroy();
+    quietSignaling.close();
+    quiet.close();
+  });
+  client.write(rawUpgrade("/signal"));
+  client.pause();
+  // A masked ping frame with the largest payload a control frame may carry.
+  const mask = randomBytes(4);
+  const ping = Buffer.concat([
+    Buffer.from([0x89, 0x80 | 125]),
+    mask,
+    Buffer.from(Array.from({ length: 125 }, (_, i) => 0x41 ^ (mask[i % 4] as number))),
+  ]);
+  const batch = Buffer.concat(Array.from({ length: 2000 }, () => ping));
+  const deadline = Date.now() + 10_000;
+  while (!accepted[0]?.destroyed && Date.now() < deadline) {
+    if (!client.destroyed) {
+      client.write(batch);
+    }
+    await new Promise((done) => setTimeout(done, 5));
+  }
+  assert.ok(accepted[0]?.destroyed, "the server kept queueing pongs");
+});
+
+/** Opens a socket to a mail server as a client at `address`, the way Caddy reports one. */
+async function connectFrom(t: { after(fn: () => void): void }, url: string, address: string) {
+  const socket = new WsClient(url, { headers: { "x-forwarded-for": address } });
+  t.after(() => socket.terminate());
+  const queue: ServerMessage[] = [];
+  const waiting: ((message: ServerMessage) => void)[] = [];
+  socket.on("message", (data) => {
+    const message = parseServerMessage(String(data));
+    assert.ok(message, `server sent an invalid message: ${data}`);
+    const waiter = waiting.shift();
+    if (waiter) {
+      waiter(message);
+    } else {
+      queue.push(message);
+    }
+  });
+  await new Promise<void>((done, fail) => {
+    socket.once("open", () => done());
+    socket.once("error", fail);
+  });
+  const next = () => {
+    const message = queue.shift();
+    if (message) {
+      return Promise.resolve(message);
+    }
+    return new Promise<ServerMessage>((done, fail) => {
+      const timer = setTimeout(
+        () => fail(new Error(`no message within ${NEXT_TIMEOUT_MS} ms`)),
+        NEXT_TIMEOUT_MS,
+      );
+      waiting.push((message) => {
+        clearTimeout(timer);
+        done(message);
+      });
+    });
+  };
+  assert.deepEqual(await next(), { t: "hello", mail: true });
+  return {
+    send: (message: unknown) => socket.send(JSON.stringify(message)),
+    next,
+    close: () => socket.close(),
+  };
+}
+
+test("bounds the notices one IPv6 /48 can send by moving between its /64s (SIG-221)", {}, async (t) => {
+  const { url, mails } = await mailServer(t);
+  const [networks, each] = [200, 20];
+  for (let network = 0; network < networks; network += 1) {
+    const client = await connectFrom(t, url, `2001:db8:1:${network.toString(16)}::1`);
+    const links = Array.from({ length: each }, linkId);
+    client.send({ t: "host", links, turn: false });
+    for (const [i, link] of links.entries()) {
+      client.send(emailMessage(link, { to: `r${network}-${i}@example.se` }));
+    }
+    for (const _ of links) {
+      assert.equal((await client.next()).t, "email");
+    }
+    client.close();
+  }
+  assert.ok(mails.length < networks * each, `all ${mails.length} notices went out`);
+});
+
+test("sends a recipient their code although another client asked for codes on its own links to that address (SIG-223)", {}, async (t) => {
+  t.mock.timers.enable({ apis: ["Date"] });
+  const { url } = await mailServer(t);
+  const sender = await connectFrom(t, url, "192.0.2.1");
+  const link = linkId();
+  sender.send({ t: "host", links: [link], turn: true });
+  sender.send(emailMessage(link));
+  const mark = markIn(await sender.next(), link);
+
+  // A stranger with nobody's link registers four of its own to the same address and asks for
+  // codes on them. Whether each is sent is the fix's choice, so only the answer is awaited.
+  const stranger = await connectFrom(t, url, "198.51.100.8");
+  const own = Array.from({ length: 4 }, linkId);
+  stranger.send({ t: "host", links: own, turn: true });
+  const marks: string[] = [];
+  for (const each of own) {
+    stranger.send(emailMessage(each));
+    const answer = await stranger.next();
+    marks.push(answer.t === "email" ? (answer.mark ?? "") : "");
+  }
+  const asker = await connectFrom(t, url, "198.51.100.8");
+  for (let asked = 0; asked < 10; asked += 1) {
+    const index = asked % own.length;
+    if (asked > 0 && index === 0) {
+      t.mock.timers.tick(CODE_GAP_MS);
+    }
+    asker.send({ t: "send-code", link: own[index], mark: marks[index] || undefined });
+    assert.equal((await asker.next()).t, "code");
+  }
+
+  const recipient = await connectFrom(t, url, "203.0.113.5");
+  recipient.send({ t: "send-code", link, mark });
+  assert.deepEqual(await recipient.next(), { t: "code", link, result: "sent" });
+});
+
+test("caps the notices and codes the whole server sends in an hour", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"] });
+  const { url, mails } = await mailServer(t, async () => {}, {
+    limits: { noticesTotal: 2, codesTotal: 1 },
+  });
+  const [a, b, c, d] = [linkId(), linkId(), linkId(), linkId()];
+  const host = await mailHost(url, a, b, c, d);
+  const marks = [await emailLink(host, a, { to: "a@example.se" })];
+  marks.push(await emailLink(host, b, { to: "b@example.se" }));
+  host.send(emailMessage(c, { to: "c@example.se" }));
+  assert.deepEqual(await host.next(), { t: "email", link: c, status: "limit" });
+
+  const first = await connectFrom(t, url, "192.0.2.1");
+  await codeFor(first, host, a, mails, marks[0] ?? "");
+  const second = await connectFrom(t, url, "192.0.2.2");
+  second.send({ t: "send-code", link: b, mark: marks[1] });
+  assert.deepEqual(await second.next(), { t: "code", link: b, result: "wait" });
+
+  t.mock.timers.tick(HOUR_MS);
+  await emailLink(host, d, { to: "d@example.se" });
+});
+
+test("counts an IPv6 client's notices by its /48", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"] });
+  const { url } = await mailServer(t, async () => {}, { limits: { noticesPerClient: 2 } });
+  const statuses: string[] = [];
+  for (const [i, network] of ["2001:db8:1:1::1", "2001:db8:1:2::1", "2001:db8:1:3::1"].entries()) {
+    const client = await connectFrom(t, url, network);
+    const link = linkId();
+    client.send({ t: "host", links: [link], turn: false });
+    client.send(emailMessage(link, { to: `r${i}@example.se` }));
+    const answer = await client.next();
+    statuses.push(answer.t === "email" ? answer.status : answer.t);
+  }
+  assert.deepEqual(statuses, ["sent", "sent", "limit"]);
+  // Another /48 is another client.
+  const other = await connectFrom(t, url, "2001:db8:2:1::1");
+  const link = linkId();
+  other.send({ t: "host", links: [link], turn: false });
+  other.send(emailMessage(link, { to: "r9@example.se" }));
+  assert.equal(markIn(await other.next(), link).length, 22);
 });

@@ -44,15 +44,28 @@ const LIMITS = {
   // window boundary; a token bucket if that burst ever matters.
   /** Messages one socket may send per heartbeat window, counting ones that fail to parse. */
   messagesPerWindow: 1000,
-  /** Bytes queued to a socket beyond which relays to it are dropped, because it is not reading. */
+  /**
+   * Bytes queued to a socket beyond which relays to it are dropped, because it is not reading.
+   * Past twice this, any message to it ends the socket.
+   */
   bufferedBytes: 256 * 1024,
-  /** Notices per hour from one socket, from one client address and to one destination address. */
+  /**
+   * Notices per hour from one socket, from one client (an IPv6 client by its /48 here, since a
+   * /48 is a site's usual allocation and holds 65,536 /64s), to one destination address, and
+   * from the whole server, which keeps the total well under the mail service's daily quota.
+   */
   noticesPerSocket: 20,
   noticesPerClient: 50,
   noticesPerRecipient: 5,
-  /** Codes one emailed link may send while hosted, and codes per hour to one destination address. */
+  noticesTotal: 500,
+  /**
+   * Codes one emailed link may send while hosted, and codes per hour to one destination address,
+   * asked for by one client (keyed as for notices) and from the whole server.
+   */
   codesPerLink: 5,
   codesPerRecipient: 10,
+  codesPerClient: 5,
+  codesTotal: 500,
 };
 
 /** How long a code works, the least time between two codes for one link, and wrong tries per code. */
@@ -61,6 +74,10 @@ const CODE_GAP_MS = 30 * 1000;
 const CODE_TRIES = 5;
 
 const HOUR_MS = 60 * 60 * 1000;
+
+/** Keys for the server-wide notice and code counts, beside the HMAC keys (hex) in the same map. */
+const ALL_NOTICES = "notices";
+const ALL_CODES = "codes";
 
 /** WebSocket close code for a protocol violation. */
 const POLICY_VIOLATION = 1008;
@@ -106,12 +123,6 @@ function short(link: string): string {
   return link.slice(0, 6);
 }
 
-function send(socket: WebSocket, message: ServerMessage): void {
-  if (socket.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify(message));
-  }
-}
-
 const STATUS_TEXT = {
   403: "Forbidden",
   404: "Not Found",
@@ -134,6 +145,11 @@ function rejectUpgrade(socket: Duplex, status: keyof typeof STATUS_TEXT): void {
 function normalize(ip: string): string {
   const lower = ip.toLowerCase().split("%")[0] ?? "";
   return /^::ffff:\d+\.\d+\.\d+\.\d+$/.test(lower) ? lower.slice(7) : lower;
+}
+
+/** The client a notice or code counts against: an IPv6 client by its /48, others as they are. */
+function mailClient(address: string): string {
+  return address.endsWith("::/64") ? `${address.split(":").slice(0, 3).join(":")}::/48` : address;
 }
 
 /** The first 64 bits of an IPv6 address, written as a /64 prefix. */
@@ -198,6 +214,22 @@ export function attachSignaling(
 ): { close(): void } {
   const { log, iceServers = () => [], mail } = options;
   const limits = { ...LIMITS, ...options.limits };
+
+  /**
+   * Sends a message, unless the socket has stopped reading: once more than twice the relay limit
+   * waits to go out to it, it is ended instead, so replies it provokes can't pile up in memory.
+   */
+  function send(socket: WebSocket, message: ServerMessage): void {
+    if (socket.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    if (socket.bufferedAmount > 2 * limits.bufferedBytes) {
+      socket.terminate();
+      return;
+    }
+    socket.send(JSON.stringify(message));
+  }
+
   const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
   const peers = new Map<WebSocket, Peer>();
   const hosts = new Map<string, WebSocket>();
@@ -506,14 +538,16 @@ export function attachSignaling(
     noEmail.add(link);
     const now = Date.now();
     const toKey = hmac(`to:${to.toLowerCase()}`);
-    const clientKey = hmac(`ip:${peer.address}`);
+    const clientKey = hmac(`ip:${mailClient(peer.address)}`);
     const toTimes = recent(noticeTimes.get(toKey) ?? [], now);
     const clientTimes = recent(noticeTimes.get(clientKey) ?? [], now);
+    const allTimes = recent(noticeTimes.get(ALL_NOTICES) ?? [], now);
     peer.notices = recent(peer.notices, now);
     if (
       peer.notices.length >= limits.noticesPerSocket ||
       clientTimes.length >= limits.noticesPerClient ||
-      toTimes.length >= limits.noticesPerRecipient
+      toTimes.length >= limits.noticesPerRecipient ||
+      allTimes.length >= limits.noticesTotal
     ) {
       reply("limit");
       return;
@@ -521,6 +555,7 @@ export function attachSignaling(
     peer.notices.push(now);
     noticeTimes.set(toKey, [...toTimes, now]);
     noticeTimes.set(clientKey, [...clientTimes, now]);
+    noticeTimes.set(ALL_NOTICES, [...allTimes, now]);
     const mark = randomBytes(16).toString("base64url");
     const state: Emailed = { to, lang, mark, codeTimes: [], code: undefined, tokens: new Set() };
     emailed.set(link, state);
@@ -587,20 +622,29 @@ export function attachSignaling(
     const now = Date.now();
     const last = state.codeTimes.at(-1);
     const toKey = hmac(`code:${state.to.toLowerCase()}`);
+    const clientKey = hmac(`code-ip:${mailClient(peer.address)}`);
     const toTimes = recent(noticeTimes.get(toKey) ?? [], now);
+    const clientTimes = recent(noticeTimes.get(clientKey) ?? [], now);
+    const allTimes = recent(noticeTimes.get(ALL_CODES) ?? [], now);
     if (state.codeTimes.length >= limits.codesPerLink) {
       answerCode(socket, link, "limit");
       return;
     }
+    // A client's own cap is checked first, so codes it is refused never count against the
+    // address: someone asking for codes on their own links can't lock its recipient out.
     if (
       (last !== undefined && now - last < CODE_GAP_MS) ||
-      toTimes.length >= limits.codesPerRecipient
+      clientTimes.length >= limits.codesPerClient ||
+      toTimes.length >= limits.codesPerRecipient ||
+      allTimes.length >= limits.codesTotal
     ) {
       answerCode(socket, link, "wait");
       return;
     }
     state.codeTimes.push(now);
     noticeTimes.set(toKey, [...toTimes, now]);
+    noticeTimes.set(clientKey, [...clientTimes, now]);
+    noticeTimes.set(ALL_CODES, [...allTimes, now]);
     const value = String(randomInt(1_000_000)).padStart(6, "0");
     state.code = { value, expires: now + CODE_MS, tries: 0 };
     let sent = true;
@@ -699,6 +743,11 @@ export function attachSignaling(
         continue;
       }
       peer.alive = false;
+      // A socket that blindly answers pings but reads nothing ends here, not by piling up pings.
+      if (socket.bufferedAmount > 2 * limits.bufferedBytes) {
+        socket.terminate();
+        continue;
+      }
       socket.ping();
     }
   }, options.heartbeatMs ?? HEARTBEAT_MS);

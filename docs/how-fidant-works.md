@@ -129,13 +129,13 @@ iv     = direction(1: 0 sender, 1 recipient) ‖ 00 00 00 ‖ seq(8)
 
 `ReceiveVerifier` in `frames.ts` hashes the file bytes as they arrive and checks that every CHUNK is exactly `chunkSize`, the padding is zeros, the chunks add up to the padded length, and END's size and checksum match what arrived. Only then is the file kept. Any other ending (a frame that fails to decrypt, the wrong order, too much data, the channel closing first) aborts the sink, which discards what was written.
 
-A recipient holds at most 129 incoming frames that it hasn't handled yet (the window and END), and a sender at most 8. One more ends the transfer as a broken format (`createInbox` in `inbox.ts`), so a sender that ignores its credit can't fill the recipient's memory: what waits for a slow sink stays at about 128 × `chunkSize`, 6 MiB at 48 KiB, whatever the file's size.
+META's `chunkSize` must be at least 986 bytes (`MIN_CHUNK_BYTES`): the META frame (1,050 bytes) must fit the channel, so no honest sender's chunk is smaller, and a sender that claims tiny chunks can't make an in-memory recipient hold millions of separate parts. A recipient holds at most 129 incoming frames that it hasn't handled yet (the window and END), and a sender at most 8. One more ends the transfer as a broken format (`createInbox` in `inbox.ts`), so a sender that ignores its credit can't fill the recipient's memory: what waits for a slow sink stays at about 128 × `chunkSize`, 6 MiB at 48 KiB, whatever the file's size.
 
 `apps/web/src/lib/sink.ts`: where the browser has `showSaveFilePicker` (Chromium), the file streams to a place the recipient chose. Elsewhere it is collected in memory as a Blob and downloaded at the end, and an offer of a file over 256 MiB warns the recipient of that (`BLOB_WARN_BYTES`). A shared secret is always collected in memory and never downloaded (see "Sharing a secret"). The Blob is always `application/octet-stream`, whatever type the sender claims, so a file can't run as a page in Fidant's origin.
 
 ### Names
 
-META refuses names, types and sender names containing C0 or C1 control characters, line and paragraph separators (U+2028, U+2029) or any Unicode Bidi_Control character (U+061C, U+200E, U+200F, U+202A–202E, U+2066–2069), so a name ending in `.exe` can't be displayed as one ending in `.pdf`. The sender's name is typed by the sender and not verified.
+META refuses names, types and sender names containing C0 or C1 control characters, line and paragraph separators (U+2028, U+2029), any Unicode Bidi_Control character (U+061C, U+200E, U+200F, U+202A–202E, U+2066–2069), a filler that always draws as blank (U+115F, U+1160, U+2800, U+3164, U+FFA0) or a run of three or more spaces of any kind, so a name ending in `.exe` can't be displayed as one ending in `.pdf` or have its ending pushed out of sight. A single space of any kind is allowed, since macOS puts U+202F in screenshot names (`hasForbiddenCharacters` in `packages/protocol`). The sender's name is typed by the sender and not verified.
 
 ## Padding
 
@@ -274,14 +274,18 @@ recipient → server     join {link, attempt, token}
 | Limit                                             | Value                                    |
 | ------------------------------------------------- | ---------------------------------------- |
 | Notices from one sender socket                    | 20 an hour                               |
-| Notices from one client address (IPv6 by its /64) | 50 an hour                               |
+| Notices from one client address (IPv6 by its /48) | 50 an hour                               |
 | Notices to one email address                      | 5 an hour                                |
+| Notices from the whole server                     | 500 an hour                              |
 | Codes for one link                                | 5 while it is hosted                     |
 | Time between two codes for one link               | 30 s                                     |
+| Codes asked for by one client address (as above)  | 5 an hour                                |
 | Codes to one email address                        | 10 an hour                               |
+| Codes from the whole server                       | 500 an hour                              |
 | A code's life                                     | 10 minutes, or until the fifth wrong try |
 
-- The counters per email address and per client address hold only send times, under an HMAC-SHA-256 of the lowercased address or the client address with a 32-byte random key made when the server starts. They outlive the link, stay in memory for at most an hour and are pruned on the heartbeat. The per-socket count lives on the socket and goes with it.
+- The limits per email address and for the whole server can be used up by anyone, a stranger with no link included: they can stop notices or codes to one address, or all of them, for up to an hour, and a sender who gets `limit` can tell that the notice limit was reached. A client's own limit on codes comes first, so codes it is refused don't count against the address (0015).
+- The counters per email address and per client address hold only send times, under an HMAC-SHA-256 of the lowercased address or the client address with a 32-byte random key made when the server starts. The two counters for the whole server hold only send times. They outlive the link, stay in memory for at most an hour and are pruned on the heartbeat. The per-socket count lives on the socket and goes with it.
 
 ### The mail service
 
@@ -339,7 +343,7 @@ From SIG-153 on, it also:
 - Static files are served only from the build directory; path traversal is refused.
 - A path without a file extension gets one of four copies of `index.html` whose link preview (Open Graph tags) holds only fixed text: a receive link (`/r/<link ID>`) says something was sent to you, any other path says what Fidant is. The server picks the copy by path and by whether `Accept-Language` starts with `sv`, and sends `Vary: Accept-Language`. Like a browser, a preview fetcher sends us the path but never the part after `#`.
 - The WebSocket accepts upgrades only on `/signal`, and refuses one whose `Origin` is another site.
-- Limits: HAProxy closes a source's 129th concurrent connection on 443 (a source is an IPv4 address or an IPv6 /64) and an idle connection after 2 minutes, or after 1 hour on the relay path. The server allows 1,000 sockets, 32 per client address (an IPv6 address counts by its /64), 1,000 messages per socket per 30-second window, 256 links per sender, 16,384 characters per relayed setup message, 256 KiB queued to a socket that isn't reading, and the email and code limits under "Emailed links".
+- Limits: HAProxy closes a source's 129th concurrent connection on 443 (a source is an IPv4 address or an IPv6 /64) and an idle connection after 2 minutes, or after 1 hour on the relay path. The server allows 1,000 sockets, 32 per client address (an IPv6 address counts by its /64), 1,000 messages per socket per 30-second window, 256 links per sender, 16,384 characters per relayed setup message, 256 KiB queued to a socket that isn't reading before relays to it are dropped, 512 KiB before the socket is ended, and the email and code limits under "Emailed links".
 
 ## Every path and its traces
 

@@ -840,7 +840,7 @@ export const sv: Messages = {
         body: [
           "Mottagarens webbläsare räknar kontrollsumman medan filen kommer fram och kontrollerar storleken, antalet delar, utfyllnaden och kontrollsumman mot END. Filen sparas bara om allt stämmer. Varje annat slut, till exempel en ram som inte går att dekryptera eller en förbindelse som stängs för tidigt, kastar det som har skrivits.",
           "Chrome och Edge kan skriva filen direkt till en plats på disken som mottagaren väljer. Andra webbläsare samlar den i minnet och startar nedladdningen i slutet, och för en fil över 256 MiB varnas mottagaren först. Nedladdningen märks alltid som rena binärdata, vilken typ avsändaren än anger, så en fil kan inte köras som en webbsida på Fidants webbplats.",
-          "Namn med styrtecken, radavgränsare eller Unicode-tecken som åsidosätter eller isolerar textriktning nekas, så ett namn som slutar på .exe kan inte se ut att sluta på .pdf.",
+          "Namn med styrtecken, radavgränsare, Unicode-tecken som åsidosätter eller isolerar textriktning, tomma utfyllnadstecken eller långa rader av mellanslag nekas, så ett namn som slutar på .exe kan inte se ut att sluta på .pdf.",
         ],
       },
       padding: {
@@ -1384,7 +1384,7 @@ export const sv: Messages = {
         [
           "En mottagare med en mejlad länk anger koden",
           "Värdet ur länken och koden som skrevs.",
-          "Den senaste koden med dess giltighetstid och försök, och den token en rätt kod ger, medan din sida har länken. Antal koder per förvrängd e-postadress, i en timme.",
+          "Den senaste koden med dess giltighetstid och försök, och den token en rätt kod ger, medan din sida har länken. Antal koder per förvrängd e-postadress och per förvrängd IP-adress, i en timme.",
           "Varje kod som skickades eller nekades och varför, och en rätt kod, med de 6 första tecknen i länk-ID:t.",
           "Ingenting.",
         ],
@@ -1476,7 +1476,7 @@ export const sv: Messages = {
       ],
       [
         "Antal mejl och koder",
-        "För att begränsa hur många mejl någon kan skicka räknar vi under en timme mejlen och koderna till varje adress och mejlen som varje IP-adress ber oss skicka. Antalet sparas under en förvrängd form av adressen (en HMAC), aldrig under själva adressen.",
+        "För att begränsa hur många mejl någon kan skicka räknar vi under en timme mejlen och koderna till varje adress och mejlen och koderna som varje IP-adress ber oss skicka. Antalet sparas under en förvrängd form av adressen (en HMAC), aldrig under själva adressen.",
       ],
     ],
     keepHeading: "Vad vi sparar",

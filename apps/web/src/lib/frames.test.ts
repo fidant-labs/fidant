@@ -23,6 +23,7 @@ import {
   MAX_PADDABLE_SIZE,
   META_PADDED_BYTES,
   MetaTooLargeError,
+  MIN_CHUNK_BYTES,
   metaFits,
   paddedLength,
   ReceiveVerifier,
@@ -367,7 +368,7 @@ test("chunk bodies are limited to 48 KiB and fixed-size kinds are checked", asyn
 });
 
 function meta(size: number) {
-  return { name: "a.txt", size, type: "text/plain", chunkSize: 4, from: "Anna" };
+  return { name: "a.txt", size, type: "text/plain", chunkSize: MIN_CHUNK_BYTES, from: "Anna" };
 }
 
 test("META and END bodies encode and decode", () => {
@@ -375,7 +376,7 @@ test("META and END bodies encode and decode", () => {
     name: "Årsrapport 2026.pdf",
     size: 2 ** 40,
     type: "application/pdf",
-    chunkSize: 4,
+    chunkSize: MIN_CHUNK_BYTES,
     from: "Åsa Öberg",
   };
   assert.equal(encodeMeta(m).length, META_PADDED_BYTES);
@@ -417,7 +418,7 @@ test("META is always the same size, so it does not reveal the name length", asyn
     name: `${"å".repeat(300)}.pdf`,
     size: 2 ** 40,
     type: "application/pdf",
-    chunkSize: 4,
+    chunkSize: MIN_CHUNK_BYTES,
     from: "å".repeat(MAX_FROM_LENGTH),
   };
   const a = await writer.encrypt(META, encodeMeta(short));
@@ -439,7 +440,10 @@ test("META that does not fit throws MetaTooLargeError, and metaFits says so", ()
   );
   const tooLong = { ...fits, name: "x".repeat(1000) };
   assert.equal(metaFits(tooLong), false);
-  assert.throws(() => encodeMeta({ ...tooLong, chunkSize: 4, from: "" }), MetaTooLargeError);
+  assert.throws(
+    () => encodeMeta({ ...tooLong, chunkSize: MIN_CHUNK_BYTES, from: "" }),
+    MetaTooLargeError,
+  );
   // Escaped and multi-byte characters count by their encoded length.
   assert.equal(metaFits({ ...fits, name: "\u0001".repeat(170) }), false);
   assert.equal(metaFits({ ...fits, name: "å".repeat(400) }), true);
@@ -512,8 +516,10 @@ test("META refuses control, separator and direction characters in the name, type
   }
 });
 
-// meta(10) has chunkSize 4: paddedLength(10, 4) = 12, so three chunks, the
+// The verifier takes any chunk size; SMALL has chunkSize 4: paddedLength(10, 4) = 12, so three chunks, the
 // last one with two bytes of file and two of padding.
+const SMALL = { size: 10, chunkSize: 4 };
+
 function chunksOf(file: Uint8Array, chunkSize = 4, padded = 12): Uint8Array[] {
   const out: Uint8Array[] = [];
   for (let o = 0; o < padded; o += chunkSize) {
@@ -527,7 +533,7 @@ function chunksOf(file: Uint8Array, chunkSize = 4, padded = 12): Uint8Array[] {
 test("verifier: a complete transfer finishes with the checksum", () => {
   const file = randomBytes(10);
   const v = new ReceiveVerifier();
-  v.meta(meta(10));
+  v.meta(SMALL);
   const data = chunksOf(file).map((c) => v.chunk(c));
   assert.deepEqual(
     data.map((d) => d.length),
@@ -552,7 +558,7 @@ test("verifier: padding chunks carry no file bytes and must be zeros", () => {
   assert.deepEqual(v.end(encodeEnd(sha256(file), 9)), sha256(file));
 
   const dirty = new ReceiveVerifier();
-  dirty.meta(meta(10));
+  dirty.meta(SMALL);
   const chunks = chunksOf(randomBytes(10));
   dirty.chunk(chunks[0] as Uint8Array);
   dirty.chunk(chunks[1] as Uint8Array);
@@ -567,21 +573,21 @@ test("verifier: truncation makes finish() throw", () => {
   const chunks = chunksOf(file);
 
   const missingEnd = new ReceiveVerifier();
-  missingEnd.meta(meta(10));
+  missingEnd.meta(SMALL);
   for (const c of chunks) {
     missingEnd.chunk(c);
   }
   assert.throws(() => missingEnd.finish(), /incomplete/);
 
   const fewerChunks = new ReceiveVerifier();
-  fewerChunks.meta(meta(10));
+  fewerChunks.meta(SMALL);
   fewerChunks.chunk(chunks[0] as Uint8Array);
   fewerChunks.chunk(chunks[1] as Uint8Array);
   assert.throws(() => fewerChunks.end(encodeEnd(sha256(file), 10)), /all chunks/);
   assert.throws(() => fewerChunks.finish());
 
   const endSizeLies = new ReceiveVerifier();
-  endSizeLies.meta(meta(10));
+  endSizeLies.meta(SMALL);
   for (const c of chunks) {
     endSizeLies.chunk(c);
   }
@@ -589,7 +595,7 @@ test("verifier: truncation makes finish() throw", () => {
   assert.throws(() => endSizeLies.finish());
 
   const wrongHash = new ReceiveVerifier();
-  wrongHash.meta(meta(10));
+  wrongHash.meta(SMALL);
   for (const c of chunks) {
     wrongHash.chunk(c);
   }
@@ -617,24 +623,24 @@ test("verifier: rejects out-of-order kinds, short chunks and excess chunks", () 
   assert.throws(() => chunkFirst.chunk(chunks[0] as Uint8Array), /CHUNK before META/);
 
   const short = new ReceiveVerifier();
-  short.meta(meta(10));
+  short.meta(SMALL);
   short.chunk(chunks[0] as Uint8Array);
   assert.throws(() => short.chunk(file.subarray(4, 7)), /chunk size/);
   assert.throws(() => short.chunk(chunks[1] as Uint8Array), /has failed/);
 
   const unpadded = new ReceiveVerifier();
-  unpadded.meta(meta(10));
+  unpadded.meta(SMALL);
   unpadded.chunk(chunks[0] as Uint8Array);
   unpadded.chunk(chunks[1] as Uint8Array);
   assert.throws(() => unpadded.chunk(file.subarray(8)), /chunk size/);
 
   const tooLong = new ReceiveVerifier();
-  tooLong.meta(meta(10));
+  tooLong.meta(SMALL);
   tooLong.chunk(chunks[0] as Uint8Array);
   assert.throws(() => tooLong.chunk(new Uint8Array(5)), /chunk size/);
 
   const tooMany = new ReceiveVerifier();
-  tooMany.meta(meta(10));
+  tooMany.meta(SMALL);
   for (const c of chunks) {
     tooMany.chunk(c);
   }
@@ -642,7 +648,7 @@ test("verifier: rejects out-of-order kinds, short chunks and excess chunks", () 
   assert.throws(() => tooMany.end(encodeEnd(sha256(file), 10)), /has failed/);
 
   const chunkAfterEnd = new ReceiveVerifier();
-  chunkAfterEnd.meta(meta(10));
+  chunkAfterEnd.meta(SMALL);
   for (const c of chunks) {
     chunkAfterEnd.chunk(c);
   }
@@ -651,8 +657,8 @@ test("verifier: rejects out-of-order kinds, short chunks and excess chunks", () 
   assert.throws(() => chunkAfterEnd.finish(), "failed verifier does not finish");
 
   const metaTwice = new ReceiveVerifier();
-  metaTwice.meta(meta(10));
-  assert.throws(() => metaTwice.meta(meta(10)), /twice/);
+  metaTwice.meta(SMALL);
+  assert.throws(() => metaTwice.meta(SMALL), /twice/);
 
   const badChunkSize = new ReceiveVerifier();
   assert.throws(() => badChunkSize.meta({ size: 10, chunkSize: 0 }), /chunk size/);
@@ -664,4 +670,30 @@ test("dropping the END frame in transit is detected as truncation", async () => 
   const frames = await encryptFile(key, file);
   await assert.rejects(receiveFile(key, frames.slice(0, -1)), /incomplete/);
   await assert.rejects(receiveFile(key, frames.slice(0, -2)), /incomplete/);
+});
+
+// From the security audit of 2026-11-25.
+test("META refuses a chunk size no honest sender uses (SIG-232)", () => {
+  // An honest sender's chunk is at least 986 bytes, because its META frame must fit one message.
+  for (const chunkSize of [1, 4, 985]) {
+    assert.throws(
+      () => decodeMeta(rawMeta(JSON.stringify({ ...meta(10), chunkSize }))),
+      `chunkSize ${chunkSize} was accepted`,
+    );
+  }
+});
+
+test("META refuses blank characters that push a name's real ending out of sight (SIG-238)", () => {
+  // Braille blank, Hangul filler, no-break space and ideographic space.
+  for (const code of [0x2800, 0x3164, 0x00a0, 0x3000]) {
+    const label = `U+${code.toString(16).padStart(4, "0")}`;
+    const name = `invoice.pdf${String.fromCodePoint(code).repeat(40)}.exe`;
+    assert.equal(hasForbiddenCharacters(name), true, label);
+    assert.throws(() => decodeMeta(rawMeta(JSON.stringify({ ...meta(10), name }))), label);
+  }
+  assert.equal(hasForbiddenCharacters(`invoice.pdf${" ".repeat(40)}.exe`), true, "spaces");
+  // One space of any kind stays allowed. macOS puts U+202F before AM or PM in screenshot names.
+  for (const name of ["Screenshot 2026-11-25 at 10.00.00 AM.png", "a b.txt", "a  b.txt"]) {
+    assert.equal(hasForbiddenCharacters(name), false, name);
+  }
 });

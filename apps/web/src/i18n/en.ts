@@ -885,7 +885,7 @@ export const en = {
         body: [
           "The recipient's browser hashes the file as it arrives, and checks the size, the number of chunks, the padding and the checksum against END. Only when everything matches is the file kept. Any other ending, such as a frame that fails to decrypt or a connection that closes early, throws away what was written.",
           "Chrome and Edge can write the file straight to a place on the disk the recipient chooses. Other browsers collect it in memory and start the download at the end, and for a file over 256 MiB the recipient is warned first. The download is always marked as plain binary data, whatever type the sender claims, so a file can't run as a web page on Fidant's site.",
-          "Names with control characters, line separators or the Unicode characters that override or isolate text direction are refused, so a name ending in .exe can't be made to look like one ending in .pdf.",
+          "Names with control characters, line separators, the Unicode characters that override or isolate text direction, blank filler characters or long runs of spaces are refused, so a name ending in .exe can't be made to look like one ending in .pdf.",
         ],
       },
       padding: {
@@ -1422,7 +1422,7 @@ export const en = {
         [
           "A recipient on an emailed link enters the code",
           "The value from the link and the code typed.",
-          "The latest code with its expiry and tries, and the token a right code gets, while your page has the link. A count of codes per scrambled email address, for an hour.",
+          "The latest code with its expiry and tries, and the token a right code gets, while your page has the link. A count of codes per scrambled email address and per scrambled IP address, for an hour.",
           "Each code sent or refused and why, and a right code, with the first 6 characters of the link ID.",
           "Nothing.",
         ],
@@ -1514,7 +1514,7 @@ export const en = {
       ],
       [
         "Counts of emails and codes",
-        "To limit how many emails anyone can send, we count the emails and codes sent to each address and the emails each IP address asks us to send, for an hour. We keep each count under a scrambled form of the address (an HMAC), never the address itself.",
+        "To limit how many emails anyone can send, we count the emails and codes sent to each address and the emails and codes each IP address asks us to send, for an hour. We keep each count under a scrambled form of the address (an HMAC), never the address itself.",
       ],
     ] as ReadonlyArray<readonly [string, string]>,
     keepHeading: "What we keep",
