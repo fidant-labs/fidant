@@ -3,18 +3,18 @@ import { choose, expect, makeName, test } from "../src/fixtures.ts";
 test.describe("without JavaScript", () => {
   test.use({ javaScriptEnabled: false });
 
-  test("/sv/security is the Swedish security page with its own head", async ({ page }) => {
-    await page.goto("/sv/security");
+  test("/sv/sakerhet is the Swedish security page with its own head", async ({ page }) => {
+    await page.goto("/sv/sakerhet");
     await expect(page.locator("main h1")).toHaveText("Säkerhet");
     await expect(page).toHaveTitle("Säkerhet – Fidant");
     await expect(page.locator("html")).toHaveAttribute("lang", "sv");
     await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
       "href",
-      "https://fidant.se/sv/security",
+      "https://fidant.se/sv/sakerhet",
     );
     for (const [lang, href] of [
       ["en", "https://fidant.se/security"],
-      ["sv", "https://fidant.se/sv/security"],
+      ["sv", "https://fidant.se/sv/sakerhet"],
       ["x-default", "https://fidant.se/security"],
     ] as const) {
       await expect(page.locator(`link[rel="alternate"][hreflang="${lang}"]`)).toHaveAttribute(
@@ -53,8 +53,9 @@ test("every page in the sitemap answers with its own canonical", async ({ reques
 });
 
 test("unknown paths are 404 and receive links are noindex", async ({ request }) => {
-  const missing = await request.head("/no-such-page");
-  expect(missing.status()).toBe(404);
+  for (const path of ["/no-such-page", "/sv/security", "/sv/how/link"]) {
+    expect((await request.head(path)).status(), path).toBe(404);
+  }
   const receive = await request.head("/r/AAAAAAAAAAAAAAAAAAAAAA");
   expect(receive.status()).toBe(200);
   expect(receive.headers()["x-robots-tag"]).toBe("noindex");
@@ -118,7 +119,7 @@ test("switching language while sharing keeps the share, and the recipient still 
 
   await sender.evaluate(() => Object.assign(window, { notReloaded: true }));
   await choose(sender, "Language", "Svenska");
-  await expect(sender).toHaveURL(/\/sv\/secret$/);
+  await expect(sender).toHaveURL(/\/sv\/hemlighet$/);
   await expect(sender.locator("html")).toHaveAttribute("lang", "sv");
   expect(await sender.evaluate(() => "notReloaded" in window)).toBe(true);
   await expect(sender.getByLabel(`Länk till ${name}`, { exact: true })).toHaveText(link);
@@ -136,10 +137,40 @@ test("back after a language switch shows the earlier page in the new language", 
   await page.locator("header nav").getByRole("link", { name: "How it works" }).click();
   await expect(page).toHaveURL(/\/how$/);
   await choose(page, "Language", "Svenska");
-  await expect(page).toHaveURL(/\/sv\/how$/);
+  await expect(page).toHaveURL(/\/sv\/sa-fungerar-det$/);
   await page.goBack();
-  await expect(page).toHaveURL(/\/sv\/privacy$/);
+  await expect(page).toHaveURL(/\/sv\/integritet$/);
   await expect(page.locator("main h1")).toHaveText("Integritet");
   await page.locator("header nav").getByRole("link", { name: "Skicka en fil" }).click();
-  await expect(page).toHaveURL(/\/sv\/send$/);
+  await expect(page).toHaveURL(/\/sv\/skicka$/);
+});
+
+test("every internal link on a Swedish page leads to a Swedish page", async ({ page, request }) => {
+  const sitemap = await (await request.get("/sitemap.xml")).text();
+  const swedish = [...sitemap.matchAll(/<loc>https:\/\/fidant\.se(\/sv[^<]*)<\/loc>/g)].map(
+    (m) => m[1] ?? "",
+  );
+  expect(swedish).toHaveLength(20);
+  for (const path of swedish) {
+    await page.goto(path);
+    await expect(page.locator("html")).toHaveAttribute("lang", "sv");
+    await expect(page.locator("main h1")).not.toBeEmpty();
+    const hrefs = await page
+      .locator('a[href^="/"]')
+      .evaluateAll((links) => links.map((link) => link.getAttribute("href") ?? ""));
+    expect(hrefs.length, path).toBeGreaterThan(0);
+    for (const href of hrefs) {
+      expect(swedish, `${path} links to ${href}`).toContain(href.split(/[?#]/)[0]);
+    }
+  }
+});
+
+test("switching language on a step page opens its twin and keeps the anchor", async ({ page }) => {
+  await page.goto("/sv/sa-fungerar-det/kryptering#keys");
+  await expect(page.locator("main h1")).not.toBeEmpty();
+  await choose(page, "Språk", "English");
+  await expect(page).toHaveURL(/\/how\/encryption#keys$/);
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  await choose(page, "Language", "Svenska");
+  await expect(page).toHaveURL(/\/sv\/sa-fungerar-det\/kryptering#keys$/);
 });

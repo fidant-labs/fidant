@@ -6,7 +6,7 @@ import { STEPS } from "./how/steps.tsx";
 import { I18nProvider } from "./i18n/I18n.tsx";
 import { type Lang, MESSAGES } from "./i18n/language.ts";
 
-/** Every public page, without the /sv prefix. */
+/** Every public page, by its English path. */
 export const PAGES: readonly string[] = [
   "/",
   "/send",

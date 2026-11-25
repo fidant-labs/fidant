@@ -23,7 +23,7 @@ test("llmsTxt lists each page with its link and description", () => {
       },
       {
         heading: "Svenska",
-        pages: [{ title: "Om", description: "Vem.", url: "https://fidant.se/sv/about" }],
+        pages: [{ title: "Om", description: "Vem.", url: "https://fidant.se/sv/om" }],
       },
     ]),
     `# Fidant
@@ -36,7 +36,7 @@ test("llmsTxt lists each page with its link and description", () => {
 
 ## Svenska
 
-- [Om](https://fidant.se/sv/about): Vem.
+- [Om](https://fidant.se/sv/om): Vem.
 `,
   );
 });
@@ -44,5 +44,5 @@ test("llmsTxt lists each page with its link and description", () => {
 test("pageUrl names the page in its language", () => {
   assert.equal(pageUrl("/", "en"), "https://fidant.se/");
   assert.equal(pageUrl("/", "sv"), "https://fidant.se/sv");
-  assert.equal(pageUrl("/about", "sv"), "https://fidant.se/sv/about");
+  assert.equal(pageUrl("/about", "sv"), "https://fidant.se/sv/om");
 });

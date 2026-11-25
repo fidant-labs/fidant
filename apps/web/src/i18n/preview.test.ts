@@ -41,12 +41,10 @@ test("a public page gets its canonical, hreflang links, script and markup", () =
     script: { src: "/assets/prepaint-x.js" },
     markup: "<main>Om</main>",
   });
-  assert.ok(page.includes(`<link rel="canonical" href="https://fidant.se/sv/about" />`));
-  assert.ok(page.includes(`<meta property="og:url" content="https://fidant.se/sv/about" />`));
+  assert.ok(page.includes(`<link rel="canonical" href="https://fidant.se/sv/om" />`));
+  assert.ok(page.includes(`<meta property="og:url" content="https://fidant.se/sv/om" />`));
   assert.ok(page.includes(`<link rel="alternate" hreflang="en" href="https://fidant.se/about" />`));
-  assert.ok(
-    page.includes(`<link rel="alternate" hreflang="sv" href="https://fidant.se/sv/about" />`),
-  );
+  assert.ok(page.includes(`<link rel="alternate" hreflang="sv" href="https://fidant.se/sv/om" />`));
   assert.ok(
     page.includes(`<link rel="alternate" hreflang="x-default" href="https://fidant.se/about" />`),
   );
