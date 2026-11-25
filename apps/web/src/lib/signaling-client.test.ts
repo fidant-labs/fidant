@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
-import { connectSignaling, RETRY_MAX_MS, retryDelay } from "./signaling-client.ts";
+import { RETRY_MAX_MS } from "@sigill/protocol";
+import { connectSignaling, retryDelay } from "./signaling-client.ts";
 
 const STABLE = 10_000;
 const LINK = "AAAAAAAAAAAAAAAAAAAAAA";
@@ -135,6 +136,24 @@ test("a failed connect doubles the next wait, and a stable open resets it", (t) 
   t.mock.timers.tick(STABLE);
   drop();
   t.mock.timers.tick(1000);
+  assert.equal(created, 4);
+});
+
+test("a close with 1012 reconnects at once and resets the wait", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  t.mock.method(Math, "random", () => 1);
+  connectSignaling({ url: "wss://x/signal" });
+  drop();
+  t.mock.timers.tick(2000);
+  assert.equal(created, 2);
+  open();
+  drop(1012);
+  t.mock.timers.tick(0);
+  assert.equal(created, 3);
+  drop();
+  t.mock.timers.tick(1999);
+  assert.equal(created, 3);
+  t.mock.timers.tick(1);
   assert.equal(created, 4);
 });
 
