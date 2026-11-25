@@ -298,7 +298,7 @@ function logPeerFailures() {
   };
   const describe = (error: unknown) =>
     error instanceof NativeError
-      ? `${error.name}: ${error.message} at ${frames(error.stack, 1, 3)}`
+      ? `${error.name}: ${error.message} | ${frames(error.stack, 1, 3)}`
       : String(error);
   const built = (args: unknown[]) => {
     const cause = (args[1] as { cause?: unknown } | undefined)?.cause;
@@ -339,31 +339,32 @@ function logPeerFailures() {
     };
   }
   // Frame headers only (kind, seq, length): the bytes after them are keys, names and file data.
-  const trails = new WeakMap<RTCDataChannel, string[]>();
-  const note = (channel: RTCDataChannel, way: string, data: unknown) => {
-    let entry = `${way}${typeof data}`;
+  const trails = new WeakMap<RTCDataChannel, { in: string[]; out: string[] }>();
+  const note = (channel: RTCDataChannel, way: "in" | "out", data: unknown) => {
+    let entry: string = typeof data;
     if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) {
-      const bytes =
+      const view =
         data instanceof ArrayBuffer
-          ? new Uint8Array(data)
-          : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+          ? new DataView(data)
+          : new DataView(data.buffer, data.byteOffset, data.byteLength);
       entry =
-        bytes.length < 10
-          ? `${way}?:${bytes.length}`
-          : `${way}${view.getUint8(1)}#${view.getUint32(6)}:${bytes.length}`;
+        view.byteLength < 10
+          ? `?:${view.byteLength}`
+          : `${view.getUint8(1)}#${view.getUint32(6)}:${view.byteLength}`;
     }
-    trails.set(channel, [...(trails.get(channel) ?? []), entry].slice(-12));
+    const trail = trails.get(channel) ?? { in: [], out: [] };
+    trails.set(channel, trail);
+    trail[way] = [...trail[way], entry].slice(-12);
   };
-  const channel = RTCDataChannel.prototype;
-  const listen = channel.addEventListener;
+  const channelProto = RTCDataChannel.prototype;
+  const listen = channelProto.addEventListener;
   const watched = new WeakSet<RTCDataChannel>();
-  channel.addEventListener = function (this: RTCDataChannel, ...args: unknown[]) {
+  channelProto.addEventListener = function (this: RTCDataChannel, ...args: unknown[]) {
     if (!watched.has(this)) {
       watched.add(this);
       Reflect.apply(listen, this, [
         "message",
-        (event: MessageEvent) => note(this, "<", event.data),
+        (event: MessageEvent) => note(this, "in", event.data),
       ]);
       Reflect.apply(listen, this, [
         "error",
@@ -373,30 +374,33 @@ function logPeerFailures() {
     }
     return Reflect.apply(listen, this, args);
   } as RTCDataChannel["addEventListener"];
-  const send = channel.send;
-  channel.send = function (this: RTCDataChannel, data: unknown) {
+  const send = channelProto.send;
+  channelProto.send = function (this: RTCDataChannel, data: unknown) {
     try {
       Reflect.apply(send, this, [data]);
     } catch (error) {
       log(`channel send() threw in ${this.readyState}: ${describe(error)}`);
       throw error;
     }
-    note(this, ">", data);
+    note(this, "out", data);
   } as RTCDataChannel["send"];
   for (const [label, proto] of [
     ["peer", RTCPeerConnection.prototype],
-    ["channel", channel],
+    ["channel", channelProto],
   ] as const) {
     const close = proto.close;
     if (!native(close)) {
       continue;
     }
     proto.close = function (this: unknown) {
+      const seen = this instanceof RTCDataChannel ? trails.get(this) : undefined;
       const trail =
         this instanceof RTCDataChannel
-          ? ` after ${trails.get(this)?.join(" ") ?? "no frames"}`
+          ? seen
+            ? ` after in ${seen.in.join(" ")} out ${seen.out.join(" ")}`
+            : " after no frames"
           : "";
-      log(`${label} close() at ${stack()}${trail}`);
+      log(`${label} close() ${stack()}${trail}`);
       Reflect.apply(close, this, []);
     };
   }
