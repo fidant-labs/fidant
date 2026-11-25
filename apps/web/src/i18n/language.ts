@@ -39,24 +39,58 @@ export function rememberLanguage(lang: Lang) {
 }
 
 const SV_PREFIX = /^\/sv(?=\/|$)/;
-const RECEIVE = /^(?:\/sv)?\/r\//;
 
-/** The path without its /sv prefix: /sv/how is /how, /sv is /. Receive paths, with or without /sv, come back unchanged. */
+/** Each public page's Swedish address after /sv, by its English path. The Swedish front page is /sv. */
+export const SWEDISH_PATHS: Readonly<Record<string, string>> = {
+  "/send": "/skicka",
+  "/secret": "/hemlighet",
+  "/how": "/sa-fungerar-det",
+  "/how/file": "/sa-fungerar-det/filen",
+  "/how/encryption": "/sa-fungerar-det/kryptering",
+  "/how/link": "/sa-fungerar-det/lanken",
+  "/how/connect": "/sa-fungerar-det/anslutning",
+  "/how/direct": "/sa-fungerar-det/direkt",
+  "/how/relay": "/sa-fungerar-det/relaet",
+  "/how/transfer": "/sa-fungerar-det/overforing",
+  "/how/verification": "/sa-fungerar-det/kontroll",
+  "/how/masking": "/sa-fungerar-det/maskering",
+  "/how/traces": "/sa-fungerar-det/lamnas-kvar",
+  "/how/protection": "/sa-fungerar-det/skydd",
+  "/how/tech": "/sa-fungerar-det/ordlista",
+  "/about": "/om",
+  "/privacy": "/integritet",
+  "/security": "/sakerhet",
+  "/terms": "/villkor",
+};
+
+const ENGLISH_PATHS: Readonly<Record<string, string>> = Object.fromEntries(
+  Object.entries(SWEDISH_PATHS).map(([english, swedish]) => [swedish, english]),
+);
+
+const withoutSlash = (path: string) => (/[^/]\/$/.test(path) ? path.slice(0, -1) : path);
+
+/** The English path of a page: /sv/sakerhet is /security, /sv is /. Any other path comes back unchanged. */
 export function barePath(path: string): string {
-  if (RECEIVE.test(path)) {
+  if (!SV_PREFIX.test(path)) {
     return path;
   }
-  const bare = path.replace(SV_PREFIX, "");
-  return bare === "" || bare === "/" ? "/" : bare;
+  const swedish = withoutSlash(path.slice(3) || "/");
+  return swedish === "/" ? "/" : (ENGLISH_PATHS[swedish] ?? path);
 }
 
-/** The same page in `lang`. Receive links have one path for both languages. */
+/** The same page in `lang`, keeping any query and anchor. A path that is no page, such as a receive link, comes back unchanged. */
 export function localizedPath(path: string, lang: Lang): string {
-  if (RECEIVE.test(path)) {
+  const cut = path.search(/[?#]/);
+  const suffix = cut < 0 ? "" : path.slice(cut);
+  const english = withoutSlash(barePath(cut < 0 ? path : path.slice(0, cut)));
+  if (english === "/") {
+    return (lang === "sv" ? "/sv" : "/") + suffix;
+  }
+  const swedish = SWEDISH_PATHS[english];
+  if (swedish === undefined) {
     return path;
   }
-  const bare = barePath(path);
-  return lang === "sv" ? `/sv${bare === "/" ? "" : bare}` : bare;
+  return (lang === "sv" ? `/sv${swedish}` : english) + suffix;
 }
 
 /** The language a path names, or undefined for a receive link, whose language is picked as before. */

@@ -25,7 +25,7 @@ type Block =
   | { glossary: true }
   | { explorer: true };
 
-/** The /how steps in order: their text on /how, their URL, drawing and technical detail. */
+/** The /how steps in order: their text on /how, their English URL slug (the Swedish one is in SWEDISH_PATHS), drawing and technical detail. */
 export const STEPS = [
   {
     id: "stays",

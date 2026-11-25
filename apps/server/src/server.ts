@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import type { IncomingMessage, RequestListener, ServerResponse } from "node:http";
 import { createServer, type Server } from "node:https";
-import { isIP } from "node:net";
+import { type BlockList, isIP } from "node:net";
 import { extname, join, resolve, sep } from "node:path";
 import type { Mailer } from "./mail.ts";
 import type { Relays } from "./relays.ts";
@@ -31,7 +31,7 @@ const securityHeaders = {
 };
 
 /** Lowercase segments only, so a redirect built from it can never name another host. */
-const pagePath = /^(?:\/[a-z]+)*\/?$/;
+const pagePath = /^(?:\/[a-z]+(?:-[a-z]+)*)*\/?$/;
 const moved: Record<string, string> = { "/technical": "/how" };
 
 /** Where the build puts a page: pages/index.html for /, pages/<path>/index.html for the rest. */
@@ -127,6 +127,10 @@ export function serveStatic(root: string) {
   };
 }
 
+const notFound: RequestListener = (_req, res) => {
+  res.writeHead(404, securityHeaders).end();
+};
+
 const relayRoute = /^\/relay-(status|secret)(\/.*)?$/;
 const relayId = /^\/([a-z][a-z0-9]{1,15})$/;
 
@@ -193,24 +197,28 @@ export function ensureCert(dir: string, hosts: string[]): { key: Buffer; cert: B
 
 export function startServer(options: {
   port: number;
-  root: string;
+  root: string | undefined;
   certDir: string;
   hosts: string[];
   ice?: IceConfig | undefined;
   relays?: Relays | undefined;
   log?: Logger;
   mail?: { send: Mailer; origin: string } | undefined;
+  siteOrigin?: string | undefined;
+  proxies?: BlockList | undefined;
   startingMs?: number | undefined;
 }): Promise<{ server: Server; signaling: { close(): void } }> {
   const server = createServer(
     ensureCert(options.certDir, options.hosts),
-    serveRelays(options.relays, serveStatic(options.root)),
+    serveRelays(options.relays, options.root === undefined ? notFound : serveStatic(options.root)),
   );
   const signaling = attachSignaling(server, {
     log: options.log ?? (() => {}),
     iceServers: (turn) =>
       options.relays ? options.relays.ice(turn) : iceServersFor(options.ice, Date.now(), turn),
     mail: options.mail,
+    siteOrigin: options.siteOrigin,
+    proxies: options.proxies,
     startingMs: options.startingMs,
   });
   server.on("close", () => signaling.close());
