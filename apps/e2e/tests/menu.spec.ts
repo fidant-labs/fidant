@@ -3,8 +3,10 @@ import { canaryFile, expect, makeName, recipientRow, test } from "../src/fixture
 
 const nav = (page: Page) => page.locator("header nav");
 
+const footer = (page: Page) => page.locator("footer");
+
 async function choose(page: Page, menu: string, option: string) {
-  await nav(page).getByRole("button", { name: menu }).click();
+  await footer(page).getByRole("button", { name: menu }).click();
   await page.getByRole("menuitemradio", { name: option }).click();
   await expect(page.getByRole("menu")).toBeHidden();
 }
@@ -110,7 +112,7 @@ test("the theme menu sets System, Light and Dark, and the choice survives a relo
       } else {
         await expect(html).not.toHaveAttribute("data-theme");
       }
-      await nav(page).getByRole("button", { name: "Theme" }).click();
+      await footer(page).getByRole("button", { name: "Theme" }).click();
       await expect(page.getByRole("menuitemradio", { name: option })).toBeChecked();
       // Radix moves focus into the menu just after it opens; Escape before that does nothing.
       await expect(page.getByRole("menu")).toBeFocused();
