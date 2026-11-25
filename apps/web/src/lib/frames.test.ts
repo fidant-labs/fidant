@@ -31,6 +31,7 @@ import {
   ReceiveVerifier,
   RecipientKind,
   SenderKind,
+  VersionError,
 } from "./frames.ts";
 import { createTransferId, deriveFileKey } from "./keys.ts";
 import { createLink } from "./link.ts";
@@ -104,6 +105,21 @@ test("INIT carries the transferId in clear at seq 0", async () => {
   assert.throws(() => decodeInit(flip(frame, 1)), "other kind");
   assert.throws(() => decodeInit(flip(frame, 9)), "non-zero seq");
   assert.throws(() => decodeInit(flip(frame, 0)), /unknown frame version/);
+  for (const version of [FRAME_VERSION - 1, FRAME_VERSION + 1, 0, 255]) {
+    const other = frame.slice();
+    other[0] = version;
+    assert.throws(
+      () => decodeInit(other),
+      (error) =>
+        error instanceof VersionError &&
+        error.version === version &&
+        error.message === `unknown frame version ${version}`,
+    );
+  }
+  assert.throws(
+    () => decodeInit(flip(frame, 1)),
+    (error) => !(error instanceof VersionError),
+  );
 
   // An encrypted reader never accepts INIT.
   const { key } = await setup();
