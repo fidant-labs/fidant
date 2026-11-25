@@ -345,6 +345,8 @@ export const sv: Messages = {
       ask: (name: string) => `Be ${name} läsa upp numret på sin skärm. Stämmer det?`,
       matches: "Det stämmer",
       differs: "Det skiljer sig",
+      matchesFor: (name: string) => `Det stämmer för ${name}`,
+      differsFor: (name: string) => `Det skiljer sig för ${name}`,
       waiting: "Du sa att det stämmer. Det skickas när mottagaren också har bekräftat.",
       differed:
         "Numren stämde inte, så inget skickades. Någon kan ha varit emellan. Länken fungerar fortfarande om du vill försöka igen.",
@@ -1133,7 +1135,7 @@ export const sv: Messages = {
         ],
         [
           "Nätverken på vägen eller vårt relä läser trafiken",
-          "Två lager kryptering: WebRTC:s DTLS, och AES-256-GCM under en filnyckel som bara de två webbläsarna har, ny för varje försök. För en länk vi mejlar skulle vår server också kunna få filnyckeln genom att ställa sig emellan (se ovan), vilket kontrollnumret visar.",
+          "Två lager kryptering: WebRTC:s DTLS, och AES-256-GCM under en filnyckel som bara de två webbläsarna har, ny för varje försök. För en länk vi mejlar skulle vår server också kunna få filnyckeln genom att ställa sig emellan (se ovan), vilket kontrollnumret visar när det är på.",
         ],
         [
           "Trafiken avslöjar filnamnet, den exakta storleken eller en hemlighets längd",

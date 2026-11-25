@@ -9,7 +9,7 @@ import type { Page } from "@playwright/test";
 export type Signal = { t: string; data: string; link?: string; attempt?: string };
 
 /** The plaintext of a relayed signal (see apps/web/src/lib/peer.ts). */
-export type Payload = { kind: string; [field: string]: unknown };
+type Payload = { kind: string; [field: string]: unknown };
 
 /** Who sealed a signal: "s" the sender, "r" the recipient. */
 type Dir = "s" | "r";

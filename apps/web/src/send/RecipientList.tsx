@@ -1,8 +1,8 @@
 // One card per recipient (status, email, connection path, check number, progress, link, copy and remove), and one compact row once its link has delivered.
 //
-// Only the status sentence and the email line sit in polite live regions, so
-// screen readers hear "Sending through Anna's link", "Email sent to a***@example.se"
-// and so on, not every progress tick. Each status names the link or the masked
+// Only the status sentence, the email line, the check number and the check's
+// confirmation sit in live regions, so screen readers hear "Sending through
+// Anna's link", "Email sent to a***@example.se" and so on, not every progress tick. Each status names the link or the masked
 // address, not the person, because whoever opens a link may not be the person
 // it was made for.
 
@@ -137,6 +137,11 @@ function RecipientRow({
     </Button>
   );
 
+  const answer = (matches: boolean) => {
+    document.querySelector<HTMLElement>(`[data-status="${linkId}"]`)?.focus();
+    onCheck(linkId, matches);
+  };
+
   if (status === "delivered" && !full) {
     return (
       <li class="min-w-0">
@@ -159,7 +164,9 @@ function RecipientRow({
         <CardContent>
           <p class="m-0 text-[1.05rem] font-semibold wrap-anywhere">{name}</p>
           <p
-            class={`mt-1 mb-0 flex items-center gap-1.5 text-[0.9rem] wrap-anywhere ${noRelay || checkFailed ? "text-destructive" : (STATUS_COLOR[status] ?? "")}`}
+            data-status={linkId}
+            tabIndex={-1}
+            class={`mt-1 mb-0 flex items-center gap-1.5 text-[0.9rem] wrap-anywhere outline-none ${noRelay || checkFailed ? "text-destructive" : (STATUS_COLOR[status] ?? "")}`}
             aria-live="polite"
           >
             {(status === "failed" || noRelay || checkFailed) && <Icon name="alert" />}
@@ -195,22 +202,28 @@ function RecipientRow({
                     <>
                       <p class="m-0 text-[0.9rem]">{t.send.check.ask(name)}</p>
                       <div class="flex flex-wrap gap-3">
-                        <Button type="button" onClick={() => onCheck(linkId, true)}>
+                        <Button
+                          type="button"
+                          aria-label={t.send.check.matchesFor(name)}
+                          onClick={() => answer(true)}
+                        >
                           {t.send.check.matches}
                         </Button>
                         <Button
                           type="button"
                           variant="outline"
-                          onClick={() => onCheck(linkId, false)}
+                          aria-label={t.send.check.differsFor(name)}
+                          onClick={() => answer(false)}
                         >
                           {t.send.check.differs}
                         </Button>
                       </div>
                     </>
                   )
-                : check.said && (
-                    <p class="m-0 text-[0.9rem] text-muted-foreground">{t.send.check.waiting}</p>
-                  )}
+                : null}
+              <p class="m-0 text-[0.9rem] text-muted-foreground" role="status">
+                {check?.said && t.send.check.waiting}
+              </p>
             </div>
           )}
           {status === "receiving" && (

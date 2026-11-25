@@ -27,8 +27,8 @@
 // |      |         |     | (0-based) only while i < granted                 |
 // |   20 | CHECK   |  r  | 1 byte: 1 the check number matches, 0 it differs |
 //
-// CHECK: with the check number on, each side sends its own CHECK right after
-// INIT, and the sender sends META only once both said 1 (see send-file.ts).
+// CHECK: with the check number on, each side's first frame after INIT is its CHECK,
+// sent once its own person compared the numbers; META waits for both to say 1.
 //
 // Padding: anyone who can see frame sizes (the network, a TURN relay) learns
 // only paddedLength(size, chunkSize) of the file, never its exact size, and

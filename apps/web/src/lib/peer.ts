@@ -16,10 +16,13 @@
 // Each side makes a fresh DTLS certificate for every connection. The recipient
 // commits to its certificate's fingerprint before the sender's offer exists, so
 // someone in the middle must fix both certificates before it can learn the
-// check number they give (check.ts). Every SDP must carry exactly one sha-256
-// fingerprint. `check` says whether the sender's page will ask for the check
-// number; the server can flip it only for an emailed link, and then the two
-// pages disagree and nothing about the file is sent (see frames.ts).
+// check number they give (check.ts). Every fingerprint line of an SDP, in any
+// spelling, must be the exact `a=fingerprint:sha-256 <value>` form and all must
+// name one certificate; after setRemoteDescription the page reads the
+// fingerprint back from the browser's own copy and refuses any difference.
+// `check` says whether the sender's page will ask for the check number; the
+// server can flip it only for an emailed link, and then the two pages disagree
+// and nothing about the file is shown (see frames.ts).
 //
 // seal_s/seal_r are sealSignal with direction "s"/"r"; the receiving side opens
 // with the other side's direction, so the server cannot reflect a message back,
@@ -106,7 +109,8 @@ export type PeerOptions = {
 export type Peer = {
   /**
    * Handles the `data` of a relay message for this link. Never rejects: a bad
-   * signal closes the peer with "bad-signal". Calls are processed in order.
+   * signal closes the peer with "bad-signal", except that a sender that has accepted
+   * the answer ignores a signal that does not open or parse. Calls are processed in order.
    */
   handleRelay(data: string): Promise<void>;
   /** Recipient only: the answer went out, so this connection's check number is fixed. */
@@ -296,6 +300,8 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
   let commit: string | undefined;
   let offerFingerprint: string | undefined;
   let answered = false;
+  let answerAccepted = false;
+  let ownFingerprint: string | undefined;
   let check = side === "s" && options.check === true;
   let resolveNumber: (value: string) => void = () => {};
   const number = new Promise<string>((resolve) => {
@@ -416,8 +422,12 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
     await connection().addIceCandidate(candidate);
   }
 
-  async function setRemote(type: "offer" | "answer", sdp: string): Promise<void> {
+  async function setRemote(type: "offer" | "answer", sdp: string, expected: string): Promise<void> {
     await connection().setRemoteDescription({ type, sdp });
+    const sdpRead = connection().remoteDescription?.sdp;
+    if ((sdpRead === undefined ? undefined : sdpFingerprint(sdpRead)) !== expected) {
+      throw new PeerError("bad-signal", "the browser read another fingerprint");
+    }
     const queued = pendingCandidates.splice(0);
     for (const candidate of queued) {
       await addCandidate(candidate);
@@ -463,8 +473,11 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
         gotOffer = true;
         const theirs = remoteFingerprint(payload.sdp);
         check = payload.check;
-        await setRemote("offer", payload.sdp);
+        await setRemote("offer", payload.sdp, theirs);
         const answer = await describe("answer");
+        if (answer.fingerprint !== ownFingerprint) {
+          throw new PeerError("setup-failed", "the answer names another certificate");
+        }
         sendSignal({ kind: "answer", sdp: answer.sdp }, true);
         answered = true;
         resolveNumber(await checkNumber(theirs, answer.fingerprint));
@@ -479,7 +492,8 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
         if ((await commitFingerprint(theirs)) !== commit) {
           throw new PeerError("bad-signal", "answer does not match the commitment");
         }
-        await setRemote("answer", payload.sdp);
+        await setRemote("answer", payload.sdp, theirs);
+        answerAccepted = true;
         resolveNumber(await checkNumber(offerFingerprint, theirs));
         return;
       }
@@ -498,7 +512,6 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
       name: "ECDSA",
       namedCurve: "P-256",
     } as EcKeyGenParams);
-    const fingerprint = await certificateFingerprint(cert);
     if (closed) {
       return;
     }
@@ -533,7 +546,8 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
         }
         attachChannel(event.channel);
       };
-      sendSignal({ kind: "commit", hash: await commitFingerprint(fingerprint) }, true);
+      ownFingerprint = certificateFingerprint(cert);
+      sendSignal({ kind: "commit", hash: await commitFingerprint(ownFingerprint) }, true);
     }
   }
 
@@ -558,6 +572,9 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
           return;
         }
         if (!payload) {
+          if (side === "s" && answerAccepted) {
+            return;
+          }
           fail("bad-signal", "signal did not open or had the wrong shape");
           return;
         }

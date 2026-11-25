@@ -478,31 +478,27 @@ export function ReceivePage({
           }
           setTie("paired");
           attempt.relayRefused = !message.turn;
-          try {
-            attempt.peer = createRecipientPeer({
-              signaling,
-              linkId,
-              attempt: attemptId,
-              signalKey,
-              iceServers: message.iceServers,
-              onOpen: (channel, info) => {
-                // A short transfer can end before the path resolves, so this checks the attempt, not current().
-                void info.path.then((resolved) => {
-                  if (attemptRef.current !== attempt) {
-                    return;
-                  }
-                  setPath(resolved);
-                  if (resolved === "relay") {
-                    setViaRelay(true);
-                  }
-                });
-                onOpen(channel, info);
-              },
-              onClose: () => lost(),
-            });
-          } catch {
-            finish({ s: "failed", problem: "server" });
-          }
+          attempt.peer = createRecipientPeer({
+            signaling,
+            linkId,
+            attempt: attemptId,
+            signalKey,
+            iceServers: message.iceServers,
+            onOpen: (channel, info) => {
+              // A short transfer can end before the path resolves, so this checks the attempt, not current().
+              void info.path.then((resolved) => {
+                if (attemptRef.current !== attempt) {
+                  return;
+                }
+                setPath(resolved);
+                if (resolved === "relay") {
+                  setViaRelay(true);
+                }
+              });
+              onOpen(channel, info);
+            },
+            onClose: () => lost(),
+          });
           break;
         case "relay":
           attempt.heardSender = true;
@@ -733,6 +729,7 @@ export function ReceivePage({
     attempt.confirm(matches);
     attempt.confirm = undefined;
     setView({ ...view, said: matches });
+    document.querySelector<HTMLElement>("#receive h1")?.focus();
   };
 
   const onShow = () => {
@@ -862,7 +859,9 @@ export function ReceivePage({
               </div>
             </>
           )}
-          {view.said && <p class={caption}>{check.waiting}</p>}
+          <p class={caption} role="status">
+            {view.said && check.waiting}
+          </p>
           <p class={caption}>{check.why}</p>
         </>
       );

@@ -365,6 +365,8 @@ export const en = {
       ask: (name: string) => `Ask ${name} to read the number on their screen. Does it match?`,
       matches: "It matches",
       differs: "It differs",
+      matchesFor: (name: string) => `It matches for ${name}`,
+      differsFor: (name: string) => `It differs for ${name}`,
       waiting: "You said it matches. It goes once they confirm too.",
       differed:
         "The numbers didn't match, so nothing was sent. Someone may have been in between. The link still works if you want to try again.",
@@ -1180,7 +1182,7 @@ export const en = {
         ],
         [
           "The networks on the way or our relay read the traffic",
-          "Two layers of encryption: WebRTC's DTLS, and AES-256-GCM under a file key only the two browsers have, new for every attempt. For a link we email, our server could also get the file key by putting itself in the middle (see above), which the check number shows.",
+          "Two layers of encryption: WebRTC's DTLS, and AES-256-GCM under a file key only the two browsers have, new for every attempt. For a link we email, our server could also get the file key by putting itself in the middle (see above), which the check number shows when it is on.",
         ],
         [
           "The traffic gives away the file name, the exact size or a secret's length",

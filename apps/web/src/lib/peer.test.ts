@@ -152,6 +152,12 @@ const RECIPIENT_FP =
   "FF:FE:FD:FC:FB:FA:F9:F8:F7:F6:F5:F4:F3:F2:F1:F0:EF:EE:ED:EC:EB:EA:E9:E8:E7:E6:E5:E4:E3:E2:E1:E0";
 const OTHER_FP = SENDER_FP.replace("00:", "AA:");
 
+function resetFake(...fingerprints: string[]) {
+  FakePeerConnection.fingerprints = fingerprints;
+  FakePeerConnection.readBack = undefined;
+  FakePeerConnection.localFingerprint = undefined;
+}
+
 function fakeSdp(...lines: string[]): string {
   return ["v=0", "s=-", "m=application 9 UDP/DTLS/SCTP webrtc-datachannel", ...lines, ""].join(
     "\r\n",
@@ -165,6 +171,8 @@ type FakeCert = { getFingerprints(): { algorithm: string; value: string }[] };
 class FakePeerConnection {
   static fingerprints: string[] = [];
   static last: FakePeerConnection | undefined;
+  static readBack: ((sdp: string) => string) | undefined;
+  static localFingerprint: string | undefined;
   static async generateCertificate(): Promise<FakeCert> {
     const value = FakePeerConnection.fingerprints.shift() ?? SENDER_FP;
     return { getFingerprints: () => [{ algorithm: "sha-256", value: value.toLowerCase() }] };
@@ -190,11 +198,12 @@ class FakePeerConnection {
     const [fp] = this.certificate.getFingerprints();
     this.localDescription = {
       type: this.remoteDescription ? "answer" : "offer",
-      sdp: fakeSdp(`a=fingerprint:sha-256 ${fp?.value}`),
+      sdp: fakeSdp(`a=fingerprint:sha-256 ${FakePeerConnection.localFingerprint ?? fp?.value}`),
     };
   }
   async setRemoteDescription(description: { type: string; sdp: string }) {
-    this.remoteDescription = description;
+    const read = FakePeerConnection.readBack;
+    this.remoteDescription = read ? { ...description, sdp: read(description.sdp) } : description;
   }
   async addIceCandidate() {}
   async getStats() {
@@ -235,6 +244,8 @@ async function harness(side: "s" | "r", check?: boolean) {
   const relay = async (payload: unknown) =>
     peer.handleRelay(await sealSignal(key, linkId, attempt, from, payload));
   const settle = () => new Promise((resolve) => setTimeout(resolve, 10));
+  const relayFrom = async (direction: "s" | "r", otherAttempt: string, payload: unknown) =>
+    peer.handleRelay(await sealSignal(key, linkId, otherAttempt, direction, payload));
   /** Every signal sent so far, once at least `count` went out. */
   const signals = async (count = 0) => {
     for (let i = 0; i < 500 && sent.length < count; i++) {
@@ -243,7 +254,7 @@ async function harness(side: "s" | "r", check?: boolean) {
     await settle();
     return Promise.all(sent);
   };
-  return { peer, relay, signals, closes, opens, settle };
+  return { peer, relay, relayFrom, signals, closes, opens };
 }
 
 test("the sender offers only after the recipient's commitment, with its check setting", async () => {
@@ -340,4 +351,89 @@ test("the recipient refuses an offer with a second fingerprint of another algori
   });
   assert.equal(h.closes[0]?.reason, "bad-signal");
   assert.equal(FakePeerConnection.last?.remoteDescription, null);
+});
+
+test("the recipient sends no answer and no number when the browser read another fingerprint", async () => {
+  for (const read of [
+    (sdp: string) => sdp.replace(SENDER_FP, OTHER_FP),
+    (sdp: string) => `${sdp}a=fingerprint:sha-256 ${OTHER_FP}\r\n`,
+  ]) {
+    resetFake(RECIPIENT_FP);
+    FakePeerConnection.readBack = read;
+    const h = await harness("r");
+    await h.relay({
+      kind: "offer",
+      sdp: fakeSdp(`a=fingerprint:sha-256 ${SENDER_FP}`),
+      check: true,
+    });
+    assert.deepEqual(h.closes, [
+      { reason: "bad-signal", detail: "the browser read another fingerprint" },
+    ]);
+    assert.equal(h.peer.answered, false);
+    assert.deepEqual(await h.signals(1), [
+      { kind: "commit", hash: await commitFingerprint(RECIPIENT_FP) },
+    ]);
+  }
+  resetFake();
+});
+
+test("the sender opens no number when the browser read another fingerprint", async () => {
+  for (const read of [
+    (sdp: string) => sdp.replace(RECIPIENT_FP, OTHER_FP),
+    (sdp: string) => `${sdp}a=fingerprint:sha-256 ${OTHER_FP}\r\n`,
+  ]) {
+    resetFake(SENDER_FP);
+    FakePeerConnection.readBack = read;
+    const h = await harness("s");
+    await h.relay({ kind: "commit", hash: await commitFingerprint(RECIPIENT_FP) });
+    await h.relay({ kind: "answer", sdp: fakeSdp(`a=fingerprint:sha-256 ${RECIPIENT_FP}`) });
+    assert.deepEqual(h.closes, [
+      { reason: "bad-signal", detail: "the browser read another fingerprint" },
+    ]);
+    FakePeerConnection.last?.channel?.onopen?.();
+    assert.deepEqual(h.opens, []);
+  }
+  resetFake();
+});
+
+test("the recipient fails locally when its answer names another certificate", async () => {
+  resetFake(RECIPIENT_FP);
+  FakePeerConnection.localFingerprint = OTHER_FP;
+  const h = await harness("r");
+  await h.relay({ kind: "offer", sdp: fakeSdp(`a=fingerprint:sha-256 ${SENDER_FP}`), check: true });
+  assert.equal(h.closes[0]?.reason, "setup-failed");
+  assert.equal(h.peer.answered, false);
+  assert.equal((await h.signals(1)).length, 1);
+  resetFake();
+});
+
+test("after the answer the sender ignores signals sealed for another attempt or garbage", async () => {
+  resetFake(SENDER_FP);
+  const h = await harness("s");
+  await h.relay({ kind: "commit", hash: await commitFingerprint(RECIPIENT_FP) });
+  await h.relay({ kind: "answer", sdp: fakeSdp(`a=fingerprint:sha-256 ${RECIPIENT_FP}`) });
+  await h.relayFrom("r", "B".repeat(22), {
+    kind: "commit",
+    hash: await commitFingerprint(OTHER_FP),
+  });
+  await h.peer.handleRelay("not a sealed signal");
+  assert.deepEqual(h.closes, []);
+  FakePeerConnection.last?.channel?.onopen?.();
+  assert.equal(h.opens.length, 1);
+});
+
+test("before the answer the sender still closes on a signal that does not open", async () => {
+  resetFake(SENDER_FP);
+  const h = await harness("s");
+  await h.relay({ kind: "commit", hash: await commitFingerprint(RECIPIENT_FP) });
+  await h.relayFrom("r", "B".repeat(22), { kind: "ice", candidate: null });
+  assert.equal(h.closes[0]?.reason, "bad-signal");
+});
+
+test("the recipient closes on a signal that does not open, even after its answer", async () => {
+  resetFake(RECIPIENT_FP);
+  const h = await harness("r");
+  await h.relay({ kind: "offer", sdp: fakeSdp(`a=fingerprint:sha-256 ${SENDER_FP}`), check: true });
+  await h.peer.handleRelay("not a sealed signal");
+  assert.equal(h.closes[0]?.reason, "bad-signal");
 });

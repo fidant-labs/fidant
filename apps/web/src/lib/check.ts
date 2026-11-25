@@ -15,19 +15,23 @@ async function sha256(text: string): Promise<Uint8Array> {
   return new Uint8Array(await crypto.subtle.digest("SHA-256", encoder.encode(text)));
 }
 
+const EXACT_LINE = /^a=fingerprint:sha-256 (\S+)$/;
+const ANY_SPELLING = /^\s*a\s*=\s*fingerprint/i;
+
 /**
  * The SDP's DTLS fingerprint, upper-case colon hex. Undefined unless every
- * fingerprint line is sha-256 and they all agree, so no second line of another
- * algorithm can name a different certificate.
+ * fingerprint line, in any spelling, is exactly `a=fingerprint:sha-256 <value>`
+ * and they all agree: browsers differ in which variants they still read, so a
+ * variant must never hide a second certificate.
  */
 export function sdpFingerprint(sdp: string): string | undefined {
   const values = new Set<string>();
-  for (const line of sdp.split(/\r?\n/)) {
-    if (!line.startsWith("a=fingerprint:")) {
+  for (const line of sdp.split(/[\r\n]/)) {
+    if (!ANY_SPELLING.test(line)) {
       continue;
     }
-    const [algorithm, value, ...rest] = line.slice("a=fingerprint:".length).trim().split(/\s+/);
-    if (algorithm?.toLowerCase() !== "sha-256" || value === undefined || rest.length > 0) {
+    const value = EXACT_LINE.exec(line)?.[1];
+    if (value === undefined) {
       return undefined;
     }
     values.add(value.toUpperCase());
@@ -53,7 +57,7 @@ export async function checkNumber(
 }
 
 /** A certificate's sha-256 fingerprint, upper-case, as its SDP will show it. */
-export async function certificateFingerprint(cert: RTCCertificate): Promise<string> {
+export function certificateFingerprint(cert: RTCCertificate): string {
   const value = cert
     .getFingerprints()
     .find((f) => f.algorithm?.toLowerCase() === "sha-256")

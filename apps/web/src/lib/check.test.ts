@@ -38,7 +38,6 @@ test("the commitment follows the fixed vectors", async () => {
 test("sdpFingerprint reads the one sha-256 fingerprint, upper-cased", () => {
   const line = `a=fingerprint:sha-256 ${A.toLowerCase()}`;
   assert.equal(sdpFingerprint(sdp(line, line)), A);
-  assert.equal(sdpFingerprint(sdp(`a=fingerprint:SHA-256 ${A}`)), A);
 });
 
 test("sdpFingerprint refuses an SDP without exactly one sha-256 fingerprint", () => {
@@ -56,4 +55,26 @@ test("sdpFingerprint refuses an SDP that adds a fingerprint of another algorithm
     sdpFingerprint(sdp(`a=fingerprint:sha-256 ${A}`, `a=fingerprint:sha-512 ${B}:${B}`)),
     undefined,
   );
+});
+
+test("sdpFingerprint refuses any spelling of a fingerprint line but the exact one", () => {
+  const exact = `a=fingerprint:sha-256 ${A}`;
+  for (const hidden of [
+    `a=Fingerprint:sha-256 ${B}`,
+    `a=FINGERPRINT:sha-256 ${B}`,
+    `A=fingerprint:sha-256 ${B}`,
+    `a=fingerprint sha-256 ${B}`,
+    `a=fingerprint :sha-256 ${B}`,
+    `a= fingerprint:sha-256 ${B}`,
+    ` a=fingerprint:sha-256 ${B}`,
+    `\ta=fingerprint:sha-256 ${B}`,
+    `a=fingerprint:SHA-256 ${B}`,
+    `a=fingerprint:sha-256  ${B}`,
+    `a=fingerprint:sha-256 ${B} `,
+    `a=fingerprint:sha-256\t${B}`,
+  ]) {
+    assert.equal(sdpFingerprint(sdp(exact, hidden)), undefined, JSON.stringify(hidden));
+    assert.equal(sdpFingerprint(sdp(hidden)), undefined, JSON.stringify(hidden));
+  }
+  assert.equal(sdpFingerprint(sdp(`${exact}\ra=fingerprint:sha-256 ${B}`)), undefined);
 });

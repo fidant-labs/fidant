@@ -57,7 +57,7 @@ export const BUFFER_LOW_BYTES = 1024 * 1024;
 /** Progress is reported at most this often. */
 export const PROGRESS_INTERVAL_MS = 100;
 /** After sending its own CHECK(0), a side waits at most this long for the other to close the channel. */
-export const CHECK_LINGER_MS = 2000;
+const CHECK_LINGER_MS = 2000;
 /** Bytes of each message that chunkSize leaves for the frame around a CHUNK body: the 10-byte header and 16-byte tag (HEADER_BYTES + TAG_BYTES), with room to spare. */
 export const FRAME_OVERHEAD_BYTES = 64;
 

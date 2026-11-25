@@ -5,7 +5,8 @@
 // Wiring (see lib/peer.ts and lib/sender-state.ts):
 // - On mount, connect to the signaling server and host every link ID on the
 //   list, with whether recipients may use our TURN relay; re-host the full
-//   list after every add or remove, every change of the relay checkbox and
+//   list whenever the hosted links change (an add, a remove, or a link the check
+//   locked), every change of the relay checkbox and
 //   every reconnect, and again REHOST_AFTER_MS after `already-hosted` while
 //   the server still holds the old socket. When the socket drops, recipients
 //   still connecting go back to waiting (reducer `server-lost`, which never
@@ -100,7 +101,7 @@ type Connection = {
   confirm?: (matches: boolean) => void;
   /** What the sender said about the check number, once they said it. */
   said?: boolean;
-  /** Fires `timeout` if the data channel has not opened in time. */
+  /** Fires `timeout` if the data channel has not opened in time, and later the 5-minute check deadline. */
   deadline?: ReturnType<typeof setTimeout>;
   /** Set once the connection's path went to the server. */
   pathSent?: boolean;

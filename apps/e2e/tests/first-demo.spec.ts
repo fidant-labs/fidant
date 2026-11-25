@@ -832,18 +832,12 @@ test.describe("a hostile path", () => {
     await enterCode(recipient, await requestCode(recipient, to));
 
     const card = recipientRow(sender, name);
-    const number = NUMBER;
     await expect(
       card.getByText(`Ask ${name} to read the number on their screen. Does it match?`),
     ).toBeVisible({ timeout: 30_000 });
-    await expect(recipient.getByRole("heading", { name: "Check number" })).toBeVisible({
-      timeout: 30_000,
-    });
     await expect(recipient.getByText("Read this number to the sender.")).toBeVisible();
-    const ours = await card.getByText(number).textContent();
-    const theirs = await recipient.getByText(number).textContent();
-    expect(ours).toMatch(number);
-    expect(theirs).toMatch(number);
+    const ours = await senderNumber(sender, name);
+    const theirs = await recipientNumber(recipient);
     expect(theirs, "the recipient's number").not.toBe(ours);
 
     await card.getByRole("button", { name: "It differs" }).click();
@@ -956,6 +950,54 @@ test.describe("check number", () => {
     await recipient.getByRole("button", { name: "Try again" }).click();
     const second = await sameNumber(sender, name, recipient);
     expect(second).not.toBe(first);
+  });
+
+  test("the recipient answers from the keyboard: focus stays and the wait is announced", async ({
+    demo,
+    leaks,
+    canary,
+  }) => {
+    const sender = await openSender(demo, makeFile(leaks, canary, 10));
+    const name = makeName(leaks, canary, "Anna");
+    const link = await addRecipient(leaks, sender, name, true);
+    const recipient = await demo.open("recipient");
+    await recipient.goto(link);
+    await sameNumber(sender, name, recipient);
+    expect(await recipient.locator("#receive [role=status]:empty").count()).toBeGreaterThan(0);
+
+    await recipient.getByRole("button", { name: "They said it matches" }).focus();
+    await recipient.keyboard.press("Enter");
+    await expect(recipient.getByRole("heading", { name: "Check number" })).toBeFocused();
+    await expect(
+      recipient.locator("[role=status]", {
+        hasText: "Waiting for the sender to say it matches too.",
+      }),
+    ).toBeVisible();
+  });
+
+  test("the sender answers from the keyboard: the card names the recipient, focus stays and the wait is announced", async ({
+    demo,
+    leaks,
+    canary,
+  }) => {
+    const sender = await openSender(demo, makeFile(leaks, canary, 10));
+    const name = makeName(leaks, canary, "Anna");
+    const link = await addRecipient(leaks, sender, name, true);
+    const recipient = await demo.open("recipient");
+    await recipient.goto(link);
+    await sameNumber(sender, name, recipient);
+    const card = recipientRow(sender, name);
+    expect(await card.locator("[role=status]:empty").count()).toBeGreaterThan(0);
+
+    await expect(card.getByRole("button", { name: `It differs for ${name}` })).toBeVisible();
+    await card.getByRole("button", { name: `It matches for ${name}` }).focus();
+    await sender.keyboard.press("Enter");
+    await expect(card.locator("[data-status]")).toBeFocused();
+    await expect(
+      card.locator("[role=status]", {
+        hasText: "You said it matches. It goes once they confirm too.",
+      }),
+    ).toBeVisible();
   });
 
   test("the sender saying it differs stops both pages", async ({ demo, leaks, canary }) => {
