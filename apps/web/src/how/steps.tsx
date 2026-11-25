@@ -66,7 +66,11 @@ export const STEPS = [
     id: "relay",
     slug: "relay",
     art: "relay",
-    detail: [{ modes: "route", cards: ["relay", "norelay"] }, { section: "norelay" }],
+    detail: [
+      { modes: "route", cards: ["relay", "norelay"] },
+      { section: "relaying" },
+      { section: "norelay" },
+    ],
   },
   { id: "transfer", slug: "transfer", art: "frames", detail: [{ section: "frames" }] },
   { id: "verification", slug: "verification", art: "check", detail: [{ section: "check" }] },
