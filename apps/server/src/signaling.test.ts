@@ -687,6 +687,48 @@ test("keeps a socket under the message limit open across window resets", async (
   assert.ok(!events.includes("rate-limited"));
 });
 
+test("refuses a link's joins as busy past its pairings per window, so a guest cannot spend the host's limit", async (t) => {
+  const limited = createServer();
+  // The window starts when the server does, and the joins below take milliseconds of it.
+  const heartbeatMs = 1000;
+  const signaling = attachSignaling(limited, {
+    log: () => {},
+    heartbeatMs,
+    limits: { pairingsPerLink: 3 },
+  });
+  t.after(() => {
+    signaling.close();
+    limited.close();
+  });
+  await new Promise<void>((done) => limited.listen(0, done));
+  const url = `ws://localhost:${(limited.address() as AddressInfo).port}/signal`;
+  const link = linkId();
+  const host = await connect(url);
+  host.send({ t: "host", links: [link], turn: false });
+  const guest = await connect(url);
+  // Join, get refused by the host, join again: one socket, as a guest without the secret would.
+  const pair = async () => {
+    const attempt = linkId();
+    guest.send({ t: "join", link, attempt });
+    const reply = await guest.next();
+    if (reply.t !== "joined") {
+      return reply;
+    }
+    assert.equal((await host.next()).t, "joined");
+    host.send({ t: "refuse", link, attempt, reason: "drop" });
+    assert.deepEqual(await guest.next(), { t: "refused", reason: "drop" });
+    return reply;
+  };
+  const started = Date.now();
+  for (let i = 0; i < 3; i += 1) {
+    assert.equal((await pair()).t, "joined");
+  }
+  assert.deepEqual(await pair(), { t: "refused", reason: "busy" });
+  assert.ok(Date.now() - started < heartbeatMs, "all four joins fell in one window");
+  await new Promise((done) => setTimeout(done, heartbeatMs * 1.5));
+  assert.equal((await pair()).t, "joined");
+});
+
 /**
  * Hosts a link on a server with a low buffer limit, joins a ws guest, and returns a function that
  * relays large messages to the guest until `relay-dropped` is logged or `rounds` run out.
