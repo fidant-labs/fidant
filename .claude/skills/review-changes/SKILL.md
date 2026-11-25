@@ -70,6 +70,8 @@ Security findings about authorisation must name the concrete capability an attac
 
 A coverage gap on production code that is already correct is `minor`, unless the regression it would catch is catastrophic.
 
+In a box script (`apps/infra/AGENTS.md`), any fix after deploy replaces the box, so a minor there is `major`. Nits stay nits.
+
 ### Output contract
 
 ```
