@@ -61,6 +61,8 @@ interface Scenario {
    * `srflx/srflx srflx/srflx`. A remote candidate is prflx when the peer's check arrives before
    * its candidate does over signaling, so rows accept prflx wherever the remote side is direct.
    * A local relay candidate carries its transport to the TURN server, such as `relay+tls`.
+   * Both pages gather a relay candidate where the path has one and never elsewhere, as peer.ts
+   * adds TURN only as a fallback.
    * `none`: the row pauses coturn, so the browsers cannot connect at all.
    */
   path: RegExp | "none";
@@ -338,6 +340,15 @@ for (const row of scenarios) {
       await expect
         .poll(async () => `${await pathOf(sender.page)} ${await pathOf(recipient.page)}`)
         .toMatch(path);
+      for (const [name, page] of [
+        ["sender", sender.page],
+        ["recipient", recipient.page],
+      ] as const) {
+        const gathered = (await readPeerConnections(page)).flatMap((pc) => pc.gathered);
+        expect(gathered.includes("relay"), `${name} gathered ${gathered}`).toBe(
+          path.source.includes("relay"),
+        );
+      }
       await watchIcePasswords(leaks, "sender", sender.page);
       await watchIcePasswords(leaks, "recipient", recipient.page);
 

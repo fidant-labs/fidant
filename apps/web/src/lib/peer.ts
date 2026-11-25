@@ -9,6 +9,8 @@
 //   sender → recipient   relay seal_s({kind:"offer", sdp})
 //   recipient → sender   relay seal_r({kind:"answer", sdp})
 //   both directions      relay seal({kind:"ice", candidate})   (trickle; null = end)
+//   sender → recipient   relay seal_s({kind:"restart-offer", sdp})   (TURN fallback, at most once)
+//   recipient → sender   relay seal_r({kind:"restart-answer", sdp})
 //   sender ⇄ recipient   data channel "sigill" opens → onOpen(channel, info)
 //
 // seal_s/seal_r are sealSignal with direction "s"/"r"; the receiving side opens
@@ -19,7 +21,8 @@
 //
 // Outgoing signals are sealed and sent in order through one queue; incoming
 // relay data is handled in order through another. ICE candidates that arrive
-// before the remote description are held until it is set.
+// before the remote description are held until it is set, and candidates for
+// another ICE username fragment than the remote description's are dropped.
 //
 // No DOM or UI here, and nothing about files or names: the data channel
 // carries only encrypted frames (frames.ts), and its label is fixed.
@@ -38,6 +41,9 @@ export const DEFAULT_MAX_MESSAGE_SIZE = 65536;
 
 /** How long to wait before reading a "stun" path again (see readPath). */
 const PATH_RECHECK_MS = 1000;
+
+/** How long the sender lets ICE try without the relay, from applying the answer. */
+export const RELAY_FALLBACK_MS = 3000;
 
 export type PeerCloseReason =
   /** The data channel closed (the other side went away or closed it). */
@@ -103,10 +109,11 @@ export type SignalCandidate = {
   usernameFragment: string | null;
 };
 
+type SdpKind = "offer" | "answer" | "restart-offer" | "restart-answer";
+
 /** The plaintext inside a sealed relay message. `candidate: null` ends trickle ICE. */
 export type SignalPayload =
-  | { kind: "offer"; sdp: string }
-  | { kind: "answer"; sdp: string }
+  | { kind: SdpKind; sdp: string }
   | { kind: "ice"; candidate: SignalCandidate | null };
 
 type Fields = Record<string, unknown>;
@@ -153,6 +160,8 @@ export function parseSignalPayload(value: unknown): SignalPayload | undefined {
   switch (fields.kind) {
     case "offer":
     case "answer":
+    case "restart-offer":
+    case "restart-answer":
       if (!hasKeys(fields, ["kind", "sdp"]) || typeof fields.sdp !== "string") {
         return undefined;
       }
@@ -249,25 +258,36 @@ function toCandidate(candidate: RTCIceCandidate): SignalCandidate {
   };
 }
 
+const urlsOf = (server: RTCIceServer) => [server.urls].flat();
+
 function startPeer(options: PeerOptions, side: Direction): Peer {
   const { signaling, linkId, attempt, signalKey } = options;
   const other: Direction = side === "s" ? "r" : "s";
+  const stunOnly = options.iceServers
+    .map((server) => ({ urls: urlsOf(server).filter((url) => url.startsWith("stun:")) }))
+    .filter((server) => server.urls.length > 0);
+  const hasTurn = options.iceServers.some((server) =>
+    urlsOf(server).some((url) => url.startsWith("turn:") || url.startsWith("turns:")),
+  );
 
-  // Host candidates are enough on one network. The app server may add a TURN
-  // relay for browsers that cannot reach each other; it sees only encrypted
-  // DTLS traffic. Without one (the local demo), iceServers is [].
-  const pc = new RTCPeerConnection({ iceServers: options.iceServers });
+  // STUN only, so a direct route wins whenever there is one; see fallBackToRelay.
+  const pc = new RTCPeerConnection({ iceServers: stunOnly });
 
   let closed = false;
   let channel: RTCDataChannel | undefined;
   let gotOffer = false;
   let gotAnswer = false;
+  /** The sender sent its restart-offer, or the recipient took one. */
+  let restarted = false;
+  let gotRestartAnswer = false;
+  let fallback: ReturnType<typeof setTimeout> | undefined;
   const pendingCandidates: Array<SignalCandidate | null> = [];
   let outgoing: Promise<void> = Promise.resolve();
   let incoming: Promise<void> = Promise.resolve();
 
   function teardown(): void {
     closed = true;
+    clearTimeout(fallback);
     pc.onicecandidate = null;
     pc.onconnectionstatechange = null;
     pc.ondatachannel = null;
@@ -349,6 +369,15 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
   }
 
   async function addCandidate(candidate: SignalCandidate | null): Promise<void> {
+    const ufrag = /^a=ice-ufrag:(\S+)/m.exec(pc.remoteDescription?.sdp ?? "")?.[1];
+    // A candidate trickled before an ICE restart can arrive after it.
+    if (
+      candidate !== null &&
+      candidate.usernameFragment !== null &&
+      candidate.usernameFragment !== ufrag
+    ) {
+      return;
+    }
     if (candidate === null || candidate.candidate === "") {
       // End of candidates. Older browsers reject this; it only speeds up
       // ICE completing, so a failure is harmless.
@@ -368,7 +397,7 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
     }
   }
 
-  async function sendLocalDescription(kind: "offer" | "answer"): Promise<void> {
+  async function sendLocalDescription(kind: SdpKind): Promise<void> {
     await pc.setLocalDescription();
     const sdp = pc.localDescription?.sdp;
     if (!sdp) {
@@ -393,6 +422,31 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
         }
         gotAnswer = true;
         await setRemote("answer", payload.sdp);
+        if (hasTurn && !closed) {
+          fallback = setTimeout(fallBackToRelay, RELAY_FALLBACK_MS);
+        }
+        return;
+      case "restart-offer":
+        if (side !== "r" || !gotOffer || restarted) {
+          throw new PeerError("bad-signal", "unexpected restart-offer");
+        }
+        restarted = true;
+        if (hasTurn) {
+          try {
+            addRelay();
+          } catch {
+            // Without its own relay, the sender's relay candidates can still connect.
+          }
+        }
+        await setRemote("offer", payload.sdp);
+        await sendLocalDescription("restart-answer");
+        return;
+      case "restart-answer":
+        if (side !== "s" || !restarted || gotRestartAnswer) {
+          throw new PeerError("bad-signal", "unexpected restart-answer");
+        }
+        gotRestartAnswer = true;
+        await setRemote("answer", payload.sdp);
         return;
       case "ice":
         if (pc.remoteDescription) {
@@ -402,6 +456,33 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
         }
         return;
     }
+  }
+
+  function addRelay(): void {
+    pc.setConfiguration({ ...pc.getConfiguration(), iceServers: options.iceServers });
+  }
+
+  /** Adds TURN and restarts ICE, in order with the relayed signals, unless ICE connected. */
+  function fallBackToRelay(): void {
+    incoming = incoming
+      .then(async () => {
+        const state = pc.iceConnectionState;
+        if (closed || state === "connected" || state === "completed") {
+          return;
+        }
+        try {
+          addRelay();
+          pc.restartIce();
+        } catch {
+          // An old browser: the connection keeps trying without the relay.
+          return;
+        }
+        restarted = true;
+        await sendLocalDescription("restart-offer");
+      })
+      .catch((error: unknown) => {
+        failWith(error, "setup-failed");
+      });
   }
 
   pc.onicecandidate = (event) => {

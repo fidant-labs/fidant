@@ -17,6 +17,8 @@ export interface IceStat {
 export interface PeerConnectionRecord {
   stats: IceStat[];
   pwd?: string | undefined;
+  /** The type of every local candidate it gathered, kept after ICE drops the candidate. */
+  gathered: string[];
 }
 
 type PageGlobals = typeof globalThis & {
@@ -52,8 +54,13 @@ export async function recordPeerConnections(context: BrowserContext): Promise<vo
       #timer: ReturnType<typeof setInterval> | undefined;
       constructor(config?: RTCConfiguration) {
         super(config);
-        const record: PeerConnectionRecord = { stats: [] };
+        const record: PeerConnectionRecord = { stats: [], gathered: [] };
         records.push(record);
+        this.addEventListener("icecandidate", ({ candidate }) => {
+          if (candidate?.type) {
+            record.gathered.push(candidate.type);
+          }
+        });
         const snapshot = async () => {
           const stats: IceStat[] = [];
           for (const entry of (await this.getStats()).values()) {
