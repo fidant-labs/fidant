@@ -52,6 +52,7 @@ Every trace below is kept in one of these places. "Content" means file bytes, a 
 | coturn (relay)        | Fidant                   | memory while an allocation lasts             | no: encrypted packets; `log-file=/dev/null`            |
 | Mail service          | Fidant's SMTP provider   | provider's policy                            | yes: an emailed link's secret and typed name, the code |
 | Recipient's mailbox   | the recipient's provider | until deleted                                | yes: the emailed link with its secret, and the code    |
+| Link channel          | the sender's provider    | provider's policy                            | yes: the full link with its secret (P1–P4)             |
 | Networks on the route | ISPs, Wi-Fi owners       | not known                                    | no: IP addresses, timing, padded sizes                 |
 
 ## P1: a file, link passed on by the sender, direct route
@@ -71,18 +72,19 @@ Every trace below is kept in one of these places. "Content" means file bytes, a 
 
 ### Traces
 
-| Where               | What                                                                                                                    | Kept for                                |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
-| Sender's browser    | file, hash, links, keys in memory; `console.warn` of a drop reason and an error name, never detail or names             | until the tab closes                    |
-| Sender's browser    | the copied link on the clipboard                                                                                        | until overwritten                       |
-| Sender's browser    | `localStorage`: theme and language only                                                                                 | until cleared                           |
-| Recipient's browser | the link, secret included, in history and in memory for "Go back to it"                                                 | history: until cleared                  |
-| Recipient's browser | the file where they saved it (Chromium: chosen place; others: a Blob, then downloads, as `application/octet-stream`)    | until deleted                           |
-| Server memory       | both IP addresses, link IDs, which socket hosts or joined which link, relay choice                                      | until the sockets close (≤ 1 min after) |
-| Server journal      | `host` (link count), `joined`, `relay` (6-char link prefix, bytes), `path` (route only, no link), `left`, `host-closed` | 29 days                                 |
-| Caddy, HAProxy      | nothing kept; addresses in memory for HAProxy's per-source cap                                                          | memory only                             |
-| STUN (coturn)       | each browser's public address for the binding request                                                                   | not logged                              |
-| Networks            | both IP addresses, timing, padded size, DTLS and AES-GCM ciphertext                                                     | not known                               |
+| Where               | What                                                                                                                     | Kept for                                |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------ | --------------------------------------- |
+| Sender's browser    | file, hash, links, keys in memory; `console.warn` of a drop reason and an error name, never detail or names              | until the tab closes                    |
+| Sender's browser    | the copied link on the clipboard                                                                                         | until overwritten                       |
+| Link channel        | the full link, secret included, in the chat, mail or SMS service the sender passes it on through, and its link previewer | the provider's policy                   |
+| Sender's browser    | `localStorage`: theme and language only                                                                                  | until cleared                           |
+| Recipient's browser | the link, secret included, in history and in memory for "Go back to it"                                                  | history: until cleared                  |
+| Recipient's browser | the file where they saved it (Chromium: chosen place; others: a Blob, then downloads, as `application/octet-stream`)     | until deleted                           |
+| Server memory       | both IP addresses, link IDs, which socket hosts or joined which link, relay choice                                       | until the sockets close (≤ 1 min after) |
+| Server journal      | `host` (link count), `joined`, `relay` (6-char link prefix, bytes), `path` (route only, no link), `left`, `host-closed`  | 29 days                                 |
+| Caddy, HAProxy      | nothing kept; addresses in memory for HAProxy's per-source cap                                                           | memory only                             |
+| STUN (coturn)       | each browser's public address for the binding request                                                                    | not logged                              |
+| Networks            | both IP addresses, timing, padded size, DTLS and AES-GCM ciphertext                                                      | not known                               |
 
 ### Audit checklist
 
@@ -137,7 +139,7 @@ As P1, with "Allow our relay" off on the send page.
 
 ### Traces
 
-P1's, without coturn's. The server journal has `path` with `failed` when no route works.
+P1's, except that `joined` still carries the `stun:` URLs, which on the box point at coturn (`stun:turn.<domain>:3478`, plus IPv6). coturn still sees each browser's public address for the STUN binding request, and logs nothing. A relay route ends the attempt: the sender reports `path` with `failed`, then refuses the recipient with `drop`, so the journal has `path` with `failed` and `refused` with `drop`. `path` with `failed` is also logged when no route works.
 
 ### Audit checklist
 
@@ -146,7 +148,7 @@ P1's, without coturn's. The server journal has `path` with `failed` when no rout
 
 ### Checked by
 
-`apps/e2e/tests/relay.spec.ts` ("a sender who refuses the relay: no credentials, no bytes, plain words on both pages", "a sender who refuses the relay and fails setup shows the refused relay"), `apps/e2e/tests/networks.spec.ts`.
+`apps/e2e/tests/relay.spec.ts` ("a sender who refuses the relay: no credentials, no bytes, plain words on both pages", "a sender who refuses the relay and fails setup shows the refused relay"), `apps/server/src/turn.test.ts`.
 
 ## P4: a shared secret, link passed on by the sender
 
@@ -195,7 +197,7 @@ The one path where a link's secret leaves the browser (`docs/decisions/0012-emai
 
 ### Traces
 
-All of P1–P3's, plus:
+All of P1–P3's, except the link channel (Fidant sends the link), plus:
 
 | Where               | What                                                                                                                  | Kept for                                                           |
 | ------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
@@ -234,12 +236,12 @@ P5's steps and traces, with P4's sending and showing. The notice says "a file or
 
 ### Steps and traces
 
-| Event                               | What reaches us                                                                                            | Kept                              |
-| ----------------------------------- | ---------------------------------------------------------------------------------------------------------- | --------------------------------- |
-| Any page load                       | the path, IP address, browser headers; never the fragment (`Referrer-Policy: no-referrer`)                 | not logged by Caddy or the server |
-| A link preview fetcher on `/r/<ID>` | the path with the link ID, never the fragment. It gets fixed Open Graph text (`apps/server/src/server.ts`) | not logged                        |
-| A WebSocket upgrade                 | `Origin`; refused off `/signal` or from another site, logged as `upgrade-rejected` with a reason           | journal, 29 days                  |
-| The page itself                     | no cookies, no third-party scripts, fonts or trackers (CSP `default-src 'self'`)                           | nothing                           |
+| Event                               | What reaches us                                                                                                                                                                        | Kept                              |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| Any page load                       | the path, IP address, browser headers; never the fragment (`Referrer-Policy: no-referrer`)                                                                                             | not logged by Caddy or the server |
+| A link preview fetcher on `/r/<ID>` | the path with the link ID, never the fragment. It gets fixed Open Graph text (`apps/server/src/server.ts`). The fetcher is usually the chat, mail or SMS service the link went through | not logged                        |
+| A WebSocket upgrade                 | `Origin`; refused off `/signal` or from another site, logged as `upgrade-rejected` with a reason                                                                                       | journal, 29 days                  |
+| The page itself                     | no cookies, no third-party scripts, fonts or trackers (CSP `default-src 'self'`)                                                                                                       | nothing                           |
 
 ### Checked by
 
@@ -247,18 +249,21 @@ P5's steps and traces, with P4's sending and showing. The notice says "a file or
 
 ## A1: retries and failures
 
-| Event                                           | What happens                                                                                   | Extra traces                                       |
-| ----------------------------------------------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| Decline                                         | The link stays usable. A new attempt gets a new transfer ID and file key.                      | `refused` lines with a reason, `left`              |
-| Setup timeout (20 s), dropped channel           | The recipient rejoins with a new attempt ID, up to 4 times. The sender reports `failed`.       | `path` with `failed`; `console.warn` of the reason |
-| Used, busy, unknown link                        | The sender's page answers `refuse`; the server forwards it.                                    | `refused` with `used`, `busy` or `unknown`         |
-| Sender's socket drops                           | The sender reconnects and hosts again, except emailed links, whose binding the server dropped. | `host-closed`, `host-gone` to waiting recipients   |
-| Server restart                                  | All memory is gone, emailed bindings included. Open data channels keep running.                | none beyond the journal                            |
-| Tampered, replayed or reflected frame or signal | The reader stops for good; the sink discards what was written.                                 | none                                               |
+| Event                                                                                                    | What happens                                                                                                                                                             | Extra traces                                                                                                                                                      |
+| -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Decline                                                                                                  | The recipient's page closes its signaling socket. The sender marks the link declined and the link stays usable. A new attempt gets a new transfer ID and file key.       | `left`; no `refused`, because a decline sends no `refuse`                                                                                                         |
+| Setup timeout (sender's 20 s)                                                                            | The sender reports `path` with `failed`, refuses the recipient with `drop`, closes the connection and waits again. The recipient ends with a failure and doesn't rejoin. | `path` with `failed`, `refused` with `drop`                                                                                                                       |
+| Dropped channel before delivery                                                                          | The sender refuses the recipient with `drop`, as above. The recipient ends with a failure and doesn't rejoin.                                                            | `refused` with `drop` while the recipient is still joined; `path` with `failed` if ICE failed; `console.warn` of the reason                                       |
+| Recipient's own timeout (30 s)                                                                           | The recipient ends with a failure and closes its signaling socket. The sender waits again.                                                                               | `left`                                                                                                                                                            |
+| Recipient's signaling socket drops before the channel opens, or `refused` with `unknown` after a restart | The recipient rejoins with a new attempt ID, up to 4 times.                                                                                                              | Socket drop: `left`, then `joined` on a rejoin. After a restart: no `left`; `refused` with `unknown` for each rejoin before the sender hosts again, then `joined` |
+| Used, busy, unknown link                                                                                 | `used`: the sender's page answers `refuse` and the server forwards it. `busy` and `unknown`: the server refuses the join itself.                                         | `refused` with `used`, `busy` or `unknown`                                                                                                                        |
+| Sender's socket drops                                                                                    | The sender reconnects and hosts again, except emailed links, whose binding the server dropped. A recipient who had joined gets `host-gone`.                              | `host-closed`, `host-gone`                                                                                                                                        |
+| Server restart                                                                                           | All memory is gone, emailed bindings included. Open data channels keep running.                                                                                          | none beyond the journal                                                                                                                                           |
+| Tampered, replayed or reflected frame or signal                                                          | The reader stops for good; the sink discards what was written.                                                                                                           | none                                                                                                                                                              |
 
 ### Checked by
 
-`apps/e2e/tests/first-demo.spec.ts` ("refuses used, unknown and malformed links", "a declined offer shows as declined, and the link can be reopened", "through a server restart", "a hostile path"), `apps/e2e/tests/secret.spec.ts`.
+`apps/e2e/tests/first-demo.spec.ts` ("refuses used, unknown and malformed links", "a sender whose connection setup fails logs why and lets the recipient try again", "a declined offer shows as declined, and the link can be reopened", "through a server restart", "a hostile path"), `apps/e2e/tests/secret.spec.ts`.
 
 ## Reference: every signaling message
 
@@ -290,22 +295,22 @@ Written as one JSON line, `{event, ...fields}`, to stdout and from there to the 
 
 Fields: `link` (first 6 characters of a link ID), `links` (a count), `bytes` (a message size), `reason`, `code` (an error code), `port`, `path` (the route).
 
-| Event              | Fields           | Path   |
-| ------------------ | ---------------- | ------ |
-| `listening`        | `port`           | start  |
-| `upgrade-rejected` | `reason`         | A0     |
-| `bad-message`      | `bytes`          | A1     |
-| `rate-limited`     | none             | A1     |
-| `error`            | `code`           | A1     |
-| `host`             | `links`          | all    |
-| `host-gone`        | `link`           | A1     |
-| `host-closed`      | `links`          | A1     |
-| `joined`           | `link`           | all    |
-| `refused`          | `link`, `reason` | A1, P5 |
-| `relay`            | `link`, `bytes`  | all    |
-| `relay-dropped`    | `link`, `bytes`  | A1     |
-| `path`             | `path`           | all    |
-| `left`             | `link`           | A1     |
-| `email`            | `link`, `reason` | P5, P6 |
-| `code`             | `link`, `reason` | P5, P6 |
-| `verified`         | `link`           | P5, P6 |
+| Event              | Fields           | Path           |
+| ------------------ | ---------------- | -------------- |
+| `listening`        | `port`           | start          |
+| `upgrade-rejected` | `reason`         | A0             |
+| `bad-message`      | `bytes`          | A1             |
+| `rate-limited`     | none             | A1             |
+| `error`            | `code`           | A1             |
+| `host`             | `links`          | all            |
+| `host-gone`        | `link`           | A1             |
+| `host-closed`      | `links`          | A1             |
+| `joined`           | `link`           | all            |
+| `refused`          | `link`, `reason` | A1, P3, P5, P6 |
+| `relay`            | `link`, `bytes`  | all            |
+| `relay-dropped`    | `link`, `bytes`  | A1             |
+| `path`             | `path`           | all            |
+| `left`             | `link`           | A1             |
+| `email`            | `link`, `reason` | P5, P6         |
+| `code`             | `link`, `reason` | P5, P6         |
+| `verified`         | `link`           | P5, P6         |
