@@ -89,7 +89,7 @@ The app offers the relays in a committed relay list, `apps/server/relays.json`, 
 - The committed list holds `sto`, with `stun:sto.relay.fidant.se:3478`, `turn:sto.relay.fidant.se:3478?transport=udp` and `turns:sto.relay.fidant.se:443?transport=tcp`, and the relay box's 3072-bit key. A test pins the key's SPKI SHA-256.
 - A name and a location are left out until something reads them.
 - In SIG-153's pull request the list stays `[]` until the commit that adds `sto`, so every commit before it leaves production unchanged.
-- `apps/server/relays.json` is in the `sensitive-paths` ruleset, so a change to it needs an approval from the `maintainers` team, as 0013 asked before the first key. Agents never change rulesets, so a maintainer added the path.
+- `apps/server/relays.json` is in the `sensitive-paths` ruleset, so a change to it needs an approval from the `maintainers` team (repository admins can bypass that rule), as 0013 asked before the first key. Agents never change rulesets, so a maintainer added the path.
 
 ### How the server finds the relay list
 
@@ -167,7 +167,7 @@ In this order:
   - `RelayStatusOk` (`Service=relay`): 1 when the status was read, else 0;
   - `RelayUp` (`Relay=<id>`): 1 or 0 for each relay in `RELAYS`, only when the status was read.
 - `RELAYS` is `["sto"]`, from `relays` in `apps/infra/src/config.ts`, because the CDK app can't read `apps/server/relays.json`.
-- The cap runs first, and the Lambda reads `/relay-status` after it, in a `finally`, whatever the cap's result. The read caps the body at 64 KiB and refuses redirects. A failed read doesn't fail the run.
+- The cap runs first, and the Lambda reads `/relay-status` after it, in a `finally`, whatever the cap's result. A body over 64 KiB or a redirect counts as not read, and a failed read doesn't fail the run.
 - Two more alarms email the topic of 0011's alarms, also when they return to OK:
   - "Fidant relay sto unavailable", when `RelayUp` for `sto` is below 1;
   - "Fidant relay status unreachable", when `RelayStatusOk` is below 1.
@@ -184,9 +184,9 @@ In this order:
 - Committing `[]` to `apps/server/relays.json` returns the app to the app box's coturn through `TURN_URLS`, once the app box deploys it, with no infra deploy. A unit test covers that `[]` means no relay list.
 - Without a pull request, a drop-in on the app box turns the relay list off at once (see Runbook).
 
-### Replacements to 0006, 0007, 0009, 0011 and 0013
+### Replacements to 0006, 0007, 0008, 0009, 0011 and 0013
 
-This record amends 0006, 0007, 0009, 0011 and 0013. They are not superseded. Read them with these replacements.
+This record amends 0006, 0007, 0008, 0009, 0011 and 0013. They are not superseded. Read them with these replacements.
 
 | Where it says                                                                                                                                                                                                                                    | Read                                                                                                                                                                                                             |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -196,8 +196,10 @@ This record amends 0006, 0007, 0009, 0011 and 0013. They are not superseded. Rea
 | 0007: "`TURN_URLS` is `stun:turn.fidant.se:3478`, … plus `stun:[<IPv6>]:3478` when the box has a global IPv6 address at first boot."                                                                                                             | The same for the app box's coturn. `sto` has three URLs and no IPv6 one (see Consequences).                                                                                                                      |
 | 0007: "A coturn failure after first boot doesn't change the app: it keeps handing out the URLs."                                                                                                                                                 | Still true of the app box's coturn without a relay list. A relay in the list is down after two failed checks, about 2 minutes, and the app then hands out only the first listed relay's `stun:` URLs.            |
 | 0007, Emergency stop: "The app still hands out the TURN URLs."                                                                                                                                                                                   | While the app has a relay list, it hands out no `turn.fidant.se` URLs, so stopping the app box's coturn ends only the relayed transfers that run through it.                                                     |
-| 0007: "If anything in the coturn part fails at first boot, the app runs without STUN or TURN, as before SIG-77."                                                                                                                                 | Still true of the app box's coturn and `turn.conf`. With a relay list, the app hands out the relays' URLs whether or not `turn.conf` exists.                                                                     |
-| 0007: "No `turn.conf` means coturn wasn't active at first boot, and the app hands out no STUN or TURN."                                                                                                                                          | Without a relay list, still true. With one, the app hands out the relays' URLs whatever `turn.conf` holds.                                                                                                       |
+| 0007: "If anything in the coturn part fails at first boot, the app runs without STUN or TURN, as before SIG-77."                                                                                                                                 | Without a relay list, still true. With one, the app hands out ICE servers from its relay list (see "Choosing a relay") whether or not `turn.conf` exists.                                                        |
+| 0007: "No `turn.conf` means coturn wasn't active at first boot, and the app hands out no STUN or TURN."                                                                                                                                          | Without a relay list, still true. With one, the app hands out ICE servers from its relay list (see "Choosing a relay") whether or not `turn.conf` exists.                                                        |
+| 0008: "Refused sends still use STUN on the relay box (`stun:turn.fidant.se`)."                                                                                                                                                                   | Without a relay list, still true. With one, refused sends use the `stun:` URL of the first relay that is up, or of the first listed relay when none is up, today `stun:sto.relay.fidant.se:3478`.                |
+| 0008: "Only our server can mint them"                                                                                                                                                                                                            | Without a relay list, still true. With one, anything running as the app's user `sigill` can read the master and mint credentials (see Consequences).                                                             |
 | 0009: "Refused sends get only the `stun:` URLs in `TURN_URLS`."                                                                                                                                                                                  | Without a relay list, still true. With one, refused sends get the `stun:` URLs of the first relay that is up, or of the first listed relay when none is up.                                                      |
 | 0011: "It sums `NetworkIn` and `NetworkOut` for the box"                                                                                                                                                                                         | It sums them for every box in `BOXES`: the app box and the relay box.                                                                                                                                            |
 | 0011: "At or above the limit it calls `put-instance-public-ports` with TCP 80, 443 and 22 only." and "it puts the full list back"                                                                                                                | Each box gets its own capped ports, and then its own open ports (see "The cap").                                                                                                                                 |
@@ -269,7 +271,7 @@ rm /etc/systemd/system/sigill.service.d/relays-off.conf && systemctl daemon-relo
 
 ### Roll back by a commit
 
-- Commit `[]` to `apps/server/relays.json` in a pull request. It needs an approval from the `maintainers` team.
+- Commit `[]` to `apps/server/relays.json` in a pull request. It needs an approval from the `maintainers` team (repository admins can bypass that rule).
 - The app box deploys it within a few minutes of the merge. Then `curl -s https://fidant.se/relay-status; echo` must print exactly `[]`.
 - "Fidant relay sto unavailable" then goes to ALARM and stays there, as under "Turn the relay list off at once", until the list holds `sto` again and `sto` is up.
 
