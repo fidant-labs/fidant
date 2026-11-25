@@ -59,7 +59,7 @@
 //   no refusal: the joiner is gone.
 // - `server-lost` (our own signaling socket dropped) does the same for every
 //   connecting recipient, since the server forgot their joins with the socket.
-//   Unlike `left` it never sets `noRelay`: the server dropped, not the relay.
+//   Unlike `left` it never sets `noRelay` or `noConnect`: the server dropped, not the relay.
 // - Every join carries the recipient's attempt ID, and every refusal names the
 //   attempt it refuses. A join is refused with its own attempt; `dropped`,
 //   `timeout` and `unsendable` refuse the attempt stored when the recipient
@@ -114,7 +114,8 @@
 //   or may have emailed (a mark, "sending", or "verifying"/"verified" without
 //   a mark, see `unmarked`): the server dropped its binding with the socket,
 //   so `hostedLinks` leaves the link out from then on and nobody can host its
-//   ID plain from this page.
+//   ID plain from this page. It also clears `noRelay` and `noConnect` there:
+//   an unbound link can't be retried.
 // - The server answers every `email` it refuses with `failed` or `limit`, naming
 //   the link and with no mark, so a refusal never needs guessing which card it was for.
 //
@@ -317,7 +318,8 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
     const recipients = state.recipients.map((r) => {
       let next = r;
       if (emailBound(r)) {
-        next = { ...next, unbound: true };
+        const { noRelay: _noRelay, noConnect: _noConnect, ...rest } = next;
+        next = { ...rest, unbound: true };
       }
       if (r.status === "connecting") {
         effects.push({ type: "close", linkId: r.linkId });

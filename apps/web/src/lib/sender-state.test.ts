@@ -967,6 +967,24 @@ test("a failed reply without a mark leaves a plain link hosted: the fresh one fr
   }
 });
 
+test("server-lost drops noConnect and noRelay from a recipient it unbinds", () => {
+  for (const turn of [true, false]) {
+    const link = createLink(ORIGIN);
+    const { state } = run(
+      initialSenderState,
+      { type: "add", link, name: "Anna", email: "anna@example.se" },
+      joined(link.linkId, A, turn),
+      { type: "dropped", linkId: link.linkId },
+    );
+    const before = findRecipient(state, link.linkId);
+    assert.ok(before && ("noConnect" in before || "noRelay" in before));
+    const after = findRecipient(update(state, { type: "server-lost" }).state, link.linkId);
+    assert.equal(after?.unbound, true);
+    assert.equal(after && "noConnect" in after, false);
+    assert.equal(after && "noRelay" in after, false);
+  }
+});
+
 test("server-lost unbinds every link the server emailed or may have emailed, and stops hosting it", () => {
   const mark = "MMMMMMMMMMMMMMMMMMMMMM";
   const [plain, sending, sent, limited, receiving] = Array.from({ length: 5 }, () =>
