@@ -263,6 +263,47 @@ EOF
 # certbot logs each address that reaches port 80. By mtime: every certbot run renames all its logs.
 echo 'e /var/log/letsencrypt - - - m:29d' >/etc/tmpfiles.d/fidant-relay-letsencrypt.conf
 
+# A public address that isn't on the box (Lightsail's NAT) reaches coturn through the relay's own name.
+cat >/usr/local/bin/fidant-relay-address <<'EOF'
+#!/bin/sh
+set -eu
+. /etc/fidant-relay/relay.env
+conf=/etc/turnserver.conf
+address=$(getent ahostsv4 "$RELAY_NAME" | awk '{ print $1; exit }')
+relay_ip=$(sed -n 's/^relay-ip=//p' $conf)
+# A failed lookup changes nothing: the restart would drop every relayed transfer.
+if [ -z "$address" ] || [ -z "$relay_ip" ]; then
+  exit 0
+fi
+wanted="external-ip=$address/$relay_ip"
+if ip -4 -o addr show | grep -qF " $address/"; then
+  wanted=
+fi
+if [ "$wanted" = "$(grep '^external-ip=' $conf || true)" ]; then
+  exit 0
+fi
+rest=$(grep -v '^external-ip=' $conf)
+printf '%s\n' "$rest" ${wanted:+"$wanted"} >$conf
+systemctl try-restart coturn
+EOF
+chmod 700 /usr/local/bin/fidant-relay-address
+cat >/etc/systemd/system/fidant-relay-address.service <<'EOF'
+[Unit]
+Description=Keep coturn's external-ip in step with the relay's name
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/fidant-relay-address
+EOF
+cat >/etc/systemd/system/fidant-relay-address.timer <<'EOF'
+[Timer]
+OnActiveSec=5s
+OnUnitInactiveSec=5min
+
+[Install]
+WantedBy=timers.target
+EOF
+
 # Logging off: each blocked packet would put its source address in the journal.
 ufw logging off
 ufw default deny incoming
@@ -276,7 +317,7 @@ systemctl daemon-reload
 systemctl unmask coturn
 systemctl enable coturn
 systemctl restart coturn
-systemctl enable --now fidant-relay-secret.timer fidant-relay-cert.timer
+systemctl enable --now fidant-relay-secret.timer fidant-relay-cert.timer fidant-relay-address.timer
 
 set +x
 echo "fidant-relay: public key for $RELAY_ID"

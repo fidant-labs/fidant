@@ -800,8 +800,7 @@ test.describe("the relay box", () => {
 
     test("reloads a renewed certificate without dropping coturn", async ({ actor }) => {
       const tls = "/etc/fidant-relay/tls";
-      // Laid out as certbot does: live/ holds links into archive/. The key stays the run's, so
-      // the browsers' SPKI pin still matches.
+      // As certbot does, live/ links into archive/. The run's key keeps the SPKI pin matching.
       await inRelay(
         "sh",
         "-c",
@@ -849,6 +848,57 @@ test.describe("the relay box", () => {
       const { path, echoed } = await relayedChannel(sender, recipient, relayIce("tls", secret));
       expect(echoed).toBe(true);
       expect(path).toMatch(/^relay\+tls\//);
+    });
+
+    test("maps its DNS name to external-ip only when the name points elsewhere", async ({
+      actor,
+    }) => {
+      const line = () => inRelay("sh", "-c", "grep '^external-ip=' /etc/turnserver.conf || true");
+      const pid = () => inRelay("systemctl", "show", "-p", "MainPID", "--value", "coturn");
+      // /etc/hosts is a bind mount, so it is rewritten in place. No ip: the name doesn't resolve.
+      const resolveTo = (ip?: string) =>
+        inRelay(
+          "sh",
+          "-c",
+          `{ cat /tmp/hosts; ${ip ? `echo '${ip} ${relayHost}'` : ":"}; } >/etc/hosts \
+            && fidant-relay-address`,
+        );
+      const elsewhere = `external-ip=198.51.100.99/${relayIp}\n`;
+      expect(await inRelay("systemctl", "is-active", "fidant-relay-address.timer")).toBe(
+        "active\n",
+      );
+      await inRelay("cp", "/etc/hosts", "/tmp/hosts");
+      try {
+        let running = await pid();
+        await resolveTo("198.51.100.99");
+        expect(await line()).toBe(elsewhere);
+        expect(await pid()).not.toBe(running);
+        expect(await inRelay("stat", "-c", "%a %U:%G", "/etc/turnserver.conf")).toBe(
+          "640 root:turnserver\n",
+        );
+        await inRelay("sh", "-c", "set -a; . /relay-config/env; sh /relay/install.sh");
+        expect(await line()).toBe(elsewhere);
+
+        running = await pid();
+        await resolveTo("198.51.100.99");
+        expect(await pid()).toBe(running);
+        await resolveTo();
+        expect(await line()).toBe(elsewhere);
+        expect(await pid()).toBe(running);
+
+        await resolveTo(relayIp);
+        expect(await line()).toBe("");
+        expect(await pid()).not.toBe(running);
+      } finally {
+        // Restoring /etc/hosts alone would leave a line behind: the name then doesn't resolve.
+        await resolveTo(relayIp);
+        await resolveTo();
+      }
+      expect(await line()).toBe("");
+
+      const [sender, recipient] = await relayPeers(actor);
+      const { echoed } = await relayedChannel(sender, recipient, relayIce("udp", secret));
+      expect(echoed).toBe(true);
     });
 
     test("keeps secrets and client addresses out of its journal", async () => {
