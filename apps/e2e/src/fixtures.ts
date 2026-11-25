@@ -277,18 +277,45 @@ async function record(
   await context.addInitScript(logPeerFailures);
 }
 
-/** Runs in the page through addInitScript, so it may use nothing from this module: logs why a peer connection call failed and who closed a peer or channel, which the app keeps out of its console. */
+/** Runs in the page through addInitScript, so it may use nothing from this module: logs why a peer connection call failed, every error the page builds and its cause, what a data channel refused, and who closed a peer or channel after which frames, which the app keeps out of its console. */
 function logPeerFailures() {
   const log = (text: string) => console.warn(`sigill-e2e: ${text}`);
   const native = (fn: unknown) =>
     typeof fn === "function" && Function.prototype.toString.call(fn).includes("[native code]");
+  const NativeError = Error;
+  const frames = (stack: string | undefined, skip: number, count: number) =>
+    (stack ?? "")
+      .split("\n")
+      .slice(skip, skip + count)
+      .map((line) => line.trim())
+      .join(" | ");
   const stack = () => {
-    const limit = Error.stackTraceLimit;
-    Error.stackTraceLimit = 20;
-    const lines = (new Error().stack ?? "").split("\n").slice(3);
-    Error.stackTraceLimit = limit;
-    return lines.map((line) => line.trim()).join(" | ");
+    const limit = NativeError.stackTraceLimit;
+    NativeError.stackTraceLimit = 20;
+    const lines = frames(new NativeError().stack, 3, 20);
+    NativeError.stackTraceLimit = limit;
+    return lines;
   };
+  const describe = (error: unknown) =>
+    error instanceof NativeError
+      ? `${error.name}: ${error.message} at ${frames(error.stack, 1, 3)}`
+      : String(error);
+  const built = (args: unknown[]) => {
+    const cause = (args[1] as { cause?: unknown } | undefined)?.cause;
+    log(
+      `error built: ${String(args[0])}${cause === undefined ? "" : ` (cause ${describe(cause)})`}`,
+    );
+  };
+  globalThis.Error = new Proxy(NativeError, {
+    construct(target, args: unknown[], newTarget: () => unknown) {
+      built(args);
+      return Reflect.construct(target, args, newTarget) as object;
+    },
+    apply(target, self, args: unknown[]) {
+      built(args);
+      return Reflect.apply(target, self, args) as object;
+    },
+  });
   const peer = RTCPeerConnection.prototype as unknown as Record<string, unknown>;
   for (const name of [
     "createOffer",
@@ -311,16 +338,65 @@ function logPeerFailures() {
       });
     };
   }
+  // Frame headers only (kind, seq, length): the bytes after them are keys, names and file data.
+  const trails = new WeakMap<RTCDataChannel, string[]>();
+  const note = (channel: RTCDataChannel, way: string, data: unknown) => {
+    let entry = `${way}${typeof data}`;
+    if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) {
+      const bytes =
+        data instanceof ArrayBuffer
+          ? new Uint8Array(data)
+          : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      entry =
+        bytes.length < 10
+          ? `${way}?:${bytes.length}`
+          : `${way}${view.getUint8(1)}#${view.getUint32(6)}:${bytes.length}`;
+    }
+    trails.set(channel, [...(trails.get(channel) ?? []), entry].slice(-12));
+  };
+  const channel = RTCDataChannel.prototype;
+  const listen = channel.addEventListener;
+  const watched = new WeakSet<RTCDataChannel>();
+  channel.addEventListener = function (this: RTCDataChannel, ...args: unknown[]) {
+    if (!watched.has(this)) {
+      watched.add(this);
+      Reflect.apply(listen, this, [
+        "message",
+        (event: MessageEvent) => note(this, "<", event.data),
+      ]);
+      Reflect.apply(listen, this, [
+        "error",
+        ({ error }: RTCErrorEvent) =>
+          log(`channel error: ${error.errorDetail} ${error.sctpCauseCode ?? ""}: ${error.message}`),
+      ]);
+    }
+    return Reflect.apply(listen, this, args);
+  } as RTCDataChannel["addEventListener"];
+  const send = channel.send;
+  channel.send = function (this: RTCDataChannel, data: unknown) {
+    try {
+      Reflect.apply(send, this, [data]);
+    } catch (error) {
+      log(`channel send() threw in ${this.readyState}: ${describe(error)}`);
+      throw error;
+    }
+    note(this, ">", data);
+  } as RTCDataChannel["send"];
   for (const [label, proto] of [
     ["peer", RTCPeerConnection.prototype],
-    ["channel", RTCDataChannel.prototype],
+    ["channel", channel],
   ] as const) {
     const close = proto.close;
     if (!native(close)) {
       continue;
     }
     proto.close = function (this: unknown) {
-      log(`${label} close() at ${stack()}`);
+      const trail =
+        this instanceof RTCDataChannel
+          ? ` after ${trails.get(this)?.join(" ") ?? "no frames"}`
+          : "";
+      log(`${label} close() at ${stack()}${trail}`);
       Reflect.apply(close, this, []);
     };
   }
