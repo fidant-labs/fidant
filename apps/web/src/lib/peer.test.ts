@@ -254,6 +254,11 @@ async function harness(side: "s" | "r", check?: boolean) {
     await settle();
     return Promise.all(sent);
   };
+  if (side === "r") {
+    // The recipient seals its commit in the background, and a peer that fails
+    // drops what it has not sent yet, so a test that fails it early waits first.
+    await signals(1);
+  }
   return { peer, relay, relayFrom, signals, closes, opens };
 }
 
