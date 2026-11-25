@@ -350,7 +350,9 @@ export async function chooseFile(
   page: Page,
   file: { name: string; mimeType: string; buffer: Buffer },
 ): Promise<void> {
-  await page.getByLabel("Choose a file").setInputFiles(file);
+  const input = page.getByLabel("Choose a file");
+  await input.focus();
+  await input.setInputFiles(file);
   await expect(page.getByLabel("Your name")).toBeFocused();
 }
 
