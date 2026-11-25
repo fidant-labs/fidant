@@ -178,6 +178,7 @@ export function SendPage({
   const [allowRelay, setAllowRelay] = useState(true);
   const [textLength, setTextLength] = useState(0);
   const [more, setMore] = useState(false);
+  const [typed, setTyped] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
 
   // Mutable state used from network callbacks, outside render.
@@ -548,6 +549,7 @@ export function SendPage({
     }
     form.reset();
     setMore(false);
+    setTyped(false);
     setEmailFilled(false);
     input.focus();
   };
@@ -557,7 +559,7 @@ export function SendPage({
     const index = list.findIndex((r) => r.linkId === linkId);
     const neighbour = list[index + 1] ?? list[index - 1];
     dispatchRef.current({ type: "remove", linkId });
-    // The removed card held focus; keep the keyboard user in the list once it has re-rendered.
+    // The removed card held focus; refocus after the re-render.
     requestAnimationFrame(() => {
       const button = neighbour
         ? document.querySelector<HTMLElement>(`[data-remove="${neighbour.linkId}"]`)
@@ -582,9 +584,11 @@ export function SendPage({
   useEffect(() => onUnfinished(unfinished), [onUnfinished, unfinished]);
   const delivered = sender.recipients.filter((r) => r.status === "delivered").length;
   const allDone = hasRecipients && !unfinished;
-  const finished = allDone && !more;
-  // Read while the form is still mounted: by the time effects run, a removed form no longer holds focus.
-  const formHadFocus = !!formRef.current?.contains(document.activeElement);
+  const finished = allDone && !more && !typed;
+  // Read during render: once effects run, a remounted form or list no longer holds focus.
+  const sectionHadFocus = !!document
+    .getElementById(id("recipients"))
+    ?.contains(document.activeElement);
   useEffect(() => {
     if (!finished) {
       return;
@@ -592,7 +596,8 @@ export function SendPage({
     setEmailFilled(false);
     setNameError("");
     setEmailError(false);
-    if (formHadFocus) {
+    const active = document.activeElement;
+    if (sectionHadFocus && (!active || active === document.body)) {
       document.getElementById(id("done-title"))?.focus();
     }
   }, [finished]);
@@ -827,7 +832,13 @@ export function SendPage({
               class="mt-6 flex flex-wrap items-end gap-2"
               ref={formRef}
               onSubmit={onAdd}
-              onInput={() => setMore(true)}
+              onInput={(event) =>
+                setTyped(
+                  Array.from(event.currentTarget.elements).some(
+                    (el) => el instanceof HTMLInputElement && el.value.trim() !== "",
+                  ),
+                )
+              }
               // A held Enter that started on the last Remove button lands here and would submit an empty name.
               onKeyDown={(event) => {
                 if (event.repeat && event.key === "Enter") {
