@@ -581,7 +581,7 @@ export function ReceivePage({
         (result) => {
           if (result.type === "declined") {
             finish({ s: "declined", text: attempt.text }, true);
-          } else if (offered) {
+          } else if (result.type === "received" && offered) {
             const sha256 = toHex(result.sha256);
             finish({ s: "done", offer: offered, blob: result.blob, sha256 }, true);
           }

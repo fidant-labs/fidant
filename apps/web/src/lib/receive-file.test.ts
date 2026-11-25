@@ -137,6 +137,9 @@ type RunOptions = {
   signal?: AbortSignal;
   /** The checksum the sender puts in END. Defaults to the real one. */
   senderSha256?: Uint8Array;
+  /** Each side's own check verdict; without one, that side runs without the check. */
+  senderConfirm?: Promise<boolean>;
+  recipientConfirm?: Promise<boolean>;
 };
 
 /** Matches a ReceiveError with this reason. */
@@ -164,6 +167,7 @@ function run(options: RunOptions) {
     secret,
     sha256: Promise.resolve(options.senderSha256 ?? sha256(options.bytes)),
     signal: new AbortController().signal,
+    ...(options.senderConfirm ? { confirm: options.senderConfirm } : {}),
     onAccepted: () => {},
     onProgress: () => {},
   });
@@ -173,6 +177,7 @@ function run(options: RunOptions) {
     maxMessageSize,
     secret: options.recipientSecret ?? secret,
     signal: options.signal ?? new AbortController().signal,
+    ...(options.recipientConfirm ? { confirm: options.recipientConfirm } : {}),
     onOffer:
       options.onOffer ??
       (async (offer) => {
@@ -231,6 +236,100 @@ test("succeeds when the sender closes the channel after the receipt", async () =
   const r = run({ bytes: new Uint8Array(randomBytes(100_000)), pair });
   const result = await r.receiving;
   assert.equal(result.type, "received");
+});
+
+function confirmation() {
+  let resolve: (matches: boolean) => void = () => {};
+  const promise = new Promise<boolean>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+}
+
+const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+
+/** A channel pair that records the kind of every frame, and closes like a page does after a "differs". */
+function watchedPair() {
+  const kinds: number[] = [];
+  const pair = channelPair({
+    toRecipient(frame) {
+      kinds.push(frame[1] as number);
+      return frame;
+    },
+  });
+  return { pair, kinds };
+}
+
+test("no offer before both checks", async () => {
+  const bytes = new Uint8Array(randomBytes(1000));
+  const own = confirmation();
+  const { pair, kinds } = watchedPair();
+  const r = run({
+    bytes,
+    pair,
+    senderConfirm: Promise.resolve(true),
+    recipientConfirm: own.promise,
+  });
+  await settle();
+  assert.deepEqual(r.offers, []);
+  assert.deepEqual(kinds, [SenderKind.INIT, SenderKind.CHECK]);
+  own.resolve(true);
+  const result = await r.receiving;
+  assert.equal(result.type, "received");
+  assert.equal(r.offers.length, 1);
+  assert.deepEqual(kinds.slice(0, 3), [SenderKind.INIT, SenderKind.CHECK, SenderKind.META]);
+  assert.deepEqual(await r.sending, { type: "receipt", match: true });
+});
+
+test("own differs: CHECK(0) goes out and both sides stop", async () => {
+  const sink = new RecordingSink();
+  const { pair, kinds } = watchedPair();
+  const r = run({
+    bytes: new Uint8Array(1000),
+    pair,
+    sink,
+    senderConfirm: new Promise<boolean>(() => {}),
+    recipientConfirm: Promise.resolve(false),
+  });
+  const sent = await r.sending;
+  pair.close();
+  assert.deepEqual(sent, { type: "check-differs", by: "recipient" });
+  assert.deepEqual(await r.receiving, { type: "check-differs", by: "recipient" });
+  assert.deepEqual(r.offers, []);
+  assert.deepEqual(kinds, [SenderKind.INIT]);
+  assert.equal(sink.writes, 0);
+});
+
+test("the sender differs: the recipient stops before its own click", async () => {
+  const { pair, kinds } = watchedPair();
+  const r = run({
+    bytes: new Uint8Array(1000),
+    pair,
+    senderConfirm: Promise.resolve(false),
+    recipientConfirm: new Promise<boolean>(() => {}),
+  });
+  const received = await r.receiving;
+  pair.close();
+  assert.deepEqual(received, { type: "check-differs", by: "sender" });
+  assert.deepEqual(await r.sending, { type: "check-differs", by: "sender" });
+  assert.deepEqual(r.offers, []);
+  assert.deepEqual(kinds, [SenderKind.INIT, SenderKind.CHECK]);
+});
+
+test("a flipped flag: a recipient without the check refuses a CHECK", async () => {
+  const r = run({ bytes: new Uint8Array(1000), senderConfirm: Promise.resolve(true) });
+  await assert.rejects(r.receiving, failedWith("invalid"));
+  assert.deepEqual(r.offers, []);
+  r.pair.close();
+  await assert.rejects(r.sending);
+});
+
+test("a flipped flag: a recipient with the check refuses META before CHECK", async () => {
+  const r = run({ bytes: new Uint8Array(1000), recipientConfirm: new Promise<boolean>(() => {}) });
+  await assert.rejects(r.receiving, failedWith("invalid"));
+  assert.deepEqual(r.offers, []);
+  r.pair.close();
+  await assert.rejects(r.sending);
 });
 
 test("rejects a link with the wrong secret before offering anything", async () => {

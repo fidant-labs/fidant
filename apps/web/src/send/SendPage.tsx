@@ -299,7 +299,7 @@ export function SendPage({
           (result) => {
             if (result.type === "declined") {
               dispatch({ type: "declined", linkId });
-            } else {
+            } else if (result.type === "receipt") {
               dispatch({ type: "receipt", linkId, match: result.match });
             }
           },

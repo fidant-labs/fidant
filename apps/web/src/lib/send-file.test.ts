@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
 import { test } from "node:test";
 import {
+  decodeCheck,
   decodeInit,
   decodeMeta,
+  encodeCheck,
   encodeCredit,
   type FileMeta,
   FrameReader,
@@ -60,7 +62,11 @@ function fakeChannel(secret: string, behaviour: Behaviour) {
     chunkFrames: number[];
     /** CHUNKs the sender sent beyond the credit delivered to it so far. */
     overdrawn: number;
-  } = { bytes: 0, frames: 0, chunkFrames: [], overdrawn: 0 };
+    /** The kind of every frame the sender sent, in order. */
+    kinds: number[];
+    /** The sender's CHECK verdicts. */
+    checks: boolean[];
+  } = { bytes: 0, frames: 0, chunkFrames: [], overdrawn: 0, kinds: [], checks: [] };
   let granted = 0;
   let delivered = 0;
   let chunksSent = 0;
@@ -106,6 +112,13 @@ function fakeChannel(secret: string, behaviour: Behaviour) {
       return;
     }
     const frame = await reader.decrypt(data);
+    if (frame.kind === SenderKind.CHECK) {
+      received.checks.push(decodeCheck(frame.body));
+      if (!decodeCheck(frame.body)) {
+        close();
+      }
+      return;
+    }
     if (frame.kind === SenderKind.CHUNK) {
       received.chunkFrames.push(data.length);
     }
@@ -150,6 +163,7 @@ function fakeChannel(secret: string, behaviour: Behaviour) {
       return readyState;
     },
     send(data) {
+      received.kinds.push(data[1] as number);
       if (data[1] === SenderKind.CHUNK && chunksSent++ >= delivered) {
         received.overdrawn++;
       }
@@ -161,7 +175,12 @@ function fakeChannel(secret: string, behaviour: Behaviour) {
       target,
     ) as FrameChannel["removeEventListener"],
   };
-  return { channel, received, done: () => incoming };
+  /** Sends the recipient's CHECK verdict once INIT has arrived. */
+  const check = async (matches: boolean) => {
+    await incoming;
+    await reply(RecipientKind.CHECK, encodeCheck(matches));
+  };
+  return { channel, received, check, done: () => incoming };
 }
 
 function sha256(bytes: Uint8Array): Uint8Array {
@@ -377,6 +396,79 @@ for (const [label, any] of [
     assert.equal((early.reason as Error).message, "already");
   });
 }
+
+const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+
+function confirmation() {
+  let resolve: (matches: boolean) => void = () => {};
+  const promise = new Promise<boolean>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+}
+
+test("waits for both checks before META", async () => {
+  const { secret } = createLink("https://localhost");
+  const bytes = new Uint8Array(randomBytes(1000));
+  const fake = fakeChannel(secret, "accept");
+  const o = options(fake.channel, secret, bytes);
+  const own = confirmation();
+  let checked = 0;
+  const sending = sendFile({ ...o.value, confirm: own.promise, onChecked: () => checked++ });
+  await settle();
+  assert.deepEqual(fake.received.kinds, [SenderKind.INIT]);
+
+  own.resolve(true);
+  await settle();
+  assert.deepEqual(fake.received.kinds, [SenderKind.INIT, SenderKind.CHECK]);
+  assert.deepEqual(fake.received.checks, [true]);
+  assert.equal(checked, 0);
+
+  await fake.check(true);
+  assert.deepEqual(await sending, { type: "receipt", match: true });
+  assert.equal(checked, 1);
+  assert.deepEqual(fake.received.kinds.slice(0, 3), [
+    SenderKind.INIT,
+    SenderKind.CHECK,
+    SenderKind.META,
+  ]);
+});
+
+test("the recipient's match alone sends nothing about the file", async () => {
+  const { secret } = createLink("https://localhost");
+  const fake = fakeChannel(secret, "accept");
+  const o = options(fake.channel, secret, new Uint8Array(10));
+  const own = confirmation();
+  const sending = sendFile({ ...o.value, confirm: own.promise });
+  await fake.check(true);
+  await settle();
+  assert.deepEqual(fake.received.kinds, [SenderKind.INIT]);
+  own.resolve(true);
+  assert.deepEqual(await sending, { type: "receipt", match: true });
+});
+
+test("recipient differs: no META, even before the sender clicked", async () => {
+  const { secret } = createLink("https://localhost");
+  const fake = fakeChannel(secret, "accept");
+  const o = options(fake.channel, secret, new Uint8Array(10));
+  const sending = sendFile({ ...o.value, confirm: new Promise<boolean>(() => {}) });
+  await fake.check(false);
+  assert.deepEqual(await sending, { type: "check-differs", by: "recipient" });
+  await settle();
+  assert.deepEqual(fake.received.kinds, [SenderKind.INIT]);
+  assert.equal(fake.received.meta, undefined);
+});
+
+test("sender differs: CHECK(0) goes out and nothing about the file", async () => {
+  const { secret } = createLink("https://localhost");
+  const fake = fakeChannel(secret, "accept");
+  const o = options(fake.channel, secret, new Uint8Array(10));
+  const sending = sendFile({ ...o.value, confirm: Promise.resolve(false) });
+  assert.deepEqual(await sending, { type: "check-differs", by: "sender" });
+  assert.deepEqual(fake.received.kinds, [SenderKind.INIT, SenderKind.CHECK]);
+  assert.deepEqual(fake.received.checks, [false]);
+  assert.equal(fake.received.meta, undefined);
+});
 
 test("hashFile matches node:crypto across slice boundaries", async () => {
   for (const size of [0, 1, HASH_SLICE_BYTES - 1, HASH_SLICE_BYTES, HASH_SLICE_BYTES + 7]) {
