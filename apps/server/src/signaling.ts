@@ -24,8 +24,11 @@ import {
   type LogFields,
   maskAddress,
   parseClientMessage,
+  type RefusedReason,
   type RefuseReason,
+  SERVICE_RESTART,
   type ServerMessage,
+  STARTING_MS,
 } from "@sigill/protocol";
 import { type RawData, WebSocket, WebSocketServer } from "ws";
 import type { Mailer } from "./mail.ts";
@@ -205,6 +208,8 @@ export function attachSignaling(
   options: {
     log: Logger;
     heartbeatMs?: number;
+    /** How long after start a join for a link nobody hosts is refused as `starting`, not `unknown`. */
+    startingMs?: number | undefined;
     limits?: Partial<typeof LIMITS>;
     /** Minted once per pairing, so TURN credentials are fresh. Never logged. */
     iceServers?: (turn: boolean) => IceServer[];
@@ -214,6 +219,8 @@ export function attachSignaling(
 ): { close(): void } {
   const { log, iceServers = () => [], mail } = options;
   const limits = { ...LIMITS, ...options.limits };
+  const startedAt = Date.now();
+  const startingMs = options.startingMs ?? STARTING_MS;
 
   /**
    * Sends a message, unless the socket has stopped reading: once more than twice the relay limit
@@ -361,15 +368,18 @@ export function attachSignaling(
       error(socket, "wrong-role");
       return;
     }
-    if (links.some((link) => hosts.has(link) && hosts.get(link) !== socket)) {
+    // A link another socket hosts is left out as if it were not in the list, so one taken link
+    // (decisions 0006 and 0012) cannot block the sender's others. The error still tells the
+    // page, which retries the whole list until the other socket is gone.
+    const free = links.filter((link) => !hosts.has(link) || hosts.get(link) === socket);
+    if (free.length < links.length) {
       error(socket, "already-hosted");
-      return;
     }
-    const next = new Set(links);
+    const next = new Set(free);
     const changed =
       peer.role !== "host" ||
       next.size !== peer.hosted.size ||
-      links.some((link) => !peer.hosted.has(link));
+      free.some((link) => !peer.hosted.has(link));
     peer.role = "host";
     peer.turn = turn;
     for (const link of peer.hosted) {
@@ -431,7 +441,12 @@ export function attachSignaling(
     }
     const hostSocket = hosts.get(link);
     if (!hostSocket || guests.has(link)) {
-      const reason: RefuseReason = hostSocket ? "busy" : "unknown";
+      // Just after a start, senders may not have re-hosted yet, so the link may not be dead.
+      const reason: RefusedReason = hostSocket
+        ? "busy"
+        : Date.now() - startedAt < startingMs
+          ? "starting"
+          : "unknown";
       log("refused", { link: short(link), reason });
       send(socket, { t: "refused", reason });
       return;
@@ -756,7 +771,7 @@ export function attachSignaling(
       clearInterval(heartbeat);
       server.off("upgrade", onUpgrade);
       for (const socket of peers.keys()) {
-        socket.terminate();
+        socket.close(SERVICE_RESTART);
       }
       wss.close();
     },

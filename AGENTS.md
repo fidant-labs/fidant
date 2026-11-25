@@ -33,7 +33,8 @@ Planning lives in Linear: workspace `sigill`, team `SIG`, issue keys like `SIG-2
 - pnpm, at the version pinned in `package.json` (`packageManager`). Node 26 ships without Corepack, so install it with `npm install -g pnpm@<version>`.
 - gitleaks (`brew install gitleaks`). The pre-commit hook fails without it.
 - openssl, for the local certificate. macOS and Linux ship with it.
-- jq, for the Claude Code hooks. Recent macOS versions include it; on Linux, install it with the package manager.
+- Git 2.39 or later, for `git patch-id --verbatim` in the review gate.
+- jq, for the Claude Code hooks; the review gate blocks pull request creation without it. Recent macOS versions include it; on Linux, install it with the package manager.
 - coturn, only for `pnpm e2e` (`brew install coturn`; the `coturn` package on Linux). Without it the local run skips TURN; in CI it fails.
 - Mailpit, only for `pnpm e2e` and to try emailed links (`brew install mailpit`; the release binary on Linux). Without it the local run skips mail; in CI it fails.
 - Docker with Compose v2 (`docker compose`), only for `pnpm e2e:networks`. The first run pulls the images, so it needs the internet once.
@@ -60,7 +61,7 @@ Planning lives in Linear: workspace `sigill`, team `SIG`, issue keys like `SIG-2
 - Box tests in `apps/e2e/tests/networks.spec.ts` share containers across the run: change one only inside the `try` whose `finally` undoes it, compare its times with its own `date +%s` or allow for drift against the host's `Date.now()`, and when a test finds no secret in a log, also prove the checked output reached that log.
 - Dependencies: `pnpm add --filter <package> <dep>`. pnpm is strict, so each package declares everything it imports.
 - Workspace packages: add one as a dependency with `pnpm add --filter <consumer> --workspace <package>`, which links and saves `workspace:*`. Without `--workspace`, pnpm can resolve the name from the public npm registry.
-- Commits: conventional commits, subject line only, imperative, under 72 characters, for example `feat: add signaling server`.
+- Commits: conventional commits, subject line only, imperative, under 72 characters, for example `feat: add signaling server`. The one allowed body is an attribution trailer (`Co-Authored-By: ...`) added by an agent.
 - Branches: `sig-<number>-<short-slug>` after the Linear issue. One pull request per issue. `main` is protected: changes land only through pull requests with green CI.
 - Pull request titles start with the Linear issue key (`SIG-21: ...`) so Linear links them.
 - Keep the Linear issue's status current while working: assign it and set "In Progress" when work starts, link the pull request when it opens, and set "Done" when it merges.
@@ -98,5 +99,5 @@ Planning lives in Linear: workspace `sigill`, team `SIG`, issue keys like `SIG-2
 - What counts as a leak, concretely, is defined in `docs/decisions/0001-e2e-tests-and-leak-model.md`, read with the records that amend it: 0002, 0003, 0004 and 0012 in `docs/decisions/`.
 - `docs/how-fidant-works.md` describes the code on `main`. A change that touches security or data flow updates it in the same pull request: keys, encryption, the link format, frames, signaling messages, connection paths and the relay, what the server or relay sees, keeps or logs, limits, HTTP headers, or a new mode of transfer. The same pull request updates the web text that explains it: the `technical` text in `apps/web/src/i18n/en.ts` and `sv.ts`, and `/how`, `/privacy`, `/security` and the landing page wherever the change makes them untrue. An exception makes untrue every absolute that covers it, such as "never", "nobody", "us included" or "every", in that text, in any `AGENTS.md`, in `.claude/` and in `docs/` outside accepted decision records, which a new record amends instead.
 - "Every path and its traces" in `docs/how-fidant-works.md` is the audit baseline: every way a file or a shared secret moves and the traces each part keeps, shown to readers by the `/how/traces` explorer. A change to a path, a trace, a signaling message or a log field updates it, and the explorer's text, in the same pull request. The `Claude review` workflow checks every path on each pull request, and `packages/protocol/src/transfer-paths.test.ts` fails when a message, log event or named file is missing from it.
-- This repository is public. Never commit secrets, real personal data or customer data. The pre-commit hook runs gitleaks.
+- This repository is public. Never commit secrets, real personal data or customer data. The pre-commit hook runs gitleaks, and the `check` job in CI scans the pushed commits again. That scan runs after the push, when a secret is already public, so a hit there means rotate the secret first, then remove it. GitHub push protection is on, but blocks only known token formats. Both scans skip a line marked `gitleaks:allow`.
 - The project must run fully local for tests and demos, with no internet. Add infrastructure (database, storage, relay) only when a feature needs it.

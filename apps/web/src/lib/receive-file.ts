@@ -27,6 +27,12 @@
 // ReceiveError whose `reason` tells a checksum mismatch, a misbehaving sender,
 // a lost connection and a failed save apart.
 //
+// The file key comes from the link secret, the sender's transferId in INIT and
+// this attempt's own attempt ID (see keys.ts). The attempt ID is fresh for
+// every join, so an INIT and META replayed from an earlier attempt give a key
+// this recipient has never sealed a frame under: META fails to decrypt and
+// nothing is sent back.
+//
 // No DOM or UI here beyond the data channel API, so tests can drive it with a
 // fake channel. The file name only ever reaches onOffer.
 
@@ -72,6 +78,8 @@ export type ReceiveFileOptions = {
   maxMessageSize: number;
   /** The link secret from the URL fragment. */
   secret: string;
+  /** The attempt ID this join sent in `join`. Must be fresh for every join. */
+  attempt: string;
   /** Aborting stops the transfer; receiveFile then rejects. */
   signal: AbortSignal;
   /**
@@ -124,7 +132,7 @@ export type ReceiveResult =
  * channel close.
  */
 export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveResult> {
-  const { channel, maxMessageSize, secret } = options;
+  const { channel, maxMessageSize, secret, attempt } = options;
   const abort = new AbortController();
   const signal = anySignal([options.signal, abort.signal]);
   const onClose = () => abort.abort(new Error("data channel closed"));
@@ -155,7 +163,7 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
     };
 
     const transferId = decodeInit(await inbox.takeRaw());
-    const key = await abortable(deriveFileKey(secret, transferId), signal);
+    const key = await abortable(deriveFileKey(secret, transferId, attempt), signal);
     const writer = new FrameWriter(key, "r");
     inbox.start(new FrameReader(key, "s"));
 

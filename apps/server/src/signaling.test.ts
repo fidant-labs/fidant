@@ -11,7 +11,7 @@ import {
   MAX_RELAY_DATA,
   parseEmailedFragment,
   parseServerMessage,
-  REFUSE_REASONS,
+  REFUSED_REASONS,
   type ServerMessage,
   UPGRADE_REJECT_REASONS,
 } from "@sigill/protocol";
@@ -27,6 +27,8 @@ const signaling = attachSignaling(server, {
   iceServers: (turn) => (turn ? [RELAY] : []),
   // Every test's sockets stay open until after(), and all come from one address.
   limits: { socketsPerAddress: 1000 },
+  // Past the warm-up window at once, so a link nobody hosts is `unknown`.
+  startingMs: 0,
 });
 let port = 0;
 const clients: Client[] = [];
@@ -161,6 +163,38 @@ test("refuses a join for a link nobody hosts", async () => {
   const guest = await connect();
   guest.send({ t: "join", link: linkId(), attempt: linkId() });
   assert.deepEqual(await guest.next(), { t: "refused", reason: "unknown" });
+});
+
+test("refuses a link nobody hosts as starting while the server warms up, then as unknown", async (t) => {
+  const warming = createServer();
+  const warmingSignaling = attachSignaling(warming, { log: () => {}, startingMs: 300 });
+  t.after(() => {
+    warmingSignaling.close();
+    warming.close();
+  });
+  await new Promise<void>((done) => warming.listen(0, done));
+  const url = `ws://localhost:${(warming.address() as AddressInfo).port}/signal`;
+
+  const link = linkId();
+  const guest = await connect(url);
+  guest.send({ t: "join", link, attempt: linkId() });
+  assert.deepEqual(await guest.next(), { t: "refused", reason: "starting" });
+
+  // A hosted link still pairs, and a link with a guest is still busy.
+  const host = await connect(url);
+  host.send({ t: "host", links: [link], turn: false });
+  host.send({ t: "relay", link: linkId(), data: "sync" });
+  assert.deepEqual(await host.next(), { t: "error", code: "not-on-link" });
+  const attempt = linkId();
+  guest.send({ t: "join", link, attempt });
+  assert.deepEqual(await host.next(), { t: "joined", link, attempt, iceServers: [], turn: false });
+  const second = await connect(url);
+  second.send({ t: "join", link, attempt: linkId() });
+  assert.deepEqual(await second.next(), { t: "refused", reason: "busy" });
+
+  await new Promise((done) => setTimeout(done, 300));
+  second.send({ t: "join", link: linkId(), attempt: linkId() });
+  assert.deepEqual(await second.next(), { t: "refused", reason: "unknown" });
 });
 
 test("refuses a second concurrent guest as busy and frees the link when the first leaves", async () => {
@@ -299,12 +333,57 @@ test("tells the guest when the host drops its link from the list", async () => {
   assert.deepEqual(await guest.next(), { t: "host-gone" });
 });
 
-test("rejects hosting a link another socket already hosts", async () => {
+test("rejects hosting a link another socket already hosts but hosts the rest", async () => {
   const link = linkId();
-  await hostFor(link);
+  const fresh = linkId();
+  const owner = await hostFor(link);
   const rival = await connect();
-  rival.send({ t: "host", links: [linkId(), link], turn: true });
+  rival.send({ t: "host", links: [fresh, link], turn: true });
   assert.deepEqual(await rival.next(), { t: "error", code: "already-hosted" });
+  await joinAs(link, owner);
+  await joinAs(fresh, rival);
+});
+
+test("keeps a reconnecting sender's other links hosted when another socket took one (SIG-233)", async () => {
+  const [taken, kept, third] = [linkId(), linkId(), linkId()];
+  const sender = await hostFor(taken, kept, third);
+  sender.socket.close();
+  await sender.closed;
+  // Someone who knows one link ID hosts it as soon as the server has noticed the close.
+  const other = await connect();
+  for (;;) {
+    other.send({ t: "host", links: [taken], turn: false });
+    other.send({ t: "relay", link: linkId(), data: "sync" });
+    const answer = await other.next();
+    if (answer.t === "error" && answer.code === "not-on-link") {
+      break;
+    }
+    assert.deepEqual(answer, { t: "error", code: "already-hosted" });
+    assert.deepEqual(await other.next(), { t: "error", code: "not-on-link" });
+    await new Promise((done) => setTimeout(done, 5));
+  }
+  // The send page sends its whole list again after a reconnect.
+  const back = await connect();
+  back.send({ t: "host", links: [taken, kept, third], turn: true });
+  assert.deepEqual(await back.next(), { t: "error", code: "already-hosted" });
+  await joinAs(kept, back);
+  await joinAs(third, back);
+  await joinAs(taken, other, false);
+  // Once the other socket is gone, the same list hosts the taken link too.
+  other.socket.close();
+  await other.closed;
+  for (;;) {
+    back.send({ t: "host", links: [taken, kept, third], turn: true });
+    back.send({ t: "relay", link: linkId(), data: "sync" });
+    const answer = await back.next();
+    if (answer.t === "error" && answer.code === "not-on-link") {
+      break;
+    }
+    assert.deepEqual(answer, { t: "error", code: "already-hosted" });
+    assert.deepEqual(await back.next(), { t: "error", code: "not-on-link" });
+    await new Promise((done) => setTimeout(done, 5));
+  }
+  await joinAs(taken, back);
 });
 
 test("rejects messages from a socket that is not on the link or has the wrong role", async () => {
@@ -410,7 +489,7 @@ test("logs only allowlisted fields and never relay payloads", async () => {
 
   const allowed = new Set(["link", "links", "bytes", "reason", "code", "port", "path"]);
   const logReasons: readonly unknown[] = [
-    ...REFUSE_REASONS,
+    ...REFUSED_REASONS,
     ...UPGRADE_REJECT_REASONS,
     ...CODE_RESULTS,
     "unverified",
@@ -472,6 +551,18 @@ test("terminates a guest that never answers pings and tells the host it left", a
   const joinedAt = performance.now();
   assert.deepEqual(await host.next(), { t: "left", link });
   assert.ok(performance.now() - joinedAt < 200, "the silent guest outlived two heartbeats");
+});
+
+test("close() closes every socket with 1012, so clients know the server is restarting", async (t) => {
+  const closing = createServer();
+  const closingSignaling = attachSignaling(closing, { log: () => {} });
+  t.after(() => closing.close());
+  await new Promise<void>((done) => closing.listen(0, done));
+  const url = `ws://localhost:${(closing.address() as AddressInfo).port}/signal`;
+  const host = await connect(url);
+  const guest = await connect(url);
+  closingSignaling.close();
+  assert.deepEqual(await Promise.all([host.closed, guest.closed]), [1012, 1012]);
 });
 
 test("keys clients by address, trusting X-Forwarded-For only from loopback", () => {
@@ -605,7 +696,7 @@ async function bufferedRelay(t: { after(fn: () => void): void }) {
   const limited = createServer();
   const limitedSignaling = attachSignaling(limited, {
     log: (event) => events.push(event),
-    limits: { bufferedBytes: 64 * 1024, messagesPerWindow: 100_000 },
+    limits: { bufferedBytes: 64 * 1024, messagesPerWindow: 10_000_000 },
   });
   t.after(() => {
     limitedSignaling.close();
@@ -739,6 +830,7 @@ async function mailServer(
   const mailing = createServer();
   const mailingSignaling = attachSignaling(mailing, {
     log: (event, fields) => lines.push(JSON.stringify({ event, ...fields })),
+    startingMs: 0,
     mail: {
       origin: ORIGIN,
       send: (mail) => {
@@ -1509,16 +1601,25 @@ test("closes a socket that never reads once the replies queued for it pass the l
   // The queue is at the limit. Each message below earns the guest an `error` reply it never
   // reads, and unlike a relay those replies are queued whatever is already waiting.
   const count = (event: string) => relay.events.filter((e) => e === event).length;
-  const [asked, before] = [5000, count("error")];
+  const before = count("error");
   const message = JSON.stringify({ t: "relay", link: linkId(), data: "sync" });
-  for (let i = 0; i < asked; i += 1) {
-    relay.guest.send(message);
-  }
-  const deadline = Date.now() + 5000;
-  while (count("left") === 0 && count("error") < before + asked && Date.now() < deadline) {
+  // The kernel's socket buffers grow on localhost and take replies Node no longer counts as
+  // queued, so a fixed number of messages may never reach the limit: send until the socket closes.
+  let asked = 0;
+  const deadline = Date.now() + 10_000;
+  while (count("left") === 0 && Date.now() < deadline) {
+    for (let i = 0; i < 1000; i += 1) {
+      relay.guest.send(message);
+    }
+    asked += 1000;
     await new Promise((done) => setTimeout(done, 5));
   }
-  assert.equal(count("left"), 1, `the server queued ${count("error") - before} more replies`);
+  assert.equal(count("rate-limited"), 0, "the rate limit closed the socket, not the queue limit");
+  assert.equal(
+    count("left"),
+    1,
+    `the server queued ${count("error") - before} of ${asked} replies`,
+  );
 });
 
 // Guards the ws library's own limit (maxPendingAutoPongs), so a ws upgrade that drops it fails here.

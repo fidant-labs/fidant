@@ -21,8 +21,10 @@
 // END needs no credit, and CREDITs that arrive after END change nothing. The
 // channel's bufferedAmount still paces sending as well.
 //
-// Every attempt gets a fresh transferId, so a restart after a drop never
-// reuses a (file key, nonce) pair. Encryption happens in one sequential loop
+// The file key comes from the link secret, a fresh transferId per attempt and
+// the recipient's attempt ID (see keys.ts), so a restart after a drop never
+// reuses a (file key, nonce) pair, and neither does a recipient shown a
+// replayed INIT. Encryption happens in one sequential loop
 // and incoming frames are decrypted through one promise queue, because frame
 // writers and readers assign sequence numbers per call.
 //
@@ -80,6 +82,8 @@ export type SendFileOptions = {
   from: string;
   /** The recipient's link secret. */
   secret: string;
+  /** The recipient's attempt ID for this connection, from the server's `joined`. */
+  attempt: string;
   /** The file's SHA-256 from hashFile. Awaited before END. */
   sha256: Promise<Uint8Array>;
   /** Aborting stops the transfer; sendFile then rejects. */
@@ -108,7 +112,7 @@ export type SendResult =
  * decrypt, or the recipient sends something out of order.
  */
 export async function sendFile(options: SendFileOptions): Promise<SendResult> {
-  const { channel, maxMessageSize, file, secret, from } = options;
+  const { channel, maxMessageSize, file, secret, attempt, from } = options;
   const abort = new AbortController();
   const signal = anySignal([options.signal, abort.signal]);
   const onClose = () => abort.abort(new Error("data channel closed"));
@@ -135,7 +139,7 @@ export async function sendFile(options: SendFileOptions): Promise<SendResult> {
 
     const transferId = createTransferId();
     send(encodeInit(transferId));
-    const key = await abortable(deriveFileKey(secret, transferId), signal);
+    const key = await abortable(deriveFileKey(secret, transferId, attempt), signal);
     const writer = new FrameWriter(key, "s");
     inbox.start(new FrameReader(key, "r"));
 

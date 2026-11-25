@@ -254,6 +254,11 @@ async function harness(side: "s" | "r", check?: boolean) {
     await settle();
     return Promise.all(sent);
   };
+  if (side === "r") {
+    // The recipient seals its commit in the background, and a peer that fails
+    // drops what it has not sent yet, so a test that fails it early waits first.
+    await signals(1);
+  }
   return { peer, relay, relayFrom, signals, closes, opens };
 }
 
@@ -361,6 +366,8 @@ test("the recipient sends no answer and no number when the browser read another 
     resetFake(RECIPIENT_FP);
     FakePeerConnection.readBack = read;
     const h = await harness("r");
+    // The commit goes out before the offer arrives; closing first would drop it.
+    await h.signals(1);
     await h.relay({
       kind: "offer",
       sdp: fakeSdp(`a=fingerprint:sha-256 ${SENDER_FP}`),
@@ -400,6 +407,7 @@ test("the recipient fails locally when its answer names another certificate", as
   resetFake(RECIPIENT_FP);
   FakePeerConnection.localFingerprint = OTHER_FP;
   const h = await harness("r");
+  await h.signals(1);
   await h.relay({ kind: "offer", sdp: fakeSdp(`a=fingerprint:sha-256 ${SENDER_FP}`), check: true });
   assert.equal(h.closes[0]?.reason, "setup-failed");
   assert.equal(h.peer.answered, false);

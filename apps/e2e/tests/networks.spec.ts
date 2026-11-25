@@ -21,10 +21,12 @@ import {
   delivered as deliveredRow,
   expect,
   type Leaks,
+  makeName,
   type Observed,
   test,
 } from "../src/fixtures.ts";
 import { readPeerConnections, recordPeerConnections, selectedPair } from "../src/ice.ts";
+import { base32Token } from "../src/leaks/canary.ts";
 import { checkServerLog, serverLogAllowlist } from "../src/leaks/server-log.ts";
 import { boxJournal, boxSyslog, serverStdoutLog } from "../src/paths.ts";
 import { winningJournald } from "../src/stack/box.ts";
@@ -66,6 +68,8 @@ interface Scenario {
   path: RegExp | "none";
   /** Send a larger file and check that both sides report progress honestly along the way. */
   progress?: true;
+  /** Share a secret from /secret instead of a file. Not with `progress`. */
+  secret?: true;
 }
 
 const scenarios: Scenario[] = [
@@ -103,6 +107,14 @@ const scenarios: Scenario[] = [
     recipient: "b1",
     routerB: "tcp-443",
     path: / relay\+tls\/\S+$/,
+  },
+  {
+    title: "a secret through the relay (only TCP 443)",
+    sender: "a1",
+    recipient: "b1",
+    routerB: "tcp-443",
+    path: / relay\+tls\/\S+$/,
+    secret: true,
   },
   {
     title: "relay down",
@@ -169,9 +181,14 @@ const verifiedText = "this is exactly the file that was sent";
  * honest: the recipient's bar never went back or past the file, showed at least three values in
  * between, and the sender said delivered only once the recipient had verified the file.
  */
-async function expectHonestProgress(sender: Page, recipient: Page, size: number): Promise<void> {
+async function expectHonestProgress(
+  sender: Page,
+  recipient: Page,
+  size: number,
+  name: string,
+): Promise<void> {
   const bar = recipient.getByLabel("Download progress", { exact: true });
-  const delivered = deliveredRow(sender, "Anna");
+  const delivered = deliveredRow(sender, name);
   const verified = recipient.getByText(verifiedText);
   const values: number[] = [];
   const deadline = Date.now() + 60_000;
@@ -248,6 +265,7 @@ for (const row of scenarios) {
         await pauseRelay();
         const stdoutStart = await sizeOf(serverStdoutLog);
         const file = leaks.watch(canaryFile(canary.fork("file"), { size: 300_001 }));
+        const name = makeName(leaks, canary, "Anna");
 
         const sender = await actor("sender");
         await recordPeerConnections(sender.context);
@@ -257,10 +275,10 @@ for (const row of scenarios) {
           mimeType: file.mime,
           buffer: file.bytes,
         });
-        await sender.page.getByLabel("Who is it for?").fill("Anna");
+        await sender.page.getByLabel("Who is it for?").fill(name);
         await sender.page.getByRole("button", { name: "Create link", exact: true }).click();
         const link =
-          (await sender.page.getByLabel("Link for Anna", { exact: true }).textContent()) ?? "";
+          (await sender.page.getByLabel(`Link for ${name}`, { exact: true }).textContent()) ?? "";
         leaks.watchKey("link secret", new URL(link).hash.slice(1));
 
         const recipient = await actor("recipient");
@@ -276,6 +294,13 @@ for (const row of scenarios) {
         expect(downloads).toBe(0);
         expect(await pathOf(sender.page)).toBe("none");
         expect(await pathOf(recipient.page)).toBe("none");
+        // The sender learns someone tried, and the link stays on offer.
+        await expect(
+          sender.page
+            .getByRole("list", { name: "Recipients" })
+            .getByText(`${name}'s link was opened but couldn't connect to your computer.`),
+        ).toBeVisible({ timeout: 30_000 });
+        await expect(sender.page.getByLabel(`Link for ${name}`, { exact: true })).toBeVisible();
 
         // The sender reported the failed path; no fallback carried the file.
         await expect
@@ -292,48 +317,65 @@ for (const row of scenarios) {
       return;
     }
 
-    test("transfers the file on the expected path", async ({
-      actor,
-      observed,
-      leaks,
-      canary,
-      baseURL,
-    }) => {
+    const what = row.secret ? "shares the secret" : "transfers the file";
+    test(`${what} on the expected path`, async ({ actor, observed, leaks, canary, baseURL }) => {
       await routerMode("router-b", row.routerB);
+      if (row.secret && row.progress) {
+        throw new Error(`${row.title}: a secret has no progress`);
+      }
       // ponytail: 512 KiB: SCTP over this link moves about 50 KB/s, and it still shows 10 steps.
       const size = row.progress ? 512 * 1024 + 1 : 300_001;
-      const file = leaks.watch(canaryFile(canary.fork("file"), { size }));
+      const name = makeName(leaks, canary, "Anna");
 
       const sender = await actor("sender");
       await recordPeerConnections(sender.context);
-      await sender.page.goto("/send");
-      await chooseFile(sender.page, {
-        name: file.name,
-        mimeType: file.mime,
-        buffer: file.bytes,
-      });
-      await sender.page.getByLabel("Who is it for?").fill("Anna");
+      // The secret's text, or the file's SHA-256.
+      let sent: string;
+      if (row.secret) {
+        sent = base32Token(canary.fork("text"), 64);
+        leaks.watchContent("text", sent);
+        await sender.page.goto("/secret");
+        await sender.page.getByLabel("Your secret").fill(sent);
+      } else {
+        const file = leaks.watch(canaryFile(canary.fork("file"), { size }));
+        sent = sha256Hex(file.bytes);
+        await sender.page.goto("/send");
+        await chooseFile(sender.page, {
+          name: file.name,
+          mimeType: file.mime,
+          buffer: file.bytes,
+        });
+      }
+      await sender.page.getByLabel("Who is it for?").fill(name);
       await sender.page.getByRole("button", { name: "Create link", exact: true }).click();
       const link =
-        (await sender.page.getByLabel("Link for Anna", { exact: true }).textContent()) ?? "";
+        (await sender.page.getByLabel(`Link for ${name}`, { exact: true }).textContent()) ?? "";
       leaks.watchKey("link secret", new URL(link).hash.slice(1));
 
       const recipient = await actor("recipient");
       await recordPeerConnections(recipient.context);
       await recipient.page.goto(link);
-      const downloading = recipient.page.waitForEvent("download", { timeout: 60_000 });
-      const downloadButton = recipient.page.getByRole("button", { name: "Download" });
-      await expect(downloadButton).toBeVisible({ timeout: 45_000 });
-      await downloadButton.click();
-      if (row.progress) {
-        await expectHonestProgress(sender.page, recipient.page, size);
+      if (row.secret) {
+        const show = recipient.page.getByRole("button", { name: "Show", exact: true });
+        await expect(show).toBeVisible({ timeout: 45_000 });
+        await show.click();
+        await expect(
+          recipient.page.getByRole("region", { name: "The secret", exact: true }),
+        ).toHaveJSProperty("textContent", sent, { timeout: 60_000 });
+        await expect(deliveredRow(sender.page, name)).toBeAttached();
+      } else {
+        const downloading = recipient.page.waitForEvent("download", { timeout: 60_000 });
+        const downloadButton = recipient.page.getByRole("button", { name: "Download" });
+        await expect(downloadButton).toBeVisible({ timeout: 45_000 });
+        await downloadButton.click();
+        if (row.progress) {
+          await expectHonestProgress(sender.page, recipient.page, size, name);
+        }
+        await expect(recipient.page.getByText(verifiedText)).toBeVisible({ timeout: 60_000 });
+        // path() is not available from a remote browser.
+        const download = await downloading;
+        expect(sha256Hex(await buffer(await download.createReadStream()))).toBe(sent);
       }
-      await expect(recipient.page.getByText(verifiedText)).toBeVisible({ timeout: 60_000 });
-      // path() is not available from a remote browser.
-      const download = await downloading;
-      expect(sha256Hex(await buffer(await download.createReadStream()))).toBe(
-        sha256Hex(file.bytes),
-      );
 
       await expect
         .poll(async () => `${await pathOf(sender.page)} ${await pathOf(recipient.page)}`)
@@ -386,6 +428,7 @@ test.describe("the box", () => {
   }) => {
     await routerMode("router-b", "symmetric");
     const file = leaks.watch(canaryFile(canary.fork("file"), { size: 300_001 }));
+    const name = makeName(leaks, canary, "Anna");
 
     const sender = await actor("sender");
     await recordPeerConnections(sender.context);
@@ -395,10 +438,10 @@ test.describe("the box", () => {
       mimeType: file.mime,
       buffer: file.bytes,
     });
-    await sender.page.getByLabel("Who is it for?").fill("Anna");
+    await sender.page.getByLabel("Who is it for?").fill(name);
     await sender.page.getByRole("button", { name: "Create link", exact: true }).click();
     const link =
-      (await sender.page.getByLabel("Link for Anna", { exact: true }).textContent()) ?? "";
+      (await sender.page.getByLabel(`Link for ${name}`, { exact: true }).textContent()) ?? "";
     leaks.watchKey("link secret", new URL(link).hash.slice(1));
 
     const recipient = await actor("recipient");
@@ -516,7 +559,14 @@ test.describe("the box", () => {
 /** The types of the candidates a page gathers with `server`, and the codes of its candidate errors. */
 function gather(page: Page, server: RTCIceServer): Promise<{ types: string[]; errors: number[] }> {
   return page.evaluate(async (iceServer) => {
-    const pc = new RTCPeerConnection({ iceServers: [iceServer] });
+    // A certificate of our own: see relayedChannel.
+    const certificates = [
+      await RTCPeerConnection.generateCertificate({
+        name: "ECDSA",
+        namedCurve: "P-256",
+      } as EcKeyGenParams),
+    ];
+    const pc = new RTCPeerConnection({ iceServers: [iceServer], certificates });
     const types: string[] = [];
     const errors: number[] = [];
     pc.addEventListener("icecandidate", ({ candidate }) => {
@@ -563,8 +613,17 @@ async function relayedChannel(
 ): Promise<{ path: string; echoed: boolean }> {
   const config: RTCConfiguration = { iceServers: [ice], iceTransportPolicy: "relay" };
   // Each callback runs in a page, so it repeats the helpers it needs.
+  // Each connection gets a certificate made beforehand, which WebRTC applies in the constructor.
+  // Without one, Chromium makes it asynchronously, and in CI an offer was once set before the
+  // certificate reached the transport: "Fingerprint provided but no identity available" (SIG-274).
   const offer = await sender.evaluate(async (config) => {
-    const pc = new RTCPeerConnection(config);
+    const certificates = [
+      await RTCPeerConnection.generateCertificate({
+        name: "ECDSA",
+        namedCurve: "P-256",
+      } as EcKeyGenParams),
+    ];
+    const pc = new RTCPeerConnection({ ...config, certificates });
     (globalThis as RelayGlobals).relay = { pc, channel: pc.createDataChannel("relay") };
     await pc.setLocalDescription();
     while (pc.iceGatheringState !== "complete") {
@@ -574,7 +633,13 @@ async function relayedChannel(
   }, config);
   const answer = await recipient.evaluate(
     async ({ config, offer }) => {
-      const pc = new RTCPeerConnection(config);
+      const certificates = [
+        await RTCPeerConnection.generateCertificate({
+          name: "ECDSA",
+          namedCurve: "P-256",
+        } as EcKeyGenParams),
+      ];
+      const pc = new RTCPeerConnection({ ...config, certificates });
       const received = new Promise<string>((resolve) => {
         pc.addEventListener("datachannel", ({ channel }) => {
           channel.binaryType = "arraybuffer";

@@ -244,6 +244,24 @@ test("delivers a file to two recipients with a verified checksum", async ({
   await expect(recipientPanel).toContainText(/[1-9]\d* setup messages? \(/);
 });
 
+// A chunk is 48 KiB in Chromium (min(48 KiB, maxMessageSize - 64)): empty, one byte short of a
+// chunk, exactly one, and one byte over.
+for (const size of [0, 48 * 1024 - 1, 48 * 1024, 48 * 1024 + 1]) {
+  test(`delivers a ${size}-byte file with a verified checksum`, async ({ demo, leaks, canary }) => {
+    const file = makeFile(leaks, canary, size);
+    const sender = await openSender(demo, file);
+    const name = makeName(leaks, canary, "Anna");
+    const link = await addRecipient(leaks, sender, name);
+
+    const recipient = await demo.open("recipient");
+    await recipient.goto(link);
+    const bytes = await download(recipient, file);
+    expect(bytes.length).toBe(size);
+    expect(sha256Hex(bytes)).toBe(sha256Hex(file.bytes));
+    await expect(delivered(sender, name)).toBeAttached();
+  });
+}
+
 test("refuses used, unknown and malformed links", async ({ demo, leaks, canary, baseURL }) => {
   const file = makeFile(leaks, canary, 100_001);
   const sender = await openSender(demo, file);
@@ -401,6 +419,40 @@ harness("a recipient gives up connecting after 30 seconds", async ({ actor, leak
   await recipient.clock.fastForward(1_000);
   await expect(recipient.getByText("Couldn't connect to the sender's computer")).toBeVisible();
   await expect(recipient.getByRole("button", { name: "Try again" })).toBeVisible();
+});
+
+harness("a recipient who can't reach the server is told so", async ({ actor, leaks, canary }) => {
+  const { page: recipient } = await actor("recipient");
+  // Every socket closes before it opens, so the page keeps retrying and never reaches the server.
+  await recipient.addInitScript(() => {
+    const g = globalThis as { closes?: number };
+    g.closes = 0;
+    globalThis.WebSocket = class extends globalThis.WebSocket {
+      constructor(url: string | URL, protocols?: string | string[]) {
+        super(url, protocols);
+        this.addEventListener("close", () => {
+          g.closes = (g.closes ?? 0) + 1;
+        });
+        this.close();
+      }
+    };
+  });
+  const secret = canaryKey(canary.fork("unreachable secret")).text;
+  leaks.watchKey("unreachable link secret", secret);
+  const linkId = canary.fork("unreachable link id").bytes(16).toString("base64url");
+  await recipient.clock.install();
+  await recipient.goto(`/r/${linkId}#${secret}`);
+  await recipient.waitForFunction(() => ((globalThis as { closes?: number }).closes ?? 0) > 0);
+
+  await recipient.clock.fastForward(30_000);
+  await expect(recipient.getByRole("heading", { name: "Couldn't reach the server" })).toBeVisible();
+  await expect(
+    recipient.getByText("The server connects you to the sender. Check your internet connection."),
+  ).toBeVisible();
+  await expect(recipient.getByRole("button", { name: "Try again" })).toBeVisible();
+  await expect(
+    recipient.getByRole("region", { name: "What our server has right now" }),
+  ).toHaveCount(0);
 });
 
 test("the sender's name must fit with the file name, and stray drops are ignored", async ({
@@ -568,6 +620,153 @@ test("a lost sender says whether the file may have been saved", async ({ demo, l
   await sender.close();
   await expect(bo.getByText("The sender's page is closed")).toBeVisible({ timeout: 3_000 });
   await expect(bo.getByText("The file may not have been saved.")).toBeVisible();
+});
+
+test("a recipient who leaves mid-download returns the sender's card to waiting", async ({
+  demo,
+  leaks,
+  canary,
+}) => {
+  const file = makeFile(leaks, canary, 100_001);
+  const sender = await openSender(demo, file, "", (page) => page.addInitScript(breakableSender));
+  const stall = (stalled: boolean) =>
+    sender.evaluate((on) => {
+      (globalThis as { stalled?: boolean }).stalled = on;
+    }, stalled);
+  const name = makeName(leaks, canary, "Anna");
+  const link = await addRecipient(leaks, sender, name);
+  const card = recipientRow(sender, name);
+
+  const first = await demo.open("recipient-1");
+  await first.goto(link);
+  await expect(first.getByRole("button", { name: "Download" })).toBeVisible();
+  await stall(true);
+  await first.getByRole("button", { name: "Download" }).click();
+  await expect(first.getByRole("heading", { name: "Downloading…" })).toBeVisible();
+  await expect(card.getByText(`Sending through ${name}'s link`)).toBeVisible();
+
+  // The receive page has no pagehide that closes its peer (SIG-266), so the sender notices only
+  // when ICE consent expires, about 15 s later.
+  await first.close();
+  await expect(card.getByText(`Waiting for ${name}'s link to be opened`)).toBeVisible({
+    timeout: 45_000,
+  });
+
+  await stall(false);
+  const second = await demo.open("recipient-2");
+  await second.goto(link);
+  const bytes = await download(second, file);
+  expect(sha256Hex(bytes)).toBe(sha256Hex(file.bytes));
+  await expect(delivered(sender, name)).toBeAttached();
+});
+
+/**
+ * Runs in the recipient page through addInitScript, so it may use nothing from this module. A
+ * save dialog that does what `globalThis.pick` says: `cancel` closes it, `refuse` is denied, `fail`
+ * picks a file whose second write runs out of space, and anything else picks a file that takes
+ * every write. Each call is logged to `globalThis.saved`, starting with the dialog itself (`pick`).
+ */
+function fakeSavePicker() {
+  const g = globalThis as { pick?: string; saved?: string[]; showSaveFilePicker?: unknown };
+  const log = (call: string) => g.saved?.push(call);
+  g.showSaveFilePicker = async () => {
+    log("pick");
+    const mode = g.pick;
+    if (mode === "cancel") {
+      throw new DOMException("The user aborted a request.", "AbortError");
+    }
+    if (mode === "refuse") {
+      throw new DOMException("Not allowed.", "NotAllowedError");
+    }
+    let writes = 0;
+    return {
+      createWritable: async () => ({
+        write: async () => {
+          log("write");
+          if (mode === "fail" && ++writes === 2) {
+            throw new DOMException("No space left.", "QuotaExceededError");
+          }
+        },
+        close: async () => log("close"),
+        abort: async () => log("abort"),
+      }),
+      remove: async () => log("remove"),
+    };
+  };
+}
+
+test("a recipient's save dialog can be cancelled, refused or fail without saving a partial file", async ({
+  demo,
+  leaks,
+  canary,
+}) => {
+  // Three chunks, so a failure on the second write leaves a partial file to remove.
+  const file = makeFile(leaks, canary, 100_001);
+  const sender = await openSender(demo, file);
+  const name = makeName(leaks, canary, "Anna");
+  const link = await addRecipient(leaks, sender, name);
+  const card = recipientRow(sender, name);
+
+  const recipient = await demo.open("recipient");
+  // Registered after the fixture's script, which deletes the browser's own picker. Chromium runs
+  // init scripts in order; if it stopped, the page would save without the fake and no `pick` would
+  // be logged below.
+  await recipient.context().addInitScript(fakeSavePicker);
+  let downloads = 0;
+  recipient.on("download", () => downloads++);
+  await recipient.goto(link);
+  const button = recipient.getByRole("button", { name: "Download" });
+  const tryAgain = recipient.getByRole("button", { name: "Try again" });
+  const opened = card.getByText(`${name}'s link has been opened`);
+  const waiting = card.getByText(`Waiting for ${name}'s link to be opened`);
+  /** Clicks Download on the open offer with the dialog doing `mode`, after clearing the log. */
+  const pick = async (mode: string) => {
+    await expect(opened).toBeVisible();
+    await recipient.evaluate((m) => {
+      Object.assign(globalThis, { pick: m, saved: [] });
+    }, mode);
+    await button.click();
+  };
+  const saved = () => recipient.evaluate(() => (globalThis as { saved?: string[] }).saved);
+  const problem = (title: string, body: string) =>
+    Promise.all([
+      expect(recipient.getByRole("heading", { level: 1, name: title })).toBeVisible(),
+      expect(recipient.getByText(body)).toBeVisible(),
+      expect(tryAgain).toBeVisible(),
+    ]);
+
+  // Cancelled: the dialog opened and closed without a file, and the offer stays open.
+  await pick("cancel");
+  await expect.poll(saved).toEqual(["pick"]);
+  await expect(button).toBeEnabled();
+  await expect(opened).toBeVisible();
+  await expect(tryAgain).toHaveCount(0);
+
+  // Refused: nothing was created, and the link is free again.
+  await pick("refuse");
+  await problem("The file couldn't be created", "Try again, or choose another place to save it.");
+  expect(await saved()).toEqual(["pick"]);
+  // Retrying before the sender sees the drop would find the link still busy.
+  await expect(waiting).toBeVisible();
+  await tryAgain.click();
+
+  // Out of space on the second write: the file is aborted and removed, never closed.
+  await pick("fail");
+  await problem("The file couldn't be saved", "Check that there's enough space on your disk.");
+  expect(await saved()).toEqual(["pick", "write", "write", "abort", "remove"]);
+  await expect(waiting).toBeVisible();
+  await tryAgain.click();
+
+  // Picked and written in full.
+  await pick("ok");
+  await expect(recipient.getByRole("heading", { name: "Download complete" })).toBeFocused({
+    timeout: 60_000,
+  });
+  await expect(recipient.getByText("this is exactly the file that was sent")).toBeVisible();
+  await expect(recipient.getByText("It's saved where you chose.")).toBeVisible();
+  expect(await saved()).toEqual(["pick", "write", "write", "write", "close"]);
+  await expect(delivered(sender, name)).toBeAttached();
+  expect(downloads, "browser downloads").toBe(0);
 });
 
 type Tamper = "flip" | "other";
@@ -1154,6 +1353,67 @@ test.describe("through a server restart", () => {
   test.describe.configure({ timeout: 120_000 });
 
   const lost = (sender: Page) => sender.getByText("Lost the connection to the server");
+  const connecting = (page: Page) =>
+    page.getByRole("heading", { name: "Connecting to the sender…" });
+
+  /**
+   * Runs in the recipient page: the sender's first offer never lands, so the first attempt stays
+   * connecting. Sets `offerStalled` once it has.
+   */
+  const stallFirstOffer = () => {
+    const native = RTCPeerConnection.prototype.setRemoteDescription;
+    let stalled = false;
+    RTCPeerConnection.prototype.setRemoteDescription = function (
+      this: RTCPeerConnection,
+      ...args: unknown[]
+    ) {
+      if (!stalled) {
+        stalled = true;
+        (globalThis as { offerStalled?: boolean }).offerStalled = true;
+        return new Promise(() => {});
+      }
+      return Reflect.apply(native, this, args);
+    } as RTCPeerConnection["setRemoteDescription"];
+  };
+
+  interface HostHold {
+    holdHost?: boolean;
+    releaseHost?: () => void;
+    closeCodes?: number[];
+  }
+
+  /**
+   * Runs in the sender page: while `holdHost` is set, keeps back the `host` frames the page sends,
+   * as if the sender reconnected late. `releaseHost()` sends those whose socket is still open.
+   * Records the close code of every socket that sent a frame in `closeCodes`.
+   */
+  const holdHosts = () => {
+    const global = globalThis as HostHold;
+    const native = WebSocket.prototype.send;
+    const held: [WebSocket, string][] = [];
+    const closeCodes: number[] = [];
+    const watched = new WeakSet<WebSocket>();
+    global.closeCodes = closeCodes;
+    WebSocket.prototype.send = function (this: WebSocket, data) {
+      if (!watched.has(this)) {
+        watched.add(this);
+        this.addEventListener("close", (event) => closeCodes.push(event.code));
+      }
+      if (global.holdHost && typeof data === "string" && data.startsWith('{"t":"host"')) {
+        held.push([this, data]);
+        return;
+      }
+      native.call(this, data);
+    };
+    global.releaseHost = () => {
+      global.holdHost = false;
+      for (const [socket, data] of held.splice(0)) {
+        if (socket.readyState === WebSocket.OPEN) {
+          native.call(socket, data);
+        }
+      }
+    };
+  };
 
   test("a waiting sender re-hosts its links without reloading", async ({
     demo,
@@ -1217,22 +1477,7 @@ test.describe("through a server restart", () => {
     const name = makeName(leaks, canary, "Anna");
     const link = await addRecipient(leaks, sender, name);
     const recipient = await demo.open("recipient");
-    // The sender's first offer never lands, so the first attempt stays connecting.
-    await recipient.addInitScript(() => {
-      const native = RTCPeerConnection.prototype.setRemoteDescription;
-      let stalled = false;
-      RTCPeerConnection.prototype.setRemoteDescription = function (
-        this: RTCPeerConnection,
-        ...args: unknown[]
-      ) {
-        if (!stalled) {
-          stalled = true;
-          (globalThis as { offerStalled?: boolean }).offerStalled = true;
-          return new Promise(() => {});
-        }
-        return Reflect.apply(native, this, args);
-      } as RTCPeerConnection["setRemoteDescription"];
-    });
+    await recipient.addInitScript(stallFirstOffer);
     await recipient.goto(link);
     await expect(
       recipient.getByRole("heading", { name: "Connecting to the sender…" }),
@@ -1252,6 +1497,62 @@ test.describe("through a server restart", () => {
     const bytes = await download(recipient, file);
     expect(sha256Hex(bytes)).toBe(sha256Hex(file.bytes));
     await expect(delivered(sender, name)).toBeAttached();
+  });
+
+  test("recipients wait for a sender that hosts again late after the restart", async ({
+    demo,
+    observed,
+    leaks,
+    canary,
+  }) => {
+    const file = makeFile(leaks, canary, 100_001);
+    const sender = await openSender(demo, file, "", (page) => page.addInitScript(holdHosts));
+    const early = makeName(leaks, canary, "Anna");
+    const late = makeName(leaks, canary, "Bert");
+    const earlyLink = await addRecipient(leaks, sender, early);
+    const lateLink = await addRecipient(leaks, sender, late);
+    // One recipient is still connecting when the server restarts.
+    const waiting = await demo.open("recipient");
+    await waiting.addInitScript(stallFirstOffer);
+    await waiting.goto(earlyLink);
+    await waiting.waitForFunction(
+      () => (globalThis as { offerStalled?: boolean }).offerStalled === true,
+    );
+
+    await sender.evaluate(() => {
+      (globalThis as HostHold).holdHost = true;
+    });
+    await restartServer();
+    const restarted = Date.now();
+    // The other opens their link after the restart, before the sender has hosted it again.
+    const opener = await demo.open("late-recipient");
+    await opener.goto(lateLink);
+    await expect(connecting(opener)).toBeVisible();
+    await expect
+      .poll(async () =>
+        (await messages(observed, "late-recipient", "refused", "frame-received")).map(
+          (m) => m.reason,
+        ),
+      )
+      .toContain("starting");
+    // Just over the 15 s that recipients used to wait before calling the link inactive (SIG-88).
+    await opener.waitForTimeout(16_000 - (Date.now() - restarted));
+    for (const page of [waiting, opener]) {
+      await expect(connecting(page)).toBeVisible();
+      await expect(page.getByText("This link isn't active")).toHaveCount(0);
+    }
+
+    await sender.evaluate(() => (globalThis as HostHold).releaseHost?.());
+    for (const page of [waiting, opener]) {
+      await expect(page.getByRole("button", { name: "Download" })).toBeVisible({
+        timeout: 30_000,
+      });
+      expect(sha256Hex(await download(page, file))).toBe(sha256Hex(file.bytes));
+    }
+    await expect(delivered(sender, early)).toBeAttached();
+    await expect(delivered(sender, late)).toBeAttached();
+    expect(await sender.evaluate(() => (globalThis as HostHold).closeCodes)).toContain(1012);
+    await expect(lost(sender)).toHaveCount(0);
   });
 });
 

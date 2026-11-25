@@ -5,8 +5,8 @@
 // Wiring (see lib/peer.ts and lib/sender-state.ts):
 // - On mount, connect to the signaling server and host every link ID on the
 //   list, with whether recipients may use our TURN relay; re-host the full
-//   list whenever the hosted links change (an add, a remove, or a link the check
-//   locked), every change of the relay checkbox and
+//   list whenever the hosted links change (an add, a remove, a link the check locked, or a
+//   link replaced after a refused email), every change of the relay checkbox and
 //   every reconnect, and again REHOST_AFTER_MS after `already-hosted` while
 //   the server still holds the old socket. When the socket drops, recipients
 //   still connecting go back to waiting (reducer `server-lost`, which never
@@ -37,7 +37,10 @@
 //   email address. Adding a recipient with one sends a single `email` message
 //   after the `host` that includes its link; the server's `email` replies go
 //   to the reducer. Its card offers no link until the server answers, then
-//   the marked link the server emailed, or the plain one if it refused. A
+//   the marked link the server emailed. If the server refused without a mark,
+//   it still saw the secret, so the card gets a fresh plain link and the page
+//   hosts that instead (reducer `email`); only the page's own `failed`, when
+//   its socket was closed and nothing was sent, keeps the first link. A
 //   reconnect never hosts an emailed link again (reducer `server-lost`).
 //
 // Names, the file or text and link secrets stay in this tab. The server only ever
@@ -322,6 +325,7 @@ export function SendPage({
           file: chosen.file,
           from: fromRef.current,
           secret: recipient.secret,
+          attempt,
           sha256: chosen.sha256,
           signal: connection.abort.signal,
           ...(confirm && {
@@ -394,7 +398,8 @@ export function SendPage({
     for (const effect of next.effects) {
       runEffect(effect);
     }
-    // Adding, removing or a check locking a link changes what to host.
+    // Adding, removing, a check locking a link or a refused email replacing a link
+    // changes what to host.
     if (hostedLinks(next.state).join() !== hosted) {
       host();
     }
@@ -460,6 +465,11 @@ export function SendPage({
             linkId: message.link,
             status: message.status,
             mark: message.mark,
+            // A refusal without a mark came after the server got the secret: never share that link.
+            ...(message.mark === undefined &&
+            (message.status === "limit" || message.status === "failed")
+              ? { fresh: createLink(location.origin) }
+              : {}),
           });
           break;
         case "relay": {

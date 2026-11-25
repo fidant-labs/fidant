@@ -154,7 +154,8 @@ export function startServer(options: {
   relays?: Relays | undefined;
   log?: Logger;
   mail?: { send: Mailer; origin: string } | undefined;
-}): Promise<Server> {
+  startingMs?: number | undefined;
+}): Promise<{ server: Server; signaling: { close(): void } }> {
   const server = createServer(
     ensureCert(options.certDir, options.hosts),
     serveRelays(options.relays, serveStatic(options.root)),
@@ -164,10 +165,11 @@ export function startServer(options: {
     iceServers: (turn) =>
       options.relays ? options.relays.ice(turn) : iceServersFor(options.ice, Date.now(), turn),
     mail: options.mail,
+    startingMs: options.startingMs,
   });
   server.on("close", () => signaling.close());
   return new Promise((done, fail) => {
     server.once("error", fail);
-    server.listen(options.port, () => done(server));
+    server.listen(options.port, () => done({ server, signaling }));
   });
 }

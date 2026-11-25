@@ -59,7 +59,7 @@
 //   no refusal: the joiner is gone.
 // - `server-lost` (our own signaling socket dropped) does the same for every
 //   connecting recipient, since the server forgot their joins with the socket.
-//   Unlike `left` it never sets `noRelay`: the server dropped, not the relay.
+//   Unlike `left` it never sets `noRelay` or `noConnect`: the server dropped, not the relay.
 // - Every join carries the recipient's attempt ID, and every refusal names the
 //   attempt it refuses. A join is refused with its own attempt; `dropped`,
 //   `timeout` and `unsendable` refuse the attempt stored when the recipient
@@ -88,7 +88,9 @@
 //   allowed our relay when the server paired it. An attempt that ends while
 //   still connecting (dropped, timeout, left) under `turn` false returns to
 //   "waiting" with `noRelay`, because a refused relay is the likely reason it
-//   never connected. The next join clears it.
+//   never connected. The next join clears it. Under `turn` true it returns
+//   with `noConnect` instead, so the sender sees that someone tried and
+//   couldn't connect; the next join clears that too.
 // - A `relay` path for an active attempt under `turn` false ends that attempt
 //   like a timeout and sets `noRelay`. This is a best-effort backstop: an
 //   honest recipient gets no relay for such a send, and the server is the
@@ -102,13 +104,18 @@
 //   ("sent", "failed", "limit") never replaces "verifying". Recipients without
 //   an address ignore it. A reply with a mark means the server took the link and emailed
 //   the marked copy, so the recipient's `url` becomes that copy. A refusal
-//   without one (`limit`, or `failed` before anything went out) keeps the
-//   plain link.
+//   without one (`limit`, or `failed` before anything went out) came after the
+//   `email` message gave the server the link's secret, so the page passes a
+//   `fresh` link and the recipient takes it in place of the old one, keeping
+//   its name and mail status; `hostedLinks` then names the new link ID, not the
+//   old. The page's own `failed` (its socket was closed, so nothing was sent)
+//   carries no `fresh` link and keeps the plain link.
 // - `server-lost` also unbinds every recipient whose link the server emailed
 //   or may have emailed (a mark, "sending", or "verifying"/"verified" without
 //   a mark, see `unmarked`): the server dropped its binding with the socket,
 //   so `hostedLinks` leaves the link out from then on and nobody can host its
-//   ID plain from this page.
+//   ID plain from this page. It also clears `noRelay` and `noConnect` there:
+//   an unbound link can't be retried.
 // - The server answers every `email` it refuses with `failed` or `limit`, naming
 //   the link and with no mark, so a refusal never needs guessing which card it was for.
 //
@@ -171,6 +178,8 @@ export type Recipient = {
   readonly turn?: boolean;
   /** The last attempt couldn't connect directly while the sender refused our relay. */
   readonly noRelay?: true;
+  /** The last attempt ended before it connected, with our relay allowed. */
+  readonly noConnect?: true;
   /** The address the server emails this link to, if the sender gave one. */
   readonly email?: string;
   /** Where that email stands: "sending" until the server answers. */
@@ -207,7 +216,14 @@ export type SenderAction =
   | { type: "declined"; linkId: string }
   | { type: "unsendable"; linkId: string }
   | { type: "path"; linkId: string; attempt: string; path: OpenPath }
-  | { type: "email"; linkId: string; status: EmailStatus; mark?: string | undefined };
+  | {
+      type: "email";
+      linkId: string;
+      status: EmailStatus;
+      mark?: string | undefined;
+      /** A new link to replace this one if the server refused its email: it saw the secret. */
+      fresh?: Link | undefined;
+    };
 
 export type SenderEffect =
   | { type: "start"; linkId: string; attempt: string; iceServers: IceServer[] }
@@ -302,7 +318,8 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
     const recipients = state.recipients.map((r) => {
       let next = r;
       if (emailBound(r)) {
-        next = { ...next, unbound: true };
+        const { noRelay: _noRelay, noConnect: _noConnect, ...rest } = next;
+        next = { ...rest, unbound: true };
       }
       if (r.status === "connecting") {
         effects.push({ type: "close", linkId: r.linkId });
@@ -448,6 +465,14 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
         (current.mail === "verifying" && action.status !== "verified");
       const mail = keep ? current.mail : action.status;
       const mark = current.mark ?? action.mark;
+      if (
+        action.fresh &&
+        !keep &&
+        mark === undefined &&
+        (action.status === "limit" || action.status === "failed")
+      ) {
+        return swap(state, current, action.fresh, action.status);
+      }
       if (mail === current.mail && mark === current.mark) {
         return { state, effects: [] };
       }
@@ -458,6 +483,39 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
       return { state: replace(state, { ...current, mail, ...marked }), effects: [] };
     }
   }
+}
+
+/**
+ * Replaces a recipient whose email the server refused with `fresh`, keeping its name and mail
+ * status. A joiner on the old link, which the server only allows before the `email` message, is
+ * refused as unknown and its connection closed.
+ */
+function swap(
+  state: SenderState,
+  current: Recipient,
+  fresh: Link,
+  mail: EmailStatus,
+): SenderUpdate {
+  const { linkId, attempt } = current;
+  const next: Recipient = {
+    ...reset(current, "waiting"),
+    linkId: fresh.linkId,
+    secret: fresh.secret,
+    url: fresh.url,
+    mail,
+  };
+  const effects: SenderEffect[] = isActive(current)
+    ? [
+        ...(attempt === undefined
+          ? []
+          : [{ type: "refuse", linkId, attempt, reason: "unknown" } as const]),
+        { type: "close", linkId },
+      ]
+    : [];
+  return {
+    state: { recipients: state.recipients.map((r) => (r === current ? next : r)) },
+    effects,
+  };
 }
 
 /** Ends the current attempt as `next`: its joiner refused and its connection closed. */
@@ -490,13 +548,16 @@ function failedCheck(current: Recipient, next: Recipient): Recipient {
   return { ...reset(next, "failed"), checkFailures, error: CHECK_LIMIT, locked: true };
 }
 
-/** Back to waiting, with `noRelay` if the attempt was `blocked` while the sender refused our relay. */
+/** Back to waiting, with `noRelay` (relay refused) or `noConnect` if the attempt was `blocked`. */
 function waiting(recipient: Recipient, blocked: boolean): Recipient {
   const next = reset(recipient, "waiting");
-  return blocked && recipient.turn === false ? { ...next, noRelay: true } : next;
+  if (!blocked) {
+    return next;
+  }
+  return recipient.turn === false ? { ...next, noRelay: true } : { ...next, noConnect: true };
 }
 
-/** The recipient with a new status, no progress, error, attempt, path, relay choice or noRelay. */
+/** The recipient with a new status, no progress, error, attempt, path, relay choice, noRelay or noConnect. */
 function reset(recipient: Recipient, status: RecipientStatus): Recipient {
   const {
     error: _error,
@@ -504,6 +565,7 @@ function reset(recipient: Recipient, status: RecipientStatus): Recipient {
     path: _path,
     turn: _turn,
     noRelay: _noRelay,
+    noConnect: _noConnect,
     ...rest
   } = recipient;
   return { ...rest, status, bytesSent: 0 };

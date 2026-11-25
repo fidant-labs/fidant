@@ -392,6 +392,8 @@ export const en = {
       failed: (name: string) =>
         `The file didn't arrive intact through ${name}'s link. The link can be opened again to retry.`,
     },
+    noConnect: (name: string) =>
+      `${name}'s link was opened but couldn't connect to your computer. The link still works if they try again.`,
     noRelay: (name: string) =>
       `${name}'s link was opened but couldn't connect directly. Allowing our relay may let it connect when they try again.`,
     /** `to` is the masked address, like a***@example.se. */
@@ -401,7 +403,7 @@ export const en = {
       failed: (to: string) =>
         `Email not sent to ${to}. To try again, remove this recipient and add them again, or add them without an email address and share the link yourself.`,
       limit: (to: string) =>
-        `Email not sent to ${to}: too many emails right now. Copy the link and share it yourself.`,
+        `Email not sent to ${to}: too many emails right now. Copy the link below and share it yourself. Our server had seen the first link's secret, so this one is new.`,
       verifying: (to: string) => `Code sent to ${to}`,
       verified: (to: string) => `Verified with the code sent to ${to}`,
       lost: (to: string) =>
@@ -879,7 +881,7 @@ export const en = {
         body: [
           "Two keys are derived from the secret with HKDF-SHA-256. Both are AES-256-GCM keys that the browser marks as non-extractable: the page can use them, but can't read them out.",
           "The signal key encrypts the setup messages. Its salt is the link ID.",
-          "The file key encrypts every frame between the browsers except the first, INIT, which carries only the random transfer ID. Its salt is a random transfer ID that the sender picks again for every attempt, so a retried transfer never reuses a key and nonce pair.",
+          "The file key encrypts every frame between the browsers except the first, INIT, which carries only the random transfer ID. Its salt is made of two random values: a transfer ID that the sender picks for every attempt, and an attempt ID that the recipient's page picks every time it connects. So neither a retried transfer nor a replayed first frame ever reuses a key and nonce pair.",
         ],
       },
       signal: {
@@ -890,7 +892,7 @@ export const en = {
           "This matters beyond privacy: the setup messages carry the fingerprints of WebRTC's own DTLS encryption. Because the server can't change them, it can't put itself between the two browsers. All of this rests on our server not having the key. For a link we email it had the key, so it could read and change that link's setup messages and put itself in between.",
           "That is what the check number is for. Each browser makes a new certificate for every connection, and the recipient's browser first sends a commitment to its fingerprint, a hash, before the sender's browser makes its offer. Both browsers then compute six digits from the two fingerprints of their own connection. With someone in between there are two connections, so the two screens show different numbers, and because of the commitment a party in the middle can only guess: one chance in a million per connection. The number is shown on screen only, never sent or stored.",
           "With the check number on, which it is by default for a link we email, the recipient reads their number aloud and the sender compares it. Nothing about the file is sent until both have said it matches, and “It differs” on either side stops the attempt. Once the recipient's browser has answered an offer, it connects again only when the recipient clicks Try again, and the sender's page stops offering a link after 5 attempts that ended before both confirmed, each limited to 5 minutes. The check shows that nobody sat between the two browsers. It can't show that the page code itself is honest.",
-          "If the connection to our server drops, both pages try to reconnect by themselves. The sender's page registers its links again, except links we emailed: our server forgot those with the old connection, so they stop working and the sender's page says so. A recipient who was still connecting tries again a few times before giving up. A transfer that has already started doesn't need our server and carries on.",
+          "If the connection to our server drops, both pages try to reconnect by themselves. The sender's page registers its links again, except links we emailed: our server forgot those with the old connection, so they stop working and the sender's page says so. A recipient who was still connecting tries again a few times before giving up. For a minute after our server starts, it tells a recipient whose link it doesn't know yet to wait, so the recipient keeps trying while the sender's page registers the link again. A transfer that has already started doesn't need our server and carries on.",
         ],
       },
       layers: {
@@ -904,7 +906,7 @@ export const en = {
         heading: "The transfer, frame by frame",
         body: [
           "When the sender chooses the file, their browser computes its SHA-256 checksum.",
-          "INIT: the sender sends the transfer ID. It is the only frame not encrypted. Changing it changes the file key, so the next frame fails to decrypt.",
+          "INIT: the sender sends the transfer ID. It is the only frame not encrypted. Changing it changes the file key, so the next frame fails to decrypt. Replaying it in a later attempt doesn't work either, because the recipient's new attempt ID changes the key.",
           "CHECK: with the check number on, each side's answer once its person compared the numbers, encrypted: matches or differs. META waits for both.",
           "META: the file name, size and type and the sender's typed name, encrypted. The recipient sees them and chooses.",
           "ACCEPT or DECLINE: the recipient's answer, encrypted. ACCEPT also proves that the recipient has the key. No file data is sent before it.",
@@ -951,7 +953,7 @@ export const en = {
         body: [
           "One send can go to up to 256 people. Each has their own link, key, connection and transfer.",
           "A link counts as used only once the recipient's RECEIPT matches. After that it is refused. A link that is already open in one tab is refused in another.",
-          "Until then the link can be opened again: after a decline, a dropped connection or a failed check. Every new attempt has a new transfer ID and so a new file key. A link with the check number on stops working after 5 attempts that ended before both people confirmed the number.",
+          "Until then the link can be opened again: after a decline, a dropped connection or a failed check. Every new attempt has a new transfer ID and attempt ID, and so a new file key. A link with the check number on stops working after 5 attempts that ended before both people confirmed the number.",
           "Nothing is stored, so a link works only while the sender's page is open. When it closes, our server forgets its links within a minute.",
         ],
       },
@@ -969,7 +971,7 @@ export const en = {
       email: {
         heading: "Emailed links",
         body: [
-          "Whoever sends a file or shares a secret can give a recipient's email address. Their page then sends our server one message with the link ID, the address, the link's secret, the name the sender typed and the page's language. This is the one case where a link's secret leaves the browser.",
+          "Whoever sends a file or shares a secret can give a recipient's email address. Their page then sends our server one message with the link ID, the address, the link's secret, the name the sender typed and the page's language. This is the one case where a link's secret leaves the browser. If our server refuses to send the email, the sender's page replaces the link with a new one, because our server has seen the old link's secret.",
           "Our server picks a random value and emails the recipient the link with that value in front of the link's secret: https://fidant.se/r/<link ID>#e.<value>.<secret>. It makes one attempt, with a time limit, and never retries. It has the link's secret and the sender's name only until that attempt ends, and never stores or logs them. The email is plain text. It gives the name the sender typed, marked as not verified, and says nothing about what is sent, not even whether it is a file or a shared secret.",
           "Before it connects, the recipient's page sends the value to our server. Only if it matches does the server show a masked address, like a***@example.se, and on request email a 6-digit code there. A code works for 10 minutes, and 5 wrong tries end it. The right code gets a random token that only that browser tab keeps, and the server connects nobody to an emailed link without one. Someone with only the link ID, or an emailed link that has stopped working, can't see the address, can't make us send codes and can't connect.",
           "Our server keeps the address, the value, the codes and the tokens in memory while the sender's page has the link. When the sender removes the recipient, closes the page or loses the connection to our server, or when the server restarts, all of it is gone and the emailed link stops working. To limit abuse, the server counts emails for an hour under a scrambled form of each address (an HMAC with a random key), never the address itself: at most 20 emails an hour from one connection, 50 from one IP address and 5 to one email address, and at most 5 codes per link, 30 seconds apart, 5 an hour asked for by one IP address and 10 an hour to one email address. Both IP address limits count an IPv6 address by its first 48 bits. The whole server sends at most 500 emails and 500 codes an hour, counted with send times only, tied to no address. Anyone can use up the limits for one email address, or for the whole server, for up to an hour.",

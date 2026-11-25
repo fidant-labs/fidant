@@ -12,7 +12,7 @@ Run this from the **main session**. Subagents cannot launch subagents, so the re
 
 ## 1. Scope
 
-- Base: `git rev-parse --abbrev-ref origin/HEAD`, falling back to `origin/main`. Fetch and merge it first (`git fetch origin && git merge --no-edit origin/main`) so the review sees the merged tree and nothing has to merge after the mark. Never rebase. Outside a worktree, ask before making that merge commit.
+- Base: `git rev-parse --abbrev-ref origin/HEAD`, falling back to `origin/main`. Fetch and merge it first (`git fetch origin && git merge --no-edit origin/main`) so the review sees the merged tree and nothing has to merge after the mark, then run `pnpm check` on the result, because the merge is a commit too. Never rebase. Outside a worktree, ask before making that merge commit.
 - Merge base: `git merge-base <base> HEAD`.
 - The diff under review is `git diff <merge-base>` (committed plus uncommitted tracked changes) and any untracked files from `git status --porcelain`.
 - **After a clean mark**, review only what changed since it. The marked commit is in `$(git rev-parse --git-path deep-review-clean-head)`. When that commit is an ancestor of `HEAD` (`git merge-base --is-ancestor`), the delta base is the output of `git merge-tree --write-tree <marked commit> <merge-base>` when it exits 0 (a clean merge prints only the tree id): the marked tree with the base merged in, so base changes stay out of the delta. Reviewers then read `git diff <delta base>` plus untracked files, and step 3 picks lanes and applies its tiny and docs-only rules by the delta. The delta narrows only what reviewers read; everywhere else in this skill, "the diff" is the whole-branch diff defined above, untracked files included. When the file is missing, the commit is not an ancestor or `merge-tree` exits non-zero, review the whole branch.
@@ -30,20 +30,20 @@ Write a briefing of at most 15 lines to the session's scratchpad (never inside t
 
 Dispatch every matching lane in **one message** so they run in parallel. Cap at 8; queue the rest for a second round. Pass `model` explicitly on every call. The agents live in `.claude/agents/`.
 
-| Lane (`subagent_type`)                                | When                                                                                                                                                               | Model  |
-| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ |
-| `Code Reviewer`                                       | always                                                                                                                                                             | opus   |
-| Over-engineering lane (`Code Reviewer`, prompt below) | always                                                                                                                                                             | opus   |
-| `Software Architect`                                  | over 200 lines or 5 files, or a new app, package or module boundary                                                                                                | opus   |
-| `Application Security Engineer`                       | `apps/server`, crypto or key handling, URLs, logging, identity, uploads, anything near the `AGENTS.md` invariants, `.github/workflows/`, anything under `.claude/` | opus   |
-| `Backend Architect`                                   | `apps/server` or server-side packages                                                                                                                              | opus   |
-| `Frontend Developer`                                  | `apps/web` components or client state                                                                                                                              | opus   |
-| `Database Optimizer`                                  | schema, migrations or queries                                                                                                                                      | opus   |
-| `Accessibility Auditor`                               | UI markup or interaction                                                                                                                                           | sonnet |
-| `API Tester`                                          | HTTP routes, signaling or other contracts                                                                                                                          | sonnet |
-| `Test Results Analyzer`                               | test files changed, or production code changed without tests                                                                                                       | sonnet |
-| `UX Architect`                                        | user-facing copy or layout                                                                                                                                         | sonnet |
-| `Performance Benchmarker`                             | transfer paths, loops over file data, bundle size                                                                                                                  | sonnet |
+| Lane (`subagent_type`)                                | When                                                                                                                                                                                                                              | Model  |
+| ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| `Code Reviewer`                                       | always                                                                                                                                                                                                                            | opus   |
+| Over-engineering lane (`Code Reviewer`, prompt below) | always                                                                                                                                                                                                                            | opus   |
+| `Software Architect`                                  | over 200 lines or 5 files, or a new app, package or module boundary                                                                                                                                                               | opus   |
+| `Application Security Engineer`                       | `apps/server`, crypto or key handling, URLs, logging, identity, uploads, anything near the `AGENTS.md` invariants, `.github/workflows/`, anything under `.claude/` or `.agents/`, `.mcp.json`, `skills-lock.json`, `lefthook.yml` | opus   |
+| `Backend Architect`                                   | `apps/server` or server-side packages                                                                                                                                                                                             | opus   |
+| `Frontend Developer`                                  | `apps/web` components or client state                                                                                                                                                                                             | opus   |
+| `Database Optimizer`                                  | schema, migrations or queries                                                                                                                                                                                                     | opus   |
+| `Accessibility Auditor`                               | UI markup or interaction                                                                                                                                                                                                          | sonnet |
+| `API Tester`                                          | HTTP routes, signaling or other contracts                                                                                                                                                                                         | sonnet |
+| `Test Results Analyzer`                               | test files changed, or production code changed without tests                                                                                                                                                                      | sonnet |
+| `UX Architect`                                        | user-facing copy or layout                                                                                                                                                                                                        | sonnet |
+| `Performance Benchmarker`                             | transfer paths, loops over file data, bundle size                                                                                                                                                                                 | sonnet |
 
 **Tiny diff** (under 50 lines or a single file): only `Code Reviewer`, the over-engineering lane, and `Application Security Engineer` when its row matches.
 
@@ -51,7 +51,7 @@ Dispatch every matching lane in **one message** so they run in parallel. Cap at 
 
 Every reviewer prompt contains:
 
-1. The diff command scoped to that lane's paths. `Software Architect` and the over-engineering lane get the full diff and may read any file to compare with existing patterns. Every lane is read-only.
+1. The diff command scoped to that lane's paths, written as `git -C <root> diff ...` with the repo or worktree root's absolute path, so a subagent that starts in another checkout still reads the right tree. The same goes for every git command given to verifiers and fixers. `Software Architect` and the over-engineering lane get the full diff and may read any file to compare with existing patterns. Every lane is read-only.
 2. The briefing, verbatim.
 3. The severity scale and output contract below.
 4. `You are one of N parallel reviewers. Report only findings within your lane. Do not repeat general feedback other lanes cover.`
@@ -121,7 +121,7 @@ A stopped loop means the work is not done. Never open a pull request or call the
 
 ## 7. Gate, report and mark
 
-When the loop is clean, run `pnpm check`. On failure, dispatch a fixer for the cause with narrow gates, re-run only the lanes the fix touched on its delta, then run `pnpm check` again.
+When the loop is clean, run `pnpm check`. On failure, snapshot the tree as in step 6, dispatch a fixer for the cause with narrow gates, snapshot again, re-run only the lanes the fix touched on its delta (`git diff <before> <after>`), then run `pnpm check` again.
 
 Tell the user: which lanes ran and which were skipped, kept, dropped and downgraded counts per severity, what was fixed, the gate result, and every remaining minor and nit (not fixed, listed for the user to decide). Keep it short.
 
@@ -132,3 +132,5 @@ bash .claude/scripts/review-gate.sh mark
 ```
 
 It refuses while reviewed changes are uncommitted. The hook only lets `gh pr create` through when this mark matches the branch's current diff, so any later commit needs another review (of the delta, see step 1). A clean merge of the base keeps the mark.
+
+The hook runs the main checkout's copy of `review-gate.sh`, while `mark` runs the copy in the worktree. A branch that changes how the diff id is computed is blocked until the main checkout has that script too. Tell the user, who can open that one pull request by hand.

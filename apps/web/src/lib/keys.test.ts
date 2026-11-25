@@ -11,16 +11,17 @@ import {
 } from "./keys.ts";
 import { createLink } from "./link.ts";
 
-// Two recipient attempt IDs (22 base64url characters, like a link ID).
+// Two recipient attempt IDs (22 base64url characters, like a link ID, each the canonical
+// encoding of 16 bytes).
 const A = "A".repeat(22);
-const B = "B".repeat(22);
+const B = `${"B".repeat(21)}A`;
 const offer = { kind: "offer", sdp: "fake sdp for tests\r\n".repeat(20) };
 
 test("derived keys are non-extractable AES-GCM-256 keys", async () => {
   const { linkId, secret } = createLink("https://localhost");
   for (const key of [
     await deriveSignalKey(secret, linkId),
-    await deriveFileKey(secret, createTransferId()),
+    await deriveFileKey(secret, createTransferId(), A),
   ]) {
     assert.equal(key.extractable, false);
     assert.deepEqual(key.algorithm, { name: "AES-GCM", length: 256 });
@@ -29,11 +30,15 @@ test("derived keys are non-extractable AES-GCM-256 keys", async () => {
   }
 });
 
-test("derivation rejects malformed secrets, link IDs and transfer IDs", async () => {
+test("derivation rejects malformed secrets, link IDs, transfer IDs and attempt IDs", async () => {
   const { linkId, secret } = createLink("https://localhost");
   await assert.rejects(deriveSignalKey(secret.slice(1), linkId));
   await assert.rejects(deriveSignalKey(secret, `${linkId}A`));
-  await assert.rejects(deriveFileKey(secret, new Uint8Array(15)));
+  await assert.rejects(deriveFileKey(secret, new Uint8Array(15), A));
+  await assert.rejects(deriveFileKey(secret, createTransferId(), A.slice(1)), /attempt/);
+  await assert.rejects(deriveFileKey(secret, createTransferId(), `${A}=`), /attempt/);
+  // Not the canonical encoding of 16 bytes: the last character carries stray bits.
+  await assert.rejects(deriveFileKey(secret, createTransferId(), "B".repeat(22)), /attempt/);
 });
 
 test("sealSignal round trips and fits the relay limit", async () => {
@@ -96,22 +101,23 @@ test("openSignal fails on tampered or malformed data", async () => {
   await assert.rejects(openSignal(key, linkId, A, "r", `${data}=`));
 });
 
-test("file keys differ per transferId and per secret", async () => {
+test("file keys differ per transferId, per attempt and per secret", async () => {
   const { secret } = createLink("https://localhost");
   const transferId = createTransferId();
   const iv = new Uint8Array(12);
   const plaintext = new Uint8Array([1, 2, 3]);
-  const key = await deriveFileKey(secret, transferId);
+  const key = await deriveFileKey(secret, transferId, A);
   const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plaintext);
 
-  const same = await deriveFileKey(secret, transferId);
+  const same = await deriveFileKey(secret, transferId, A);
   assert.deepEqual(
     new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv }, same, ciphertext)),
     plaintext,
   );
   for (const other of [
-    await deriveFileKey(secret, createTransferId()),
-    await deriveFileKey(createLink("https://localhost").secret, transferId),
+    await deriveFileKey(secret, createTransferId(), A),
+    await deriveFileKey(secret, transferId, B),
+    await deriveFileKey(createLink("https://localhost").secret, transferId, A),
   ]) {
     await assert.rejects(crypto.subtle.decrypt({ name: "AES-GCM", iv }, other, ciphertext));
   }
