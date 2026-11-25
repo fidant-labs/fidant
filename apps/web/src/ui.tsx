@@ -363,21 +363,17 @@ export function Footer({ theme, onTheme }: { theme: Theme; onTheme(next: Theme):
   );
 }
 
-/** Page content under the fixed header; `wide` for layouts with side panels. */
+/** Page content under the fixed header. */
 export function Page({
   children,
-  wide,
   tall,
 }: {
   children: ComponentChildren;
-  wide?: boolean;
   /** At least a screen high, so only the top of the footer shows. */
   tall?: boolean;
 }) {
   return (
-    <main
-      class={`mx-auto px-4 pt-24 pb-16 ${wide ? "max-w-6xl" : "max-w-xl"} ${tall ? "min-h-[calc(100dvh-4.5rem)]" : ""}`}
-    >
+    <main class={`mx-auto px-4 pt-24 pb-16 max-w-xl ${tall ? "min-h-[calc(100dvh-4.5rem)]" : ""}`}>
       {children}
     </main>
   );
