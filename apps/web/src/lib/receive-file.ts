@@ -3,7 +3,7 @@
 // Frames on the channel (see frames.ts and send-file.ts):
 //
 //   sender → recipient   INIT(transferId)                     plaintext
-//   both directions      CHECK(matches)                       only with the check number on
+//   both directions      CHECK(matches)                       only with the safety number on
 //   sender → recipient   META{name, size, type, chunkSize, from}  → onOffer, user decides
 //   recipient → sender   ACCEPT  (or DECLINE: stop here)
 //   recipient → sender   CREDIT(granted)                      after ACCEPT, then as chunks are written
@@ -83,7 +83,7 @@ export type ReceiveFileOptions = {
   /** Aborting stops the transfer; receiveFile then rejects. */
   signal: AbortSignal;
   /**
-   * With the check number on: resolves with whether the recipient said the
+   * With the safety number on: resolves with whether the recipient said the
    * numbers match. Nothing about the file arrives before both sides said so.
    */
   confirm?: Promise<boolean>;
@@ -118,7 +118,7 @@ export class ReceiveError extends Error {
 }
 
 export type ReceiveResult =
-  /** Someone said the check numbers differ, so nothing about the file arrived. */
+  /** Someone said the safety numbers differ, so nothing about the file arrived. */
   | { type: "check-differs"; by: "sender" | "recipient" }
   /** The recipient declined; DECLINE was sent. */
   | { type: "declined" }

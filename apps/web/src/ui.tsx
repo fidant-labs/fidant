@@ -128,6 +128,10 @@ export function Icon({ name, class: cls }: { name: IconName; class?: string }) {
 
 export const lede = "mt-2 mb-6 text-[1.05rem] text-muted-foreground";
 
+export const field = "flex flex-col gap-2";
+
+export const formRows = "flex flex-wrap items-end gap-x-2 gap-y-4";
+
 export const display = "font-display font-normal tracking-tight";
 
 export type Route =
@@ -636,7 +640,7 @@ export function SectionLink({ link: [text, href] }: { link: readonly [string, st
   );
 }
 
-/** A check number shown as "482 913", heard digit by digit when it appears. */
+/** A safety number shown as "482 913", heard digit by digit when it appears. */
 export function CheckNumber({ label, number }: { label?: string; number: string | undefined }) {
   return (
     <p class="m-0" role="status">

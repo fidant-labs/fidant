@@ -24,7 +24,7 @@ test("a link allows five checked attempts", () => {
   assert.equal(CHECK_ATTEMPTS, 5);
 });
 
-test("the check number follows the fixed vectors", async () => {
+test("the safety number follows the fixed vectors", async () => {
   assert.equal(await checkNumber(A, B), "013 306");
   assert.equal(await checkNumber(B, A), "948 540");
   assert.equal(await checkNumber(A, A), "459 244");
