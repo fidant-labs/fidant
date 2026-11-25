@@ -26,6 +26,11 @@ async function share(leaks: Leaks, sender: Page, text: string, from: string, nam
   if (from) {
     await sender.locator("#secret-from").fill(from);
   }
+  return addLink(leaks, sender, name);
+}
+
+/** Adds a recipient on /secret and returns their link, with its secret watched. */
+async function addLink(leaks: Leaks, sender: Page, name: string) {
   await sender.locator("#secret-recipient-name").fill(name);
   await sender.getByRole("button", { name: "Create link", exact: true }).click();
   const link = (await sender.getByLabel(`Link for ${name}`, { exact: true }).textContent()) ?? "";
@@ -36,8 +41,12 @@ async function share(leaks: Leaks, sender: Page, text: string, from: string, nam
 }
 
 /** Opens `link` as the recipient, with the clipboard allowed and save pickers and downloads counted. */
-async function openRecipient(actor: (name: string) => Promise<Actor>, link: string) {
-  const { context, page } = await actor("recipient");
+async function openRecipient(
+  actor: (name: string) => Promise<Actor>,
+  link: string,
+  name = "recipient",
+) {
+  const { context, page } = await actor(name);
   await context.grantPermissions(["clipboard-read", "clipboard-write"], {
     origin: new URL(link).origin,
   });
@@ -209,43 +218,31 @@ test("declining a text keeps the link working", async ({ actor, leaks, canary })
   await expect(delivered(sender, name)).toBeAttached();
 });
 
-test("a recipient sees the text wording when the sender closes the page during the offer", async ({
+test("a recipient who loses the sender during the offer sees the text wording", async ({
   actor,
   leaks,
   canary,
 }) => {
   const text = makeText(leaks, canary);
-  const name = makeName(leaks, canary, "Greta");
-  const { page: sender } = await actor("sender");
-  await sender.goto("/secret");
-  const link = await share(leaks, sender, text, "", name);
-
-  const { page } = await openRecipient(actor, link);
-  await expect(page.getByRole("button", { name: "Show", exact: true })).toBeVisible();
-  await sender.close();
-  await expect(page.getByText("The sender's page is closed")).toBeVisible();
-  await expect(page.getByText("The secret comes straight from their browser")).toBeVisible();
-  await expect(page.getByText("The file comes straight from their browser")).toHaveCount(0);
-});
-
-test("a recipient sees the text wording when the connection to the sender drops during the offer", async ({
-  actor,
-  leaks,
-  canary,
-}) => {
-  const text = makeText(leaks, canary);
-  const name = makeName(leaks, canary, "Ida");
   const { page: sender } = await actor("sender");
   await sender.addInitScript(breakableSender);
   await sender.goto("/secret");
-  const link = await share(leaks, sender, text, "", name);
 
-  const { page } = await openRecipient(actor, link);
-  await expect(page.getByRole("button", { name: "Show", exact: true })).toBeVisible();
+  const ida = await share(leaks, sender, text, "", makeName(leaks, canary, "Ida"));
+  const { page: cut } = await openRecipient(actor, ida, "ida");
+  await expect(cut.getByRole("button", { name: "Show", exact: true })).toBeVisible();
   await sender.evaluate(() => (globalThis as { cut?: () => void }).cut?.());
-  await expect(page.getByText("The connection to the sender was lost")).toBeVisible();
-  await expect(page.getByText("The secret wasn't shown.", { exact: true })).toBeVisible();
-  await expect(page.getByText("Nothing was saved.")).toHaveCount(0);
+  await expect(cut.getByText("The connection to the sender was lost")).toBeVisible();
+  await expect(cut.getByText("The secret wasn't shown.", { exact: true })).toBeVisible();
+  await expect(cut.getByText("Nothing was saved.")).toHaveCount(0);
+
+  const greta = await addLink(leaks, sender, makeName(leaks, canary, "Greta"));
+  const { page: closed } = await openRecipient(actor, greta, "greta");
+  await expect(closed.getByRole("button", { name: "Show", exact: true })).toBeVisible();
+  await sender.close();
+  await expect(closed.getByText("The sender's page is closed")).toBeVisible();
+  await expect(closed.getByText("The secret comes straight from their browser")).toBeVisible();
+  await expect(closed.getByText("The file comes straight from their browser")).toHaveCount(0);
 });
 
 test("a connection too small to carry a text in one chunk fails the card and sends nothing", async ({
