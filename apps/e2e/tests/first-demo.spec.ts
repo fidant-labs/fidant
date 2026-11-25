@@ -231,6 +231,24 @@ test("delivers a file to two recipients with a verified checksum", async ({
   await expect(recipientPanel).toContainText(/[1-9]\d* setup messages? \(/);
 });
 
+// A chunk is 48 KiB in Chromium (min(48 KiB, maxMessageSize - 64)): empty, one byte short of a
+// chunk, exactly one, and one byte over.
+for (const size of [0, 48 * 1024 - 1, 48 * 1024, 48 * 1024 + 1]) {
+  test(`delivers a ${size}-byte file with a verified checksum`, async ({ demo, leaks, canary }) => {
+    const file = makeFile(leaks, canary, size);
+    const sender = await openSender(demo, file);
+    const name = makeName(leaks, canary, "Anna");
+    const link = await addRecipient(leaks, sender, name);
+
+    const recipient = await demo.open("recipient");
+    await recipient.goto(link);
+    const bytes = await download(recipient, file);
+    expect(bytes.length).toBe(size);
+    expect(sha256Hex(bytes)).toBe(sha256Hex(file.bytes));
+    await expect(delivered(sender, name)).toBeAttached();
+  });
+}
+
 test("refuses used, unknown and malformed links", async ({ demo, leaks, canary, baseURL }) => {
   const file = makeFile(leaks, canary, 100_001);
   const sender = await openSender(demo, file);
