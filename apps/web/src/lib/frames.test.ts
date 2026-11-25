@@ -36,11 +36,13 @@ import { createLink } from "./link.ts";
 const { META, CHUNK, END } = SenderKind;
 const { ACCEPT, RECEIPT, DECLINE, CREDIT } = RecipientKind;
 const sha256 = (u8: Uint8Array) => new Uint8Array(createHash("sha256").update(u8).digest());
+/** The recipient's attempt ID (22 base64url characters, like a link ID). */
+const ATTEMPT = "A".repeat(22);
 
 async function setup() {
   const { secret } = createLink("https://localhost");
   const transferId = createTransferId();
-  const key = await deriveFileKey(secret, transferId);
+  const key = await deriveFileKey(secret, transferId, ATTEMPT);
   return { secret, transferId, key };
 }
 
@@ -99,7 +101,7 @@ test("INIT carries the transferId in clear at seq 0", async () => {
   assert.throws(() => decodeInit(frame.subarray(0, frame.length - 1)));
   assert.throws(() => decodeInit(flip(frame, 1)), "other kind");
   assert.throws(() => decodeInit(flip(frame, 9)), "non-zero seq");
-  assert.throws(() => decodeInit(flip(frame, 0)), "other version");
+  assert.throws(() => decodeInit(flip(frame, 0)), /unknown frame version/);
 
   // An encrypted reader never accepts INIT.
   const { key } = await setup();
@@ -109,12 +111,12 @@ test("INIT carries the transferId in clear at seq 0", async () => {
 test("a file round trips through INIT, META, CHUNKs and END", async () => {
   const { secret, transferId } = await setup();
   const file = randomBytes(MAX_CHUNK_BYTES * 3 + 123);
-  const senderKey = await deriveFileKey(secret, transferId);
+  const senderKey = await deriveFileKey(secret, transferId, ATTEMPT);
   const init = encodeInit(transferId);
   const frames = await encryptFile(senderKey, file);
 
   // The recipient derives the key from the INIT it received.
-  const recipientKey = await deriveFileKey(secret, decodeInit(init));
+  const recipientKey = await deriveFileKey(secret, decodeInit(init), ATTEMPT);
   const { digest, data } = await receiveFile(recipientKey, frames);
   assert.deepEqual(data, file);
   assert.deepEqual(digest, sha256(file));
@@ -318,8 +320,9 @@ test("frames from the wrong key or another transferId fail", async () => {
   const wrongSecret = await deriveFileKey(
     createLink("https://localhost").secret,
     createTransferId(),
+    ATTEMPT,
   );
-  const otherTransfer = await deriveFileKey(secret, createTransferId());
+  const otherTransfer = await deriveFileKey(secret, createTransferId(), ATTEMPT);
   await assert.rejects(new FrameReader(wrongSecret, "s").decrypt(frame), "wrong secret");
   await assert.rejects(new FrameReader(otherTransfer, "s").decrypt(frame), "other transferId");
 });

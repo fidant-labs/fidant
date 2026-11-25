@@ -99,8 +99,12 @@
 //   ("sent", "failed", "limit") never replaces "verifying". Recipients without
 //   an address ignore it. A reply with a mark means the server took the link and emailed
 //   the marked copy, so the recipient's `url` becomes that copy. A refusal
-//   without one (`limit`, or `failed` before anything went out) keeps the
-//   plain link.
+//   without one (`limit`, or `failed` before anything went out) came after the
+//   `email` message gave the server the link's secret, so the page passes a
+//   `fresh` link and the recipient takes it in place of the old one, keeping
+//   its name and mail status; `hostedLinks` then names the new link ID, not the
+//   old. The page's own `failed` (its socket was closed, so nothing was sent)
+//   carries no `fresh` link and keeps the plain link.
 // - `server-lost` also unbinds every recipient whose link the server emailed
 //   or may have emailed (a mark, "sending", or "verifying"/"verified" without
 //   a mark, see `unmarked`): the server dropped its binding with the socket,
@@ -177,7 +181,14 @@ export type SenderAction =
   | { type: "declined"; linkId: string }
   | { type: "unsendable"; linkId: string }
   | { type: "path"; linkId: string; attempt: string; path: OpenPath }
-  | { type: "email"; linkId: string; status: EmailStatus; mark?: string | undefined };
+  | {
+      type: "email";
+      linkId: string;
+      status: EmailStatus;
+      mark?: string | undefined;
+      /** A new link to replace this one if the server refused its email: it saw the secret. */
+      fresh?: Link | undefined;
+    };
 
 export type SenderEffect =
   | { type: "start"; linkId: string; attempt: string; iceServers: IceServer[] }
@@ -373,6 +384,14 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
         (current.mail === "verifying" && action.status !== "verified");
       const mail = keep ? current.mail : action.status;
       const mark = current.mark ?? action.mark;
+      if (
+        action.fresh &&
+        !keep &&
+        mark === undefined &&
+        (action.status === "limit" || action.status === "failed")
+      ) {
+        return swap(state, current, action.fresh, action.status);
+      }
       if (mail === current.mail && mark === current.mark) {
         return { state, effects: [] };
       }
@@ -383,6 +402,39 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
       return { state: replace(state, { ...current, mail, ...marked }), effects: [] };
     }
   }
+}
+
+/**
+ * Replaces a recipient whose email the server refused with `fresh`, keeping its name and mail
+ * status. A joiner on the old link, which the server only allows before the `email` message, is
+ * refused as unknown and its connection closed.
+ */
+function swap(
+  state: SenderState,
+  current: Recipient,
+  fresh: Link,
+  mail: EmailStatus,
+): SenderUpdate {
+  const { linkId, attempt } = current;
+  const next: Recipient = {
+    ...reset(current, "waiting"),
+    linkId: fresh.linkId,
+    secret: fresh.secret,
+    url: fresh.url,
+    mail,
+  };
+  const effects: SenderEffect[] = isActive(current)
+    ? [
+        ...(attempt === undefined
+          ? []
+          : [{ type: "refuse", linkId, attempt, reason: "unknown" } as const]),
+        { type: "close", linkId },
+      ]
+    : [];
+  return {
+    state: { recipients: state.recipients.map((r) => (r === current ? next : r)) },
+    effects,
+  };
 }
 
 /** Ends the current attempt as `next`: its joiner refused and its connection closed. */

@@ -383,7 +383,7 @@ export const en = {
       failed: (to: string) =>
         `Email not sent to ${to}. To try again, remove this recipient and add them again, or add them without an email address and share the link yourself.`,
       limit: (to: string) =>
-        `Email not sent to ${to}: too many emails right now. Copy the link and share it yourself.`,
+        `Email not sent to ${to}: too many emails right now. Here is a new link instead: copy it and share it yourself.`,
       verifying: (to: string) => `Code sent to ${to}`,
       verified: (to: string) => `Verified with the code sent to ${to}`,
       lost: (to: string) =>
@@ -848,7 +848,7 @@ export const en = {
         body: [
           "Two keys are derived from the secret with HKDF-SHA-256. Both are AES-256-GCM keys that the browser marks as non-extractable: the page can use them, but can't read them out.",
           "The signal key encrypts the setup messages. Its salt is the link ID.",
-          "The file key encrypts every frame between the browsers except the first, INIT, which carries only the random transfer ID. Its salt is a random transfer ID that the sender picks again for every attempt, so a retried transfer never reuses a key and nonce pair.",
+          "The file key encrypts every frame between the browsers except the first, INIT, which carries only the random transfer ID. Its salt is made of two random values: a transfer ID that the sender picks for every attempt, and an attempt ID that the recipient's page picks every time it connects. So neither a retried transfer nor an old first frame played to the recipient again ever reuses a key and nonce pair.",
         ],
       },
       signal: {
@@ -871,7 +871,7 @@ export const en = {
         heading: "The transfer, frame by frame",
         body: [
           "When the sender chooses the file, their browser computes its SHA-256 checksum.",
-          "INIT: the sender sends the transfer ID. It is the only frame not encrypted. Changing it changes the file key, so the next frame fails to decrypt.",
+          "INIT: the sender sends the transfer ID. It is the only frame not encrypted. Changing it changes the file key, so the next frame fails to decrypt. Playing it again in a later attempt doesn't work either, because the recipient's new attempt ID changes the key.",
           "META: the file name, size and type and the sender's typed name, encrypted. The recipient sees them and chooses.",
           "ACCEPT or DECLINE: the recipient's answer, encrypted. ACCEPT also proves that the recipient has the key. No file data is sent before it.",
           "CREDIT: how many chunks the sender may send, encrypted. The recipient grants 128 at a time and more as it writes them, so a slow recipient never has more than about 6 MiB waiting. A sender that gets further ahead than that is stopped.",
@@ -917,7 +917,7 @@ export const en = {
         body: [
           "One send can go to up to 256 people. Each has their own link, key, connection and transfer.",
           "A link counts as used only once the recipient's RECEIPT matches. After that it is refused. A link that is already open in one tab is refused in another.",
-          "Until then the link can be opened again: after a decline, a dropped connection or a failed check. Every new attempt has a new transfer ID and so a new file key.",
+          "Until then the link can be opened again: after a decline, a dropped connection or a failed check. Every new attempt has a new transfer ID and attempt ID, and so a new file key.",
           "Nothing is stored, so a link works only while the sender's page is open. When it closes, our server forgets its links within a minute.",
         ],
       },
@@ -935,7 +935,7 @@ export const en = {
       email: {
         heading: "Emailed links",
         body: [
-          "Whoever sends a file or shares a secret can give a recipient's email address. Their page then sends our server one message with the link ID, the address, the link's secret, the name the sender typed and the page's language. This is the one case where a link's secret leaves the browser.",
+          "Whoever sends a file or shares a secret can give a recipient's email address. Their page then sends our server one message with the link ID, the address, the link's secret, the name the sender typed and the page's language. This is the one case where a link's secret leaves the browser. If our server refuses to send the email, the sender's page replaces the link with a new one, because our server has seen the old one's secret.",
           "Our server picks a random value and emails the recipient the link with that value in front of the link's secret: https://fidant.se/r/<link ID>#e.<value>.<secret>. It makes one attempt, with a time limit, and never retries. It has the link's secret and the sender's name only until that attempt ends, and never stores or logs them. The email is plain text. It gives the name the sender typed, marked as not verified, and says nothing about what is sent, not even whether it is a file or a shared secret.",
           "Before it connects, the recipient's page sends the value to our server. Only if it matches does the server show a masked address, like a***@example.se, and on request email a 6-digit code there. A code works for 10 minutes, and 5 wrong tries end it. The right code gets a random token that only that browser tab keeps, and the server connects nobody to an emailed link without one. Someone with only the link ID, or an emailed link that has stopped working, can't see the address, can't make us send codes and can't connect.",
           "Our server keeps the address, the value, the codes and the tokens in memory while the sender's page has the link. When the sender removes the recipient, closes the page or loses the connection to our server, or when the server restarts, all of it is gone and the emailed link stops working. To limit abuse, the server counts emails for an hour under a scrambled form of each address (an HMAC with a random key), never the address itself: at most 20 emails an hour from one connection, 50 from one IP address (an IPv6 address counts by its first 48 bits) and 5 to one email address, and at most 5 codes per link, 30 seconds apart, 5 an hour asked for by one IP address and 10 an hour to one email address. The whole server sends at most 500 emails and 500 codes an hour. Anyone can use up the limits for one email address, or for the whole server, for up to an hour.",

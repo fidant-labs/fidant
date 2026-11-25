@@ -1,7 +1,7 @@
 // Data channel framing and per-frame encryption.
 //
 // Frame  = header(10) || body
-// Header = version(1) = 2 || kind(1) || seq(8, u64 big-endian). Plaintext, and
+// Header = version(1) = 3 || kind(1) || seq(8, u64 big-endian). Plaintext, and
 //          the AES-GCM additional data of its frame.
 // Body   = AES-GCM-256(fileKey, iv, aad = header, plaintext body), 16-byte tag
 //          appended. Only INIT is sent in clear.
@@ -35,12 +35,21 @@
 // depends on the data channel's max message size, which observers see anyway.
 //
 // Sequence numbers: INIT carries the transferId that the file key is derived
-// from, so it has to be sent before either side has the key. It sits outside
+// from (with the recipient's attempt ID, see keys.ts), so it has to be sent
+// before either side has the key. It sits outside
 // the encrypted sequence: its header always says seq 0 and it uses no nonce.
 // Encrypted frames are numbered from 0 in each direction (the sender's META is
 // seq 0, the recipient's ACCEPT is seq 0). A reader accepts only the next
 // seq, so dropped, reordered or replayed frames fail. Altering INIT changes
-// the derived key, so META then fails to decrypt.
+// the derived key, so META then fails to decrypt. Replaying a whole recorded
+// INIT and META into a later attempt fails the same way: the recipient's new
+// attempt ID gives it a new key, so it never seals its frame 0 twice under one
+// key.
+//
+// Version 3 is the first whose file key includes the attempt ID. A sender and
+// recipient on different versions (one on a cached old page) would derive
+// different keys, so the version is checked first: INIT and every other frame
+// of another version fail as "unknown frame version", not as a bad key.
 //
 // Writers and readers keep state: await each encrypt or decrypt before
 // starting the next one. A reader stops accepting frames after any failure.
@@ -51,7 +60,7 @@ import { Sha256 } from "./sha256.ts";
 
 export { hasForbiddenCharacters, MAX_FROM_LENGTH };
 
-export const FRAME_VERSION = 2;
+export const FRAME_VERSION = 3;
 export const HEADER_BYTES = 10;
 export const TAG_BYTES = 16;
 export const MAX_CHUNK_BYTES = 48 * 1024;
@@ -159,12 +168,10 @@ export function encodeInit(transferId: Uint8Array): Uint8Array<ArrayBuffer> {
 /** Reads the transferId from an INIT frame. Throws if `frame` is not a well-formed INIT. */
 export function decodeInit(frame: Uint8Array): Uint8Array<ArrayBuffer> {
   const header = decodeHeader(frame);
-  if (
-    header.version !== FRAME_VERSION ||
-    header.kind !== SenderKind.INIT ||
-    header.seq !== 0 ||
-    frame.length !== HEADER_BYTES + 16
-  ) {
+  if (header.version !== FRAME_VERSION) {
+    throw new Error("unknown frame version");
+  }
+  if (header.kind !== SenderKind.INIT || header.seq !== 0 || frame.length !== HEADER_BYTES + 16) {
     throw new Error("malformed INIT frame");
   }
   return frame.slice(HEADER_BYTES);

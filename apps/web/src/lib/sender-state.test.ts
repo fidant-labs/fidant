@@ -796,13 +796,102 @@ test("a mark makes the recipient's link the one the server emailed; a refusal ke
   );
   assert.equal(late?.mail, "verifying", "the notice reply came after a code");
   assert.equal(late?.url, `${ORIGIN}/r/${early.linkId}#e.${mark}.${early.secret}`);
+  // A refusal without a mark comes after the server got the secret, so the page swaps in a
+  // fresh link (see "a link whose email the server refused ..." below).
   for (const status of ["limit", "failed"] as const) {
     const { link, recipient } = after({ type: "email", status });
     assert.equal(recipient?.mark, undefined);
-    assert.equal(recipient?.url, link.url);
+    assert.equal(recipient?.url, link.url, "without a fresh link, the page's own failure");
   }
   const { link, recipient } = after();
   assert.equal(recipient?.url, link.url);
+});
+
+test("a link whose email the server refused is not offered for sharing by hand (SIG-237)", () => {
+  for (const status of ["limit", "failed"] as const) {
+    const link = createLink(ORIGIN);
+    const fresh = createLink(ORIGIN);
+    // By now the send page has sent this link's secret to the server in the `email` message.
+    const { state, effects } = run(
+      initialSenderState,
+      { type: "add", link, name: "Anna", email: "anna@example.se" },
+      { type: "email", linkId: link.linkId, status, fresh },
+    );
+    assert.deepEqual(effects, []);
+    for (const recipient of state.recipients) {
+      // What RecipientList shows Copy and Share for.
+      const shareable =
+        recipient.status === "waiting" && !unmarked(recipient) && !recipient.unbound;
+      assert.ok(
+        !(shareable && recipient.url.includes(link.secret)),
+        "the card offers the link whose secret the server received",
+      );
+    }
+    assert.deepEqual(state.recipients, [
+      {
+        name: "Anna",
+        ...fresh,
+        status: "waiting",
+        bytesSent: 0,
+        email: "anna@example.se",
+        mail: status,
+      },
+    ]);
+    assert.deepEqual(hostedLinks(state), [fresh.linkId], "the old link ID is no longer hosted");
+    const stranger = update(state, joined(link.linkId, A));
+    assert.deepEqual(stranger.effects, [
+      { type: "refuse", linkId: link.linkId, attempt: A, reason: "unknown" },
+    ]);
+  }
+});
+
+test("a refused email ends a join on the old link and refuses it as unknown", () => {
+  const link = createLink(ORIGIN);
+  const fresh = createLink(ORIGIN);
+  const { state, effects } = run(
+    initialSenderState,
+    { type: "add", link, name: "Anna", email: "anna@example.se" },
+    joined(link.linkId, A),
+    { type: "email", linkId: link.linkId, status: "failed", fresh },
+  );
+  assert.deepEqual(effects.slice(1), [
+    { type: "refuse", linkId: link.linkId, attempt: A, reason: "unknown" },
+    { type: "close", linkId: link.linkId },
+  ]);
+  assert.equal(statusOf(state, fresh.linkId), "waiting");
+  assert.equal(findRecipient(state, fresh.linkId)?.attempt, undefined);
+});
+
+test("the page's own failure keeps its link, and a failure with a mark stays the emailed link", () => {
+  const mark = "MMMMMMMMMMMMMMMMMMMMMM";
+  const link = createLink(ORIGIN);
+  const added = run(initialSenderState, {
+    type: "add",
+    link,
+    name: "Anna",
+    email: "anna@example.se",
+  }).state;
+  // The socket was closed, so no `email` message left the page: no fresh link.
+  const own = update(added, { type: "email", linkId: link.linkId, status: "failed" }).state;
+  assert.deepEqual(hostedLinks(own), [link.linkId]);
+  assert.equal(findRecipient(own, link.linkId)?.url, link.url);
+  assert.equal(findRecipient(own, link.linkId)?.mail, "failed");
+
+  // The server took the link and its notice failed: the marked link is still the emailed one.
+  const fresh = createLink(ORIGIN);
+  const marked = update(added, {
+    type: "email",
+    linkId: link.linkId,
+    status: "failed",
+    mark,
+    fresh,
+  }).state;
+  assert.deepEqual(hostedLinks(marked), [link.linkId]);
+  assert.equal(findRecipient(marked, link.linkId)?.mark, mark);
+  assert.equal(findRecipient(marked, fresh.linkId), undefined);
+  // And a refusal after a mark changes nothing about the link.
+  const late = update(marked, { type: "email", linkId: link.linkId, status: "limit", fresh });
+  assert.deepEqual(hostedLinks(late.state), [link.linkId]);
 });
 
 test("a verifying or verified reply before the notice reply still counts as bound on server-lost", () => {
@@ -822,15 +911,23 @@ test("a verifying or verified reply before the notice reply still counts as boun
   }
 });
 
-test("a failed reply without a mark leaves the plain link hosted", () => {
+test("a failed reply without a mark leaves a plain link hosted: the fresh one from the server's, the same one from the page's own", () => {
   const link = createLink(ORIGIN);
-  const { state } = run(
-    initialSenderState,
-    { type: "add", link, name: "Anna", email: "anna@example.se" },
-    { type: "email", linkId: link.linkId, status: "failed" },
-  );
-  assert.ok(!emailBound(findRecipient(state, link.linkId) as Recipient));
-  assert.deepEqual(hostedLinks(update(state, { type: "server-lost" }).state), [link.linkId]);
+  const fresh = createLink(ORIGIN);
+  const added = run(initialSenderState, {
+    type: "add",
+    link,
+    name: "Anna",
+    email: "anna@example.se",
+  }).state;
+  const cases = [
+    [update(added, { type: "email", linkId: link.linkId, status: "failed", fresh }).state, fresh],
+    [update(added, { type: "email", linkId: link.linkId, status: "failed" }).state, link],
+  ] as const;
+  for (const [state, hosted] of cases) {
+    assert.ok(!emailBound(findRecipient(state, hosted.linkId) as Recipient));
+    assert.deepEqual(hostedLinks(update(state, { type: "server-lost" }).state), [hosted.linkId]);
+  }
 });
 
 test("server-lost unbinds every link the server emailed or may have emailed, and stops hosting it", () => {

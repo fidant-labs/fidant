@@ -362,7 +362,7 @@ export const sv: Messages = {
       failed: (to: string) =>
         `Mejlet till ${to} skickades inte. Ta bort mottagaren och lägg till den igen för att försöka på nytt, eller lägg till den utan e-postadress och dela länken själv.`,
       limit: (to: string) =>
-        `Mejlet till ${to} skickades inte: för många mejl just nu. Kopiera länken och dela den själv.`,
+        `Mejlet till ${to} skickades inte: för många mejl just nu. Här är en ny länk i stället. Kopiera den och dela den själv.`,
       verifying: (to: string) => `Kod skickad till ${to}`,
       verified: (to: string) => `Verifierad med koden som skickades till ${to}`,
       lost: (to: string) =>
@@ -803,7 +803,7 @@ export const sv: Messages = {
         body: [
           "Två nycklar tas fram ur hemligheten med HKDF-SHA-256. Båda är AES-256-GCM-nycklar som webbläsaren markerar som icke-exporterbara: sidan kan använda dem men inte läsa ut dem.",
           "Signalnyckeln krypterar meddelandena för uppkopplingen. Dess salt är länk-ID:t.",
-          "Filnyckeln krypterar varje ram mellan webbläsarna utom den första, INIT, som bara innehåller det slumpmässiga överförings-ID:t. Dess salt är ett slumpmässigt överförings-ID som avsändaren väljer på nytt för varje försök, så en omstartad överföring använder aldrig samma nyckel och nonce två gånger.",
+          "Filnyckeln krypterar varje ram mellan webbläsarna utom den första, INIT, som bara innehåller det slumpmässiga överförings-ID:t. Dess salt består av två slumpmässiga värden: ett överförings-ID som avsändaren väljer för varje försök och ett försöks-ID som mottagarens sida väljer varje gång den ansluter. Därför använder varken en omstartad överföring eller en gammal första ram som spelas upp för mottagaren igen samma nyckel och nonce två gånger.",
         ],
       },
       signal: {
@@ -826,7 +826,7 @@ export const sv: Messages = {
         heading: "Överföringen, ram för ram",
         body: [
           "När avsändaren väljer filen räknar webbläsaren ut dess SHA-256-kontrollsumma.",
-          "INIT: avsändaren skickar överförings-ID:t. Det är den enda ramen som inte krypteras. Om den ändras blir filnyckeln en annan, och nästa ram går inte att dekryptera.",
+          "INIT: avsändaren skickar överförings-ID:t. Det är den enda ramen som inte krypteras. Om den ändras blir filnyckeln en annan, och nästa ram går inte att dekryptera. Att spela upp den igen i ett senare försök fungerar inte heller, eftersom mottagarens nya försöks-ID ger en annan nyckel.",
           "META: filens namn, storlek och typ och det namn avsändaren skrev, krypterat. Mottagaren ser dem och väljer.",
           "ACCEPT eller DECLINE: mottagarens svar, krypterat. ACCEPT visar också att mottagaren har nyckeln. Inga fildata skickas före det.",
           "CREDIT: hur många delar avsändaren får skicka, krypterat. Mottagaren ger 128 i taget och fler allteftersom de skrivs, så en långsam mottagare har aldrig mer än ungefär 6 MiB som väntar. En avsändare som kommer längre före än så stoppas.",
@@ -872,7 +872,7 @@ export const sv: Messages = {
         body: [
           "En sändning kan gå till upp till 256 personer. Var och en har en egen länk, nyckel, förbindelse och överföring.",
           "En länk räknas som använd först när mottagarens RECEIPT stämmer. Därefter nekas den. En länk som redan är öppen i en flik nekas i en annan.",
-          "Fram till dess kan länken öppnas igen: efter att mottagaren tackat nej, efter en bruten förbindelse eller efter en misslyckad kontroll. Varje nytt försök har ett nytt överförings-ID och därmed en ny filnyckel.",
+          "Fram till dess kan länken öppnas igen: efter att mottagaren tackat nej, efter en bruten förbindelse eller efter en misslyckad kontroll. Varje nytt försök har ett nytt överförings-ID och försöks-ID, och därmed en ny filnyckel.",
           "Ingenting sparas, så en länk fungerar bara medan avsändarens sida är öppen. När den stängs glömmer vår server dess länkar inom en minut.",
         ],
       },
@@ -890,7 +890,7 @@ export const sv: Messages = {
       email: {
         heading: "Mejlade länkar",
         body: [
-          "Den som skickar en fil eller delar en hemlighet kan ange en mottagares e-postadress. Avsändarens sida skickar då ett meddelande till vår server med länk-ID:t, adressen, länkens hemlighet, namnet avsändaren skrev och sidans språk. Det är det enda fallet där en länks hemlighet lämnar webbläsaren.",
+          "Den som skickar en fil eller delar en hemlighet kan ange en mottagares e-postadress. Avsändarens sida skickar då ett meddelande till vår server med länk-ID:t, adressen, länkens hemlighet, namnet avsändaren skrev och sidans språk. Det är det enda fallet där en länks hemlighet lämnar webbläsaren. Om vår server vägrar skicka mejlet byter avsändarens sida ut länken mot en ny, eftersom vår server har sett den gamlas hemlighet.",
           "Vår server väljer ett slumpmässigt värde och mejlar mottagaren länken med värdet framför länkens hemlighet: https://fidant.se/r/<länk-ID>#e.<värde>.<hemlighet>. Den gör ett försök, med en tidsgräns, och försöker aldrig igen. Den har länkens hemlighet och avsändarens namn bara tills försöket är över, och sparar eller loggar dem aldrig. Mejlet är ren text. Det visar namnet avsändaren skrev, markerat som inte verifierat, och säger ingenting om vad som skickas, inte ens om det är en fil eller en delad hemlighet.",
           "Innan mottagarens sida ansluter skickar den värdet till vår server. Bara om det stämmer visar servern en maskerad adress, till exempel a***@example.se, och mejlar en sexsiffrig kod dit när mottagaren ber om den. En kod gäller i 10 minuter, och efter 5 felaktiga försök slutar den gälla. Rätt kod ger en slumpmässig token som bara den webbläsarfliken har, och servern kopplar inte ihop någon med en mejlad länk utan en sådan. Den som bara har länk-ID:t, eller en mejlad länk som har slutat fungera, kan inte se adressen, inte få oss att skicka koder och inte ansluta.",
           "Vår server har adressen, värdet, koderna och tokens i minnet medan avsändarens sida har länken. När avsändaren tar bort mottagaren, stänger sidan eller tappar anslutningen till vår server, eller när servern startas om, försvinner allt det och den mejlade länken slutar fungera. För att begränsa missbruk räknar servern mejl i en timme under en förvrängd form av varje adress (en HMAC med en slumpmässig nyckel), aldrig under själva adressen: högst 20 mejl i timmen från en anslutning, 50 från en IP-adress (en IPv6-adress räknas efter sina första 48 bitar) och 5 till en e-postadress, och högst 5 koder per länk, med 30 sekunders mellanrum, 5 i timmen som en IP-adress ber om och 10 i timmen till en e-postadress. Hela servern skickar högst 500 mejl och 500 koder i timmen. Vem som helst kan nå gränserna för en e-postadress, eller för hela servern, så att inga fler mejl eller koder skickas i upp till en timme.",

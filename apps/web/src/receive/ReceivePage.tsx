@@ -545,6 +545,7 @@ export function ReceivePage({
         channel,
         maxMessageSize,
         secret,
+        attempt: attemptId,
         signal: attempt.abort.signal,
         onOffer(received) {
           return new Promise((resolve) => {

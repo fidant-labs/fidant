@@ -361,15 +361,18 @@ export function attachSignaling(
       error(socket, "wrong-role");
       return;
     }
-    if (links.some((link) => hosts.has(link) && hosts.get(link) !== socket)) {
+    // A link another socket hosts is left out as if it were not in the list, so one taken link
+    // (decisions 0006 and 0012) cannot block the sender's others. The error still tells the
+    // page, which retries the whole list until the other socket is gone.
+    const free = links.filter((link) => !hosts.has(link) || hosts.get(link) === socket);
+    if (free.length < links.length) {
       error(socket, "already-hosted");
-      return;
     }
-    const next = new Set(links);
+    const next = new Set(free);
     const changed =
       peer.role !== "host" ||
       next.size !== peer.hosted.size ||
-      links.some((link) => !peer.hosted.has(link));
+      free.some((link) => !peer.hosted.has(link));
     peer.role = "host";
     peer.turn = turn;
     for (const link of peer.hosted) {

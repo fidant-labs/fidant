@@ -35,7 +35,10 @@
 //   email address. Adding a recipient with one sends a single `email` message
 //   after the `host` that includes its link; the server's `email` replies go
 //   to the reducer. Its card offers no link until the server answers, then
-//   the marked link the server emailed, or the plain one if it refused. A
+//   the marked link the server emailed. If the server refused without a mark,
+//   it still saw the secret, so the card gets a fresh plain link and the page
+//   hosts that instead (reducer `email`); only the page's own `failed`, when
+//   its socket was closed and nothing was sent, keeps the first link. A
 //   reconnect never hosts an emailed link again (reducer `server-lost`).
 //
 // Names, the file or text and link secrets stay in this tab. The server only ever
@@ -289,6 +292,7 @@ export function SendPage({
           file: chosen.file,
           from: fromRef.current,
           secret: recipient.secret,
+          attempt,
           sha256: chosen.sha256,
           signal: connection.abort.signal,
           onAccepted: () => dispatch({ type: "accepted", linkId }),
@@ -347,7 +351,11 @@ export function SendPage({
     for (const effect of next.effects) {
       runEffect(effect);
     }
-    if (action.type === "add" || action.type === "remove") {
+    if (
+      action.type === "add" ||
+      action.type === "remove" ||
+      (action.type === "email" && action.fresh)
+    ) {
       host();
     }
   };
@@ -400,6 +408,11 @@ export function SendPage({
             linkId: message.link,
             status: message.status,
             mark: message.mark,
+            // A refusal without a mark came after the server got the secret: never share that link.
+            ...(message.mark === undefined &&
+            (message.status === "limit" || message.status === "failed")
+              ? { fresh: createLink(location.origin) }
+              : {}),
           });
           break;
         case "relay":
