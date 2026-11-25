@@ -135,40 +135,6 @@ const hint = "text-[0.9rem] text-muted-foreground";
 const stepLabel = "m-0 mb-1 text-[0.85rem] font-medium text-muted-foreground";
 const GLIDE_MS = 450;
 
-function Choice(props: {
-  id: string;
-  title: string;
-  description: string;
-  name?: string;
-  class?: string;
-  checked: boolean;
-  disabled?: boolean;
-  onChange(checked: boolean): void;
-}) {
-  return (
-    <div class={`flex basis-full items-start gap-2.5 ${props.class ?? ""}`}>
-      <input
-        type="checkbox"
-        id={props.id}
-        name={props.name}
-        class="mt-0.5 size-4 flex-none accent-primary"
-        checked={props.checked}
-        disabled={props.disabled}
-        aria-describedby={`${props.id}-description`}
-        onChange={(event) => props.onChange(event.currentTarget.checked)}
-      />
-      <div class="flex flex-col gap-1">
-        <Label htmlFor={props.id} className="leading-snug">
-          {props.title}
-        </Label>
-        <p id={`${props.id}-description`} class={`m-0 leading-snug ${hint}`}>
-          {props.description}
-        </p>
-      </div>
-    </div>
-  );
-}
-
 /** Scrolls the window to `el` with an ease-in-out curve; stops if the user scrolls, jumps if they prefer less motion. */
 function glideTo(el: HTMLElement) {
   const offset = parseFloat(getComputedStyle(el).scrollMarginTop) || 0;
@@ -995,7 +961,7 @@ export function SendPage({
                 )}
               </div>
               {mail && (
-                <div class="flex basis-full flex-col gap-2">
+                <div class={`basis-full ${field}`}>
                   {/* Off by default: the safe way is to pass the link on yourself. */}
                   <Label className="items-start leading-snug font-normal">
                     <input
@@ -1053,9 +1019,14 @@ export function SendPage({
                 </div>
               )}
               <div class="flex basis-full flex-wrap gap-2">
-                {useEmail ? (
+                {mail && useEmail ? (
                   <>
-                    <Button type="submit" value="check" disabled={!file || full}>
+                    <Button
+                      type="submit"
+                      value="check"
+                      disabled={!file || full}
+                      aria-describedby={file && !full ? id("check-hint") : undefined}
+                    >
                       {t.send.addEmailCheck}
                     </Button>
                     <Button type="submit" variant="outline" value="plain" disabled={!file || full}>
@@ -1072,7 +1043,7 @@ export function SendPage({
                       variant="outline"
                       value="check"
                       disabled={!file || full}
-                      aria-describedby={id("check-hint")}
+                      aria-describedby={file && !full ? id("check-hint") : undefined}
                     >
                       {t.send.addCheck}
                     </Button>
@@ -1082,7 +1053,7 @@ export function SendPage({
             </form>
             {file && !full && (
               <p id={id("check-hint")} class={`mb-0 ${hint}`}>
-                {t.send.check.hint}
+                {t.send.check.hint(text ? "secret" : "file")}
               </p>
             )}
             <p id={id("recipient-hint")} class={hint}>
@@ -1108,18 +1079,29 @@ export function SendPage({
         )}
         <details class="mt-6 text-[0.9rem]">
           <summary class="cursor-pointer text-muted-foreground">{t.send.connectionOptions}</summary>
-          <Choice
-            id={id("allow-relay")}
-            class="mt-4"
-            title={t.send.allowRelay}
-            description={t.send.allowRelayHint(text ? "secret" : "file")}
-            checked={allowRelay}
-            onChange={(checked) => {
-              allowRelayRef.current = checked;
-              setAllowRelay(checked);
-              host();
-            }}
-          />
+          <div class="mt-4 flex items-start gap-2.5">
+            <input
+              type="checkbox"
+              id={id("allow-relay")}
+              class="mt-0.5 size-4 flex-none accent-primary"
+              checked={allowRelay}
+              aria-describedby={`${id("allow-relay")}-description`}
+              onChange={(event) => {
+                const checked = event.currentTarget.checked;
+                allowRelayRef.current = checked;
+                setAllowRelay(checked);
+                host();
+              }}
+            />
+            <div class="flex flex-col gap-1">
+              <Label htmlFor={id("allow-relay")} className="leading-snug">
+                {t.send.allowRelay}
+              </Label>
+              <p id={`${id("allow-relay")}-description`} class={`m-0 leading-snug ${hint}`}>
+                {t.send.allowRelayHint(text ? "secret" : "file")}
+              </p>
+            </div>
+          </div>
         </details>
       </section>
 

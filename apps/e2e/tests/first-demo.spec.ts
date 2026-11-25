@@ -117,20 +117,22 @@ async function openSender(
   return page;
 }
 
-/** Adds a recipient on the sender page, with a safety number if `check`, and returns their link, with its secret watched. */
+/** Adds a recipient on the sender page and returns their link, with its secret watched. Clicks the safety number button if `check`, else presses Enter, which must make a plain link. */
 async function addRecipient(
   leaks: Leaks,
   sender: Page,
   name: string,
   check = false,
 ): Promise<string> {
-  await sender.getByLabel("Who is it for?").fill(name);
-  await sender
-    .getByRole("button", {
-      name: check ? "Create link with safety number" : "Create link",
-      exact: true,
-    })
-    .click();
+  const who = sender.getByLabel("Who is it for?");
+  await who.fill(name);
+  if (check) {
+    await sender
+      .getByRole("button", { name: "Create link with safety number", exact: true })
+      .click();
+  } else {
+    await who.press("Enter");
+  }
   const link = (await sender.getByLabel(`Link for ${name}`, { exact: true }).textContent()) ?? "";
   const secret = new URL(link).hash.slice(1);
   expect(secret, `link secret for ${name}`).toMatch(/^[A-Za-z0-9_-]{43}$/);
@@ -1570,7 +1572,7 @@ interface Emailed {
 /**
  * Adds `name` with the address `to` and waits for the notice. Watches the link's secret, the
  * server's value, the address and, if given, the sender's typed name `from` where decision 0012
- * lets them appear. The safety number is the first button for an emailed link; `check` false skips it.
+ * lets them appear. `check` presses Enter, which must make a safety number link; false clicks the plain button.
  */
 async function addEmailed(
   leaks: Leaks,
@@ -1584,16 +1586,20 @@ async function addEmailed(
   // Emailing is opt-in; the choice stays ticked for the next recipient.
   await sender.getByLabel("Email the link for me (less private)").check();
   // With email on, the safety number is the default, so Enter picks it.
-  await expect(sender.locator("button[type=submit]").first()).toHaveText(
-    "Create and email link with safety number",
-  );
-  await sender.getByLabel("Their email address").fill(to);
-  await sender
-    .getByRole("button", {
-      name: check ? "Create and email link with safety number" : "Create and email link",
-      exact: true,
-    })
-    .click();
+  await expect(
+    sender
+      .locator("form")
+      .filter({ has: sender.getByLabel("Who is it for?") })
+      .locator("button[type=submit]")
+      .first(),
+  ).toHaveText("Create and email link with safety number");
+  const address = sender.getByLabel("Their email address");
+  await address.fill(to);
+  if (check) {
+    await address.press("Enter");
+  } else {
+    await sender.getByRole("button", { name: "Create and email link", exact: true }).click();
+  }
   await expect(
     recipientRow(sender, name).getByText(`Email sent to ${maskAddress(to)}`),
   ).toBeVisible();
