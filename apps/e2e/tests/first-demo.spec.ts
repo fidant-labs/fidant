@@ -876,6 +876,7 @@ test.describe("through a server restart", () => {
       ) {
         if (!stalled) {
           stalled = true;
+          (globalThis as { offerStalled?: boolean }).offerStalled = true;
           return new Promise(() => {});
         }
         return Reflect.apply(native, this, args);
@@ -888,6 +889,10 @@ test.describe("through a server restart", () => {
     await expect(
       recipientRow(sender, name).getByText(`Connecting through ${name}'s link…`),
     ).toBeVisible();
+    // Restarting before the offer lands would stall the next attempt's offer instead.
+    await recipient.waitForFunction(
+      () => (globalThis as { offerStalled?: boolean }).offerStalled === true,
+    );
 
     await restartServer();
     await expect(recipient.getByRole("button", { name: "Download" })).toBeVisible({
@@ -925,11 +930,14 @@ async function addEmailed(
   from = "",
 ): Promise<Emailed> {
   await sender.getByLabel("Who is it for?").fill(name);
+  // Emailing is opt-in; the choice stays ticked for the next recipient.
+  await sender.getByLabel("Email the link for me (less private)").check();
   await sender.getByLabel("Their email address").fill(to);
   await sender.getByRole("button", { name: "Create and email link", exact: true }).click();
   await expect(
     recipientRow(sender, name).getByText(`Email sent to ${maskAddress(to)}`),
   ).toBeVisible();
+  await expect(sender.getByLabel("Email the link for me (less private)")).toBeChecked();
   const link = (await sender.getByLabel(`Link for ${name}`, { exact: true }).textContent()) ?? "";
   const url = new URL(link);
   const [, mark = "", secret = ""] = /^#e\.([\w-]{22})\.([\w-]{43})$/.exec(url.hash) ?? [];
@@ -1253,6 +1261,7 @@ test.describe("emailed links", () => {
     const sender = await demo.open("sender");
     await sender.goto("/secret");
     await sender.getByLabel("Your secret").fill(text);
+    await sender.getByLabel("Email the link for me (less private)").check();
     const email = sender.getByLabel("Their email address");
     await expect(email).toHaveId("secret-recipient-email");
     const name = makeName(leaks, canary, "Anna");
@@ -1287,6 +1296,32 @@ harness(
     await expect.poll(async () => (await hello()).length).toBe(1);
     const mail = (await hello())[0]?.mail;
     expect(mail).toBe(Boolean(process.env.SIGILL_E2E_MAILPIT));
-    await expect(page.getByLabel("Their email address")).toHaveCount(mail ? 1 : 0);
+    // The add form shows once a file is chosen. The address field appears only once the sender
+    // chooses to have the link emailed.
+    await page.getByLabel("Choose a file").setInputFiles({
+      name: "a.bin",
+      mimeType: "application/octet-stream",
+      buffer: Buffer.from("x"),
+    });
+    await expect(page.getByLabel("Who is it for?")).toBeVisible();
+    const choice = page.getByLabel("Email the link for me (less private)");
+    await expect(choice).toHaveCount(mail ? 1 : 0);
+    await expect(page.getByLabel("Their email address")).toHaveCount(0);
+    if (mail) {
+      await expect(choice).not.toBeChecked();
+      await choice.check();
+      await expect(page.getByLabel("Their email address")).toHaveCount(1);
+      await expect(
+        page.getByRole("note").filter({ hasText: "Sending the link yourself avoids all of this." }),
+      ).toBeVisible();
+      // Having opted in, the sender can't add a recipient without an address.
+      await page.getByLabel("Who is it for?").fill("Anna");
+      await page.getByRole("button", { name: "Create and email link", exact: true }).click();
+      await expect(
+        page.getByText("Enter a valid email address, like name@example.com."),
+      ).toBeVisible();
+      await expect(page.getByLabel("Their email address")).toBeFocused();
+      await expect(page.getByLabel("Link for Anna", { exact: true })).toHaveCount(0);
+    }
   },
 );
