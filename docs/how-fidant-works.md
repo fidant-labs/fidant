@@ -6,16 +6,17 @@ A change to security or data flow updates this document in the same pull request
 
 ## Parts
 
-| Part                  | Where                                    | What it does                                                                                                                                           |
-| --------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Web app               | `apps/web`, runs in each browser         | Creates links and keys, encrypts and decrypts, checks the file. All cryptography happens here.                                                         |
-| Server                | `apps/server`, the box at fidant.se      | Serves the web app over HTTPS, passes setup messages between browsers on the `/signal` WebSocket and, when mail is configured, emails links and codes. |
-| Relay (STUN and TURN) | coturn at `turn.fidant.se`, the same box | Tells browsers their public address (STUN) and carries encrypted traffic when they can't connect directly (TURN).                                      |
-| Front proxy           | HAProxy, the same box                    | Holds TCP port 443 and hands each connection on by its TLS server name, without decrypting it.                                                         |
-| Shared protocol       | `packages/protocol`                      | Signaling message types, parsers and limits used by both the server and the web app.                                                                   |
-| Mail service          | SMTP, from `apps/server/src/mail.ts`     | Delivers the emails the server sends for emailed links. Mailpit locally; see "Emailed links" for production.                                           |
+| Part                  | Where                                       | What it does                                                                                                                                           |
+| --------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Web app               | `apps/web`, runs in each browser            | Creates links and keys, encrypts and decrypts, checks the file. All cryptography happens here.                                                         |
+| Server                | `apps/server`, the box at fidant.se         | Serves the web app over HTTPS, passes setup messages between browsers on the `/signal` WebSocket and, when mail is configured, emails links and codes. |
+| Relay (STUN and TURN) | coturn at `turn.fidant.se`, the same box    | Tells browsers their public address (STUN) and carries encrypted traffic when they can't connect directly (TURN).                                      |
+| Front proxy           | HAProxy, the same box                       | Holds TCP port 443 and hands each connection on by its TLS server name, without decrypting it.                                                         |
+| Relay box             | `apps/infra/relay/install.sh`, a second box | A standalone coturn relay for `sto.relay.fidant.se`. Built, but it serves no transfers until SIG-153 (see "The relay box").                            |
+| Shared protocol       | `packages/protocol`                         | Signaling message types, parsers and limits used by both the server and the web app.                                                                   |
+| Mail service          | SMTP, from `apps/server/src/mail.ts`        | Delivers the emails the server sends for emailed links. Mailpit locally; see "Emailed links" for production.                                           |
 
-The box is an AWS Lightsail instance in Stockholm (eu-north-1). There are no accounts, no database and no file storage. The server holds what it knows only in memory.
+The box is an AWS Lightsail instance in Stockholm (eu-north-1), and so is the relay box. There are no accounts, no database and no file storage. The server holds what it knows only in memory.
 
 ## The link
 
@@ -173,6 +174,17 @@ WebRTC tries the paths in this order, and the sender's page shows which one each
 - coturn forwards only over UDP (`no-tcp-relay`), and only from the box's private IPv4 address (`relay-ip`), so relayed addresses are IPv4 only. It refuses to forward to other machines on private, loopback, link-local and other internal ranges (`denied-peer-ip`). The accepted exception is that relay clients can reach UDP services on the box's own private and public IPv4 address (`docs/decisions/0007-turn-relay.md`, Consequences). It also caps concurrent allocations (`total-quota=200`), and writes no log (`log-file=/dev/null`). The traffic it carries is DTLS and AES-GCM; on 443 it is wrapped in TURN's TLS as well.
 - The relay forwards encrypted packets. It can't decrypt them and doesn't store them.
 
+### The relay box
+
+`apps/infra/relay/install.sh`, `apps/infra/src/relay.ts`, `apps/server/src/relay-secret.ts`, `docs/decisions/0013-relay-service.md`
+
+The relay is becoming its own service, so that relays can run on any Ubuntu server and in more than one place. The first is a second Lightsail box in Stockholm, set up by `install.sh`. It doesn't serve transfers yet: the server still hands out only the `turn.fidant.se` URLs above, so every relayed transfer goes through the app box's relay. SIG-153 switches to the relay box.
+
+- It runs coturn with the settings above (`no-tcp-relay`, `relay-ip`, `denied-peer-ip`, `total-quota=200`, `log-file=/dev/null`), on UDP and TCP 3478, and with TLS on TCP 443 directly, with its own Let's Encrypt certificate for `sto.relay.fidant.se`. No HAProxy sits in front of it, so it sees real client addresses on TLS too.
+- At install it makes an RSA key pair. The private key never leaves the box. Every minute the relay asks the app for its secret at `https://fidant.se/relay-secret/sto`. The answer is to be the secret sealed to the relay's public key (RSA-OAEP with SHA-256, `sealRelaySecret`), so anyone can ask but only that relay can open it. The app will trust only public keys committed in a reviewed pull request (SIG-153, planned). Today the app has no such endpoint: the relay gets the site's page, drops it, and has no secret. So it answers STUN and refuses every TURN allocation.
+- A new secret reaches coturn through coturn's own SQLite file, without a restart, so relayed transfers in progress keep running. The previous secret stays valid for 24 hours after a change, and longer while no new answer arrives.
+- What it sees, keeps and logs is under "What the server and relay see, keep and log".
+
 ### Refusing the relay
 
 `docs/decisions/0008-relay-opt-out.md`
@@ -281,6 +293,17 @@ recipient → server     join {link, attempt, token}
 | Never sees | the file, its name, type or exact size; a shared secret or its length; a link's secret, the keys and the content of setup messages, except for an emailed link                                                                                                                                                                                                                                                                                                                       | the file, its name, type or exact size; a shared secret or its length; any link's secret or key                                                                                                                                                                    |
 | Keeps      | in memory only, while the pages are connected; forgotten within a minute after a page disconnects. Except: an emailed link's binding while it is hosted, its secret and typed name until the send attempt ends, and the email counters (HMACs only) for up to an hour                                                                                                                                                                                                                | nothing of the file once it has passed                                                                                                                                                                                                                             |
 | Logs       | events with a fixed set of fields (`LogEvent`, `LogFields` in `packages/protocol`): the first 6 characters of a link ID, link counts, message sizes, refuse and error codes, the outcome of each email and code (`email`, `code`, `verified`), the connection path, the port. Never names, email addresses, codes, tokens, the email marker's value, keys, file data or IP addresses. Deleted after 30 days (journald, `MaxRetentionSec=29day`).                                     | nothing by default. Only to fix a fault or stop abuse: connection times, IP addresses (127.0.0.1 for a TLS connection through HAProxy, real addresses otherwise) and data volumes, for at most 7 days                                                              |
+
+The relay box (see "The relay box") serves no transfers until SIG-153. Today:
+
+- It keeps its key pair. The private key never leaves the box.
+- coturn logs nothing. The journal is kept 29 days and holds no client addresses: the host firewall logs nothing either, because a logged blocked packet would carry its source address.
+- certbot's log is the exception. While certbot holds port 80 to get or renew the relay's certificate, a few seconds on each attempt, every 15 minutes until the first certificate and then roughly every 60 days, its log records the address of whatever connects: Let's Encrypt's validators and scanners. Browsers never use port 80 on the relay. Such an address is kept for at most about five weeks: logrotate rotates the log weekly, and a rule removes each file 29 days after its last write.
+
+From SIG-153 on, it also:
+
+- sees what the relay above sees, with the real address of every client, TLS included;
+- keeps the current secret, and the previous one for 24 hours after a change or longer while no new secret arrives, readable only by root and coturn. It keeps nothing of the file.
 
 /privacy lists every log field, generated from the same type.
 
