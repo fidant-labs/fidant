@@ -92,6 +92,8 @@ type Hash =
 type Connection = {
   abort: AbortController;
   peer?: Peer;
+  /** Relayed signals that arrived before the peer existed, such as the recipient's commit. */
+  early: string[];
   /** Fires `timeout` if the data channel has not opened in time. */
   deadline?: ReturnType<typeof setTimeout>;
   /** Set once the connection's path went to the server. */
@@ -226,7 +228,7 @@ export function SendPage({
       return;
     }
     closeConnection(linkId);
-    const connection: Connection = { abort: new AbortController() };
+    const connection: Connection = { abort: new AbortController(), early: [] };
     connectionsRef.current.set(linkId, connection);
     const dispatch = (action: SenderAction) => dispatchRef.current(action);
     // Someone who knows the link ID but not the secret can join and stay
@@ -316,6 +318,9 @@ export function SendPage({
         dispatch({ type: "dropped", linkId });
       },
     });
+    for (const data of connection.early.splice(0)) {
+      void connection.peer.handleRelay(data);
+    }
   };
 
   const runEffect = (effect: SenderEffect) => {
@@ -402,9 +407,15 @@ export function SendPage({
             mark: message.mark,
           });
           break;
-        case "relay":
-          void connectionsRef.current.get(message.link)?.peer?.handleRelay(message.data);
+        case "relay": {
+          const connection = connectionsRef.current.get(message.link);
+          if (connection?.peer) {
+            void connection.peer.handleRelay(message.data);
+          } else {
+            connection?.early.push(message.data);
+          }
           break;
+        }
         case "error":
           // After a reconnect the server may not have noticed the old socket close yet.
           if (message.code === "already-hosted") {
