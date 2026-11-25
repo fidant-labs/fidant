@@ -98,6 +98,12 @@ export const en = {
     terms: "Terms of use – Fidant",
     security: "Security – Fidant",
   },
+  openTransfer: {
+    send: "A file transfer is still open in this tab.",
+    secret: "A secret is still being shared from this tab.",
+    receive: "A transfer to you is still open in this tab.",
+    back: "Go back to it",
+  },
   menu: {
     language: "Language",
     theme: "Theme",
@@ -132,6 +138,11 @@ export const en = {
     relayNote:
       "If the two browsers can't connect directly, the file passes through our relay instead, still encrypted. The relay then sees both IP addresses and roughly how big the file is, and can't unlock it.",
     caveat: "The catch: since nothing is stored, keep your tab open until the file has arrived.",
+    tryHeading: "Try it on yourself",
+    tryBody:
+      "Send a file to yourself, open the link on your phone and watch it arrive. It takes about a minute.",
+    tryCta: "Send a file to yourself",
+    trySecret: "Or share a secret",
   },
   how: {
     title: "How it works",
@@ -280,14 +291,31 @@ export const en = {
   format: {
     bytes: (n: number) => (n === 1 ? "1 byte" : `${n.toLocaleString("en-US")} bytes`),
     progress: (percent: string, done: string, total: string) => `${percent} · ${done} of ${total}`,
+    timeLeft: (duration: string) => `About ${duration} left`,
   },
   send: {
-    fileHeading: "Your file",
-    recipientsHeading: "Recipients",
     continue: "Continue",
-    back: "Back to the file",
     title: "Send a file",
-    lede: "Your file is sent from this browser to the people you choose. It's encrypted the whole way and never uploaded or stored.",
+    lede: "Choose a file, then create a link for each person. Your file is sent from this browser to them. It's encrypted the whole way and never uploaded or stored.",
+    step: (n: number) => `Step ${n} of 2`,
+    peopleHeading: "Create a link for each person",
+    change: "Change",
+    fromSummary: (name: string) => `from ${name}`,
+    connectionOptions: "Connection options",
+    addEmail: "Create and email link",
+    share: "Share",
+    shareFor: (name: string) => `Share link for ${name}`,
+    sendingBar: (delivered: number, total: number) =>
+      `Sending from this tab · ${delivered} of ${total} delivered · keep it open`,
+    allDone: "Every link has delivered the file. You can close this tab.",
+    summary: (done: number, total: number) => `${done} of ${total} links have delivered the file`,
+    delivered: "Delivered",
+    doneTitle: "All delivered",
+    doneOne: (name: string) => `The file arrived intact through ${name}'s link.`,
+    doneMany: (n: number) => `The file arrived intact through all ${n} links.`,
+    closeTab: "You can close this tab.",
+    sendMore: "Send to someone else",
+    showDetails: "Show details",
     localhost:
       "This page is open on localhost, so the links won't work on other computers. Open the network address the server printed instead.",
     lostServer:
@@ -304,7 +332,6 @@ export const en = {
         "Your name and the file name are too long together. Shorten your name or rename the file.",
     },
     chooseFile: "Choose a file",
-    chooseOther: "Choose a different file",
     orDrop: "or drop it here",
     fileError: {
       unsafe:
@@ -317,7 +344,7 @@ export const en = {
     locked: "Remove everyone to change your name or file.",
     recipientLabel: "Who is it for?",
     recipientPlaceholder: "Their name",
-    add: "Add",
+    add: "Create link",
     nameError: {
       missing: "Enter a name.",
       taken: "That name is already on the list.",
@@ -331,7 +358,6 @@ export const en = {
     fileFirst: "Choose a file first.",
     full: (max: number) => `You can send to up to ${max} people at a time.`,
     oneLinkEach: "Each person gets their own link, which works once.",
-    keepOpen: "Keep this tab open until everyone has the file. It's sent from here.",
     recipients: "Recipients",
     status: {
       waiting: (name: string) => `Waiting for ${name}'s link to be opened`,
@@ -405,7 +431,8 @@ export const en = {
     receivingCaption: "Receiving from the sender. Keep this tab open until it's done.",
     doneTitle: "Download complete",
     verified: "We checked it: this is exactly the file that was sent.",
-    autoDownload: "Your download should start by itself.",
+    autoDownload: "Your browser should be saving it now. Didn't see it?",
+    onceNotice: "This link works once, and only while the sender's page is open.",
     savedWhereChosen: "It's saved where you chose.",
     saveFile: "Save file",
     doneCaption: "Sent from the sender's computer to yours. Encrypted the whole way.",
@@ -531,10 +558,12 @@ export const en = {
         body: "This browser couldn't read the secret it received. Ask the sender to send it again.",
       },
     },
-    back: "Back to the secret",
     first: "Write or paste the secret first.",
     locked: "Remove everyone to change your name or secret.",
-    keepOpen: "Keep this tab open until everyone has the secret. It's sent from here.",
+    allDone: "Every link has delivered the secret. You can close this tab.",
+    summary: (done: number, total: number) => `${done} of ${total} links have delivered the secret`,
+    doneOne: (name: string) => `The secret arrived intact through ${name}'s link.`,
+    doneMany: (n: number) => `The secret arrived intact through all ${n} links.`,
     emailNotice:
       "Our server will see this link's key once, to write the email. It doesn't store or log it, but our mail service and anyone who reads the email on its way can see it too, and the link, key included, stays in their mailbox: anyone who can read that mailbox could receive the secret. Until check words exist, our server could also put itself between you and them for this link. Sending the link yourself avoids all of this.",
     // Only the statuses whose file wording would be wrong; the rest come from send.status.
@@ -806,7 +835,7 @@ export const en = {
         heading: "The link",
         body: [
           "For each recipient, the sender's browser creates a link of the form https://fidant.se/r/<link ID>#<secret>. The link ID is 16 random bytes and the secret 32 random bytes, both from the browser's cryptographic random number generator.",
-          "The link ID only names the link: our server uses it to pair the sender with the recipient. The secret is in the fragment, the part after #, which browsers don't send to servers, and the site tells browsers not to send the page address on to other sites either. The app never sends the secret anywhere, unless the sender asks us to email the link (see Emailed links below). Apart from that, it only derives keys from it.",
+          "The link ID only names the link: our server uses it to pair the sender with the recipient. The secret is in the fragment, the part after #, which browsers don't send to servers, and the site tells browsers not to send the page address on to other sites either. The app never sends the secret anywhere, unless the sender asks us to email the link (see Emailed links below). Apart from that, it only derives keys from it and keeps the receive page's first address, secret included, in memory, so the \"Go back to it\" bar can return you to an unfinished transfer. The link in that bar carries only the path; following it puts the secret back in the address bar.",
           "Every recipient gets their own link ID and secret, so one recipient's link says nothing about another's.",
         ],
       },

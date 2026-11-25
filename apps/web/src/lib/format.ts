@@ -49,3 +49,35 @@ export function formatProgress(bytes: number, total: number, lang: Lang): string
     formatBytes(total, lang),
   );
 }
+
+/** How long a transfer of `total` bytes has left, from the rate over the last `windowMs`; undefined while the connection warms up. */
+export function etaTracker(total: number, windowMs = 2000, warmupMs = 5000) {
+  const samples: Array<readonly [number, number]> = [];
+  let start: number | undefined;
+  return (now: number, bytes: number): number | undefined => {
+    start ??= now;
+    samples.push([now, bytes]);
+    while (samples.length > 2 && now - (samples[1]?.[0] ?? now) >= windowMs) {
+      samples.shift();
+    }
+    const [since, from] = samples[0] ?? [now, bytes];
+    if (now - start < warmupMs || bytes <= from) {
+      return undefined;
+    }
+    return ((total - bytes) * (now - since)) / (bytes - from) / 1000;
+  };
+}
+
+/** "About 2 minutes left" ("Ungefär 2 minuter kvar"): 5-second steps under a minute, then minutes, then hours. */
+export function formatTimeLeft(seconds: number, lang: Lang): string {
+  const [value, unit] =
+    seconds < 55
+      ? [Math.max(5, Math.round(seconds / 5) * 5), "second"]
+      : seconds < 3570
+        ? [Math.round(seconds / 60), "minute"]
+        : [Math.round(seconds / 3600), "hour"];
+  const duration = new Intl.NumberFormat(lang, { style: "unit", unit, unitDisplay: "long" }).format(
+    value,
+  );
+  return MESSAGES[lang].format.timeLeft(duration);
+}
