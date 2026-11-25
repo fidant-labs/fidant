@@ -874,7 +874,7 @@ export const en = {
       parts: {
         heading: "The parts",
         body: [
-          "Fidant has three parts. The web app runs in the sender's and the recipient's browsers and does all the encryption. Our server, in Stockholm, serves the web app and passes setup messages between the two browsers over a WebSocket. Our relay, on a machine of its own in Stockholm, tells browsers their public address (STUN) and carries encrypted traffic when two browsers can't reach each other directly (TURN). If a sender asks us to email a link, our server also sends emails through a mail service.",
+          "Fidant has three parts. The web app runs in the sender's and the recipient's browsers and does all the encryption. Our server, in Stockholm, serves the web app and passes setup messages between the two browsers over a WebSocket. Our relay, on a machine of its own in Stockholm, tells browsers their public address (STUN). If the sender allows it and it is available, the relay also carries encrypted traffic when two browsers haven't reached each other directly 3 seconds after the recipient answers (TURN). If a sender asks us to email a link, our server also sends emails through a mail service.",
           "There are no accounts, no file storage and no database of people or transfers. The server holds what it knows about pages and transfers only in memory. On disk the server keeps secrets of its own, among them the one the relay's secret comes from, and the relay keeps its current and previous secret in a small database file.",
           "All of it is open source, so every statement on this page can be checked against the code.",
         ],
@@ -947,8 +947,8 @@ export const en = {
       travel: {
         heading: "How the file travels",
         body: [
-          "WebRTC tries the direct routes first: over the local network, or through each side's public address, which the browser learns from our STUN service. The file then goes straight between the browsers. The sender's page shows which route each connection took.",
-          "If no direct route works, which is common on mobile data and office networks, the traffic goes through our TURN relay in Stockholm. The relay forwards encrypted packets. It can't decrypt them and doesn't store them.",
+          "Both browsers start with only our STUN service, so WebRTC tries the direct routes first, without the relay: over the local network, or through each side's public address, which the browser learns from that service. The file then goes straight between the browsers. The sender's page shows which route each connection took.",
+          "When no direct route works, which is common on mobile data and office networks, the traffic goes through our TURN relay in Stockholm. The browsers add the relay only if the sender allows it, it is available and nothing has connected 3 seconds after the recipient answers. A page opened before we began adding the relay this way still reserves relay addresses from the start, until it is reloaded. To add the relay, the browsers start the connection setup again, with a new offer and answer, encrypted just like the first. A direct route can still win after that. So a connection that needs the relay starts about 3 seconds later, and a direct route that is still connecting 3 seconds after the recipient answers, for example on a network that loses many packets, may end up on the relay. The relay forwards encrypted packets. It can't decrypt them and doesn't store them.",
           "To use the relay a browser needs credentials, which our server creates for each pairing and gives only to the two paired pages. They expire after 5 minutes. Our server checks every minute that the relay can carry traffic, and offers it once a check passes. The server stops offering it after two failed checks in a row. The relay gets the secret behind the credentials from our server, sealed so that only the relay can open it. Browsers reach the relay over UDP, or over TLS on port 443 where a network allows only web traffic. The relay forwards only over UDP, and only from its own address. It refuses to forward to other machines on private or internal networks (with one accepted exception: the relay's own box, see decision 0007), and limits how many relayed connections run at once.",
           "On every route, each browser sees the other's IP address, like on a video call.",
         ],
@@ -1003,7 +1003,7 @@ export const en = {
         body: [
           "Our server sees each page's IP address and browser details, the link IDs, the sender's relay choice, the connection path the sender reports for each attempt (direct, STUN, relay or failed), whether a link was already used, when each side connects and disconnects, and the encrypted setup messages and their sizes. It never sees the file, its name, its type or its exact size, or a shared secret or its length. It never sees a link's secret or the keys and can't read the setup messages, except for a link we email: then it gets that link's secret once to write the email, along with the recipient's email address and the sender's typed name. It keeps what it knows about pages in memory only, and forgets a page within a minute after it disconnects. The exceptions are an emailed link's address, codes and tokens, which stay until the sender's page lets the link go, and the email counts, which last an hour.",
           "Its log lines use a fixed list of fields, such as the first 6 characters of a link ID and whether a connection was direct. Never names, email addresses, codes, keys, file data or IP addresses. They are deleted after 30 days.",
-          "Our relay sees both IP addresses and the encrypted traffic, so the file's size only roughly and nothing of a shared secret's length. It keeps no log of the traffic. Only to fix a fault or stop abuse do we turn one on, with connection times, IP addresses and data volumes, for at most 7 days. It keeps its current and previous secret, and nothing of the file. While it renews its certificate, a few seconds every two months or so, it logs the addresses that reach it on port 80. Those are Let's Encrypt's checks and internet scanners, never browsers, and they are deleted within about five weeks.",
+          "Our relay sees each browser's IP address when the browser asks it for its public address (STUN). The two browsers ask at about the same time, so it can usually tell which two addresses belong together. When the browsers add the relay, it can also learn that from the relay addresses they reserve, and on the relay route it sees the encrypted traffic, so the file's size only roughly and nothing of a shared secret's length. It keeps no log of the traffic. Only to fix a fault or stop abuse do we turn one on, with connection times, IP addresses and data volumes, for at most 7 days. It keeps its current and previous secret, and nothing of the file. While it renews its certificate, a few seconds every two months or so, it logs the addresses that reach it on port 80. Those are Let's Encrypt's checks and internet scanners, never browsers, and they are deleted within about five weeks.",
         ],
         link: ["Every log field, on the privacy page", "/privacy"],
       },
@@ -1080,15 +1080,15 @@ export const en = {
         items: {
           local: {
             heading: "Direct, on the same network",
-            body: "When both browsers are on the same local network, they connect over their local addresses. The file goes straight between them, and our server and relay see none of it. Each browser still asks our STUN service for its public address, which shows it that IP address, and if you allow the relay and it is available, it sees both IP addresses.",
+            body: "When both browsers are on the same local network, they connect over their local addresses. The file goes straight between them, and our server and relay see none of it. Each browser still asks our STUN service for its public address, which shows it that IP address. The two browsers ask at about the same time, so our STUN service can usually tell which two addresses belong together. If you allow the relay and it is available, and this route hasn't connected 3 seconds after the recipient answers, the browsers add the relay, which can then learn that the two addresses belong together.",
           },
           stun: {
             heading: "Direct, through public addresses",
-            body: "Each browser asks our STUN service for its public address, which shows our STUN service that IP address and nothing else. The file then goes straight between the browsers over the internet. If you allow the relay and it is available, it still sees both IP addresses.",
+            body: "Each browser asks our STUN service for its public address, which shows our STUN service that IP address. The two browsers ask at about the same time, so our STUN service can usually tell which two addresses belong together. The file then goes straight between the browsers over the internet. If you allow the relay and it is available, and this route hasn't connected 3 seconds after the recipient answers, the browsers add the relay, which can then learn that the two addresses belong together.",
           },
           relay: {
             heading: "Through our relay",
-            body: "When no direct route works, the encrypted traffic goes through our TURN relay in Stockholm, over UDP or over TLS on port 443. The relay forwards packets it can't decrypt and doesn't store them.",
+            body: "When nothing has connected 3 seconds after the recipient answers, the browsers add our TURN relay in Stockholm. Unless a direct route still wins, the encrypted traffic then goes through the relay, over UDP or over TLS on port 443. The relay forwards packets it can't decrypt and doesn't store them.",
           },
           norelay: {
             heading: "Relay refused",
@@ -1370,6 +1370,10 @@ export const en = {
             ],
             ["email", "Whether the email was sent, each code sent or refused, and a right code."],
             ["", "That a recipient left, and that your page closed, with how many links it had."],
+            [
+              "direct,relay",
+              "If our relay is available and nothing has connected 3 seconds after the recipient answers: lines for about a dozen more setup messages, from adding the relay. They hint that you allowed it.",
+            ],
             ["norelay", "If a relayed connection comes up anyway, that your page ended it."],
           ],
         },
@@ -1381,7 +1385,7 @@ export const en = {
             ["", "Each browser's public IP address, when the browser asks for it."],
             [
               "direct",
-              "While our relay is available, both IP addresses, because each browser reserves a relay address even when a direct route wins.",
+              "If our relay is available and nothing has connected 3 seconds after the recipient answers: both IP addresses together, even if a direct route wins after all. Both browsers then reserve a relay address, or only your browser's if the recipient's browser had already connected when your page's request to add the relay reached it. Either way the relay can learn both IP addresses.",
             ],
             [
               "relay",
@@ -1486,14 +1490,14 @@ export const en = {
           "Encrypted setup messages and their sizes. It can't read them, except for a link we emailed.",
           "Nothing. It passes them on.",
           "Each message's size, with the first 6 characters of the link ID.",
-          "Each browser's IP address, when it asks for its public address (STUN). If you allow the relay and it is available, each browser also reserves a relay address, so the relay sees both IP addresses even when a direct route wins.",
+          "Each browser's IP address, when it asks for its public address (STUN). If you allow the relay and it is available, and nothing has connected 3 seconds after the recipient answers, the browsers add the relay. Both then reserve a relay address, or only your browser's if the recipient's browser had already connected when your page's request to add the relay reached it. Either way the relay can learn both IP addresses, even if a direct route wins after all.",
         ],
         [
           "The file or secret travels",
           "Nothing of it. Your page reports the route: direct, STUN, relay or failed.",
           "Nothing.",
           "The route.",
-          "On the relay route, the encrypted packets, which it forwards and doesn't store. Both IP addresses whenever you allow the relay and it is available.",
+          "On the relay route, the encrypted packets, which it forwards and doesn't store. Both IP addresses whenever the browsers have added the relay.",
         ],
         [
           "The recipient confirms delivery",

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { type TestContext, test } from "node:test";
 import { checkNumber, commitFingerprint } from "./check.ts";
 import { deriveSignalKey, openSignal, sealSignal } from "./keys.ts";
 import { createLink } from "./link.ts";
@@ -12,6 +12,7 @@ import {
   type PeerCloseReason,
   type PeerOpenInfo,
   parseSignalPayload,
+  RELAY_FALLBACK_MS,
 } from "./peer.ts";
 
 const candidate = {
@@ -39,6 +40,9 @@ test("parseSignalPayload accepts commits, offers, answers and candidates", () =>
     kind: "answer",
     sdp: "v=0",
   });
+  for (const kind of ["restart-offer", "restart-answer"]) {
+    assert.deepEqual(parseSignalPayload({ kind, sdp: "v=0" }), { kind, sdp: "v=0" });
+  }
   assert.deepEqual(parseSignalPayload({ kind: "ice", candidate }), { kind: "ice", candidate });
   assert.deepEqual(parseSignalPayload({ kind: "ice", candidate: null }), {
     kind: "ice",
@@ -70,6 +74,14 @@ test("parseSignalPayload rejects anything else", () => {
     { kind: "offer", sdp: "v=0", check: "true" },
     { kind: "offer", sdp: "v=0", check: true, name: "x" },
     { kind: "answer", sdp: "v=0", check: true },
+    { kind: "restart-offer" },
+    { kind: "restart-offer", sdp: "" },
+    { kind: "restart-offer", sdp: "v=0", check: true },
+    { kind: "restart-answer" },
+    { kind: "restart-answer", sdp: "" },
+    { kind: "restart-answer", sdp: 1 },
+    { kind: "restart-answer", sdp: "v=0", check: true },
+    { kind: "restart", sdp: "v=0" },
     { kind: "bye" },
     { kind: "ice" },
     { kind: "ice", candidate: "x" },
@@ -166,6 +178,7 @@ function fakeSdp(...lines: string[]): string {
 }
 
 type FakeCert = { getFingerprints(): { algorithm: string; value: string }[] };
+type FakeConfiguration = { iceServers?: RTCIceServer[] | undefined };
 
 // Just enough of RTCPeerConnection for startPeer's signaling; each certificate it
 // makes carries the next fingerprint from `fingerprints`.
@@ -180,7 +193,14 @@ class FakePeerConnection {
     return { getFingerprints: () => [{ algorithm: "sha-256", value: value.toLowerCase() }] };
   }
   readonly certificate: FakeCert;
-  localDescription: { type: string; sdp: string } | null = null;
+  config: FakeConfiguration;
+  /** The ICE servers of each setConfiguration call. */
+  configured: unknown[] = [];
+  refuseConfiguration = false;
+  restarts = 0;
+  added: unknown[] = [];
+  iceConnectionState = "checking";
+  localDescription: { sdp: string } | null = null;
   remoteDescription: { type: string; sdp: string } | null = null;
   connectionState = "new";
   sctp = null;
@@ -188,10 +208,11 @@ class FakePeerConnection {
   onicecandidate = null;
   onconnectionstatechange = null;
   ondatachannel = null;
-  constructor(config: { certificates: FakeCert[] }) {
+  constructor(config: FakeConfiguration & { certificates: FakeCert[] }) {
     if (FakePeerConnection.throwOnConstruct) {
       throw new TypeError("bad iceServers");
     }
+    this.config = config;
     this.certificate = config.certificates[0] as FakeCert;
     FakePeerConnection.last = this;
   }
@@ -199,10 +220,22 @@ class FakePeerConnection {
     this.channel = { onopen: null };
     return Object.assign(this.channel, { label, ordered: true, binaryType: "", close() {} });
   }
+  getConfiguration() {
+    return this.config;
+  }
+  setConfiguration(config: FakeConfiguration) {
+    if (this.refuseConfiguration) {
+      throw new DOMException("refused", "InvalidModificationError");
+    }
+    this.config = config;
+    this.configured.push(config.iceServers);
+  }
+  restartIce() {
+    this.restarts++;
+  }
   async setLocalDescription() {
     const [fp] = this.certificate.getFingerprints();
     this.localDescription = {
-      type: this.remoteDescription ? "answer" : "offer",
       sdp: fakeSdp(`a=fingerprint:sha-256 ${FakePeerConnection.localFingerprint ?? fp?.value}`),
     };
   }
@@ -210,7 +243,9 @@ class FakePeerConnection {
     const read = FakePeerConnection.readBack;
     this.remoteDescription = read ? { ...description, sdp: read(description.sdp) } : description;
   }
-  async addIceCandidate() {}
+  async addIceCandidate(candidate?: unknown) {
+    this.added.push(candidate);
+  }
   async getStats() {
     return new Map();
   }
@@ -220,7 +255,10 @@ class FakePeerConnection {
 }
 (globalThis as { RTCPeerConnection?: unknown }).RTCPeerConnection = FakePeerConnection;
 
-async function harness(side: "s" | "r", check?: boolean) {
+// Taken before any test mocks the timers, so waiting for signals still works.
+const realSetTimeout = globalThis.setTimeout;
+
+async function harness(side: "s" | "r", check?: boolean, iceServers: RTCIceServer[] = []) {
   const { linkId, secret } = createLink("https://localhost");
   const key = await deriveSignalKey(secret, linkId);
   const attempt = "A".repeat(22);
@@ -239,7 +277,7 @@ async function harness(side: "s" | "r", check?: boolean) {
     linkId,
     attempt,
     signalKey: key,
-    iceServers: [],
+    iceServers,
     ...(check === undefined ? {} : { check }),
     onOpen: (_channel: RTCDataChannel, info: PeerOpenInfo) => opens.push(info),
     onClose: (reason: PeerCloseReason, detail?: string) => closes.push({ reason, detail }),
@@ -248,7 +286,7 @@ async function harness(side: "s" | "r", check?: boolean) {
   const from = side === "s" ? "r" : "s";
   const relay = async (payload: unknown) =>
     peer.handleRelay(await sealSignal(key, linkId, attempt, from, payload));
-  const settle = () => new Promise((resolve) => setTimeout(resolve, 10));
+  const settle = () => new Promise((resolve) => realSetTimeout(resolve, 10));
   const relayFrom = async (otherAttempt: string, payload: unknown) =>
     peer.handleRelay(await sealSignal(key, linkId, otherAttempt, from, payload));
   /** Every signal sent so far, once at least `count` went out. */
@@ -477,4 +515,291 @@ test("the recipient closes on a signal that does not open, even after its answer
   await h.relay({ kind: "offer", sdp: fakeSdp(`a=fingerprint:sha-256 ${SENDER_FP}`), check: true });
   await h.peer.handleRelay("not a sealed signal");
   assert.equal(h.closes[0]?.reason, "bad-signal");
+});
+
+const stun = "stun:turn.example:3478";
+const relayServers: RTCIceServer[] = [
+  { urls: [stun, "turn:turn.example:3478?transport=udp"], username: "u", credential: "c" },
+  { urls: "turns:turn.example:443?transport=tcp", username: "u", credential: "c" },
+];
+const stunServers: RTCIceServer[] = [{ urls: [stun] }];
+const sdpWith = (fingerprint: string, ufrag: string) =>
+  fakeSdp(`a=fingerprint:sha-256 ${fingerprint}`, `a=ice-ufrag:${ufrag}`);
+const ice = (usernameFragment: string | null) => ({
+  kind: "ice",
+  candidate: { ...candidate, usernameFragment },
+});
+
+function lastPc(): FakePeerConnection {
+  assert.ok(FakePeerConnection.last, "no connection yet");
+  return FakePeerConnection.last;
+}
+
+/** The kinds of the signals sent, once there are `count`. */
+async function kinds(h: { signals(count: number): Promise<unknown[]> }, count: number) {
+  return ((await h.signals(count)) as Array<{ kind: string }>).map((s) => s.kind);
+}
+
+/** A sender that took the recipient's commitment and its answer, ICE username fragment "r1". */
+async function answeredSender(servers = relayServers) {
+  resetFake(SENDER_FP);
+  const h = await harness("s", undefined, servers);
+  await h.relay({ kind: "commit", hash: await commitFingerprint(RECIPIENT_FP) });
+  await h.relay({ kind: "answer", sdp: sdpWith(RECIPIENT_FP, "r1") });
+  return { ...h, pc: lastPc() };
+}
+
+/** A recipient that answered an offer with ICE username fragment "s1". */
+async function answeredRecipient(servers = relayServers) {
+  resetFake(RECIPIENT_FP);
+  const h = await harness("r", undefined, servers);
+  await h.relay({ kind: "offer", sdp: sdpWith(SENDER_FP, "s1"), check: false });
+  return { ...h, pc: lastPc() };
+}
+
+/** An answered sender whose relay fallback fired. Needs mocked timers. */
+async function restartedSender(t: TestContext) {
+  const sender = await answeredSender();
+  t.mock.timers.tick(RELAY_FALLBACK_MS);
+  assert.deepEqual(await kinds(sender, 2), ["offer", "restart-offer"]);
+  return sender;
+}
+
+test("both sides start with the STUN URLs only", async () => {
+  for (const side of ["s", "r"] as const) {
+    resetFake();
+    const h = await harness(side, undefined, relayServers);
+    await h.relay(ice(null));
+    assert.deepEqual(lastPc().config.iceServers, [{ urls: [stun] }], side);
+  }
+});
+
+test("the sender adds the relay and restarts ICE once ICE has tried 3 s without it", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const sender = await answeredSender();
+  t.mock.timers.tick(RELAY_FALLBACK_MS - 1);
+  await sender.relay(ice("r1"));
+  assert.equal(sender.pc.restarts, 0);
+  t.mock.timers.tick(1);
+  assert.deepEqual(await kinds(sender, 2), ["offer", "restart-offer"]);
+  assert.equal(sender.pc.restarts, 1);
+  assert.deepEqual(sender.pc.configured, [relayServers]);
+  await sender.relay({ kind: "restart-answer", sdp: sdpWith(RECIPIENT_FP, "r2") });
+  assert.equal(sender.pc.remoteDescription?.sdp, sdpWith(RECIPIENT_FP, "r2"));
+  assert.deepEqual(sender.closes, []);
+});
+
+test("the sender never restarts without TURN, or once ICE connected", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  for (const [servers, state] of [
+    [stunServers, "checking"],
+    [relayServers, "connected"],
+    [relayServers, "completed"],
+  ] as const) {
+    const sender = await answeredSender(servers);
+    sender.pc.iceConnectionState = state;
+    t.mock.timers.tick(RELAY_FALLBACK_MS);
+    await sender.relay(ice("r1"));
+    assert.equal(sender.pc.restarts, 0, state);
+    assert.deepEqual(sender.pc.configured, [], state);
+    assert.deepEqual(sender.closes, [], state);
+  }
+});
+
+test("a browser that refuses the new servers keeps the connection without the relay", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const sender = await answeredSender();
+  sender.pc.refuseConfiguration = true;
+  t.mock.timers.tick(RELAY_FALLBACK_MS);
+  await sender.relay(ice("r1"));
+  assert.equal(sender.pc.restarts, 0);
+  assert.deepEqual(sender.closes, []);
+  assert.deepEqual(await kinds(sender, 1), ["offer"]);
+});
+
+test("close() stops the relay fallback", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const sender = await answeredSender();
+  sender.peer.close();
+  t.mock.timers.tick(RELAY_FALLBACK_MS);
+  assert.deepEqual(await kinds(sender, 1), ["offer"]);
+  assert.equal(sender.pc.restarts, 0);
+  assert.deepEqual(sender.pc.configured, []);
+
+  const fired = await answeredSender();
+  t.mock.timers.tick(RELAY_FALLBACK_MS);
+  fired.peer.close();
+  assert.deepEqual(await kinds(fired, 1), ["offer"]);
+  assert.equal(fired.pc.restarts, 0);
+  assert.deepEqual(fired.pc.configured, []);
+});
+
+test("the sender does not restart once its channel is open", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const sender = await answeredSender();
+  (sender.pc.channel as { readyState?: string }).readyState = "open";
+  sender.pc.iceConnectionState = "disconnected";
+  t.mock.timers.tick(RELAY_FALLBACK_MS);
+  await sender.relay(ice("r1"));
+  assert.equal(sender.pc.restarts, 0);
+  assert.deepEqual(sender.pc.configured, []);
+  assert.deepEqual(sender.closes, []);
+  assert.deepEqual(await kinds(sender, 1), ["offer"]);
+});
+
+test("the sent restart-offer names the first certificate and carries no check flag", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const sender = await restartedSender(t);
+  const restart = (await sender.signals(2))[1] as { sdp: string; check?: unknown };
+  assert.equal("check" in restart, false);
+  assert.match(restart.sdp, new RegExp(SENDER_FP.toLowerCase()));
+});
+
+test("each side refuses the restart signal meant for the other", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const sender = await answeredSender();
+  await sender.relay({ kind: "restart-offer", sdp: sdpWith(RECIPIENT_FP, "r2") });
+  assert.deepEqual(sender.closes, [{ reason: "bad-signal", detail: "unexpected restart-offer" }]);
+
+  const recipient = await answeredRecipient();
+  await recipient.relay({ kind: "restart-offer", sdp: sdpWith(SENDER_FP, "s2") });
+  await recipient.relay({ kind: "restart-answer", sdp: sdpWith(SENDER_FP, "s3") });
+  assert.deepEqual(recipient.closes, [
+    { reason: "bad-signal", detail: "unexpected restart-answer" },
+  ]);
+});
+
+/** Brings the path up as `how` and returns the function that takes it down again. */
+function pathUp(pc: FakePeerConnection, how: "open" | "connected" | "completed") {
+  if (how === "open") {
+    const channel = pc.channel ?? { label: "sigill", ordered: true, readyState: "", close() {} };
+    if (!pc.channel) {
+      (pc.ondatachannel as unknown as (e: { channel: object }) => void)({ channel });
+    }
+    Object.assign(channel, { readyState: "open" });
+    return () => Object.assign(channel, { readyState: "closed" });
+  }
+  pc.iceConnectionState = how;
+  return () => {
+    pc.iceConnectionState = "checking";
+  };
+}
+
+test("the recipient ignores a restart-offer once its channel is open or ICE connected", async () => {
+  for (const how of ["open", "connected", "completed"] as const) {
+    const recipient = await answeredRecipient();
+    const down = pathUp(recipient.pc, how);
+    await recipient.relay({ kind: "restart-offer", sdp: sdpWith(SENDER_FP, "s2") });
+    down();
+    await recipient.relay({ kind: "restart-offer", sdp: sdpWith(SENDER_FP, "s2") });
+    assert.deepEqual(recipient.closes, [], how);
+    assert.deepEqual(recipient.pc.configured, [], how);
+    assert.equal(recipient.pc.remoteDescription?.sdp, sdpWith(SENDER_FP, "s1"), how);
+    assert.deepEqual(await kinds(recipient, 2), ["commit", "answer"], how);
+  }
+});
+
+test("the sender ignores a restart-answer once its channel is open or ICE connected", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  for (const how of ["open", "connected", "completed"] as const) {
+    const sender = await restartedSender(t);
+    const down = pathUp(sender.pc, how);
+    await sender.relay({ kind: "restart-answer", sdp: sdpWith(RECIPIENT_FP, "r2") });
+    down();
+    await sender.relay({ kind: "restart-answer", sdp: sdpWith(RECIPIENT_FP, "r2") });
+    assert.deepEqual(sender.closes, [], how);
+    assert.equal(sender.pc.remoteDescription?.sdp, sdpWith(RECIPIENT_FP, "r1"), how);
+  }
+});
+
+test("a sender takes one restart-answer, and only after its restart-offer", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const early = await answeredSender();
+  await early.relay({ kind: "restart-answer", sdp: sdpWith(RECIPIENT_FP, "r2") });
+  assert.deepEqual(early.closes, [{ reason: "bad-signal", detail: "unexpected restart-answer" }]);
+
+  const twice = await restartedSender(t);
+  await twice.relay({ kind: "restart-answer", sdp: sdpWith(RECIPIENT_FP, "r2") });
+  await twice.relay({ kind: "restart-answer", sdp: sdpWith(RECIPIENT_FP, "r3") });
+  assert.deepEqual(twice.closes, [{ reason: "bad-signal", detail: "unexpected restart-answer" }]);
+});
+
+test("a recipient takes one restart-offer, and only after its answer", async () => {
+  resetFake(RECIPIENT_FP);
+  const early = await harness("r", undefined, relayServers);
+  await early.relay({ kind: "restart-offer", sdp: sdpWith(SENDER_FP, "s1") });
+  assert.deepEqual(early.closes, [{ reason: "bad-signal", detail: "unexpected restart-offer" }]);
+
+  const recipient = await answeredRecipient();
+  await recipient.relay({ kind: "restart-offer", sdp: sdpWith(SENDER_FP, "s2") });
+  assert.deepEqual(await kinds(recipient, 3), ["commit", "answer", "restart-answer"]);
+  assert.deepEqual(recipient.pc.configured, [relayServers]);
+  assert.equal(recipient.pc.restarts, 0);
+  assert.equal(recipient.pc.remoteDescription?.sdp, sdpWith(SENDER_FP, "s2"));
+  await recipient.relay({ kind: "restart-offer", sdp: sdpWith(SENDER_FP, "s3") });
+  assert.deepEqual(recipient.closes, [
+    { reason: "bad-signal", detail: "unexpected restart-offer" },
+  ]);
+
+  const noTurn = await answeredRecipient(stunServers);
+  await noTurn.relay({ kind: "restart-offer", sdp: sdpWith(SENDER_FP, "s2") });
+  assert.deepEqual(await kinds(noTurn, 3), ["commit", "answer", "restart-answer"]);
+  assert.deepEqual(noTurn.pc.configured, []);
+});
+
+test("a replayed first offer or answer can't stand in for a restart one", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const sender = await restartedSender(t);
+  await sender.relay({ kind: "answer", sdp: sdpWith(RECIPIENT_FP, "r2") });
+  assert.deepEqual(sender.closes, [{ reason: "bad-signal", detail: "unexpected answer" }]);
+
+  const recipient = await answeredRecipient();
+  await recipient.relay({ kind: "offer", sdp: sdpWith(SENDER_FP, "s2"), check: false });
+  assert.deepEqual(recipient.closes, [{ reason: "bad-signal", detail: "unexpected offer" }]);
+});
+
+test("a restart must name the same two certificates as the check number", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const recipient = await answeredRecipient();
+  await recipient.relay({ kind: "restart-offer", sdp: sdpWith(OTHER_FP, "s2") });
+  assert.deepEqual(recipient.closes, [
+    { reason: "bad-signal", detail: "the restart names another certificate" },
+  ]);
+  assert.equal(recipient.pc.remoteDescription?.sdp, sdpWith(SENDER_FP, "s1"));
+  assert.deepEqual(recipient.pc.configured, []);
+
+  const sender = await restartedSender(t);
+  await sender.relay({ kind: "restart-answer", sdp: sdpWith(OTHER_FP, "r2") });
+  assert.deepEqual(sender.closes, [
+    { reason: "bad-signal", detail: "the restart names another certificate" },
+  ]);
+  assert.equal(sender.pc.remoteDescription?.sdp, sdpWith(RECIPIENT_FP, "r1"));
+
+  const own = await answeredSender();
+  FakePeerConnection.localFingerprint = OTHER_FP;
+  t.mock.timers.tick(RELAY_FALLBACK_MS);
+  await own.relay(ice("r1"));
+  assert.deepEqual(own.closes, [
+    { reason: "setup-failed", detail: "the restart offer names another certificate" },
+  ]);
+  assert.deepEqual(await kinds(own, 1), ["offer"]);
+  resetFake();
+});
+
+test("drops candidates for another ICE username fragment, queued ones too", async () => {
+  resetFake(RECIPIENT_FP);
+  const recipient = await harness("r", undefined, relayServers);
+  await recipient.relay(ice("s0"));
+  await recipient.relay(ice("s1"));
+  await recipient.relay({ kind: "offer", sdp: sdpWith(SENDER_FP, "s1"), check: false });
+  await recipient.relay(ice(null));
+  await recipient.relay({ kind: "restart-offer", sdp: sdpWith(SENDER_FP, "s2") });
+  await recipient.relay(ice("s1"));
+  await recipient.relay(ice("s2"));
+  const added = lastPc().added as { usernameFragment: string | null }[];
+  assert.deepEqual(
+    added.map((c) => c.usernameFragment),
+    ["s1", null, "s2"],
+  );
+  assert.deepEqual(recipient.closes, []);
 });
