@@ -1234,6 +1234,10 @@ export const en = {
               "",
               "Your theme and language choice, in the browser's local storage, until you clear it.",
             ],
+            [
+              "direct,relay",
+              "Relay credentials for this pair, valid 5 minutes to start a relay, in memory while the page is open.",
+            ],
           ],
         },
         channel: {
@@ -1288,9 +1292,28 @@ export const en = {
             ],
           ],
         },
+        caddy: {
+          name: "Our web server (Caddy)",
+          kept: "No access log. Its own log: 30 days",
+          never: "The part of the link after #, which browsers never send.",
+          lines: [
+            [
+              "",
+              "It decrypts HTTPS: it sees each request's path, such as /r/ with the link ID, each browser's IP address, and every message the pages send our server, in memory only. Setup messages stay encrypted.",
+            ],
+            [
+              "email",
+              "On an emailed link, those messages include the recipient's email address, the name you typed, the link's key, the code and the token.",
+            ],
+            [
+              "",
+              "Its own log, about starting, goes to the journal. It keeps no access log, and its error and TLS logs are off.",
+            ],
+          ],
+        },
         log: {
           name: "Our server log",
-          kept: "29 days",
+          kept: "30 days",
           never: "Names, email addresses, codes, keys, IP addresses or file data.",
           lines: [
             [
@@ -1331,7 +1354,7 @@ export const en = {
         },
         recipient: {
           name: "The recipient's browser",
-          kept: "History and saved files stay until the recipient deletes them",
+          kept: "Mostly until the tab closes; see each line",
           never:
             "Fidant saves no key on their device, apart from what the browser's history keeps.",
           lines: [
@@ -1342,6 +1365,11 @@ export const en = {
               "The secret, only in the page's memory, until they copy it. Then it's on their clipboard too.",
             ],
             ["email", "A token for the right code, in that tab's session storage."],
+            [
+              "direct,relay",
+              "Relay credentials for this pair, valid 5 minutes to start a relay, in memory while the page is open.",
+            ],
+            ["", "Their theme and language choice, in the browser's local storage, until cleared."],
           ],
         },
         networks: {

@@ -1184,6 +1184,10 @@ export const sv: Messages = {
               "Hemligheten i sin textruta, tills du stänger fliken. En webbläsare kan spara den med sin session.",
             ],
             ["", "Ditt val av tema och språk, i webbläsarens lokala lagring, tills du rensar den."],
+            [
+              "direct,relay",
+              "Reläuppgifter för det här paret, giltiga i 5 minuter för att starta ett relä, i minnet medan sidan är öppen.",
+            ],
           ],
         },
         channel: {
@@ -1241,9 +1245,28 @@ export const sv: Messages = {
             ],
           ],
         },
+        caddy: {
+          name: "Vår webbserver (Caddy)",
+          kept: "Ingen åtkomstlogg. Dess egen logg: 30 dagar",
+          never: "Delen av länken efter #, som webbläsare aldrig skickar.",
+          lines: [
+            [
+              "",
+              "Den dekrypterar HTTPS: den ser varje förfrågans sökväg, som /r/ med länkens ID, varje webbläsares IP-adress och alla meddelanden sidorna skickar till vår server, bara i minnet. Uppkopplingsmeddelandena förblir krypterade.",
+            ],
+            [
+              "email",
+              "På en mejlad länk ingår mottagarens mejladress, namnet du skrev, länkens nyckel, koden och token i de meddelandena.",
+            ],
+            [
+              "",
+              "Dess egen logg, om start, går till journalen. Den sparar ingen åtkomstlogg, och dess fel- och TLS-loggar är avstängda.",
+            ],
+          ],
+        },
         log: {
           name: "Vår serverlogg",
-          kept: "29 dagar",
+          kept: "30 dagar",
           never: "Namn, mejladresser, koder, nycklar, IP-adresser eller filinnehåll.",
           lines: [
             [
@@ -1293,7 +1316,7 @@ export const sv: Messages = {
         },
         recipient: {
           name: "Mottagarens webbläsare",
-          kept: "Historiken och sparade filer finns kvar tills mottagaren raderar dem",
+          kept: "Mest tills fliken stängs; se varje rad",
           never:
             "Fidant sparar ingen nyckel på deras enhet, utöver det webbläsarens historik sparar.",
           lines: [
@@ -1304,6 +1327,11 @@ export const sv: Messages = {
               "Hemligheten, bara i sidans minne tills de kopierar den. Då ligger den i deras urklipp också.",
             ],
             ["email", "En token för den rätta koden, i flikens sessionslagring."],
+            [
+              "direct,relay",
+              "Reläuppgifter för det här paret, giltiga i 5 minuter för att starta ett relä, i minnet medan sidan är öppen.",
+            ],
+            ["", "Deras val av tema och språk, i webbläsarens lokala lagring, tills de rensas."],
           ],
         },
         networks: {
