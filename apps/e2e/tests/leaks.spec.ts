@@ -318,6 +318,7 @@ test.describe("an emailed link", () => {
       buffer: Buffer.from("x"),
     });
     await page.getByLabel("Who is it for?").fill("Anna");
+    await page.getByLabel("Email the link for me (less private)").check();
     await page.getByLabel("Their email address").fill(to);
     await page.getByRole("button", { name: "Create and email link", exact: true }).click();
     // Shown once the server has emailed it: the link with the server's value before the secret.
