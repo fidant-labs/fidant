@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import { createServer, defineConfig } from "vite";
-import { LANGUAGE_NAMES, localizedPath, MESSAGES } from "./src/i18n/language.ts";
+import { LANGUAGE_NAMES, localizedPath, MESSAGES, pathLanguage } from "./src/i18n/language.ts";
 import { pageHtml } from "./src/i18n/preview.ts";
 import { llmsTxt, pageUrl, sitemap } from "./src/site-files.ts";
 
@@ -52,7 +52,7 @@ export default defineConfig({
             for (const path of PAGES) {
               const page = renderPage(path, lang);
               const local = localizedPath(path, lang);
-              if (lang === "sv" && !local.startsWith("/sv")) {
+              if (lang === "sv" && pathLanguage(local) !== "sv") {
                 throw new Error(`pages: ${path} has no Swedish address in SWEDISH_PATHS`);
               }
               const sv = lang === "en" ? localizedPath(path, "sv") : undefined;
