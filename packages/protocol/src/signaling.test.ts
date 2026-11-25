@@ -402,6 +402,13 @@ test("rejects malformed or oversized ICE servers", () => {
   }
 });
 
+test("email sender names: a single U+202F parses, spaces split by invisible characters do not", () => {
+  const ok = { ...email, from: "Anna\u202fB" };
+  assert.deepEqual(client(ok), ok);
+  const hidden = { ...email, from: `Anna${" \u200b".repeat(5)}.exe` };
+  assert.equal(client(hidden), undefined);
+});
+
 test("parses valid emailed-link client messages", () => {
   assert.deepEqual(client(email), email);
   for (const lang of ["sv", "en"]) {
@@ -670,4 +677,131 @@ test("rejects each emailed-link message in the wrong direction", () => {
   assert.equal(client({ t: "gate", link, to: "" }), undefined);
   assert.equal(client({ t: "code", link, result: "sent" }), undefined);
   assert.equal(client({ t: "token", link, token }), undefined);
+});
+
+// From the security audit of 2026-11-25, which ran this over 1.2 million mutations.
+test("one mutation of a valid message never throws, and what is accepted parses to itself", () => {
+  // A fixed xorshift seed, so a failure repeats.
+  let seed = 12345;
+  const random = () => {
+    seed ^= seed << 13;
+    seed ^= seed >>> 17;
+    seed ^= seed << 5;
+    return (seed >>> 0) / 2 ** 32;
+  };
+  const pick = <T>(items: readonly T[]): T => items[Math.floor(random() * items.length)] as T;
+  type Fields = Record<string, unknown>;
+  const iceServers = [
+    { urls: ["stun:a"] },
+    { urls: ["turn:a", "turns:b"], username: "u", credential: "c" },
+  ];
+  const valid: Fields[] = [
+    { t: "host", links: [link, other], turn: true },
+    { t: "join", link, attempt },
+    { t: "join", link, attempt, token },
+    { t: "relay", link, data: "abc" },
+    { t: "refuse", link, attempt, reason: "used" },
+    { t: "path", link, path: "stun" },
+    { t: "email", link, to, secret, from: "Anna", lang: "sv" },
+    { t: "gate", link },
+    { t: "gate", link, mark },
+    { t: "send-code", link, mark },
+    { t: "code", link, code: "123456" },
+    { t: "code", link, code: "123456", mark },
+    { t: "joined", link, attempt, turn: true, iceServers },
+    { t: "left", link },
+    { t: "refused", reason: "busy" },
+    { t: "host-gone" },
+    { t: "error", code: "bad-message" },
+    { t: "hello", mail: true },
+    { t: "email", link, status: "sent", mark },
+    { t: "email", link, status: "failed" },
+    { t: "gate", link, to: "a***@b.se" },
+    { t: "gate", link, to: "" },
+    { t: "code", link, result: "wrong" },
+    { t: "token", link, token },
+  ];
+  for (const message of valid) {
+    const raw = JSON.stringify(message);
+    assert.ok(parseClientMessage(raw) ?? parseServerMessage(raw), `a seed is not valid: ${raw}`);
+  }
+  const junk: unknown[] = [
+    null,
+    true,
+    0,
+    -1,
+    1.5,
+    2 ** 53 + 2,
+    "",
+    "\0",
+    String.fromCharCode(0xd800),
+    String.fromCharCode(0x202e),
+    "x".repeat(300),
+    [],
+    {},
+    [link],
+    { t: 1 },
+    `${link}\n`,
+    link.slice(1),
+    "host",
+    "joined",
+    "turn:x",
+    ["turn:x"],
+    "a@b.se",
+    "__proto__",
+  ];
+  const extraKeys = ["x", "mark", "token", "turn", "username", "credential", "constructor"];
+  /** The value and every object or array inside it. */
+  const nested = (value: unknown): Fields[] =>
+    value !== null && typeof value === "object"
+      ? [value as Fields, ...Object.values(value).flatMap(nested)]
+      : [];
+  /** One valid message with one thing changed, as JSON text. */
+  const mutate = (message: Fields): string => {
+    const copy = structuredClone(message);
+    const key = pick(Object.keys(copy));
+    const target = pick(nested(copy));
+    const targetKey = pick(Object.keys(target).length > 0 ? Object.keys(target) : ["x"]);
+    let extra = "";
+    switch (Math.floor(random() * 7)) {
+      case 0:
+        target[targetKey] = pick(junk);
+        break;
+      case 1:
+        delete target[targetKey];
+        break;
+      case 2:
+        target[pick(extraKeys)] = pick(junk);
+        break;
+      case 3:
+        // The same key with a value from another message type.
+        copy[key] = pick(valid.filter((each) => key in each))[key];
+        break;
+      case 4:
+        copy.t = pick(valid).t;
+        break;
+      case 5:
+        extra = `,"__proto__":${JSON.stringify(pick(valid))}`;
+        break;
+      default:
+        // A duplicate key.
+        extra = `,${JSON.stringify(key)}:${JSON.stringify(pick(junk))}`;
+    }
+    return `${JSON.stringify(copy).slice(0, -1)}${extra}}`;
+  };
+
+  let accepted = 0;
+  for (let i = 0; i < 20_000; i += 1) {
+    const raw = mutate(pick(valid));
+    for (const parse of [parseClientMessage, parseServerMessage]) {
+      const message = parse(raw);
+      if (message) {
+        accepted += 1;
+        assert.deepEqual(parse(JSON.stringify(message)), message, raw);
+        assert.ok(!Object.hasOwn(message, "__proto__"), raw);
+      }
+    }
+  }
+  // Some mutations leave a valid message, so the round trip above ran on real cases.
+  assert.ok(accepted > 100, `only ${accepted} mutations were accepted`);
 });
