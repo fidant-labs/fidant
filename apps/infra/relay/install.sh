@@ -260,7 +260,7 @@ OnUnitInactiveSec=15min
 [Install]
 WantedBy=timers.target
 EOF
-# certbot logs each address that reaches port 80. By mtime: every certbot run renames all its logs.
+# certbot logs each address that reaches port 80. By mtime: rotating a log renames it, which renews its ctime.
 echo 'e /var/log/letsencrypt - - - m:29d' >/etc/tmpfiles.d/fidant-relay-letsencrypt.conf
 
 # A public address that isn't on the box (Lightsail's NAT) reaches coturn through the relay's own name.
