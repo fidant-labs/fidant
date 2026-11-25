@@ -87,7 +87,7 @@ function App() {
   // A page change hides the focused link, so focus moves to the new page's or section's heading.
   const firstRoute = useRef(true);
   useEffect(() => {
-    // Only /how has anchors; elsewhere the fragment can be a decryption key, so it is never read.
+    // This effect reads the fragment only on /how; elsewhere it can be a decryption key.
     const named =
       routeOf(location.pathname) === "how" && location.hash
         ? document.getElementById(location.hash.slice(1))
@@ -117,7 +117,7 @@ function App() {
     receiveUrl.current = location.pathname + location.hash;
   }
   return (
-    <div class="flex min-h-dvh flex-col has-[[data-bottom-bar]:not([hidden]_*)]:pb-24">
+    <div class="flex min-h-dvh flex-col has-[[data-bottom-bar]:not([hidden]_*)]:pb-24 has-[[data-page-bar]:not([hidden]_*)]:has-[[data-pill]]:pb-40 has-[[data-page-bar]:not([hidden]_*)]:[&_[data-pill-wrap]]:bottom-20">
       <Header current={route} open={{ send: sendOpen, secret: secretOpen }} />
       <div class="flex-1">
         {route === "landing" && <LandingPage />}
@@ -148,11 +148,13 @@ function App() {
       <Footer theme={theme} onTheme={chooseTheme} />
       <div
         role="status"
+        data-pill-wrap
         class="pointer-events-none fixed inset-x-0 bottom-4 z-40 flex justify-center px-4"
       >
         {away && (
           <div
             data-bottom-bar
+            data-pill
             class="pointer-events-auto flex items-center gap-3 rounded-full border border-border bg-popover/90 py-1.5 pr-1.5 pl-4 text-sm text-popover-foreground shadow-xl backdrop-blur-xl animate-in fade-in slide-in-from-bottom-4"
           >
             <LiveDot />
