@@ -1074,7 +1074,7 @@ export const en = {
       ],
       signaling: [
         "Signaling",
-        "Passing the setup messages between two browsers before they can reach each other. WebRTC leaves this to the app. Fidant passes them through our server, encrypted so the server can't read or change them, except for a link we email.",
+        "Passing the setup messages between two browsers before they can reach each other. WebRTC leaves this to the app. Fidant passes them through our server, encrypted so the server can't read or change them. The exception is a link we email.",
       ],
       websocket: [
         "WebSocket",
@@ -1090,7 +1090,7 @@ export const en = {
       ],
       stun: [
         "STUN",
-        "A service that tells a browser its public address, the address the internet sees it from behind a router. Our STUN service runs on the same machine as our relay.",
+        "A service that tells a browser its public address: the address the internet sees when the browser is behind a router. Our STUN service runs on the same machine as our relay.",
       ],
       turn: [
         "TURN",
@@ -1130,7 +1130,7 @@ export const en = {
       ],
       hmac: [
         "HMAC",
-        "A checksum made with a key. Our server keeps the email and IP addresses it counts for its limits only as HMACs, with a random key that exists only in its memory.",
+        "A checksum made with a key. Our server counts email and IP addresses for its limits, and keeps them only as HMACs. The key is random and exists only in the server's memory.",
       ],
     },
     linkRisks: {
@@ -1146,15 +1146,13 @@ export const en = {
         [
           "We email it",
           "Our server while it sends the email, our mail service, anyone who reads the email on its way, the recipient's mailbox provider, and anyone who can read that mailbox.",
-          "The recipient's browser connects only after a 6-digit code sent to the same address, which works for 10 minutes and 5 tries. Our server could put itself between the two browsers for that link, which the check number shows unless you turned it off.",
+          "The recipient's browser connects only after a 6-digit code sent to the same address. The code works for 10 minutes, and 5 wrong tries end it. Our server could put itself between the two browsers for that link, which the check number shows unless you turned it off.",
         ],
       ],
     },
     protect: {
       heading: "How Fidant protects you",
-      body: [
-        "Each risk, and what in Fidant stands against it. The sections above explain each part.",
-      ],
+      body: ["The earlier steps explain each part."],
       columns: ["The risk", "What Fidant does"],
       rows: [
         [
@@ -1163,11 +1161,11 @@ export const en = {
         ],
         [
           "Our server puts itself between the two browsers",
-          "The setup messages are encrypted and bound to their link, attempt and direction. They carry the fingerprints of the WebRTC encryption, which the server therefore can't swap for its own. For a link we email, the server had the key and could swap them; then the two screens show different check numbers, so with the check number on you'd catch it.",
+          "The setup messages are encrypted and bound to their link, attempt and direction. They carry the fingerprints of the WebRTC encryption, which the server therefore can't swap for its own. For a link we email, the server had the key and could swap the fingerprints. Then the two screens show different check numbers, so with the check number on you'd catch it.",
         ],
         [
           "The networks on the way or our relay read the traffic",
-          "Two layers of encryption: WebRTC's DTLS, and AES-256-GCM under a file key only the two browsers have, new for every attempt. For a link we email, our server could also get the file key by putting itself in the middle (see above), which the check number shows when it is on.",
+          "Two layers of encryption: WebRTC's DTLS, and AES-256-GCM under a file key only the two browsers have, new for every attempt. For a link we email, our server could also get the file key by putting itself in the middle (see above). The check number shows this when it is on.",
         ],
         [
           "The traffic gives away the file name, the exact size or a secret's length",
@@ -1191,11 +1189,11 @@ export const en = {
         ],
         [
           "A shared secret lingers in the browser",
-          "On the recipient's side it is never downloaded or put in a form field, and translation is off. The sender's text box tells the browser to keep spelling, autocomplete, writing suggestions and translation off it. It still lingers in two ways: a browser can save the sender's text box with its session, and a copied secret stays on the clipboard (see What it doesn't protect against).",
+          "On the recipient's side it is never downloaded or put in a form field, and translation is off. The sender's text box tells the browser to keep spelling, autocomplete, writing suggestions and translation off it. The shared secret can still linger in two ways: a browser can save the sender's text box with its session, and a copied secret stays on the clipboard (see What it doesn't protect against).",
         ],
         [
           "Data left behind on our machines",
-          "No accounts, file storage or database of people or transfers. The server holds what it knows about pages only in memory and forgets a page within a minute after it disconnects, apart from scrambled counts of emails and codes, and two server-wide counters of send times, which it keeps for an hour. Its logs have fixed fields, never names, email addresses, codes, keys, file data or IP addresses, and are deleted after 30 days. The relay keeps no log of the traffic by default. While it renews its certificate, it logs the addresses that reach it on port 80, never browsers', for about five weeks.",
+          "No accounts, file storage or database of people or transfers. The server holds what it knows about pages only in memory, and forgets a page within a minute after the page disconnects. The exceptions, which it keeps for an hour, are scrambled counts of emails and codes and two server-wide counters of send times. The server's logs have fixed fields and never hold names, email addresses, codes, keys, file data or IP addresses. They are deleted after 30 days. The relay keeps no log of the traffic by default. While the relay renews its certificate, it logs the addresses that reach it on port 80, never browsers', and keeps them for about five weeks.",
         ],
         [
           "Tracking, or code from other sites",

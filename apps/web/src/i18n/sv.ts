@@ -1030,7 +1030,7 @@ export const sv: Messages = {
       ],
       signaling: [
         "Signalering",
-        "Att skicka meddelandena för uppkopplingen mellan två webbläsare innan de når varandra. WebRTC lämnar det till appen. Fidant skickar dem via vår server, krypterade så att servern inte kan läsa eller ändra dem, utom för en länk vi mejlar.",
+        "Att skicka meddelandena för uppkopplingen mellan två webbläsare innan de når varandra. WebRTC lämnar det till appen. Fidant skickar dem via vår server, krypterade så att servern inte kan läsa eller ändra dem. Undantaget är en länk vi mejlar.",
       ],
       websocket: [
         "WebSocket",
@@ -1046,7 +1046,7 @@ export const sv: Messages = {
       ],
       stun: [
         "STUN",
-        "En tjänst som talar om för en webbläsare vilken offentlig adress den har, adressen internet ser den från bakom en router. Vår STUN-tjänst körs på samma maskin som vårt relä.",
+        "En tjänst som talar om för en webbläsare vilken offentlig adress den har: adressen som internet ser när webbläsaren sitter bakom en router. Vår STUN-tjänst körs på samma maskin som vårt relä.",
       ],
       turn: [
         "TURN",
@@ -1086,7 +1086,7 @@ export const sv: Messages = {
       ],
       hmac: [
         "HMAC",
-        "En kontrollsumma gjord med en nyckel. Vår server har e-post- och IP-adresserna den räknar för sina gränser bara som HMAC, med en slumpmässig nyckel som bara finns i dess minne.",
+        "En kontrollsumma gjord med en nyckel. Vår server räknar mejl- och IP-adresser för sina gränser och har dem bara som HMAC. Nyckeln är slumpmässig och finns bara i serverns minne.",
       ],
     },
     linkRisks: {
@@ -1097,31 +1097,31 @@ export const sv: Messages = {
         [
           "Avsändaren skickar den vidare",
           "Den som kan läsa kanalen avsändaren använder, till exempel chatt- eller e-posttjänsten.",
-          "Länken fungerar bara tills dess fil har levererats, och bara medan avsändarens sida är öppen. Skicka varje länk bara till den den är till, på ett sätt du litar på.",
+          "Länken fungerar bara tills dess fil har levererats, och bara medan avsändarens sida är öppen. Skicka varje länk bara till den som ska ha den, på ett sätt du litar på.",
         ],
         [
           "Vi mejlar den",
           "Vår server medan den skickar mejlet, vår e-posttjänst, den som läser mejlet på vägen, mottagarens e-postleverantör och den som kan läsa den brevlådan.",
-          "Mottagarens webbläsare ansluter först efter en sexsiffrig kod som skickas till samma adress, och som gäller i 10 minuter och 5 försök. Vår server skulle kunna ställa sig mellan de två webbläsarna för den länken, vilket kontrollnumret visar om du inte har stängt av det.",
+          "Mottagarens webbläsare ansluter först efter en sexsiffrig kod som skickas till samma adress. Koden gäller i 10 minuter, och 5 felaktiga försök gör den ogiltig. Vår server skulle kunna ställa sig mellan de två webbläsarna för den länken, vilket kontrollnumret visar om du inte har stängt av det.",
         ],
       ],
     },
     protect: {
       heading: "Så skyddar Fidant dig",
-      body: ["Varje risk, och vad i Fidant som står emot den. Avsnitten ovan förklarar varje del."],
+      body: ["De tidigare stegen förklarar varje del."],
       columns: ["Risken", "Det här gör Fidant"],
       rows: [
         [
           "Vår server eller vårt värdföretag läser filen",
-          "Filen krypteras i din webbläsare med en nyckel ur delen av länken efter #, som webbläsare aldrig skickar till en server. Bara den som har länken kan dekryptera den. Undantaget är en länk vi mejlar, vars nyckel vår server och e-posttjänsten ser. Allt detta bygger på att koden vi levererar är den publicerade koden (se Det här skyddar den inte mot).",
+          "Filen krypteras i din webbläsare med en nyckel ur den del av länken som står efter #. Den delen skickar webbläsare aldrig till en server. Bara den som har länken kan dekryptera filen. Undantaget är en länk vi mejlar, vars nyckel vår server och e-posttjänsten ser. Allt detta bygger på att koden vi levererar är den publicerade koden (se Det här skyddar den inte mot).",
         ],
         [
           "Vår server ställer sig mellan de två webbläsarna",
-          "Meddelandena för uppkopplingen är krypterade och knutna till sin länk, sitt försök och sin riktning. De innehåller fingeravtrycken för WebRTC-krypteringen, som servern därför inte kan byta mot sina egna. För en länk vi mejlar hade servern nyckeln och skulle kunna byta dem; då visar de två skärmarna olika kontrollnummer, så med kontrollnumret på skulle du upptäcka det.",
+          "Meddelandena för uppkopplingen är krypterade och knutna till sin länk, sitt försök och sin riktning. De innehåller fingeravtrycken för WebRTC-krypteringen, som servern därför inte kan byta mot sina egna. För en länk vi mejlar hade servern nyckeln och skulle kunna byta fingeravtrycken. Då visar de två skärmarna olika kontrollnummer, så med kontrollnumret på skulle du upptäcka det.",
         ],
         [
           "Nätverken på vägen eller vårt relä läser trafiken",
-          "Två lager kryptering: WebRTC:s DTLS, och AES-256-GCM under en filnyckel som bara de två webbläsarna har, ny för varje försök. För en länk vi mejlar skulle vår server också kunna få filnyckeln genom att ställa sig emellan (se ovan), vilket kontrollnumret visar när det är på.",
+          "Två lager kryptering: WebRTC:s DTLS, och AES-256-GCM under en filnyckel som bara de två webbläsarna har, ny för varje försök. För en länk vi mejlar skulle vår server också kunna få filnyckeln genom att ställa sig emellan (se ovan). Kontrollnumret visar detta när det är på.",
         ],
         [
           "Trafiken avslöjar filnamnet, den exakta storleken eller en hemlighets längd",
@@ -1145,11 +1145,11 @@ export const sv: Messages = {
         ],
         [
           "En delad hemlighet blir kvar i webbläsaren",
-          "Hos mottagaren laddas den aldrig ner och läggs aldrig i ett formulärfält, och översättning är avstängd. Avsändarens textruta säger åt webbläsaren att hålla stavningskontroll, autokomplettering, skrivförslag och översättning borta från den. Den kan ändå bli kvar på två sätt: en webbläsare kan spara avsändarens textruta med sessionen, och en kopierad hemlighet ligger kvar i urklippet (se Det här skyddar den inte mot).",
+          "Hos mottagaren laddas den aldrig ner och läggs aldrig i ett formulärfält, och översättning är avstängd. Avsändarens textruta säger åt webbläsaren att hålla stavningskontroll, autokomplettering, skrivförslag och översättning borta från den. Den delade hemligheten kan ändå bli kvar på två sätt: en webbläsare kan spara avsändarens textruta med sessionen, och en kopierad hemlighet ligger kvar i urklippet (se Det här skyddar den inte mot).",
         ],
         [
           "Data som blir kvar på våra maskiner",
-          "Inga konton, ingen fillagring och ingen databas över personer eller överföringar. Servern har det den vet om sidor bara i minnet och glömmer en sida inom en minut efter att den kopplat ner, utom förvrängda antal mejl och koder och två räknare med sändningstider för hela servern, som den sparar i en timme. Loggarna har fasta fält, aldrig namn, e-postadresser, koder, nycklar, filinnehåll eller IP-adresser, och raderas efter 30 dagar. Reläet för som standard ingen logg över trafiken. Medan det förnyar sitt certifikat loggar det i ungefär fem veckor adresserna som når det på port 80, aldrig webbläsarnas.",
+          "Inga konton, ingen fillagring och ingen databas över personer eller överföringar. Servern har det den vet om sidor bara i minnet och glömmer en sida inom en minut efter att sidan kopplat ner. Undantagen, som den sparar i en timme, är förvrängda antal mejl och koder och två räknare med sändningstider för hela servern. Serverns loggar har fasta fält och innehåller aldrig namn, mejladresser, koder, nycklar, filinnehåll eller IP-adresser. De raderas efter 30 dagar. Reläet för som standard ingen logg över trafiken. Medan reläet förnyar sitt certifikat loggar det adresserna som når det på port 80, aldrig webbläsarnas, och sparar dem i ungefär fem veckor.",
         ],
         [
           "Spårning, eller kod från andra webbplatser",
