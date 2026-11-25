@@ -64,6 +64,9 @@ export const mail: Mail = {
 // Copied by hand from the PublicIp output of FidantApp, which deploys to another account.
 export const boxAddress = "16.192.25.20";
 
+// Copied by hand from FidantApp's `Relay<Id>Ip` outputs, the way `boxAddress` is.
+export const relayAddresses: Record<string, string> = { sto: "13.51.1.111" };
+
 // Copied by hand from `aws route53 list-hosted-zones --profile fidant-dns`; FidantDnssec signs these.
 export const hostedZoneIds: Record<string, string> = {
   "fidant.se": "Z09335241R9IEYU9VDLYT",
