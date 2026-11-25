@@ -384,6 +384,10 @@ export const sv: Messages = {
       delivered: (name: string) => `Levererad via länken till ${name}`,
       failed: (name: string) =>
         `Filen kom inte fram oskadd via länken till ${name}. Länken kan öppnas igen för att försöka på nytt.`,
+      senderOutdated: (name: string) =>
+        `${name} öppnade sin länk i en nyare version av Fidant. Ladda om sidan, lägg till ${name} igen och skicka den nya länken. När du laddar om försvinner alla länkar på sidan.`,
+      recipientOutdated: (name: string) =>
+        `${name} öppnade sin länk i en äldre version av Fidant. Det är inget fel på filen. Be ${name} att ladda om sidan.`,
     },
     noConnect: (name: string) =>
       `Länken till ${name} öppnades men kunde inte ansluta till din dator. Länken fungerar fortfarande om de försöker igen.`,
@@ -542,6 +546,14 @@ export const sv: Messages = {
         title: "Det gick inte att nå servern",
         body: "Servern kopplar ihop dig med avsändaren. Kontrollera din internetanslutning.",
       },
+      outdated: {
+        title: "Den här sidan är inaktuell",
+        body: "Ladda om sidan för att ta emot filen.",
+      },
+      senderOutdated: {
+        title: "Avsändarens sida är inaktuell",
+        body: "Det är inget fel på filen. Be avsändaren att ladda om sin sida och skicka en ny länk till dig.",
+      },
     },
   },
   secret: {
@@ -600,6 +612,8 @@ export const sv: Messages = {
         `Länken till ${name} öppnades och hemligheten avböjdes. Länken fungerar fortfarande.`,
       failed: (name: string) =>
         `Hemligheten kom inte fram oskadd via länken till ${name}. Länken kan öppnas igen för att försöka på nytt.`,
+      recipientOutdated: (name: string) =>
+        `${name} öppnade sin länk i en äldre version av Fidant. Det är inget fel på hemligheten. Be ${name} att ladda om sidan.`,
     },
     unsendable: (name: string) =>
       `Hemligheten skickades inte via länken till ${name}, eftersom dess längd skulle ha synts på den här förbindelsen. Länken fungerar fortfarande.`,

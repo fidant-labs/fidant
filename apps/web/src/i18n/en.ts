@@ -404,6 +404,10 @@ export const en = {
       delivered: (name: string) => `Delivered through ${name}'s link`,
       failed: (name: string) =>
         `The file didn't arrive intact through ${name}'s link. The link can be opened again to retry.`,
+      senderOutdated: (name: string) =>
+        `${name} opened their link on a newer version of Fidant. Reload this page, add ${name} again and send them the new link. Reloading clears every link on this page.`,
+      recipientOutdated: (name: string) =>
+        `${name} opened their link on an older version of Fidant. Nothing is wrong with the file. Ask them to reload the page.`,
     },
     noConnect: (name: string) =>
       `${name}'s link was opened but couldn't connect to your computer. The link still works if they try again.`,
@@ -563,6 +567,14 @@ export const en = {
         title: "Couldn't reach the server",
         body: "The server connects you to the sender. Check your internet connection.",
       },
+      outdated: {
+        title: "This page is out of date",
+        body: "Reload the page to receive the file.",
+      },
+      senderOutdated: {
+        title: "The sender's page is out of date",
+        body: "Nothing is wrong with the file. Ask the sender to reload their page and send you a new link.",
+      },
     },
   },
   secret: {
@@ -621,6 +633,8 @@ export const en = {
         `${name}'s link was opened and the secret was declined. The link still works.`,
       failed: (name: string) =>
         `The secret didn't arrive intact through ${name}'s link. The link can be opened again to retry.`,
+      recipientOutdated: (name: string) =>
+        `${name} opened their link on an older version of Fidant. Nothing is wrong with the secret. Ask them to reload the page.`,
     },
     unsendable: (name: string) =>
       `The secret wasn't sent through ${name}'s link, because its length would have shown on this connection. The link still works.`,

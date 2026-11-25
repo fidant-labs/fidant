@@ -16,12 +16,14 @@
 //   link's signal key and creates a sender peer with the ICE servers from
 //   `joined`, without TURN entries when the relay checkbox or the server
 //   refused it. `relay` goes to that peer.
-//   `left` → reducer `left`, which only matters before the channel opens.
+//   `left` → reducer `left`, which only matters before the channel opens, once
+//   the signals relayed before it were handled.
 // - When the data channel opens, sendFile runs the transfer and reports
 //   accepted, progress, declined and receipt back to the reducer.
 // - On /secret, a connection whose max message size can't carry every text in
 //   one chunk (textFitsOneChunk) gets nothing: reducer `unsendable` fails the
 //   recipient's card and refuses the joiner.
+// - A peer that closes on another frame version → `outdated`, with no refusal.
 // - A peer that closes or fails before delivery → `dropped`; a data channel
 //   that has not opened SETUP_TIMEOUT_MS after the join, or a safety number
 //   not confirmed CHECK_TIMEOUT_MS after it opened → `timeout`. Both refuse
@@ -111,6 +113,8 @@ type Connection = {
   peer?: Peer;
   /** Relayed signals that arrived before the peer existed, such as the recipient's commit. */
   early: string[];
+  /** The handling of the last relayed signal, which a `left` waits for. */
+  relayed?: Promise<void>;
   /** With the safety number on: the sender's own verdict, from the card's buttons. */
   confirm?: (matches: boolean) => void;
   /** What the sender said about the safety number, once they said it. */
@@ -366,12 +370,17 @@ export function SendPage({
         if (reason === "connection-failed") {
           sendPath(linkId, connection, "failed");
         }
+        if (reason === "outdated" || reason === "peer-outdated") {
+          const older = reason === "outdated" ? "sender" : "recipient";
+          dispatch({ type: "outdated", linkId, older });
+          return;
+        }
         // After "It differs" the recipient closes the channel as it should.
         dispatch({ type: connection.said === false ? "check-differs" : "dropped", linkId });
       },
     });
     for (const data of connection.early.splice(0)) {
-      void connection.peer.handleRelay(data);
+      connection.relayed = connection.peer.handleRelay(data);
     }
   };
 
@@ -461,9 +470,21 @@ export function SendPage({
             allowRelay: allowRelayRef.current,
           });
           break;
-        case "left":
-          dispatch({ type: "left", linkId: message.link });
+        case "left": {
+          const linkId = message.link;
+          const connection = connectionsRef.current.get(linkId);
+          if (!connection?.relayed) {
+            dispatch({ type: "left", linkId });
+            break;
+          }
+          // A signal relayed before `left` may close the peer with the reason the recipient left.
+          void connection.relayed.then(() => {
+            if (connectionsRef.current.get(linkId) === connection) {
+              dispatch({ type: "left", linkId });
+            }
+          });
           break;
+        }
         case "hello":
           setMail(message.mail);
           break;
@@ -483,7 +504,7 @@ export function SendPage({
         case "relay": {
           const connection = connectionsRef.current.get(message.link);
           if (connection?.peer) {
-            void connection.peer.handleRelay(message.data);
+            connection.relayed = connection.peer.handleRelay(message.data);
           } else {
             connection?.early.push(message.data);
           }
