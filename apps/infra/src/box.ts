@@ -14,7 +14,7 @@ import * as sns from "aws-cdk-lib/aws-sns";
 import { EmailSubscription } from "aws-cdk-lib/aws-sns-subscriptions";
 import * as cr from "aws-cdk-lib/custom-resources";
 import type { Construct } from "constructs";
-import { mailDomain, relayCapBytes, relays, relayWarnBytes } from "./config.ts";
+import { mailDomain, primaryDomain, relayCapBytes, relays, relayWarnBytes } from "./config.ts";
 import { RelayBox, ports as relayBoxPorts } from "./relay.ts";
 import { renderUserData } from "./user-data.ts";
 
@@ -87,6 +87,8 @@ export class BoxStack extends Stack {
           })),
         ]),
         LIMIT_BYTES: String(relayCapBytes),
+        RELAYS: JSON.stringify(relays.map((relay) => relay.id)),
+        STATUS_URL: `https://${primaryDomain}/relay-status`,
       },
     });
     fn.addToRolePolicy(
@@ -244,6 +246,37 @@ export class BoxStack extends Stack {
         datapointsToAlarm: 3,
         treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
       }),
+      ...[
+        ...relays.map((relay) => ({
+          id: `RelayUnavailable-${relay.id}`,
+          alarmName: `Fidant relay ${relay.id} unavailable`,
+          metricName: "RelayUp",
+          dimensionsMap: { Relay: relay.id },
+        })),
+        {
+          id: "RelayStatusUnreachable",
+          alarmName: "Fidant relay status unreachable",
+          metricName: "RelayStatusOk",
+          dimensionsMap: { Service: "relay" },
+        },
+      ].map(
+        ({ id, alarmName, metricName, dimensionsMap }) =>
+          new cloudwatch.Alarm(this, id, {
+            alarmName,
+            metric: new cloudwatch.Metric({
+              namespace: "Fidant",
+              metricName,
+              dimensionsMap,
+              statistic: cloudwatch.Stats.MAXIMUM,
+              period: Duration.minutes(5),
+            }),
+            threshold: 1,
+            comparisonOperator: cloudwatch.ComparisonOperator.LESS_THAN_THRESHOLD,
+            evaluationPeriods: 2,
+            datapointsToAlarm: 2,
+            treatMissingData: cloudwatch.TreatMissingData.IGNORE,
+          }),
+      ),
       ...(
         [
           ["BounceRate", "bounce rate 5 % or more", 0.05],

@@ -10,7 +10,10 @@ import {
   monthStart,
   type Port,
   parseState,
+  parseStatus,
+  readStatus,
   runCap,
+  statusLines,
 } from "./cap.mts";
 
 const limit = 1_800_000_000_000;
@@ -101,9 +104,22 @@ const boxes = [
 
 test("config comes from the environment and refuses to run without it", () => {
   assert.throws(() => configFromEnv({}), /BOXES/);
-  const env = { BOXES: JSON.stringify(boxes), LIMIT_BYTES: "1800000000000" };
-  assert.deepEqual(configFromEnv(env), { boxes, limitBytes: 1_800_000_000_000 });
+  const env = {
+    BOXES: JSON.stringify(boxes),
+    LIMIT_BYTES: "1800000000000",
+    RELAYS: '["sto"]',
+    STATUS_URL: "https://fidant.se/relay-status",
+  };
+  assert.deepEqual(configFromEnv(env), {
+    boxes,
+    limitBytes: 1_800_000_000_000,
+    relays: ["sto"],
+    statusUrl: "https://fidant.se/relay-status",
+  });
   assert.throws(() => configFromEnv({ ...env, LIMIT_BYTES: "abc" }));
+  assert.throws(() => configFromEnv({ ...env, RELAYS: '"sto"' }), /RELAYS/);
+  assert.throws(() => configFromEnv({ ...env, RELAYS: '[""]' }), /RELAYS/);
+  assert.throws(() => configFromEnv({ ...env, STATUS_URL: "http://fidant.se/relay-status" }));
   for (const bad of [
     [],
     [{ box: "", openPorts: open, cappedPorts: closed }],
@@ -132,7 +148,12 @@ test("the month total is logged in CloudWatch embedded metric format", () => {
   });
 });
 
-const config: CapConfig = { boxes, limitBytes: limit };
+const config: CapConfig = {
+  boxes,
+  limitBytes: limit,
+  relays: ["sto"],
+  statusUrl: "https://fidant.se/relay-status",
+};
 const now = new Date("2026-11-24T12:00:00Z");
 
 function fake(over: Partial<CapDeps> & { bytes?: number; state?: string } = {}) {
@@ -256,4 +277,105 @@ test("a failed port change on any box saves nothing", async () => {
   });
   await assert.rejects(runCap(deps, config, now));
   assert.equal(args.writeState.length, 0);
+});
+
+const json = "application/json";
+
+test("the relay status parses only a 200 JSON array of exactly id and up", () => {
+  assert.deepEqual(parseStatus(200, json, '[{"id":"sto","up":true}]'), [{ id: "sto", up: true }]);
+  assert.deepEqual(parseStatus(200, "Application/JSON; charset=utf-8", '[{"up":false,"id":"a"}]'), [
+    { id: "a", up: false },
+  ]);
+  assert.deepEqual(parseStatus(200, json, "[]"), []);
+  const html = '<!doctype html><html lang="en"><head><title>Fidant</title></head></html>';
+  for (const [status, type, body] of [
+    [200, "text/html; charset=utf-8", html],
+    [200, json, html],
+    [200, null, '[{"id":"sto","up":true}]'],
+    [200, "application/jsonx", '[{"id":"sto","up":true}]'],
+    [404, json, '[{"id":"sto","up":true}]'],
+    [503, json, '[{"id":"sto","up":true}]'],
+    [200, json, '{"id":"sto","up":true}'],
+    [200, json, "null"],
+    [200, json, "[null]"],
+    [200, json, '[["sto",true]]'],
+    [200, json, '[{"id":"sto"}]'],
+    [200, json, '[{"id":"sto","up":"true"}]'],
+    [200, json, '[{"id":1,"up":true}]'],
+    [200, json, '[{"id":"sto","up":true,"extra":1}]'],
+  ] as const) {
+    assert.equal(parseStatus(status, type, body), undefined, `${status} ${type} ${body}`);
+  }
+});
+
+test("reading the relay status passes an abort signal and never throws", async () => {
+  const seen: (RequestInit | undefined)[] = [];
+  const answering =
+    (response: () => Response): typeof fetch =>
+    async (_url, init) => {
+      seen.push(init);
+      return response();
+    };
+  const ok = () => new Response('[{"id":"sto","up":true}]', { headers: { "content-type": json } });
+  assert.deepEqual(await readStatus("https://fidant.se/relay-status", answering(ok)), [
+    { id: "sto", up: true },
+  ]);
+  assert.ok(seen[0]?.signal instanceof AbortSignal);
+  const spa = () =>
+    new Response("<!doctype html>", { headers: { "content-type": "text/html; charset=utf-8" } });
+  assert.equal(await readStatus("https://fidant.se/relay-status", answering(spa)), undefined);
+  const failing: typeof fetch = async () => {
+    throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+  };
+  assert.equal(await readStatus("https://fidant.se/relay-status", failing), undefined);
+  const brokenBody = () =>
+    new Response(
+      new ReadableStream({
+        pull(controller) {
+          controller.error(new Error("reset"));
+        },
+      }),
+      { headers: { "content-type": json } },
+    );
+  assert.equal(
+    await readStatus("https://fidant.se/relay-status", answering(brokenBody)),
+    undefined,
+  );
+});
+
+test("a read status logs that it was read and whether each configured relay is up", () => {
+  const lines = (status: Parameters<typeof statusLines>[1]) =>
+    statusLines(["sto", "osl"], status, now).map((line) => JSON.parse(line));
+  const emf = (dimensions: Record<string, string>, name: string, value: number) => ({
+    _aws: {
+      Timestamp: now.getTime(),
+      CloudWatchMetrics: [
+        {
+          Namespace: "Fidant",
+          Dimensions: [Object.keys(dimensions)],
+          Metrics: [{ Name: name, Unit: "None" }],
+        },
+      ],
+    },
+    ...dimensions,
+    [name]: value,
+  });
+  assert.deepEqual(lines(undefined), [emf({ Service: "relay" }, "RelayStatusOk", 0)]);
+  assert.deepEqual(
+    lines([
+      { id: "sto", up: true },
+      { id: "osl", up: false },
+      { id: "other", up: true },
+    ]),
+    [
+      emf({ Service: "relay" }, "RelayStatusOk", 1),
+      emf({ Relay: "sto" }, "RelayUp", 1),
+      emf({ Relay: "osl" }, "RelayUp", 0),
+    ],
+  );
+  assert.deepEqual(lines([]), [
+    emf({ Service: "relay" }, "RelayStatusOk", 1),
+    emf({ Relay: "sto" }, "RelayUp", 0),
+    emf({ Relay: "osl" }, "RelayUp", 0),
+  ]);
 });

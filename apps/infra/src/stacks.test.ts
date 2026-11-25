@@ -28,6 +28,7 @@ import {
   zoneNames,
 } from "./config.ts";
 import { DnsStack } from "./dns.ts";
+import { statusLines } from "./relay-cap/cap.mts";
 import { renderRelayUserData, renderUserData } from "./user-data.ts";
 
 const account = "111111111111";
@@ -943,8 +944,10 @@ test("the relay cap checks the app box's and the relay box's pooled traffic ever
   assert.equal(properties.Handler, "index.handler");
   assert.equal(properties.Timeout, 30);
   const variables = properties.Environment.Variables;
-  assert.deepEqual(Object.keys(variables).sort(), ["BOXES", "LIMIT_BYTES"]);
+  assert.deepEqual(Object.keys(variables).sort(), ["BOXES", "LIMIT_BYTES", "RELAYS", "STATUS_URL"]);
   assert.equal(variables.LIMIT_BYTES, "1800000000000");
+  assert.equal(variables.RELAYS, '["sto"]');
+  assert.equal(variables.STATUS_URL, "https://fidant.se/relay-status");
   assert.deepEqual(sdkCall(variables.BOXES), [
     { box: `{Ref:${appId}}`, openPorts: camelPorts, cappedPorts: camelPorts.slice(0, 3) },
     {
@@ -993,7 +996,7 @@ test("relay traffic past 80 %, the cap, and a failing cap email the alert addres
     Endpoint: "budget-alert@fidant.se",
   });
   const alarms = alarmsNamed(box, "Fidant relay ");
-  assert.equal(alarms.length, 3);
+  assert.equal(alarms.length, 5);
   const byName = (name: string) => alarms.find((alarm) => alarm.AlarmName === name);
   const notify = [alertTopic(box)];
   for (const [name, threshold] of [
@@ -1012,6 +1015,45 @@ test("relay traffic past 80 %, the cap, and a failing cap email the alert addres
       assert.deepEqual(alarm.Dimensions, [{ Name: "Service", Value: "relay" }]);
       assert.equal(alarm.Statistic, "Maximum");
     }
+  }
+});
+
+test("a relay that is down and a status that can't be read each email the alert address after 10 minutes", () => {
+  const box = appBox();
+  const notify = [alertTopic(box)];
+  const logged = statusLines(["sto"], [{ id: "sto", up: true }], new Date()).map((line) => {
+    const metric = JSON.parse(line);
+    const [declared] = metric._aws.CloudWatchMetrics;
+    const name = declared.Metrics[0].Name;
+    return {
+      Namespace: declared.Namespace,
+      MetricName: name,
+      Dimensions: declared.Dimensions[0].map((key: string) => ({ Name: key, Value: metric[key] })),
+    };
+  });
+  for (const [name, metricName] of [
+    ["Fidant relay status unreachable", "RelayStatusOk"],
+    ["Fidant relay sto unavailable", "RelayUp"],
+  ] as const) {
+    const alarm = alarmsNamed(box, name)[0];
+    assert.ok(alarm, name);
+    assert.deepEqual(
+      {
+        Namespace: alarm.Namespace,
+        MetricName: alarm.MetricName,
+        Dimensions: alarm.Dimensions,
+      },
+      logged.find((metric) => metric.MetricName === metricName),
+    );
+    assert.equal(alarm.Statistic, "Maximum");
+    assert.equal(alarm.Period, 300);
+    assert.equal(alarm.Threshold, 1);
+    assert.equal(alarm.ComparisonOperator, "LessThanThreshold");
+    assert.equal(alarm.EvaluationPeriods, 2);
+    assert.equal(alarm.DatapointsToAlarm, 2);
+    assert.equal(alarm.TreatMissingData, "ignore");
+    assert.deepEqual(alarm.AlarmActions, notify);
+    assert.deepEqual(alarm.OKActions, notify);
   }
 });
 

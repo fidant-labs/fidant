@@ -8,7 +8,13 @@ export type Port = {
 };
 export type CapState = { month: string; boxes: Record<string, number>; capped: boolean };
 export type BoxPorts = { box: string; openPorts: Port[]; cappedPorts: Port[] };
-export type CapConfig = { boxes: BoxPorts[]; limitBytes: number };
+export type CapConfig = {
+  boxes: BoxPorts[];
+  limitBytes: number;
+  relays: string[];
+  statusUrl: string;
+};
+export type RelayStatus = { id: string; up: boolean }[];
 export type CapDeps = {
   boxBytes(box: string, start: Date, end: Date): Promise<number>;
   readState(): Promise<string | undefined>;
@@ -93,24 +99,100 @@ export function configFromEnv(env: Record<string, string | undefined>): CapConfi
   if (!/^[1-9]\d*$/.test(limit)) {
     throw new Error("LIMIT_BYTES must be a positive integer");
   }
-  return { boxes, limitBytes: Number(limit) };
+  const relays = JSON.parse(required(env, "RELAYS"));
+  if (!Array.isArray(relays) || !relays.every((id) => typeof id === "string" && id !== "")) {
+    throw new Error("RELAYS must be an array of relay ids");
+  }
+  const statusUrl = required(env, "STATUS_URL");
+  if (URL.parse(statusUrl)?.protocol !== "https:") {
+    throw new Error("STATUS_URL must be an https URL");
+  }
+  return { boxes, limitBytes: Number(limit), relays, statusUrl };
 }
 
-export function metricLine(total: number, now: Date): string {
+function metric(
+  dimensions: Record<string, string>,
+  name: string,
+  value: number,
+  unit: string,
+  now: Date,
+): string {
   return JSON.stringify({
     _aws: {
       Timestamp: now.getTime(),
       CloudWatchMetrics: [
         {
           Namespace: "Fidant",
-          Dimensions: [["Service"]],
-          Metrics: [{ Name: "RelayMonthBytes", Unit: "Bytes" }],
+          Dimensions: [Object.keys(dimensions)],
+          Metrics: [{ Name: name, Unit: unit }],
         },
       ],
     },
-    Service: "relay",
-    RelayMonthBytes: total,
+    ...dimensions,
+    [name]: value,
   });
+}
+
+export function metricLine(total: number, now: Date): string {
+  return metric({ Service: "relay" }, "RelayMonthBytes", total, "Bytes", now);
+}
+
+export function parseStatus(
+  status: number,
+  contentType: string | null,
+  body: string,
+): RelayStatus | undefined {
+  if (status !== 200 || contentType?.split(";")[0]?.trim().toLowerCase() !== "application/json") {
+    return undefined;
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(body);
+  } catch {
+    return undefined;
+  }
+  const valid =
+    Array.isArray(value) &&
+    value.every(
+      (entry) =>
+        typeof entry === "object" &&
+        entry !== null &&
+        Object.keys(entry).sort().join() === "id,up" &&
+        typeof entry.id === "string" &&
+        typeof entry.up === "boolean",
+    );
+  return valid ? (value as RelayStatus) : undefined;
+}
+
+export async function readStatus(
+  url: string,
+  fetcher: typeof fetch = fetch,
+): Promise<RelayStatus | undefined> {
+  try {
+    const response = await fetcher(url, { signal: AbortSignal.timeout(10_000) });
+    return parseStatus(
+      response.status,
+      response.headers.get("content-type"),
+      await response.text(),
+    );
+  } catch {
+    return undefined;
+  }
+}
+
+export function statusLines(
+  relays: string[],
+  status: RelayStatus | undefined,
+  now: Date,
+): string[] {
+  const lines = [metric({ Service: "relay" }, "RelayStatusOk", status ? 1 : 0, "None", now)];
+  if (status) {
+    for (const id of relays) {
+      const up = status.some((relay) => relay.id === id && relay.up) ? 1 : 0;
+      lines.push(metric({ Relay: id }, "RelayUp", up, "None", now));
+    }
+  }
+  return lines;
 }
 
 export async function runCap(deps: CapDeps, config: CapConfig, now: Date): Promise<void> {
