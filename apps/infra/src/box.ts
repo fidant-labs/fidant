@@ -14,7 +14,8 @@ import * as sns from "aws-cdk-lib/aws-sns";
 import { EmailSubscription } from "aws-cdk-lib/aws-sns-subscriptions";
 import * as cr from "aws-cdk-lib/custom-resources";
 import type { Construct } from "constructs";
-import { mailDomain, relayCapBytes, relayWarnBytes } from "./config.ts";
+import { mailDomain, relayCapBytes, relays, relayWarnBytes } from "./config.ts";
+import { RelayBox } from "./relay.ts";
 import { renderUserData } from "./user-data.ts";
 
 const anywhere = { cidrs: ["0.0.0.0/0"], ipv6Cidrs: ["::/0"] };
@@ -57,6 +58,10 @@ export class BoxStack extends Stack {
     address.applyRemovalPolicy(RemovalPolicy.RETAIN);
 
     new CfnOutput(this, "PublicIp", { value: address.attrIpAddress });
+
+    for (const relay of relays) {
+      new RelayBox(this, `Relay-${relay.id}`, { relayId: relay.id });
+    }
 
     const fn = new lambda.Function(this, "RelayCap", {
       runtime: lambda.Runtime.NODEJS_24_X,
