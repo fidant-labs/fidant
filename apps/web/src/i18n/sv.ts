@@ -185,7 +185,7 @@ export const sv: Messages = {
         heading: "Det här lämnas kvar",
         body: [
           "Vi ser aldrig din fil, dess namn eller nyckeln som låser upp den, om du inte ber oss mejla länken. Vårt relä ser aldrig nyckeln alls.",
-          "Vår server och vårt relä har det de ser i minnet eller i korta loggar. Spår finns också kvar i de två webbläsarna, och mottagaren har filen.",
+          "Vår server och vårt relä har det de ser i minnet eller i korta loggar. Några spår finns också kvar i de två webbläsarna, och mottagaren har filen.",
         ],
       },
       encryption: {
@@ -1100,7 +1100,7 @@ export const sv: Messages = {
       ],
       hmac: [
         "HMAC",
-        "En kontrollsumma gjord med en nyckel. Vår server räknar mejl- och IP-adresser för sina gränser och har dem bara som HMAC. Nyckeln är slumpmässig och finns bara i serverns minne.",
+        "En kontrollsumma gjord med en nyckel. För sina gränser räknar vår server mejl och koder per mejladress och per IP-adress, och sparar antalen bara under HMAC av adresserna. Nyckeln är slumpmässig och finns bara i serverns minne.",
       ],
     },
     linkRisks: {
@@ -1241,7 +1241,7 @@ export const sv: Messages = {
         },
         server: {
           name: "Vår server, i minnet",
-          kept: "Medan sidorna är öppna, och upp till en minut efter. Mejlräknare: upp till en timme",
+          kept: "Medan sidorna är öppna, och upp till en minut efter. På en mejlad länk: räknare i upp till en timme",
           never:
             "Din fil, dess namn, storlek eller typ, eller hemligheten eller dess längd, utom på en mejlad länk enligt nedan.",
           lines: [
@@ -1332,7 +1332,7 @@ export const sv: Messages = {
         },
         relay: {
           name: "Vårt relä",
-          kept: "Inget när trafiken har passerat. Vissa loggar: upp till ungefär fem veckor",
+          kept: "Inget när trafiken har passerat. En fellogg, bara om vi slår på en: högst 7 dagar",
           never:
             "Nyckeln, filen eller hemligheten. Reläet kan inte låsa upp något av det som passerar.",
           lines: [

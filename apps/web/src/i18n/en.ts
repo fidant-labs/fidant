@@ -1144,7 +1144,7 @@ export const en = {
       ],
       hmac: [
         "HMAC",
-        "A checksum made with a key. Our server counts email and IP addresses for its limits, and keeps them only as HMACs. The key is random and exists only in the server's memory.",
+        "A checksum made with a key. For its limits, our server counts emails and codes per email address and per IP address, and files those counts only under HMACs of the addresses. The key is random and exists only in the server's memory.",
       ],
     },
     linkRisks: {
@@ -1288,7 +1288,7 @@ export const en = {
         },
         server: {
           name: "Our server, in memory",
-          kept: "While the pages are open, and up to a minute after. Email counters: up to an hour",
+          kept: "While the pages are open, and up to a minute after. On an emailed link: counters for up to an hour",
           never:
             "Your file, its name, size or type, or the secret or its length, except on an emailed link as below.",
           lines: [
@@ -1367,7 +1367,7 @@ export const en = {
         },
         relay: {
           name: "Our relay",
-          kept: "Nothing once the traffic has passed. Some logs: up to about five weeks",
+          kept: "Nothing once the traffic has passed. A fault log, only if we turn one on: at most 7 days",
           never: "The key, the file or the secret. It can't decrypt what it carries.",
           lines: [
             [
