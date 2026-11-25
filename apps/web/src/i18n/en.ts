@@ -589,7 +589,7 @@ export const en = {
     copy: "Copy secret",
     copyNote: {
       copied: "Copied",
-      failed: "Couldn't copy. Select the secret and copy it yourself.",
+      failed: "Couldn't copy. Select the secret in the box above and copy it yourself.",
     },
     declinedTitle: "You declined the secret",
     showAgain: "Show the secret again",

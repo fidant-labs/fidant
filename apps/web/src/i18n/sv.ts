@@ -568,7 +568,8 @@ export const sv: Messages = {
     copy: "Kopiera hemligheten",
     copyNote: {
       copied: "Kopierad",
-      failed: "Det gick inte att kopiera. Markera hemligheten och kopiera den själv.",
+      failed:
+        "Det gick inte att kopiera. Markera hemligheten i rutan ovanför och kopiera den själv.",
     },
     declinedTitle: "Du tackade nej till hemligheten",
     showAgain: "Visa hemligheten igen",
