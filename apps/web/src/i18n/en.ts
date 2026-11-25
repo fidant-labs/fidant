@@ -959,7 +959,7 @@ export const en = {
         heading: "Several recipients and one-time links",
         body: [
           "One send can go to up to 256 people. Each has their own link, key, connection and transfer.",
-          "A link counts as used only once the recipient's RECEIPT matches. After that it is refused. A link that is already open in one tab is refused in another, and so is a link that has had 10 connection attempts in the last half minute.",
+          "A link counts as used only once the recipient's RECEIPT matches. After that it is refused. A link that is already open in one tab is refused in another, and so is a link that has had 10 connection attempts in the current 30-second window.",
           "Until then the link can be opened again: after a decline, a dropped connection or a failed check. Every new attempt has a new transfer ID and attempt ID, and so a new file key. A link with the check number on stops working after 5 attempts that ended before both people confirmed the number.",
           "Nothing is stored, so a link works only while the sender's page is open. When it closes, our server forgets its links within a minute.",
         ],
