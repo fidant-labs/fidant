@@ -305,6 +305,7 @@ recipient → server     join {link, attempt, token}
 - Mail service errors can quote the address, so the server keeps none of them and logs only the outcome.
 - Locally, `pnpm e2e` runs Mailpit, which catches every mail and never sends it on. `pnpm start` sends no mail unless those variables are set.
 - In production the mail service will be Amazon SES in eu-north-1 (planned, SIG-108). Until then the box sets no mail variables, so fidant.se offers no email field.
+- SES stops all sending when the account's bounce rate reaches 2 % or its complaint rate 0.05 %, below the rates at which AWS reviews the account. Every `email` and code then gets `failed` until a maintainer turns sending back on. The alarms read only these rates, never a bounce or complaint itself.
 
 ### Who can read an emailed link's key
 

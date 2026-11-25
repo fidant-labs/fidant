@@ -17,6 +17,7 @@ import {
   type Actor,
   canaryFile,
   canaryKey,
+  chooseFile,
   delivered as deliveredRow,
   expect,
   type Leaks,
@@ -251,7 +252,7 @@ for (const row of scenarios) {
         const sender = await actor("sender");
         await recordPeerConnections(sender.context);
         await sender.page.goto("/send");
-        await sender.page.getByLabel("Choose a file").setInputFiles({
+        await chooseFile(sender.page, {
           name: file.name,
           mimeType: file.mime,
           buffer: file.bytes,
@@ -306,7 +307,7 @@ for (const row of scenarios) {
       const sender = await actor("sender");
       await recordPeerConnections(sender.context);
       await sender.page.goto("/send");
-      await sender.page.getByLabel("Choose a file").setInputFiles({
+      await chooseFile(sender.page, {
         name: file.name,
         mimeType: file.mime,
         buffer: file.bytes,
@@ -389,7 +390,7 @@ test.describe("the box", () => {
     const sender = await actor("sender");
     await recordPeerConnections(sender.context);
     await sender.page.goto("/send");
-    await sender.page.getByLabel("Choose a file").setInputFiles({
+    await chooseFile(sender.page, {
       name: file.name,
       mimeType: file.mime,
       buffer: file.bytes,

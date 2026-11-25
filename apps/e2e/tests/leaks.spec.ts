@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { Page } from "@playwright/test";
-import { canaryFile, canaryKey, expect, test } from "../src/fixtures.ts";
+import { canaryFile, canaryKey, chooseFile, expect, test } from "../src/fixtures.ts";
 import { base32Token } from "../src/leaks/canary.ts";
 import type { Allowed } from "../src/leaks/needles.ts";
 import type { Finding } from "../src/leaks/scan.ts";
@@ -204,7 +204,7 @@ test.describe("an emailed link", () => {
   }) => {
     const to = `anna-${base32Token(canary.fork("address"), 8).toLowerCase()}@example.com`;
     await page.goto("/send");
-    await page.getByLabel("Choose a file").setInputFiles({
+    await chooseFile(page, {
       name: "a.bin",
       mimeType: "application/octet-stream",
       buffer: Buffer.from("x"),
