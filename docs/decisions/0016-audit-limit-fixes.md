@@ -1,4 +1,4 @@
-# 0015: Limits that hold against a stranger with many addresses or a socket that stops reading
+# 0016: Limits that hold against a stranger with many addresses or a socket that stops reading
 
 - Status: Accepted
 - Date: 2026-11-25

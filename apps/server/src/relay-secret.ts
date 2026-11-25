@@ -1,4 +1,11 @@
-import { constants, publicEncrypt } from "node:crypto";
+import { constants, createHmac, publicEncrypt } from "node:crypto";
+
+export function relaySecret(masterHex: string, id: string): string {
+  if (!/^[0-9a-f]{64}$/.test(masterHex)) {
+    throw new TypeError("A relay master is 64 lowercase hex characters.");
+  }
+  return createHmac("sha256", Buffer.from(masterHex, "hex")).update(id).digest("hex");
+}
 
 /**
  * The body of a relay's secret hand-out: the secret sealed to the relay's RSA key with OAEP

@@ -14,8 +14,8 @@ import * as sns from "aws-cdk-lib/aws-sns";
 import { EmailSubscription } from "aws-cdk-lib/aws-sns-subscriptions";
 import * as cr from "aws-cdk-lib/custom-resources";
 import type { Construct } from "constructs";
-import { mailDomain, relayCapBytes, relays, relayWarnBytes } from "./config.ts";
-import { RelayBox } from "./relay.ts";
+import { mailDomain, primaryDomain, relayCapBytes, relays, relayWarnBytes } from "./config.ts";
+import { RelayBox, ports as relayBoxPorts } from "./relay.ts";
 import { renderUserData } from "./user-data.ts";
 
 const anywhere = { cidrs: ["0.0.0.0/0"], ipv6Cidrs: ["::/0"] };
@@ -59,9 +59,9 @@ export class BoxStack extends Stack {
 
     new CfnOutput(this, "PublicIp", { value: address.attrIpAddress });
 
-    for (const relay of relays) {
-      new RelayBox(this, `Relay-${relay.id}`, { relayId: relay.id });
-    }
+    const relayBoxes = relays.map(
+      (relay) => new RelayBox(this, `Relay-${relay.id}`, { relayId: relay.id }),
+    );
 
     const fn = new lambda.Function(this, "RelayCap", {
       runtime: lambda.Runtime.NODEJS_24_X,
@@ -76,10 +76,19 @@ export class BoxStack extends Stack {
         removalPolicy: RemovalPolicy.DESTROY,
       }),
       environment: {
-        BOX: box.ref,
+        BOXES: this.toJsonString([
+          { box: box.ref, openPorts: [...otherPorts, ...relayPorts], cappedPorts: otherPorts },
+          ...relayBoxes.map((relay) => ({
+            box: relay.instance.ref,
+            openPorts: relayBoxPorts,
+            cappedPorts: relayBoxPorts.filter(
+              (port) => port.fromPort === 22 || port.fromPort === 80,
+            ),
+          })),
+        ]),
         LIMIT_BYTES: String(relayCapBytes),
-        OPEN_PORTS: JSON.stringify([...otherPorts, ...relayPorts]),
-        CAPPED_PORTS: JSON.stringify(otherPorts),
+        RELAYS: JSON.stringify(relays.map((relay) => relay.id)),
+        STATUS_URL: `https://${primaryDomain}/relay-status`,
       },
     });
     fn.addToRolePolicy(
@@ -92,7 +101,9 @@ export class BoxStack extends Stack {
     fn.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ["lightsail:PutInstancePublicPorts"],
-        resources: [box.attrInstanceArn],
+        resources: [box, ...relayBoxes.map((relay) => relay.instance)].map(
+          (instance) => instance.attrInstanceArn,
+        ),
       }),
     );
     fn.addToRolePolicy(
@@ -235,6 +246,37 @@ export class BoxStack extends Stack {
         datapointsToAlarm: 3,
         treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
       }),
+      ...[
+        ...relays.map((relay) => ({
+          id: `RelayUnavailable-${relay.id}`,
+          alarmName: `Fidant relay ${relay.id} unavailable`,
+          metricName: "RelayUp",
+          dimensionsMap: { Relay: relay.id },
+        })),
+        {
+          id: "RelayStatusUnreachable",
+          alarmName: "Fidant relay status unreachable",
+          metricName: "RelayStatusOk",
+          dimensionsMap: { Service: "relay" },
+        },
+      ].map(
+        ({ id, alarmName, metricName, dimensionsMap }) =>
+          new cloudwatch.Alarm(this, id, {
+            alarmName,
+            metric: new cloudwatch.Metric({
+              namespace: "Fidant",
+              metricName,
+              dimensionsMap,
+              statistic: cloudwatch.Stats.MAXIMUM,
+              period: Duration.minutes(5),
+            }),
+            threshold: 1,
+            comparisonOperator: cloudwatch.ComparisonOperator.LESS_THAN_THRESHOLD,
+            evaluationPeriods: 2,
+            datapointsToAlarm: 2,
+            treatMissingData: cloudwatch.TreatMissingData.IGNORE,
+          }),
+      ),
       ...(
         [
           ["BounceRate", "bounce rate 5 % or more", 0.05],
