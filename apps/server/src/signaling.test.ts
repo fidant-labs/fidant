@@ -520,7 +520,7 @@ test("terminates a guest that never answers pings and tells the host it left", a
   assert.ok(performance.now() - joinedAt < 200, "the silent guest outlived two heartbeats");
 });
 
-test("keys clients by address, trusting X-Forwarded-For only from loopback", () => {
+test("keys clients by address, trusting X-Forwarded-For only from loopback without proxies", () => {
   assert.equal(clientAddress("203.0.113.7", undefined), "203.0.113.7");
   assert.equal(clientAddress("::ffff:203.0.113.7", undefined), "203.0.113.7");
   assert.equal(clientAddress("203.0.113.7", "198.51.100.1"), "203.0.113.7");
@@ -558,8 +558,8 @@ test("trusts X-Forwarded-For from a configured range and from no other peer", ()
 });
 
 /**
- * Starts a second signaling server with lowered limits on 127.0.0.1, so every client in the test
- * counts against the same address.
+ * Starts a second signaling server with lowered limits, on 127.0.0.1 unless `extra.host` names
+ * another address, so every client in the test counts against the same address.
  */
 async function limitedServer(
   t: { after(fn: () => void): void },

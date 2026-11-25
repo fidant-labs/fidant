@@ -169,8 +169,8 @@ function prefix64(ip: string): string {
 /**
  * The address a socket counts against for the per-address cap. X-Forwarded-For is trusted only
  * from loopback (a reverse proxy on the same host) or a peer in `proxies`, and only its rightmost
- * entry, which that proxy wrote. IPv6 clients are keyed by their /64, since one host usually owns a whole /64.
- * The result is used only as a map key and is never logged.
+ * entry, which that proxy wrote. IPv6 clients are keyed by their /64, since one host usually owns
+ * a whole /64. The result is used only as a map key and is never logged.
  */
 export function clientAddress(
   remote: string | undefined,
