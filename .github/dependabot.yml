@@ -22,7 +22,7 @@ updates:
         patterns: ["*"]
   # The e2e network suite's base images, pinned by tag and digest. box.test.ts holds node's major to
   # .node-version and ubuntu's release to the Lightsail blueprint, so those move only by hand; Dependabot
-  # still refreshes their digests. The box and relay run privileged, so a new image waits a week.
+  # still refreshes their digests. The box and relay run privileged, so a new version waits a week.
   - package-ecosystem: docker
     directories:
       - /apps/e2e/networks
