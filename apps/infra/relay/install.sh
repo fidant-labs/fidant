@@ -53,8 +53,8 @@ if [ ! -e /var/lib/fidant-relay/turndb ]; then
 fi
 
 external_ip=$(grep '^external-ip=' /etc/turnserver.conf || true)
-install -m 640 -g turnserver /dev/null /etc/turnserver.conf
-cat >>/etc/turnserver.conf <<EOF
+install -m 640 -g turnserver /dev/null /etc/turnserver.conf.new
+cat >>/etc/turnserver.conf.new <<EOF
 listening-port=3478
 tls-listening-port=443
 min-port=49152
@@ -89,8 +89,9 @@ denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
 denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff
 EOF
 if [ -n "$external_ip" ]; then
-  printf '%s\n' "$external_ip" >>/etc/turnserver.conf
+  printf '%s\n' "$external_ip" >>/etc/turnserver.conf.new
 fi
+mv /etc/turnserver.conf.new /etc/turnserver.conf
 
 install -d /etc/systemd/system/coturn.service.d
 cat >/etc/systemd/system/coturn.service.d/online.conf <<'EOF'
@@ -239,6 +240,10 @@ set -eu
 if [ -d "/etc/letsencrypt/live/$RELAY_NAME" ]; then
   exit 0
 fi
+# Let's Encrypt pauses a name after 1,152 failed validations, and an unresolvable name fails each one.
+if [ -z "$(getent ahostsv4 "$RELAY_NAME" | awk '{ print $1; exit }')" ]; then
+  exit 0
+fi
 exec certbot certonly --standalone --non-interactive --agree-tos --register-unsafely-without-email \
   --preferred-challenges http -d "$RELAY_NAME" --deploy-hook /usr/local/bin/fidant-relay-cert-installed
 EOF
@@ -282,8 +287,12 @@ fi
 if [ "$wanted" = "$(grep '^external-ip=' $conf || true)" ]; then
   exit 0
 fi
-rest=$(grep -v '^external-ip=' $conf)
-printf '%s\n' "$rest" ${wanted:+"$wanted"} >$conf
+install -m 640 -g turnserver /dev/null $conf.new
+grep -v '^external-ip=' $conf >>$conf.new
+if [ -n "$wanted" ]; then
+  printf '%s\n' "$wanted" >>$conf.new
+fi
+mv $conf.new $conf
 systemctl try-restart coturn
 EOF
 chmod 700 /usr/local/bin/fidant-relay-address

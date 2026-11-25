@@ -871,11 +871,18 @@ test.describe("the relay box", () => {
       await inRelay("cp", "/etc/hosts", "/tmp/hosts");
       try {
         let running = await pid();
+        const inode = () => inRelay("stat", "-c", "%i", "/etc/turnserver.conf");
+        const before = await inode();
         await resolveTo("198.51.100.99");
         expect(await line()).toBe(elsewhere);
         expect(await pid()).not.toBe(running);
+        // Replaced, never truncated in place: a crash mid-write would leave coturn with no auth.
+        expect(await inode()).not.toBe(before);
         expect(await inRelay("stat", "-c", "%a %U:%G", "/etc/turnserver.conf")).toBe(
           "640 root:turnserver\n",
+        );
+        expect(await inRelay("sh", "-c", "ls /etc/turnserver.conf*")).toBe(
+          "/etc/turnserver.conf\n",
         );
         await inRelay("sh", "-c", "set -a; . /relay-config/env; sh /relay/install.sh");
         expect(await line()).toBe(elsewhere);
@@ -900,6 +907,28 @@ test.describe("the relay box", () => {
       const [sender, recipient] = await relayPeers(actor);
       const { echoed } = await relayedChannel(sender, recipient, relayIce("udp", secret));
       expect(echoed).toBe(true);
+    });
+
+    test("asks Let's Encrypt for a certificate only once its name resolves", async () => {
+      const marker = "/tmp/certbot-ran";
+      await inRelay(
+        "sh",
+        "-c",
+        `printf '#!/bin/sh\\ntouch ${marker}\\n' >/tmp/certbot && chmod +x /tmp/certbot && cp /etc/hosts /tmp/hosts-cert`,
+      );
+      const run = () =>
+        inRelay(
+          "sh",
+          "-c",
+          `rm -f ${marker}; PATH=/tmp:$PATH fidant-relay-cert; echo "exit $?"; ls ${marker} 2>&1; true`,
+        );
+      try {
+        expect(await run()).toMatch(/^exit 0\n.*No such file/);
+        await inRelay("sh", "-c", `echo '198.51.100.99 ${relayHost}' >>/etc/hosts`);
+        expect(await run()).toBe(`exit 0\n${marker}\n`);
+      } finally {
+        await inRelay("sh", "-c", `cat /tmp/hosts-cert >/etc/hosts; rm -f /tmp/certbot ${marker}`);
+      }
     });
 
     test("keeps secrets and client addresses out of its journal", async () => {

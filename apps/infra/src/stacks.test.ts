@@ -242,7 +242,7 @@ test("the relay keeps the app box's peer denials", () => {
   const deny = (text: string) =>
     text.split("\n").filter((line) => line.startsWith("denied-peer-ip="));
   const userData = renderRelayUserData({ id: "sto" });
-  const start = userData.indexOf("\ncat >>/etc/turnserver.conf <<EOF\n");
+  const start = userData.indexOf("\ncat >>/etc/turnserver.conf.new <<EOF\n");
   assert.ok(start > 0);
   const boxDenials = deny(readFileSync(new URL("../box/turnserver.conf", import.meta.url), "utf8"));
   assert.equal(boxDenials.length, 13);

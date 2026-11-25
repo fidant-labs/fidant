@@ -133,7 +133,7 @@ On the relay:
 ### Certificates
 
 - coturn's TLS on 443 uses its own Let's Encrypt certificate for `RELAY_NAME`.
-- The first one comes from `fidant-relay-cert`, which runs `certbot certonly --standalone` with the HTTP challenge unless `/etc/letsencrypt/live/<RELAY_NAME>/` exists. certbot holds port 80 only while it runs. Its timer tries every 15 minutes until the relay's DNS name exists (SIG-157). Four tries an hour stays within Let's Encrypt's limit of 5 failed validations per host name per hour. The account has no email address.
+- The first one comes from `fidant-relay-cert`, which runs `certbot certonly --standalone` with the HTTP challenge unless `/etc/letsencrypt/live/<RELAY_NAME>/` exists. certbot holds port 80 only while it runs. Its timer runs every 15 minutes, but the script asks Let's Encrypt only once `RELAY_NAME` resolves (`getent ahostsv4`, as `fidant-relay-address` does), because every validation of an unresolvable name fails and Let's Encrypt pauses a name after 1,152 consecutive failures (refilling at 1 a day) until someone unpauses it by hand. Until the DNS name exists (SIG-157) the script exits 0 without running certbot. Four tries an hour stays within the limit of 5 failed validations per host name per hour. The account has no email address.
 - Renewal goes through Ubuntu's `certbot.timer`, which runs `certbot renew` with the challenge and the deploy hook that certbot stored in the renewal config.
 - The deploy hook `fidant-relay-cert-installed` copies the new `fullchain.pem` and `privkey.pem` to new files and checks that the certificate's public key matches the key, because 0010 found that a renewal between two reads can pair them wrongly. On a mismatch it stops with `fidant-relay: the certificate and key in <lineage> don't match` and changes nothing. Otherwise it moves both into place one right after the other.
 - Then, if coturn is active, the hook sends it `SIGUSR2` when `/etc/fidant-relay/tls/turn.crt` existed before the hook ran, which reloads the certificate without dropping relayed transfers. Otherwise it restarts coturn, because a coturn that started without a certificate opens TLS only on a restart (0010).
@@ -167,7 +167,7 @@ On the relay:
 - `RelayBox` in `apps/infra/src/relay.ts`, one per entry of `relays` in `apps/infra/src/config.ts`, in `FidantApp`. Today the list holds `sto`.
 - A Lightsail `micro_3_0` on `ubuntu_24_04` in eu-north-1a, named `fidant-relay-sto-<the first 8 hex characters of the SHA-256 of its user data>`.
 - Its user data (`renderRelayUserData` in `apps/infra/src/user-data.ts`) is `#!/bin/sh`, then `RELAY_ID=sto`, `RELAY_NAME=sto.relay.fidant.se` and `APP_URL=https://fidant.se`, exported, then `install.sh` without its first line.
-- Its own static IP, `fidant-relay-sto-ip`, kept when the stack deletes it. The output `RelayStoIp` gives its address, which SIG-153 copies into the DNS config by hand, as with `boxAddress`.
+- Its own static IP, `fidant-relay-sto-ip`, kept when the stack deletes it. The output `RelayStoIp` gives its address, which SIG-157 copies into the DNS config by hand, as with `boxAddress`.
 - Lightsail ports: TCP 22 from `lightsail-connect` only; TCP 80, 443 and 3478, UDP 3478 and UDP 49152–65535 from everyone, over IPv4 and IPv6.
 - The app box doesn't change, and 0011's cap still watches only the app box.
 
@@ -181,7 +181,7 @@ On the relay:
 - There is no HAProxy in front of coturn, so it sees real client addresses on TLS too, unlike the app box's relay (0010).
 - coturn also opens TLS on 444 and listens on 3479. Both firewalls keep them closed. It accepts TLS on 3478 too, which is open, as on the app box.
 - The previous secret stays valid for 24 hours after a change while hand-outs keep arriving, and longer while they don't.
-- certbot's log keeps the addresses that reach port 80 during a challenge for up to about five weeks. Until the first certificate, certbot holds port 80 for a few seconds every 15 minutes.
+- certbot's log keeps the addresses that reach port 80 during a challenge for up to about five weeks. Once the name resolves and until the first certificate, certbot holds port 80 for a few seconds every 15 minutes.
 - Lightsail pools the transfer allowance across the region's `micro_3_0` boxes, and 0011's cap counts only the app box's traffic. The relay box carries no relayed transfers until SIG-153, which moves the cap to it.
 - `pnpm e2e:networks` runs the script at boot in an Ubuntu container (`apps/e2e/networks/relay`), with the run's certificate in place of Let's Encrypt's, and relays over UDP, TCP and TLS on 443 through it. It can't run certbot, Lightsail's NAT or the first certificate's restart.
 
@@ -215,7 +215,7 @@ ufw status
 ```
 
 - coturn is active, and ufw lists the six rules above.
-- `fidant-relay-cert.service` shows `failed` until the relay's DNS name exists and the first certificate is issued. That is expected.
+- `fidant-relay-cert.service` shows `success` without certbot having run until the relay's DNS name exists. Once it resolves, a `failed` state means Let's Encrypt refused; read `/var/log/letsencrypt/`.
 - `grep '^external-ip=' /etc/turnserver.conf` shows the static IP once the DNS name exists.
 - `openssl x509 -noout -enddate -in /etc/fidant-relay/tls/turn.crt` shows a date well ahead once there is a certificate.
 - `journalctl -u coturn` holds no client IP addresses.
