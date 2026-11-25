@@ -264,7 +264,7 @@ async function startNetworks(): Promise<RunningService> {
   };
 }
 
-/** Pulls and builds missing images at the same time; compose up would pull first, then build. */
+/** Pulls missing images while rebuilding the three built ones; compose up would pull, then build. */
 async function fetchImages(): Promise<void> {
   const { stdout } = await run("docker", [...compose, "config", "--images"]);
   const images = [...stdout.split("\n").filter(Boolean), serverImage];
