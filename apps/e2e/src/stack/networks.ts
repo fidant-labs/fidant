@@ -1,12 +1,12 @@
 import { execFile, execFileSync } from "node:child_process";
-import { createHash, randomBytes, X509Certificate } from "node:crypto";
+import { createHash, generateKeyPairSync, randomBytes, X509Certificate } from "node:crypto";
 import { readFileSync, rmSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
-// ponytail: relative import, not a workspace dependency on the server, for one small function.
-import { sealRelaySecret } from "../../../server/src/relay-secret.ts";
+// ponytail: relative import, not a workspace dependency on the server, for two small functions.
+import { relaySecret, sealRelaySecret } from "../../../server/src/relay-secret.ts";
 import { e2eDir, repoRoot, runDir } from "../paths.ts";
 import { boxFiles } from "./box.ts";
 import { coturnConfig } from "./coturn.ts";
@@ -150,14 +150,19 @@ function down(): void {
 
 /**
  * The routers, browser containers, coturn, the box and the relay box of networks/compose.yaml.
- * It hands the server TURN_URLS for coturn at 198.51.100.20, with a secret made for this run,
- * which the box shares.
+ * It hands the server a relay list and a master made for this run: `net`, coturn at
+ * 198.51.100.20, which takes net's derived secret and shares it with the box, then `sto`, the
+ * relay box, which has no secret until it fetches one.
  */
 export const dockerNetworks: Service = { name: "networks", start: startNetworks };
 
 async function startNetworks(): Promise<RunningService> {
   const dir = await mkdtemp(join(tmpdir(), "sigill-e2e-coturn-"));
-  const secret = randomBytes(32).toString("hex");
+  // Made here: the server's mount is read-only, and coturn needs net's secret before it starts.
+  const master = randomBytes(32).toString("hex");
+  const masterFile = join(dir, "relay-master");
+  await writeFile(masterFile, `${master}\n`, { mode: 0o600 });
+  const secret = relaySecret(master, "net");
   const secretFile = join(dir, "secret");
   await writeFile(secretFile, secret, { mode: 0o600 });
   // The config dir is mounted read-only, so coturn keeps its state in the container's /tmp.
@@ -201,7 +206,7 @@ async function startNetworks(): Promise<RunningService> {
   const relayDir = await mkdtemp(join(tmpdir(), "sigill-e2e-relay-"));
   await writeFile(
     join(relayDir, "env"),
-    `RELAY_ID=sto\nRELAY_NAME=${relayHost}\nAPP_URL=${boxOrigin}\n`,
+    `RELAY_ID=sto\nRELAY_NAME=${relayHost}\nAPP_URL=https://${serverIp}\n`,
   );
   await mkdir(join(relayDir, "tls"));
   await writeFile(join(relayDir, "tls", "turn.crt"), turnCert.cert);
@@ -238,10 +243,29 @@ async function startNetworks(): Promise<RunningService> {
     cleanUp();
   };
 
+  const turnUrls = [
+    `stun:${turnIp}:3478`,
+    `turn:${turnIp}:3478?transport=udp`,
+    // By name, as in production, so Chrome sends SNI.
+    `turns:${turnHost}:443?transport=tcp`,
+  ];
+  const relaysFile = join(dir, "relays.json");
   try {
     // Left over from a run that was killed.
     down();
     await run("docker", [...compose, "up", "-d", "--wait", "--wait-timeout", "120"]);
+    // net's key only lets the list parse: nothing fetches net's hand-out.
+    const netKey = generateKeyPairSync("rsa", { modulusLength: 2048 }).publicKey;
+    const relays = [
+      { id: "net", urls: turnUrls, publicKey: netKey.export({ type: "spki", format: "pem" }) },
+      {
+        id: "sto",
+        // By address: the server resolves no test names, and its check needs a turn: UDP URL.
+        urls: [`stun:${relayIp}:3478`, `turn:${relayIp}:3478?transport=udp`],
+        publicKey: await inRelay("cat", "/etc/fidant-relay/relay.pub"),
+      },
+    ];
+    await writeFile(relaysFile, JSON.stringify(relays));
     // Pulled here, so the server's start timeout does not include a download.
     await run("docker", ["image", "inspect", serverImage]).catch(() =>
       run("docker", ["pull", "--quiet", serverImage]),
@@ -254,14 +278,12 @@ async function startNetworks(): Promise<RunningService> {
     name: "networks",
     // Not the stack's server, which is serverImage's container; only an origin the browser may reach.
     url: boxOrigin,
+    // The server ignores TURN_* while the list has relays; they stay as its fallback without one.
     env: {
-      TURN_URLS: [
-        `stun:${turnIp}:3478`,
-        `turn:${turnIp}:3478?transport=udp`,
-        // By name, as in production, so Chrome sends SNI.
-        `turns:${turnHost}:443?transport=tcp`,
-      ].join(","),
+      TURN_URLS: turnUrls.join(","),
       TURN_SECRET_FILE: secretFile,
+      RELAYS_FILE: relaysFile,
+      RELAY_MASTER_FILE: masterFile,
     },
     stop,
   };
@@ -278,6 +300,7 @@ export const dockerServer: Service = {
       host: serverIp,
       command: (certDir) => {
         const user = `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`;
+        // Holds the TURN secret, the relay list and the relay master, which the server reads.
         const secretDir = dirname(env.TURN_SECRET_FILE ?? "");
         // --init: the server has no SIGTERM handler, and as PID 1 it would ignore one.
         // ponytail: one server container at a time; a second run on this machine replaces it.
@@ -314,6 +337,10 @@ export const dockerServer: Service = {
           "TURN_URLS",
           "-e",
           "TURN_SECRET_FILE",
+          "-e",
+          "RELAYS_FILE",
+          "-e",
+          "RELAY_MASTER_FILE",
           serverImage,
           "node",
         ];

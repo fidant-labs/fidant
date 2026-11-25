@@ -1045,7 +1045,7 @@ test.describe("the relay box", () => {
       expect(await apply("/tmp/hand-out")).toBe("exit 0\n");
       expect(await apply("/tmp/garbage")).toBe("exit 1\n");
       let lines: string[] = [];
-      // The fetch ran, offline here, and exited cleanly. The timer first fires 10 s after install.
+      // The timer's fetch (10 s after install) got no hand-out from the server and exited cleanly.
       await expect
         .poll(
           async () => {
