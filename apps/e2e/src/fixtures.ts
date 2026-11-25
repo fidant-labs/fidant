@@ -357,22 +357,29 @@ function logPeerFailures() {
   const listen = channelProto.addEventListener;
   const watched = new WeakSet<RTCDataChannel>();
   // SIG-194: a second reader on one channel would explain a transfer that fails after it
-  // accepted, so count the page's message listeners and open handler calls per channel.
-  const readers = new WeakMap<RTCDataChannel, number>();
-  const opens = new WeakMap<RTCDataChannel, number>();
+  // accepted, so log each open and each message listener added or removed, with how many are live.
+  // A per-page counter tags each channel, so the lines of several channels can be told apart.
+  const tags = new WeakMap<RTCDataChannel, string>();
+  let tagged = 0;
+  const channelTag = (channel: RTCDataChannel) => {
+    let known = tags.get(channel);
+    if (known === undefined) {
+      known = `c${++tagged}`;
+      tags.set(channel, known);
+    }
+    return known;
+  };
+  const readers = new WeakMap<RTCDataChannel, Set<unknown>>();
   const onopen = Object.getOwnPropertyDescriptor(channelProto, "onopen");
-  if (onopen?.get && onopen.set) {
-    const { get, set } = onopen;
+  if (onopen?.set) {
+    const { set } = onopen;
     Object.defineProperty(channelProto, "onopen", {
       ...onopen,
-      get,
       set(this: RTCDataChannel, handler: unknown) {
         Reflect.apply(set, this, [
           typeof handler === "function"
             ? function (this: RTCDataChannel, event: Event) {
-                const count = (opens.get(this) ?? 0) + 1;
-                opens.set(this, count);
-                log(`channel open #${count} in ${this.readyState}`);
+                log(`channel ${channelTag(this)} open in ${this.readyState}`);
                 return Reflect.apply(handler, this, [event]) as unknown;
               }
             : handler,
@@ -382,9 +389,10 @@ function logPeerFailures() {
   }
   channelProto.addEventListener = function (this: RTCDataChannel, ...args: unknown[]) {
     if (args[0] === "message") {
-      const count = (readers.get(this) ?? 0) + 1;
-      readers.set(this, count);
-      log(`channel message listener #${count} ${stack()}`);
+      const live = readers.get(this) ?? new Set();
+      readers.set(this, live);
+      live.add(args[1]);
+      log(`channel ${channelTag(this)} message listener added, ${live.size} live, ${stack()}`);
     }
     if (!watched.has(this)) {
       watched.add(this);
@@ -400,6 +408,14 @@ function logPeerFailures() {
     }
     return Reflect.apply(listen, this, args);
   } as RTCDataChannel["addEventListener"];
+  const unlisten = channelProto.removeEventListener;
+  channelProto.removeEventListener = function (this: RTCDataChannel, ...args: unknown[]) {
+    const live = readers.get(this);
+    if (args[0] === "message" && live?.delete(args[1])) {
+      log(`channel ${channelTag(this)} message listener removed, ${live.size} live`);
+    }
+    return Reflect.apply(unlisten, this, args);
+  } as RTCDataChannel["removeEventListener"];
   const send = channelProto.send;
   channelProto.send = function (this: RTCDataChannel, data: unknown) {
     try {
@@ -426,7 +442,8 @@ function logPeerFailures() {
             ? ` after in ${seen.in.join(" ")} out ${seen.out.join(" ")}`
             : " after no frames"
           : "";
-      log(`${label} close() ${stack()}${trail}`);
+      const name = this instanceof RTCDataChannel ? `channel ${channelTag(this)}` : label;
+      log(`${name} close() ${stack()}${trail}`);
       Reflect.apply(close, this, []);
     };
   }
