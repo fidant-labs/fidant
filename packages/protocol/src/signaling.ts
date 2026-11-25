@@ -9,6 +9,15 @@
 /** A link ID: 16 random bytes as base64url, without padding. */
 export const LINK_ID_PATTERN = /^[A-Za-z0-9_-]{22}$/;
 
+/** The longest wait between a client's attempts to reach the signaling server. */
+export const RETRY_MAX_MS = 30_000;
+
+/** How long after it starts the server refuses unknown links with `starting` (decision 0018). */
+export const STARTING_MS = 2 * RETRY_MAX_MS;
+
+/** WebSocket close code (Service Restart) the server sends every socket when it stops. */
+export const SERVICE_RESTART = 1012;
+
 /** The most links one sender may host at once. */
 export const MAX_LINKS = 256;
 
@@ -41,9 +50,17 @@ const CODE_PATTERN = /^[0-9]{6}$/;
 
 const BASE64URL_PATTERN = /^[A-Za-z0-9_-]+$/;
 
-/** Why a sender turns a recipient away. `drop`: it gave up on the attempt; the link still works. */
+/** Why a sender's page may turn a recipient away. `drop`: the sender gave up on the attempt; the link still works. */
 export const REFUSE_REASONS = ["used", "busy", "unknown", "drop"] as const;
 export type RefuseReason = (typeof REFUSE_REASONS)[number];
+
+/**
+ * Why a recipient is turned away, as the server tells it. Only the server sends `starting`: it
+ * started less than STARTING_MS ago and doesn't know the link yet, so the link's sender may still
+ * be reconnecting; ask again. A sender's `refuse` never carries it.
+ */
+export const REFUSED_REASONS = [...REFUSE_REASONS, "starting"] as const;
+export type RefusedReason = (typeof REFUSED_REASONS)[number];
 
 /**
  * How a sender's connection to a recipient ended up: directly, directly through a STUN-found
@@ -86,7 +103,7 @@ export const UPGRADE_REJECT_REASONS = ["path", "origin", "full", "address"] as c
 export type UpgradeRejectReason = (typeof UPGRADE_REJECT_REASONS)[number];
 
 /** Every value the server may write in a log line's `reason` field. */
-export type LogReason = RefuseReason | UpgradeRejectReason | CodeResult | "unverified";
+export type LogReason = RefusedReason | UpgradeRejectReason | CodeResult | "unverified";
 
 /** The only events a log line may name. */
 export type LogEvent =
@@ -195,7 +212,7 @@ export type JoinedMessage = {
 /** Tells the sender that the recipient on a link went away. */
 export type LeftMessage = { t: "left"; link: string };
 /** Tells a recipient why it cannot connect. */
-export type RefusedMessage = { t: "refused"; reason: RefuseReason };
+export type RefusedMessage = { t: "refused"; reason: RefusedReason };
 /** Tells a recipient that the sender went away. */
 export type HostGoneMessage = { t: "host-gone" };
 /** Reports a protocol error. */
@@ -337,6 +354,10 @@ function isRelayData(value: unknown): value is string {
   return (
     typeof value === "string" && value.length <= MAX_RELAY_DATA && BASE64URL_PATTERN.test(value)
   );
+}
+
+function isRefusedReason(value: unknown): value is RefusedReason {
+  return (REFUSED_REASONS as readonly unknown[]).includes(value);
 }
 
 function isRefuseReason(value: unknown): value is RefuseReason {
@@ -536,7 +557,7 @@ export function parseServerMessage(raw: string): ServerMessage | undefined {
     case "relay":
       return parseRelay(value);
     case "refused":
-      if (!hasKeys(value, ["t", "reason"]) || !isRefuseReason(value.reason)) {
+      if (!hasKeys(value, ["t", "reason"]) || !isRefusedReason(value.reason)) {
         return undefined;
       }
       return { t: "refused", reason: value.reason };
