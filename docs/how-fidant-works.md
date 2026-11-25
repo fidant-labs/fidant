@@ -135,7 +135,7 @@ A recipient holds at most 129 incoming frames that it hasn't handled yet (the wi
 
 ### Names
 
-META refuses names, types and sender names containing control characters, line and paragraph separators (U+2028, U+2029) or Unicode direction controls (U+200E, U+200F, U+202A–202E, U+2066–2069), so a name ending in `.exe` can't be displayed as one ending in `.pdf`. The sender's name is typed by the sender and not verified.
+META refuses names, types and sender names containing C0 or C1 control characters, line and paragraph separators (U+2028, U+2029) or any Unicode Bidi_Control character (U+061C, U+200E, U+200F, U+202A–202E, U+2066–2069), so a name ending in `.exe` can't be displayed as one ending in `.pdf`. The sender's name is typed by the sender and not verified.
 
 ## Padding
 
