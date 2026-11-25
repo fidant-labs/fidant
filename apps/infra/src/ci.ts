@@ -65,7 +65,7 @@ export class CiStack extends Stack {
           ],
         }),
         new iam.PolicyStatement({
-          // A Deny on "true" holds whether or not the request carries the key.
+          // A Deny on "true" refuses exec without refusing a request that leaves the key out.
           effect: iam.Effect.DENY,
           actions: ["ecs:UpdateService"],
           resources: ["*"],
