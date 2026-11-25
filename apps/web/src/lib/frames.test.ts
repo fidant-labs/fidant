@@ -692,6 +692,13 @@ test("META refuses blank characters that push a name's real ending out of sight 
     assert.throws(() => decodeMeta(rawMeta(JSON.stringify({ ...meta(10), name }))), label);
   }
   assert.equal(hasForbiddenCharacters(`invoice.pdf${" ".repeat(40)}.exe`), true, "spaces");
+  // Invisible characters between single spaces still make a run.
+  for (const space of [" ", "\u00a0"]) {
+    for (const code of [0x200b, 0x2060, 0x00ad, 0xfeff, 0x180e]) {
+      const name = `invoice.pdf${(space + String.fromCodePoint(code)).repeat(100)}.exe`;
+      assert.equal(hasForbiddenCharacters(name), true, `U+${code.toString(16)} between spaces`);
+    }
+  }
   // One space of any kind stays allowed. macOS puts U+202F before AM or PM in screenshot names.
   for (const name of ["Screenshot 2026-11-25 at 10.00.00 AM.png", "a b.txt", "a  b.txt"]) {
     assert.equal(hasForbiddenCharacters(name), false, name);

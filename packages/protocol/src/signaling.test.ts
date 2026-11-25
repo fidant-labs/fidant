@@ -402,6 +402,13 @@ test("rejects malformed or oversized ICE servers", () => {
   }
 });
 
+test("email sender names: a single U+202F parses, spaces split by invisible characters do not", () => {
+  const ok = { ...email, from: "Anna\u202fB" };
+  assert.deepEqual(client(ok), ok);
+  const hidden = { ...email, from: `Anna${" \u200b".repeat(5)}.exe` };
+  assert.equal(client(hidden), undefined);
+});
+
 test("parses valid emailed-link client messages", () => {
   assert.deepEqual(client(email), email);
   for (const lang of ["sv", "en"]) {
