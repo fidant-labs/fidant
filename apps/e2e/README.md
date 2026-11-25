@@ -54,7 +54,7 @@ Today:
 - WebSocket frames, sent and received, including `/signal`.
 - Browser console messages: the text and the page URL without its fragment.
 - Server stdout and stderr. Stdout must also pass a strict allowlist: one JSON object per line, with known keys and values only (`src/leaks/server-log.ts`).
-- coturn's verbose log, `observations/run/coturn.log`.
+- coturn's verbose log, `observations/run/coturn.log`, Mailpit's output, `observations/run/mailpit.log`, and the stack's own events, such as an unexpected server exit, `observations/run/stack-events.log`.
 - Every mail Mailpit caught, as two captures of its raw source: the headers, unfolded, which carry the envelope as Mailpit records it (Return-Path, Received and, for a recipient not in To or Cc, Bcc), and the body. A finding names the part, such as `observations/<test>/mail/<ID>.eml body`. Each test's check saves the mail that arrived during the test to `observations/<test>/mail/<ID>.eml`, and its teardown deletes those messages from Mailpit. Global teardown saves what is left to `observations/run/mail/`.
 - In the network scenarios only, every packet to and from coturn, `observations/run/coturn.pcap`. The `pcap` service of `networks/compose.yaml` runs tcpdump in coturn's network namespace with `NET_RAW`, so no sudo is needed (decision 0001 expected sudo on CI). The file is scanned as raw bytes, one capture per test from where it stood when the test began. It holds STUN and TURN headers, DTLS ciphertext and, for TURN over TLS, TLS ciphertext only, so it is safe as a CI artifact. `pnpm e2e` has no packet capture.
 - In the network scenarios only, the box's journal for sigill, haproxy, caddy and coturn (`observations/run/box-journal.jsonl`, the message of each `journalctl -o json --all` entry, one per line, binary ones hex-encoded) and its `/var/log/syslog` (`observations/run/box-syslog.log`), written by the `the box` test after its transfer.
@@ -72,7 +72,10 @@ Not wired yet. Each arrives with the first issue that needs the service:
 
 ## Adding an observation point
 
-Turn what the point saw into `Capture`s (`src/leaks/scan.ts`): a `point` naming where it was seen, such as `observations/<test>/mail/<ID>.eml`, and the `bytes`. Add a `contentEncoding` hint if the bytes are compressed. Write the raw data under `observations/`, then add the captures to the per-test scan in `src/leak-watch.ts` and to the sweep in `src/sweep.ts`. `src/leaks/captures.ts` does this for browser records and logs.
+Write the raw data under `observations/`. The run-level sweep fails on any file there that no leak check reads, naming it, so every new file needs one of these:
+
+- A file for the whole run, directly in `observations/run/`: add it to `runSources` in `src/paths.ts`, read as `lines` (a log, one capture per line) or `binary` (raw bytes, such as a packet capture). Both the per-test scan in `src/leak-watch.ts`, which reads what the file grew by during the test, and the sweep in `src/sweep.ts`, which reads all of it, then pick it up. A file that holds nothing a test could leak, such as `server.pid`, goes in as `ignored` with its reason.
+- A file per test, in `observations/<test>/`: turn what the point saw into `Capture`s (`src/leaks/scan.ts`), a `point` naming where it was seen, such as `observations/<test>/mail/<ID>.eml`, and the `bytes`, with a `contentEncoding` hint if the bytes are compressed. Add them to the per-test scan in `src/leak-watch.ts`, and add a rule for the file to `formatOf` in `src/sweep.ts`. `src/leaks/captures.ts` does this for browser records (`<actor>.jsonl`) and saved mail (`mail/<ID>.eml`).
 
 ## Reproducing a failure
 

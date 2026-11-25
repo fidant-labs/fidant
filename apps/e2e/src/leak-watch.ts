@@ -26,16 +26,7 @@ import { exemptTest, registerSecrets } from "./leaks/registry.ts";
 import { formatLeakReport, logViolations } from "./leaks/report.ts";
 import { type Capture, type Finding, scan } from "./leaks/scan.ts";
 import { saveMail } from "./mail.ts";
-import {
-  boxJournal,
-  boxSyslog,
-  coturnLog,
-  coturnPcap,
-  e2eDir,
-  observationsDir,
-  serverStderrLog,
-  serverStdoutLog,
-} from "./paths.ts";
+import { e2eDir, observationsDir, runSources, serverStdoutLog } from "./paths.ts";
 import type { Recorder } from "./recorder.ts";
 
 /** What a test uses to register its secrets and check for leaks. */
@@ -82,10 +73,11 @@ export interface Leaks {
 const point = (path: string) => relative(e2eDir, path);
 
 /**
- * The run logs, server stdout first. All get the canary scan; stdout also the allowlist check.
- * The box's files exist only once its test wrote them; a missing log reads as empty.
+ * The run's logs (server stdout first, which also gets the allowlist check) and binary captures.
+ * Some exist only once a test or a run wrote them; a missing one reads as empty.
  */
-const logs = [serverStdoutLog, serverStderrLog, coturnLog, boxJournal, boxSyslog];
+const logs = runSources.flatMap((source) => (source.read === "lines" ? [source.path] : []));
+const binaries = runSources.flatMap((source) => (source.read === "binary" ? [source.path] : []));
 
 /**
  * One test's leak check: its secrets, the recorders whose records it scans, and where the server
@@ -97,7 +89,7 @@ export class LeakWatch implements Leaks {
   readonly #test: string;
   readonly #registry: string | undefined;
   readonly #logStarts: number[];
-  readonly #pcapStart: number;
+  readonly #binaryStarts: number[];
   readonly #secrets: Secret[] = [];
   #files = 0;
   #expectLeaks = false;
@@ -107,12 +99,12 @@ export class LeakWatch implements Leaks {
     test: string,
     registry: string | undefined,
     logStarts: number[],
-    pcapStart: number,
+    binaryStarts: number[],
   ) {
     this.#test = test;
     this.#registry = registry;
     this.#logStarts = logStarts;
-    this.#pcapStart = pcapStart;
+    this.#binaryStarts = binaryStarts;
   }
 
   /**
@@ -120,8 +112,8 @@ export class LeakWatch implements Leaks {
    * where secrets are also written for the run-level sweep.
    */
   static async start(test: string, registry: string | undefined): Promise<LeakWatch> {
-    const sizes = await Promise.all(logs.map(sizeOf));
-    return new LeakWatch(test, registry, sizes, await sizeOf(coturnPcap));
+    const logStarts = await Promise.all(logs.map(sizeOf));
+    return new LeakWatch(test, registry, logStarts, await Promise.all(binaries.map(sizeOf)));
   }
 
   watch(file: CanaryFile, label = `file#${++this.#files}`): CanaryFile {
@@ -227,26 +219,28 @@ export class LeakWatch implements Leaks {
     logs.forEach((path, index) => {
       captures.push(...logCaptures(point(path), slices[index] as LogSlice));
     });
-    const pcap = await settledPcap();
-    if (pcap) {
-      // Binary packets, not lines: one capture of what tcpdump wrote since the test began.
-      captures.push({ point: point(coturnPcap), bytes: pcap.subarray(this.#pcapStart) });
+    for (const [index, path] of binaries.entries()) {
+      const bytes = await settled(path);
+      if (bytes) {
+        // Not lines: one capture of what was written since the test began.
+        captures.push({ point: point(path), bytes: bytes.subarray(this.#binaryStarts[index]) });
+      }
     }
     return { captures, limits, stdout: slices[0] as LogSlice };
   }
 }
 
 /**
- * The coturn packet capture once its size has stopped changing, or undefined when there is none
- * (`pnpm e2e` runs no capture). tcpdump writes each packet as it arrives, but packets still on
+ * A binary capture, such as coturn's packets, once its size has stopped changing, or undefined
+ * when there is none (`pnpm e2e` runs no packet capture). tcpdump writes each packet as it arrives, but packets still on
  * their way through the routers, and the bind mount on Docker Desktop, can lag a little.
  * ponytail: waits for 250 ms without growth, at most 2 s; a relay still busy after that is cut,
  * and the run-level sweep scans the rest.
  */
-async function settledPcap(): Promise<Buffer | undefined> {
+async function settled(path: string): Promise<Buffer | undefined> {
   let last = -1;
   for (let waited = 0; waited < 2_000; waited += 250) {
-    const size = await stat(coturnPcap).then(
+    const size = await stat(path).then(
       (stats) => stats.size,
       () => undefined,
     );
@@ -259,7 +253,7 @@ async function settledPcap(): Promise<Buffer | undefined> {
     last = size;
     await setTimeout(250);
   }
-  return readFile(coturnPcap);
+  return readFile(path);
 }
 
 async function sizeOf(path: string): Promise<number> {
