@@ -47,7 +47,7 @@ Dispatch every matching lane in **one message** so they run in parallel. Cap at 
 
 **Tiny diff** (under 50 lines or a single file): only `Code Reviewer`, the over-engineering lane, and `Application Security Engineer` when its row matches.
 
-**Docs-only diff** (every changed path is `.md` or `.txt`, and none is `AGENTS.md`, `CLAUDE.md` or under `.claude/`): only `Code Reviewer`, one round, no fix loop beyond it.
+**Docs-only diff** (every changed path is `.md` or `.txt`, and none is any `AGENTS.md` or `CLAUDE.md` or under `.claude/`): only `Code Reviewer`, one round, no fix loop beyond it.
 
 Every reviewer prompt contains:
 
@@ -65,12 +65,10 @@ Security findings about authorisation must name the concrete capability an attac
 
 - `blocker`: wrong behaviour, security hole, data loss, a broken `AGENTS.md` invariant, a broken acceptance criterion.
 - `major`: an objectively correct fix with no judgment call, such as dead code, an unused export, a missing `await`, a null hole, a typo in user-facing text, or a violated `AGENTS.md` or `CLAUDE.md` rule. Test: two competent engineers would agree on the fix without discussion.
-- `minor`: an improvement that involves taste. A reasonable reviewer might say "leave it".
+- `minor`: an improvement that involves taste. A reasonable reviewer might say "leave it". In a file under `apps/infra/box/`, any change after deploy replaces the box, so lanes rate a minor there `major`; nits stay nits. Step 6's round-2+ demotion and the verifier's downgrades still apply to that rating.
 - `nit`: pure style preference.
 
 A coverage gap on production code that is already correct is `minor`, unless the regression it would catch is catastrophic.
-
-In a box script (`apps/infra/AGENTS.md`), any fix after deploy replaces the box, so a minor there is `major`. Nits stay nits.
 
 ### Output contract
 
@@ -111,7 +109,7 @@ For every remaining blocker and major inside the diff, dispatch one fix subagent
 
 Findings outside the diff and architect "restructure the module" findings are not fixed here. They go into a follow-ups list for the pull request body.
 
-Read each fix delta yourself. A fix is **mechanical** when it only edits comments or docs prose, corrects a typo, removes an unused import or export, or deletes code that nothing references. Every other fix, and any fix you are unsure about, is a behaviour fix. Directive comments such as `biome-ignore` or `@ts-expect-error`, and any change to `AGENTS.md`, `CLAUDE.md` or files under `.claude/`, are not mechanical. When every blocker and major not deferred to follow-ups got a fix, every fix is mechanical, and the narrow gates pass, the loop is clean and no reviewer round follows.
+Read each fix delta yourself. A fix is **mechanical** when it only edits comments or docs prose, corrects a typo, removes an unused import or export, or deletes code that nothing references. Every other fix, and any fix you are unsure about, is a behaviour fix. Directive comments such as `biome-ignore` or `@ts-expect-error`, and any change to any `AGENTS.md` or `CLAUDE.md` or to files under `.claude/`, are not mechanical. When every blocker and major not deferred to follow-ups got a fix, every fix is mechanical, and the narrow gates pass, the loop is clean and no reviewer round follows.
 
 Otherwise re-run only the lanes whose paths the fixes touched, verify their new findings, and repeat. From round 2 on, a re-run lane reviews the fix delta (`git diff <before> <after>`), not the whole branch diff; it gets the findings it is checking and may read surrounding code for context. A round-2+ finding on lines the delta did not change is something round 1 missed: it drops to `minor` and goes to the report, unless it is a blocker that names the concrete capability an attacker gains or the data that is lost.
 
