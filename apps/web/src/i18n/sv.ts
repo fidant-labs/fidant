@@ -361,7 +361,7 @@ export const sv: Messages = {
       sending: (to: string) => `Skickar mejl till ${to}…`,
       sent: (to: string) => `Mejl skickat till ${to}`,
       failed: (to: string) =>
-        `Mejlet till ${to} skickades inte. Kopiera länken nedan och dela den själv, eller ta bort mottagaren och lägg till den igen för att försöka med mejl på nytt.`,
+        `Mejlet till ${to} skickades inte. Ta bort mottagaren och lägg till den igen för att försöka på nytt, eller lägg till den utan e-postadress och dela länken själv.`,
       limit: (to: string) =>
         `Mejlet till ${to} skickades inte: för många mejl just nu. Kopiera länken nedan och dela den själv. Vår server hade sett den första länkens hemlighet, så den här är ny.`,
       verifying: (to: string) => `Kod skickad till ${to}`,

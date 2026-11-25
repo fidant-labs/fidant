@@ -382,7 +382,7 @@ export const en = {
       sending: (to: string) => `Sending email to ${to}…`,
       sent: (to: string) => `Email sent to ${to}`,
       failed: (to: string) =>
-        `Email not sent to ${to}. Copy the link below and share it yourself, or remove this recipient and add them again to retry by email.`,
+        `Email not sent to ${to}. To try again, remove this recipient and add them again, or add them without an email address and share the link yourself.`,
       limit: (to: string) =>
         `Email not sent to ${to}: too many emails right now. Copy the link below and share it yourself. Our server had seen the first link's secret, so this one is new.`,
       verifying: (to: string) => `Code sent to ${to}`,
