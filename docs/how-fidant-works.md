@@ -17,6 +17,18 @@ A change to security or data flow updates this document in the same pull request
 
 The box is an AWS Lightsail instance in Stockholm (eu-north-1). There are no accounts, no database and no file storage. The server holds what it knows only in memory.
 
+## Modes
+
+Three independent choices set how a transfer runs. Every combination uses the same keys, frames and checks.
+
+| Choice                                | Modes                                                                                                                                                                                                      | Details                                      |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| What is sent                          | A file (`/send`), or a shared secret the sender types or pastes (`/secret`)                                                                                                                                | "The transfer", "Sharing a secret"           |
+| How the link reaches the recipient    | The sender copies the link and passes it on over any channel they choose, and the secret never leaves the browser; or the sender gives an email address and our server emails the link and a one-time code | "The link", "Emailed links"                  |
+| The route the encrypted traffic takes | Direct over local addresses, direct through public addresses learned from STUN, or through our TURN relay; the sender can refuse the relay for a send                                                      | "How the file travels", "Refusing the relay" |
+
+Emailing a link is offered only when the server has a mail service (see "The mail service"), and it is the one mode in which a link's secret reaches our server.
+
 ## The link
 
 `apps/web/src/lib/link.ts`
@@ -324,5 +336,5 @@ A pull request that changes security or data flow updates this document in the s
 
 The web pages explain the same things for readers, and change with it:
 
-- `/technical`: the `technical` text in `apps/web/src/i18n/en.ts` and `sv.ts`, a reader's version of this document.
+- `/technical` and the step pages `/how/file`, `/how/link`, `/how/connect`, `/how/direct`, `/how/relay` and `/how/never`: the `technical` text in `apps/web/src/i18n/en.ts` and `sv.ts`, a reader's version of this document, split over the steps by `STEPS` in `apps/web/src/technical/TechnicalPage.tsx`.
 - `/how`, `/privacy`, `/security` and the landing page, wherever they say something the change makes untrue.
