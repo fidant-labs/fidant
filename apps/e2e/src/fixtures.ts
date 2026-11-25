@@ -274,7 +274,7 @@ async function record(
   await context.addInitScript(logPeerFailures);
 }
 
-/** Runs in the page through addInitScript, so it may use nothing from this module: logs why a peer connection call failed, every error the page builds and its cause, what a data channel refused, and who closed a peer or channel after which frames, which the app keeps out of its console. */
+/** Runs in the page through addInitScript, so it may use nothing from this module: logs why a peer connection call failed, every error the page builds and its cause, what a data channel refused, how often a channel opened and gained a message listener, and who closed a peer or channel after which frames, which the app keeps out of its console. */
 function logPeerFailures() {
   const log = (text: string) => console.warn(`sigill-e2e: ${text}`);
   const native = (fn: unknown) =>
@@ -356,7 +356,36 @@ function logPeerFailures() {
   const channelProto = RTCDataChannel.prototype;
   const listen = channelProto.addEventListener;
   const watched = new WeakSet<RTCDataChannel>();
+  // SIG-194: a second reader on one channel would explain a transfer that fails after it
+  // accepted, so count the page's message listeners and open handler calls per channel.
+  const readers = new WeakMap<RTCDataChannel, number>();
+  const opens = new WeakMap<RTCDataChannel, number>();
+  const onopen = Object.getOwnPropertyDescriptor(channelProto, "onopen");
+  if (onopen?.get && onopen.set) {
+    const { get, set } = onopen;
+    Object.defineProperty(channelProto, "onopen", {
+      ...onopen,
+      get,
+      set(this: RTCDataChannel, handler: unknown) {
+        Reflect.apply(set, this, [
+          typeof handler === "function"
+            ? function (this: RTCDataChannel, event: Event) {
+                const count = (opens.get(this) ?? 0) + 1;
+                opens.set(this, count);
+                log(`channel open #${count} in ${this.readyState}`);
+                return Reflect.apply(handler, this, [event]) as unknown;
+              }
+            : handler,
+        ]);
+      },
+    });
+  }
   channelProto.addEventListener = function (this: RTCDataChannel, ...args: unknown[]) {
+    if (args[0] === "message") {
+      const count = (readers.get(this) ?? 0) + 1;
+      readers.set(this, count);
+      log(`channel message listener #${count} ${stack()}`);
+    }
     if (!watched.has(this)) {
       watched.add(this);
       Reflect.apply(listen, this, [
