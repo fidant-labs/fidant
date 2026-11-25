@@ -877,8 +877,14 @@ export function SendPage({
                       checked={useEmail}
                       disabled={!file || full}
                       onChange={(event) => {
-                        setUseEmail(event.currentTarget.checked);
+                        const checked = event.currentTarget.checked;
+                        setUseEmail(checked);
                         setEmailError(false);
+                        // Unticking removes the address field, so only the name still counts as typed.
+                        if (!checked) {
+                          const name = formRef.current?.elements.namedItem("name");
+                          setTyped(name instanceof HTMLInputElement && name.value.trim() !== "");
+                        }
                       }}
                     />
                     {t.send.emailChoice}
