@@ -1,8 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { MAX_CHUNK_BYTES, MAX_FROM_LENGTH, metaFits, paddedLength } from "./frames.ts";
+import {
+  FRAME_OVERHEAD_BYTES,
+  MAX_CHUNK_BYTES,
+  MAX_FROM_LENGTH,
+  metaFits,
+  paddedLength,
+} from "./frames.ts";
 import { DEFAULT_MAX_MESSAGE_SIZE } from "./peer.ts";
-import { FRAME_OVERHEAD_BYTES } from "./send-file.ts";
 import {
   decodeText,
   isTextOffer,

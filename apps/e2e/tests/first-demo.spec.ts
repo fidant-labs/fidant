@@ -6,6 +6,7 @@ import {
   breakableSender,
   canaryFile,
   canaryKey,
+  chooseFile,
   delivered,
   expect,
   test as harness,
@@ -106,7 +107,7 @@ async function openSender(
   if (from) {
     await page.getByLabel("Your name").fill(from);
   }
-  await page.getByLabel("Choose a file").setInputFiles({
+  await chooseFile(page, {
     name: file.name,
     mimeType: file.mime,
     buffer: file.bytes,
@@ -416,11 +417,7 @@ test("the sender's name must fit with the file name, and stray drops are ignored
   const page = await demo.open("sender");
   await page.goto("/send");
   await page.getByLabel("Your name").fill("x".repeat(100));
-  await page.getByLabel("Choose a file").setInputFiles({
-    name: file.name,
-    mimeType: file.mime,
-    buffer: file.bytes,
-  });
+  await chooseFile(page, { name: file.name, mimeType: file.mime, buffer: file.bytes });
   // Whether a dragover and a drop of what `fill` adds (nothing: no DataTransfer) onto `selector` are cancelled.
   const cancelled = async (selector: string, fill = "") => {
     const results = [];
@@ -1657,7 +1654,7 @@ harness(
     expect(mail).toBe(Boolean(process.env.SIGILL_E2E_MAILPIT));
     // The add form shows once a file is chosen. The address field appears only once the sender
     // chooses to have the link emailed.
-    await page.getByLabel("Choose a file").setInputFiles({
+    await chooseFile(page, {
       name: "a.bin",
       mimeType: "application/octet-stream",
       buffer: Buffer.from("x"),

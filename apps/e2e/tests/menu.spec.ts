@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { canaryFile, expect, makeName, recipientRow, test } from "../src/fixtures.ts";
+import { canaryFile, chooseFile, expect, makeName, recipientRow, test } from "../src/fixtures.ts";
 
 const nav = (page: Page) => page.locator("header nav");
 
@@ -41,7 +41,7 @@ test("leaving /send for Privacy and going back keeps the file and recipient", as
   const file = leaks.watch(canaryFile(canary.fork("file")));
   const name = makeName(leaks, canary, "Anna");
   await page.goto("/send");
-  await page.getByLabel("Choose a file").setInputFiles({
+  await chooseFile(page, {
     name: file.name,
     mimeType: file.mime,
     buffer: file.bytes,

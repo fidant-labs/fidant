@@ -67,12 +67,14 @@ export const MAX_PADDABLE_SIZE = 2 ** 52;
 export const META_PADDED_BYTES = 1024;
 /** META's length prefix. */
 const META_LENGTH_BYTES = 2;
+/** Bytes of each message that chunkSize leaves for the frame around a CHUNK body: the 10-byte header and 16-byte tag (HEADER_BYTES + TAG_BYTES), with room to spare. */
+export const FRAME_OVERHEAD_BYTES = 64;
 /**
- * Smallest chunk META accepts. A sender's chunk is maxMessageSize minus 64 (FRAME_OVERHEAD_BYTES
- * in send-file.ts), and the META frame itself must fit maxMessageSize, so no honest sender goes
- * below this. A smaller chunk only lets a sender make the recipient hold many tiny parts.
+ * Smallest chunk META accepts. A sender's chunk is maxMessageSize minus FRAME_OVERHEAD_BYTES, and
+ * the META frame itself must fit maxMessageSize, so no honest sender goes below this. A smaller
+ * chunk only lets a sender make the recipient hold many tiny parts.
  */
-export const MIN_CHUNK_BYTES = HEADER_BYTES + META_PADDED_BYTES + TAG_BYTES - 64;
+export const MIN_CHUNK_BYTES = HEADER_BYTES + META_PADDED_BYTES + TAG_BYTES - FRAME_OVERHEAD_BYTES;
 /**
  * Longest MIME type META accepts. The file name has no separate limit: name,
  * type and sender name together must fit in META_PADDED_BYTES (see metaFits).
