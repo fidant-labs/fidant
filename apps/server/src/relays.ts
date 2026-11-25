@@ -1,7 +1,10 @@
 import { createPublicKey, randomBytes } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { parseIceServers } from "@sigill/protocol";
+import { type IceServer, parseIceServers } from "@sigill/protocol";
+import { relaySecret, sealRelaySecret } from "./relay-secret.ts";
+import { iceServersFor } from "./turn.ts";
+import { turnAllocates } from "./turn-check.ts";
 
 export type Relay = { id: string; urls: string[]; publicKey: string; host: string; port: number };
 export type RelayState = { up: boolean; failures: number };
@@ -115,4 +118,69 @@ export function nextState(state: RelayState, ok: boolean): RelayState {
   }
   const failures = state.failures + 1;
   return { up: state.up && failures < 2, failures };
+}
+
+/** The relay list in use, or undefined when there is none or it is empty. */
+export function loadRelays(
+  env: Record<string, string | undefined>,
+  onBox: boolean,
+): { relays: Relay[]; masterFile: string } | undefined {
+  const config = relayConfig(env, onBox);
+  if (!config) {
+    return undefined;
+  }
+  let text: string;
+  try {
+    text = readFileSync(config.file, "utf8");
+  } catch (error) {
+    throw new Error(`Could not read the relay list (${(error as NodeJS.ErrnoException).code}).`);
+  }
+  const relays = parseRelays(text);
+  return relays.length > 0 ? { relays, masterFile: config.masterFile } : undefined;
+}
+
+export type Relays = ReturnType<typeof startRelays>;
+
+/** Checks each relay now and every `intervalMs`, and offers the first one up in list order. */
+export function startRelays(
+  relays: Relay[],
+  master: string,
+  {
+    check = (relay: Relay) => turnAllocates(relay.host, relay.port, relaySecret(master, relay.id)),
+    intervalMs = 60_000,
+  }: { check?: (relay: Relay) => Promise<boolean>; intervalMs?: number } = {},
+) {
+  const down: RelayState = { up: false, failures: 0 };
+  const entries = relays.map((relay) => {
+    const secret = relaySecret(master, relay.id);
+    const sealed = sealRelaySecret(relay.publicKey, secret);
+    return { relay, ice: { urls: relay.urls, secret }, sealed, state: down, checking: false };
+  });
+  const checkAll = () => {
+    for (const entry of entries) {
+      if (entry.checking) {
+        continue;
+      }
+      entry.checking = true;
+      void Promise.resolve()
+        .then(() => check(entry.relay))
+        .catch(() => false)
+        .then((ok) => {
+          entry.state = nextState(entry.state, ok);
+          entry.checking = false;
+        });
+    }
+  };
+  checkAll();
+  const timer = setInterval(checkAll, intervalMs).unref();
+  return {
+    /** The first relay up, or STUN only from the first relay listed when none is. */
+    ice(turn: boolean): IceServer[] {
+      const up = entries.find((entry) => entry.state.up);
+      return iceServersFor((up ?? entries[0])?.ice, Date.now(), turn && up !== undefined);
+    },
+    status: () => entries.map(({ relay, state }) => ({ id: relay.id, up: state.up })),
+    handOut: (id: string) => entries.find((entry) => entry.relay.id === id)?.sealed,
+    stop: () => clearInterval(timer),
+  };
 }

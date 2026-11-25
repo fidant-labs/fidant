@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { generateKeyPairSync, type KeyObject } from "node:crypto";
+import { constants, generateKeyPairSync, type KeyObject, privateDecrypt } from "node:crypto";
 import { mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,12 +8,16 @@ import { fileURLToPath } from "node:url";
 import { inspect } from "node:util";
 import { relaySecret } from "./relay-secret.ts";
 import {
+  loadRelays,
   nextState,
   parseRelays,
+  type Relay,
   type RelayState,
   readOrCreateMaster,
   relayConfig,
+  startRelays,
 } from "./relays.ts";
+import { turnCredentials } from "./turn.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "sigill-relays-"));
 const spki = (key: KeyObject) => key.export({ type: "spki", format: "pem" }).toString();
@@ -198,4 +202,179 @@ test("a relay starts down, comes up on a success and goes down after two failure
     ups.push(state.up);
   }
   assert.deepEqual(ups, [false, true, true, true, true, false, false, true]);
+});
+
+test("on the app box the committed empty list leaves TURN_URLS in charge", () => {
+  assert.equal(
+    loadRelays({ TURN_URLS: "turn:turn.fidant.se:3478?transport=udp" }, true),
+    undefined,
+  );
+});
+
+test("a relay list in RELAYS_FILE that isn't empty replaces TURN_URLS", () => {
+  const file = join(dir, "one-relay.json");
+  writeFileSync(file, list(relay()));
+  assert.deepEqual(loadRelays({ RELAYS_FILE: file, RELAY_MASTER_FILE: "/run/master" }, false), {
+    relays: parseRelays(list(relay())),
+    masterFile: "/run/master",
+  });
+});
+
+test("an empty list in RELAYS_FILE, or no list, leaves TURN_URLS in charge", () => {
+  const file = join(dir, "no-relays.json");
+  writeFileSync(file, "[]");
+  assert.equal(loadRelays({ RELAYS_FILE: file }, true), undefined);
+  assert.equal(loadRelays({}, false), undefined);
+});
+
+test("a relay list that can't be read or parsed stops the start", () => {
+  assert.throws(() => loadRelays({ RELAYS_FILE: join(dir, "missing.json") }, false), {
+    message: "Could not read the relay list (ENOENT).",
+  });
+  const file = join(dir, "bad-relays.json");
+  writeFileSync(file, list(relay({ id: "Loc" })));
+  assert.throws(() => loadRelays({ RELAYS_FILE: file }, false), { message: /Relay 1 .* id/ });
+});
+
+const master = "ab".repeat(32);
+const at = (id: string): Relay => ({
+  id,
+  urls: [`stun:${id}.test:3478`, `turn:${id}.test:3478?transport=udp`],
+  publicKey: pem,
+  host: `${id}.test`,
+  port: 3478,
+});
+/** Lets settled checks update the relays' states. */
+const settle = () => new Promise((done) => setImmediate(done));
+
+test("offers the first relay up in list order, with credentials from its own secret", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval", "Date"], now: 1_700_000_000_000 });
+  const relays = startRelays([at("aa"), at("bb"), at("cc")], master, {
+    check: async ({ id }) => id !== "aa",
+  });
+  t.after(relays.stop);
+  await settle();
+  assert.deepEqual(relays.status(), [
+    { id: "aa", up: false },
+    { id: "bb", up: true },
+    { id: "cc", up: true },
+  ]);
+  assert.deepEqual(relays.ice(true), [
+    { urls: at("bb").urls, ...turnCredentials(relaySecret(master, "bb"), Date.now()) },
+  ]);
+  assert.deepEqual(relays.ice(false), [{ urls: ["stun:bb.test:3478"] }]);
+});
+
+test("offers only the first listed relay's STUN URLs, with no credentials, when none is up", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const relays = startRelays([at("aa"), at("bb")], master, { check: async () => false });
+  t.after(relays.stop);
+  const stun = [{ urls: ["stun:aa.test:3478"] }];
+  assert.deepEqual(relays.ice(true), stun);
+  await settle();
+  assert.deepEqual(relays.ice(true), stun);
+  assert.deepEqual(relays.ice(false), stun);
+  const none = startRelays([], master);
+  t.after(none.stop);
+  assert.deepEqual(none.ice(true), []);
+});
+
+test("checks every interval, and a relay goes down after two failed checks in a row", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const outcomes = [true, false, false, true];
+  const relays = startRelays([at("aa"), at("bb")], master, {
+    check: async ({ id }) => id === "bb" || (outcomes.shift() ?? false),
+    intervalMs: 1_000,
+  });
+  t.after(relays.stop);
+  const offered: string[] = [];
+  for (let round = 0; round < 4; round += 1) {
+    if (round > 0) {
+      t.mock.timers.tick(1_000);
+    }
+    await settle();
+    offered.push(relays.ice(true)[0]?.urls[0] ?? "");
+  }
+  assert.deepEqual(outcomes, []);
+  assert.deepEqual(offered, [
+    "stun:aa.test:3478",
+    "stun:aa.test:3478",
+    "stun:bb.test:3478",
+    "stun:aa.test:3478",
+  ]);
+});
+
+test("a check that throws or rejects counts as a failure", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const checks: (() => Promise<boolean>)[] = [
+    async () => true,
+    () => {
+      throw new Error("thrown");
+    },
+    () => Promise.reject(new Error("rejected")),
+  ];
+  const relays = startRelays([at("aa")], master, {
+    check: () => (checks.shift() ?? (async () => true))(),
+    intervalMs: 1_000,
+  });
+  t.after(relays.stop);
+  const ups: boolean[] = [];
+  for (let round = 0; round < 3; round += 1) {
+    if (round > 0) {
+      t.mock.timers.tick(1_000);
+    }
+    await settle();
+    ups.push(relays.status()[0]?.up ?? true);
+  }
+  assert.deepEqual(ups, [true, true, false]);
+});
+
+test("skips a relay whose last check hasn't finished, and stop ends the checks", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const calls: Record<string, number> = { aa: 0, bb: 0 };
+  let finish = () => {};
+  const relays = startRelays([at("aa"), at("bb")], master, {
+    check: ({ id }) => {
+      calls[id] = (calls[id] ?? 0) + 1;
+      return id === "aa"
+        ? new Promise((done) => (finish = () => done(true)))
+        : Promise.resolve(true);
+    },
+    intervalMs: 1_000,
+  });
+  t.after(relays.stop);
+  for (let round = 0; round < 3; round += 1) {
+    await settle();
+    t.mock.timers.tick(1_000);
+  }
+  await settle();
+  assert.deepEqual(calls, { aa: 1, bb: 4 });
+  finish();
+  await settle();
+  t.mock.timers.tick(1_000);
+  await settle();
+  assert.deepEqual(calls, { aa: 2, bb: 5 });
+  relays.stop();
+  t.mock.timers.tick(5_000);
+  await settle();
+  assert.deepEqual(calls, { aa: 2, bb: 5 });
+});
+
+test("seals each relay's own secret to its key once, and hands out nothing for other ids", (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const relays = startRelays([at("aa"), at("bb")], master, { check: async () => false });
+  t.after(relays.stop);
+  for (const id of ["aa", "bb"]) {
+    const sealed = relays.handOut(id) ?? "";
+    assert.match(sealed, /^[A-Za-z0-9+/]{342}==$/);
+    const opened = privateDecrypt(
+      { key: rsa.privateKey, padding: constants.RSA_PKCS1_OAEP_PADDING, oaepHash: "sha256" },
+      Buffer.from(sealed, "base64"),
+    );
+    assert.equal(opened.toString(), relaySecret(master, id));
+    assert.equal(relays.handOut(id), sealed);
+  }
+  for (const id of ["cc", "constructor", "__proto__", ""]) {
+    assert.equal(relays.handOut(id), undefined, id);
+  }
 });

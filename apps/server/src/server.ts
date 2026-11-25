@@ -1,12 +1,13 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import type { IncomingMessage, ServerResponse } from "node:http";
+import type { IncomingMessage, RequestListener, ServerResponse } from "node:http";
 import { createServer, type Server } from "node:https";
 import { isIP } from "node:net";
 import { extname, join, resolve, sep } from "node:path";
 import { isLinkId } from "@sigill/protocol";
 import type { Mailer } from "./mail.ts";
+import type { Relays } from "./relays.ts";
 import { attachSignaling, type Logger } from "./signaling.ts";
 import { type IceConfig, iceServersFor } from "./turn.ts";
 
@@ -79,6 +80,39 @@ export function serveStatic(root: string) {
   };
 }
 
+const relayRoute = /^\/relay-(status|secret)(\/.*)?$/;
+const relayId = /^\/([a-z][a-z0-9]{1,15})$/;
+
+/** Answers /relay-status, /relay-secret/<id> and 404 below either, and passes the rest to `next`. */
+export function serveRelays(relays: Relays | undefined, next: RequestListener): RequestListener {
+  return (req, res) => {
+    const pathname = URL.parse(req.url ?? "/", "https://localhost")?.pathname ?? "";
+    const [, route, rest] = relayRoute.exec(pathname) ?? [];
+    if (route === undefined) {
+      next(req, res);
+      return;
+    }
+    const headers = { "cache-control": "no-store", ...securityHeaders };
+    if (req.method !== "GET" && req.method !== "HEAD") {
+      res.writeHead(405, { allow: "GET, HEAD", ...headers }).end();
+      return;
+    }
+    if (route === "status" && rest === undefined) {
+      res.writeHead(200, { "content-type": "application/json", ...headers });
+      res.end(JSON.stringify(relays?.status() ?? []));
+      return;
+    }
+    const id = route === "secret" ? relayId.exec(rest ?? "")?.[1] : undefined;
+    const sealed = id === undefined ? undefined : relays?.handOut(id);
+    if (sealed === undefined) {
+      res.writeHead(404, headers).end();
+      return;
+    }
+    res.writeHead(200, { "content-type": "text/plain; charset=utf-8", ...headers });
+    res.end(`${sealed}\n`);
+  };
+}
+
 export function ensureCert(dir: string, hosts: string[]): { key: Buffer; cert: Buffer } {
   const keyPath = join(dir, "key.pem");
   const certPath = join(dir, "cert.pem");
@@ -116,16 +150,18 @@ export function startServer(options: {
   certDir: string;
   hosts: string[];
   ice?: IceConfig | undefined;
+  relays?: Relays | undefined;
   log?: Logger;
   mail?: { send: Mailer; origin: string } | undefined;
 }): Promise<Server> {
   const server = createServer(
     ensureCert(options.certDir, options.hosts),
-    serveStatic(options.root),
+    serveRelays(options.relays, serveStatic(options.root)),
   );
   const signaling = attachSignaling(server, {
     log: options.log ?? (() => {}),
-    iceServers: (turn) => iceServersFor(options.ice, Date.now(), turn),
+    iceServers: (turn) =>
+      options.relays ? options.relays.ice(turn) : iceServersFor(options.ice, Date.now(), turn),
     mail: options.mail,
   });
   server.on("close", () => signaling.close());
