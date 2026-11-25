@@ -664,11 +664,13 @@ test("a recipient who leaves mid-download returns the sender's card to waiting",
  * Runs in the recipient page through addInitScript, so it may use nothing from this module. A
  * save dialog that does what `globalThis.pick` says: `cancel` closes it, `refuse` is denied, `fail`
  * picks a file whose second write runs out of space, and anything else picks a file that takes
- * every write. Each call on the picked file is logged to `globalThis.saved`.
+ * every write. Each call is logged to `globalThis.saved`, starting with the dialog itself (`pick`).
  */
 function fakeSavePicker() {
   const g = globalThis as { pick?: string; saved?: string[]; showSaveFilePicker?: unknown };
+  const log = (call: string) => g.saved?.push(call);
   g.showSaveFilePicker = async () => {
+    log("pick");
     const mode = g.pick;
     if (mode === "cancel") {
       throw new DOMException("The user aborted a request.", "AbortError");
@@ -676,7 +678,6 @@ function fakeSavePicker() {
     if (mode === "refuse") {
       throw new DOMException("Not allowed.", "NotAllowedError");
     }
-    const log = (call: string) => g.saved?.push(call);
     let writes = 0;
     return {
       createWritable: async () => ({
@@ -707,7 +708,9 @@ test("a recipient's save dialog can be cancelled, refused or fail without saving
   const card = recipientRow(sender, name);
 
   const recipient = await demo.open("recipient");
-  // Registered after the fixture's script, which deletes the browser's own picker.
+  // Registered after the fixture's script, which deletes the browser's own picker. Chromium runs
+  // init scripts in order; if it stopped, the page would save without the fake and no `pick` would
+  // be logged below.
   await recipient.context().addInitScript(fakeSavePicker);
   let downloads = 0;
   recipient.on("download", () => downloads++);
@@ -732,17 +735,17 @@ test("a recipient's save dialog can be cancelled, refused or fail without saving
       expect(tryAgain).toBeVisible(),
     ]);
 
-  // Cancelled: the offer stays open and nothing was picked.
+  // Cancelled: the dialog opened and closed without a file, and the offer stays open.
   await pick("cancel");
+  await expect.poll(saved).toEqual(["pick"]);
   await expect(button).toBeEnabled();
   await expect(opened).toBeVisible();
   await expect(tryAgain).toHaveCount(0);
-  expect(await saved()).toEqual([]);
 
   // Refused: nothing was created, and the link is free again.
   await pick("refuse");
   await problem("The file couldn't be created", "Try again, or choose another place to save it.");
-  expect(await saved()).toEqual([]);
+  expect(await saved()).toEqual(["pick"]);
   // Retrying before the sender sees the drop would find the link still busy.
   await expect(waiting).toBeVisible();
   await tryAgain.click();
@@ -750,7 +753,7 @@ test("a recipient's save dialog can be cancelled, refused or fail without saving
   // Out of space on the second write: the file is aborted and removed, never closed.
   await pick("fail");
   await problem("The file couldn't be saved", "Check that there's enough space on your disk.");
-  expect(await saved()).toEqual(["write", "write", "abort", "remove"]);
+  expect(await saved()).toEqual(["pick", "write", "write", "abort", "remove"]);
   await expect(waiting).toBeVisible();
   await tryAgain.click();
 
@@ -761,7 +764,7 @@ test("a recipient's save dialog can be cancelled, refused or fail without saving
   });
   await expect(recipient.getByText("this is exactly the file that was sent")).toBeVisible();
   await expect(recipient.getByText("It's saved where you chose.")).toBeVisible();
-  expect(await saved()).toEqual(["write", "write", "write", "close"]);
+  expect(await saved()).toEqual(["pick", "write", "write", "write", "close"]);
   await expect(delivered(sender, name)).toBeAttached();
   expect(downloads, "browser downloads").toBe(0);
 });

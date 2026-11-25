@@ -21,6 +21,7 @@ import {
   delivered as deliveredRow,
   expect,
   type Leaks,
+  makeName,
   type Observed,
   test,
 } from "../src/fixtures.ts";
@@ -67,7 +68,7 @@ interface Scenario {
   path: RegExp | "none";
   /** Send a larger file and check that both sides report progress honestly along the way. */
   progress?: true;
-  /** Share a secret from /secret instead of a file. */
+  /** Share a secret from /secret instead of a file. Not with `progress`. */
   secret?: true;
 }
 
@@ -180,9 +181,14 @@ const verifiedText = "this is exactly the file that was sent";
  * honest: the recipient's bar never went back or past the file, showed at least three values in
  * between, and the sender said delivered only once the recipient had verified the file.
  */
-async function expectHonestProgress(sender: Page, recipient: Page, size: number): Promise<void> {
+async function expectHonestProgress(
+  sender: Page,
+  recipient: Page,
+  size: number,
+  name: string,
+): Promise<void> {
   const bar = recipient.getByLabel("Download progress", { exact: true });
-  const delivered = deliveredRow(sender, "Anna");
+  const delivered = deliveredRow(sender, name);
   const verified = recipient.getByText(verifiedText);
   const values: number[] = [];
   const deadline = Date.now() + 60_000;
@@ -259,6 +265,7 @@ for (const row of scenarios) {
         await pauseRelay();
         const stdoutStart = await sizeOf(serverStdoutLog);
         const file = leaks.watch(canaryFile(canary.fork("file"), { size: 300_001 }));
+        const name = makeName(leaks, canary, "Anna");
 
         const sender = await actor("sender");
         await recordPeerConnections(sender.context);
@@ -268,10 +275,10 @@ for (const row of scenarios) {
           mimeType: file.mime,
           buffer: file.bytes,
         });
-        await sender.page.getByLabel("Who is it for?").fill("Anna");
+        await sender.page.getByLabel("Who is it for?").fill(name);
         await sender.page.getByRole("button", { name: "Create link", exact: true }).click();
         const link =
-          (await sender.page.getByLabel("Link for Anna", { exact: true }).textContent()) ?? "";
+          (await sender.page.getByLabel(`Link for ${name}`, { exact: true }).textContent()) ?? "";
         leaks.watchKey("link secret", new URL(link).hash.slice(1));
 
         const recipient = await actor("recipient");
@@ -306,30 +313,36 @@ for (const row of scenarios) {
     const what = row.secret ? "shares the secret" : "transfers the file";
     test(`${what} on the expected path`, async ({ actor, observed, leaks, canary, baseURL }) => {
       await routerMode("router-b", row.routerB);
+      if (row.secret && row.progress) {
+        throw new Error(`${row.title}: a secret has no progress`);
+      }
       // ponytail: 512 KiB: SCTP over this link moves about 50 KB/s, and it still shows 10 steps.
       const size = row.progress ? 512 * 1024 + 1 : 300_001;
-      const file = leaks.watch(canaryFile(canary.fork("file"), { size }));
-      const text = base32Token(canary.fork("text"), 64);
-      leaks.watchContent("text", text);
+      const name = makeName(leaks, canary, "Anna");
 
       const sender = await actor("sender");
       await recordPeerConnections(sender.context);
+      // The secret's text, or the file's SHA-256.
+      let sent: string;
       if (row.secret) {
+        sent = base32Token(canary.fork("text"), 64);
+        leaks.watchContent("text", sent);
         await sender.page.goto("/secret");
-        await sender.page.getByLabel("Your secret").fill(text);
-        await sender.page.locator("#secret-recipient-name").fill("Anna");
+        await sender.page.getByLabel("Your secret").fill(sent);
       } else {
+        const file = leaks.watch(canaryFile(canary.fork("file"), { size }));
+        sent = sha256Hex(file.bytes);
         await sender.page.goto("/send");
         await chooseFile(sender.page, {
           name: file.name,
           mimeType: file.mime,
           buffer: file.bytes,
         });
-        await sender.page.getByLabel("Who is it for?").fill("Anna");
       }
+      await sender.page.getByLabel("Who is it for?").fill(name);
       await sender.page.getByRole("button", { name: "Create link", exact: true }).click();
       const link =
-        (await sender.page.getByLabel("Link for Anna", { exact: true }).textContent()) ?? "";
+        (await sender.page.getByLabel(`Link for ${name}`, { exact: true }).textContent()) ?? "";
       leaks.watchKey("link secret", new URL(link).hash.slice(1));
 
       const recipient = await actor("recipient");
@@ -341,22 +354,20 @@ for (const row of scenarios) {
         await show.click();
         await expect(
           recipient.page.getByRole("region", { name: "The secret", exact: true }),
-        ).toHaveJSProperty("textContent", text, { timeout: 60_000 });
-        await expect(deliveredRow(sender.page, "Anna")).toBeAttached();
+        ).toHaveJSProperty("textContent", sent, { timeout: 60_000 });
+        await expect(deliveredRow(sender.page, name)).toBeAttached();
       } else {
         const downloading = recipient.page.waitForEvent("download", { timeout: 60_000 });
         const downloadButton = recipient.page.getByRole("button", { name: "Download" });
         await expect(downloadButton).toBeVisible({ timeout: 45_000 });
         await downloadButton.click();
         if (row.progress) {
-          await expectHonestProgress(sender.page, recipient.page, size);
+          await expectHonestProgress(sender.page, recipient.page, size, name);
         }
         await expect(recipient.page.getByText(verifiedText)).toBeVisible({ timeout: 60_000 });
         // path() is not available from a remote browser.
         const download = await downloading;
-        expect(sha256Hex(await buffer(await download.createReadStream()))).toBe(
-          sha256Hex(file.bytes),
-        );
+        expect(sha256Hex(await buffer(await download.createReadStream()))).toBe(sent);
       }
 
       await expect
@@ -410,6 +421,7 @@ test.describe("the box", () => {
   }) => {
     await routerMode("router-b", "symmetric");
     const file = leaks.watch(canaryFile(canary.fork("file"), { size: 300_001 }));
+    const name = makeName(leaks, canary, "Anna");
 
     const sender = await actor("sender");
     await recordPeerConnections(sender.context);
@@ -419,10 +431,10 @@ test.describe("the box", () => {
       mimeType: file.mime,
       buffer: file.bytes,
     });
-    await sender.page.getByLabel("Who is it for?").fill("Anna");
+    await sender.page.getByLabel("Who is it for?").fill(name);
     await sender.page.getByRole("button", { name: "Create link", exact: true }).click();
     const link =
-      (await sender.page.getByLabel("Link for Anna", { exact: true }).textContent()) ?? "";
+      (await sender.page.getByLabel(`Link for ${name}`, { exact: true }).textContent()) ?? "";
     leaks.watchKey("link secret", new URL(link).hash.slice(1));
 
     const recipient = await actor("recipient");
