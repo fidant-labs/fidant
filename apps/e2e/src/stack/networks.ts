@@ -29,10 +29,11 @@ export const boxOrigin = "https://fidant.se";
 /** The relay box container, set up by apps/infra/relay/install.sh. */
 export const relayIp = "198.51.100.40";
 export const relayHost = "sto.relay.sigill.test";
-// node:26-bookworm, not slim: the server's certificate step shells out to openssl.
-// box/Dockerfile copies its node binary.
+/** The node stage of networks/box/Dockerfile, so Dependabot moves the server and the box together. */
 export const serverImage =
-  "node:26.13.1-bookworm@sha256:0a7c0471c10988ef5ab64718fa58bf8d5be578b4d20cf42b10b5fa6ccda39ae1";
+  /^FROM (\S+) AS node$/m.exec(
+    readFileSync(join(e2eDir, "networks", "box", "Dockerfile"), "utf8"),
+  )?.[1] ?? "";
 const repo = repoRoot.replace(/\/$/, "");
 
 /** The `playwright run-server` of each browser container, published on the host. */

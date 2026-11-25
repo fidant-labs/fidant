@@ -112,7 +112,7 @@ test("winningJournald takes the last value read and lists the files", () => {
   );
 });
 
-test("the box image has the Lightsail blueprint's Ubuntu and the server container's node", () => {
+test("the box image has the Lightsail blueprint's Ubuntu and .node-version's node", () => {
   const dockerfile = readFileSync(
     new URL("../../networks/box/Dockerfile", import.meta.url),
     "utf8",
@@ -124,5 +124,10 @@ test("the box image has the Lightsail blueprint's Ubuntu and the server containe
     dockerfile,
     new RegExp(`^FROM ubuntu:${blueprint[1]}\\.${blueprint[2]}@sha256:`, "m"),
   );
-  assert.ok(dockerfile.includes(`\nCOPY --from=${serverImage} /usr/local/bin/node `));
+  const nodeVersion = readFileSync(new URL("../../../../.node-version", import.meta.url), "utf8");
+  assert.match(
+    serverImage,
+    new RegExp(`^node:${nodeVersion.trim()}\\.[\\w.-]+@sha256:[0-9a-f]{64}$`),
+  );
+  assert.ok(dockerfile.includes("\nCOPY --from=node /usr/local/bin/node "));
 });
