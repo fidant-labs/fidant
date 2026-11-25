@@ -82,7 +82,15 @@ export const sv: Messages = {
     about: "Om Fidant – Fidant",
     terms: "Användarvillkor – Fidant",
     security: "Säkerhet – Fidant",
+    notFound: "Sidan finns inte – Fidant",
   },
+  notFound: {
+    title: "Sidan finns inte",
+    body: "Det finns ingen sida på den här adressen. Den kan ha flyttats, eller så är länken felskriven.",
+    home: "Till startsidan",
+  },
+  noscript:
+    "Krypteringen sker i din webbläsare, så Fidant behöver JavaScript. Slå på det för att skicka eller ta emot en fil.",
   openTransfer: {
     send: "En filöverföring är fortfarande öppen i den här fliken.",
     secret: "En hemlighet delas fortfarande från den här fliken.",

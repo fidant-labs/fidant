@@ -1,194 +1,12 @@
 import { render } from "preact";
-import { useEffect, useRef, useState } from "preact/hooks";
-import { buttonVariants } from "#components/ui/button";
-import { HowPage, howStep } from "./how/HowPage.tsx";
-import { I18nProvider, useI18n } from "./i18n/I18n.tsx";
-import { InfoPage } from "./info/InfoPage.tsx";
-import { LandingPage } from "./landing/LandingPage.tsx";
-import { PrivacyPage } from "./privacy/PrivacyPage.tsx";
-import { ReceivePage } from "./receive/ReceivePage.tsx";
-import { SendPage } from "./send/SendPage.tsx";
-import { applyTheme, initialTheme, type Theme } from "./theme.ts";
-import { Footer, Header, Link, LiveDot, Page, Problem, type Route } from "./ui.tsx";
+import { App, routeOf } from "./App.tsx";
+import { I18nProvider } from "./i18n/I18n.tsx";
+import { barePath, startLanguage } from "./i18n/language.ts";
+import { applyTheme, initialTheme } from "./theme.ts";
 
 /** Encryption needs Web Crypto, which browsers only offer on HTTPS or localhost. */
 function hasSecureCrypto(): boolean {
   return window.isSecureContext && typeof crypto !== "undefined" && crypto.subtle !== undefined;
-}
-
-function InsecurePage() {
-  const { t } = useI18n();
-  return (
-    <Page>
-      <Problem title={t.insecure.title} body={t.insecure.body} />
-    </Page>
-  );
-}
-
-const NAMED: ReadonlyArray<Route> = [
-  "privacy",
-  "how",
-  "send",
-  "secret",
-  "about",
-  "terms",
-  "security",
-];
-
-// The technical description that used to be at /technical now lives on the /how step pages.
-if (/^\/technical\/?$/.test(location.pathname)) {
-  history.replaceState(null, "", "/how");
-}
-
-function routeOf(path: string): Route {
-  const named = NAMED.find((name) => new RegExp(`^/${name}/?$`).test(path));
-  if (named) {
-    return named;
-  }
-  if (howStep(path)) {
-    return "how";
-  }
-  if (path.startsWith("/r/")) {
-    return "receive";
-  }
-  return "landing";
-}
-
-/**
- * Navigation never reloads the page (see `navigate`). The send, secret and receive
- * pages hold a transfer only in memory, so once opened they stay mounted, hidden
- * while another page shows.
- */
-function App() {
-  const { t } = useI18n();
-  // The path, not just the route, so moving between /how steps renders the new step. On /how pages
-  // the fragment too, so a link to an entry on the same page scrolls to it; elsewhere the fragment
-  // can be a decryption key, so it stays out.
-  // A new object on every navigation, so following a link to the anchor already in the address
-  // still scrolls to it.
-  const where = () => ({
-    path: location.pathname,
-    hash: routeOf(location.pathname) === "how" ? location.hash : "",
-  });
-  const [place, setPlace] = useState(where);
-  const { path } = place;
-  const route = routeOf(path);
-  const [theme, setTheme] = useState(initialTheme);
-  const chooseTheme = (next: Theme) => {
-    applyTheme(next);
-    setTheme(next);
-  };
-  const kept = useRef(new Set<Route>());
-  const [sendOpen, setSendOpen] = useState(false);
-  const [secretOpen, setSecretOpen] = useState(false);
-  const [receiveOpen, setReceiveOpen] = useState(false);
-  // Holds the key, so it stays out of the DOM: the link back shows only the path.
-  const receiveUrl = useRef("");
-  const away =
-    sendOpen && route !== "send"
-      ? "send"
-      : secretOpen && route !== "secret"
-        ? "secret"
-        : receiveOpen && route !== "receive"
-          ? "receive"
-          : undefined;
-  useEffect(() => {
-    const onPop = () => setPlace(where());
-    addEventListener("popstate", onPop);
-    return () => removeEventListener("popstate", onPop);
-  }, []);
-
-  useEffect(() => {
-    const step = howStep(path);
-    document.title = step ? `${t.how.sections[step.id].heading} – Fidant` : t.tabTitles[route];
-  }, [route, path, t]);
-
-  // A page change hides the focused link, so focus moves to the new page's or section's heading.
-  const firstRoute = useRef(true);
-  useEffect(() => {
-    // This effect reads the fragment only on /how; elsewhere it can be a decryption key.
-    const named =
-      routeOf(location.pathname) === "how" && location.hash
-        ? document.getElementById(location.hash.slice(1))
-        : null;
-    const target = named?.closest<HTMLElement>("main:not([hidden] *) section") ?? null;
-    target?.scrollIntoView();
-    if (firstRoute.current) {
-      firstRoute.current = false;
-      return;
-    }
-    const heading =
-      target?.querySelector<HTMLElement>("h2") ??
-      document.querySelector<HTMLElement>("main:not([hidden] *) h1");
-    if (!heading) {
-      return;
-    }
-    heading.tabIndex = -1;
-    heading.focus({ preventScroll: target !== null });
-  }, [place]);
-
-  const secure = hasSecureCrypto();
-  const holdsTransfer = route === "send" || route === "secret" || route === "receive";
-  if (holdsTransfer) {
-    kept.current.add(route);
-  }
-  if (route === "receive" && !receiveUrl.current) {
-    receiveUrl.current = location.pathname + location.hash;
-  }
-  return (
-    <div class="flex min-h-dvh flex-col has-[[data-bottom-bar]:not([hidden]_*)]:pb-24 has-[[data-page-bar]:not([hidden]_*)]:has-[[data-pill]]:pb-40 has-[[data-page-bar]:not([hidden]_*)]:[&_[data-pill-wrap]]:bottom-20">
-      <Header current={route} open={{ send: sendOpen, secret: secretOpen }} />
-      <div class="flex-1">
-        {route === "landing" && <LandingPage />}
-        {/* The privacy page uses no crypto, so it opens even without a secure connection. */}
-        {route === "privacy" && <PrivacyPage />}
-        {route === "how" && <HowPage path={path} />}
-        {(route === "about" || route === "terms" || route === "security") && (
-          <InfoPage page={route} />
-        )}
-        {!secure && holdsTransfer && <InsecurePage />}
-        {secure && kept.current.has("receive") && (
-          <div id="receive" hidden={route !== "receive"}>
-            <ReceivePage onUnfinished={setReceiveOpen} />
-          </div>
-        )}
-        {secure && kept.current.has("send") && (
-          <div hidden={route !== "send"}>
-            <SendPage kind="file" onUnfinished={setSendOpen} />
-          </div>
-        )}
-        {secure && kept.current.has("secret") && (
-          <div hidden={route !== "secret"}>
-            <SendPage kind="text" onUnfinished={setSecretOpen} />
-          </div>
-        )}
-      </div>
-      <Footer theme={theme} onTheme={chooseTheme} />
-      <div
-        role="status"
-        data-pill-wrap
-        class="pointer-events-none fixed inset-x-0 bottom-4 z-40 flex justify-center px-4"
-      >
-        {away && (
-          <div
-            data-bottom-bar
-            data-pill
-            class="pointer-events-auto flex items-center gap-3 rounded-full border border-border bg-popover/90 py-1.5 pr-1.5 pl-4 text-sm text-popover-foreground shadow-xl backdrop-blur-xl animate-in fade-in slide-in-from-bottom-4"
-          >
-            <LiveDot />
-            <span>{t.openTransfer[away]}</span>
-            <Link
-              href={away === "receive" ? (receiveUrl.current.split("#")[0] ?? "") : `/${away}`}
-              to={away === "receive" ? receiveUrl.current : undefined}
-              class={`${buttonVariants({ size: "sm" })} rounded-full`}
-            >
-              {t.openTransfer.back}
-            </Link>
-          </div>
-        )}
-      </div>
-    </div>
-  );
 }
 
 /** The browser handles a drag only when an enabled field takes that kind (files into the file input, text into the other inputs and an editable textarea); anything else is cancelled so it cannot open the file and lose the page. */
@@ -216,9 +34,15 @@ applyTheme(initialTheme());
 
 const root = document.getElementById("app");
 if (root) {
+  const path = barePath(location.pathname);
+  // Over the page the server sent, render reuses its elements and corrects any that differ.
   render(
-    <I18nProvider>
-      <App />
+    <I18nProvider initial={startLanguage(location.pathname)}>
+      <App
+        start={{ path, hash: routeOf(path) === "how" ? location.hash : "" }}
+        secure={hasSecureCrypto()}
+        theme={initialTheme()}
+      />
     </I18nProvider>,
     root,
   );

@@ -101,7 +101,15 @@ export const en = {
     about: "About – Fidant",
     terms: "Terms of use – Fidant",
     security: "Security – Fidant",
+    notFound: "Page not found – Fidant",
   },
+  notFound: {
+    title: "Page not found",
+    body: "There's no page at this address. It may have moved, or the link may be mistyped.",
+    home: "Go to the front page",
+  },
+  noscript:
+    "The encryption runs in your browser, so Fidant needs JavaScript. Turn it on to send or receive a file.",
   openTransfer: {
     send: "A file transfer is still open in this tab.",
     secret: "A secret is still being shared from this tab.",
