@@ -1036,7 +1036,7 @@ export const en = {
           },
           stun: {
             heading: "Direct, through public addresses",
-            body: "Each browser asks our STUN service for its public address, which shows our STUN service that IP address and nothing else. The file then goes straight between the browsers over the internet. If you allow the relay, it still sees both IP addresses.",
+            body: "Each browser asks our STUN service for its public address, which shows our STUN service that IP address and nothing else. The file then goes straight between the browsers over the internet. If you allow the relay and it is available, it still sees both IP addresses.",
           },
           relay: {
             heading: "Through our relay",
@@ -1236,7 +1236,7 @@ export const en = {
             ],
             [
               "direct,relay",
-              "Relay credentials for this pair, valid 5 minutes to start a relay, in memory while the page is open.",
+              "While our relay is available, relay credentials for this pair, valid 5 minutes to start a relay, in memory while the page is open.",
             ],
           ],
         },
@@ -1264,7 +1264,7 @@ export const en = {
             ],
             [
               "direct,relay",
-              "Makes relay credentials for this pair, valid for 5 minutes, and sends them to both pages without keeping them.",
+              "While our relay is available, makes relay credentials for this pair, valid for 5 minutes, and sends them to both pages without keeping them.",
             ],
             [
               "email",
@@ -1327,13 +1327,13 @@ export const en = {
         },
         relay: {
           name: "Our relay",
-          kept: "Nothing once the traffic has passed. No log by default; only to fix a fault or stop abuse do we turn one on, with connection times, IP addresses and data volumes, for at most 7 days.",
+          kept: "Nothing once the traffic has passed. No log of the traffic. Only to fix a fault or stop abuse do we turn one on, with connection times, IP addresses and data volumes, for at most 7 days. While it renews its certificate, it also logs the addresses that reach it on port 80, never browsers', for about five weeks.",
           never: "The key, the file or the secret. It can't decrypt what it carries.",
           lines: [
             ["", "Each browser's public IP address, when the browser asks for it."],
             [
               "direct",
-              "Both IP addresses, because each browser reserves a relay address even when a direct route wins.",
+              "While our relay is available, both IP addresses, because each browser reserves a relay address even when a direct route wins.",
             ],
             [
               "relay",
@@ -1367,7 +1367,7 @@ export const en = {
             ["email", "A token for the right code, in that tab's session storage."],
             [
               "direct,relay",
-              "Relay credentials for this pair, valid 5 minutes to start a relay, in memory while the page is open.",
+              "While our relay is available, relay credentials for this pair, valid 5 minutes to start a relay, in memory while the page is open.",
             ],
             ["", "Their theme and language choice, in the browser's local storage, until cleared."],
           ],
@@ -1431,14 +1431,14 @@ export const en = {
           "The link ID, a random attempt ID, and the recipient's IP address and browser details.",
           "Which recipient page is paired with which link, in memory.",
           "That a recipient joined or was refused and why, with the first 6 characters of the link ID.",
-          "Nothing yet. If you allow the relay, our server gives the two pages credentials for it that expire after 5 minutes.",
+          "Nothing yet. If you allow the relay and it is available, our server gives the two pages credentials for it that expire after 5 minutes.",
         ],
         [
           "The browsers set up the connection",
           "Encrypted setup messages and their sizes. It can't read them, except for a link we emailed.",
           "Nothing. It passes them on.",
           "Each message's size, with the first 6 characters of the link ID.",
-          "Each browser's IP address, when it asks for its public address (STUN). If you allow the relay, each browser also reserves a relay address, so the relay sees both IP addresses even when a direct route wins.",
+          "Each browser's IP address, when it asks for its public address (STUN). If you allow the relay and it is available, each browser also reserves a relay address, so the relay sees both IP addresses even when a direct route wins.",
         ],
         [
           "The file or secret travels",

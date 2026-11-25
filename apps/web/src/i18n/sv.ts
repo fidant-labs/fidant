@@ -991,7 +991,7 @@ export const sv: Messages = {
           },
           stun: {
             heading: "Direkt, via offentliga adresser",
-            body: "Varje webbläsare frågar vår STUN-tjänst om sin offentliga adress, vilket visar vår STUN-tjänst den IP-adressen men inget annat. Filen går sedan direkt mellan webbläsarna över internet. Om du tillåter reläet ser det ändå båda IP-adresserna.",
+            body: "Varje webbläsare frågar vår STUN-tjänst om sin offentliga adress, vilket visar vår STUN-tjänst den IP-adressen men inget annat. Filen går sedan direkt mellan webbläsarna över internet. Om du tillåter reläet och det är tillgängligt ser det ändå båda IP-adresserna.",
           },
           relay: {
             heading: "Via vårt relä",
@@ -1186,7 +1186,7 @@ export const sv: Messages = {
             ["", "Ditt val av tema och språk, i webbläsarens lokala lagring, tills du rensar den."],
             [
               "direct,relay",
-              "Reläuppgifter för det här paret, giltiga i 5 minuter för att starta ett relä, i minnet medan sidan är öppen.",
+              "Så länge vårt relä är tillgängligt, reläuppgifter för det här paret, giltiga i 5 minuter för att starta ett relä, i minnet medan sidan är öppen.",
             ],
           ],
         },
@@ -1217,7 +1217,7 @@ export const sv: Messages = {
             ],
             [
               "direct,relay",
-              "Skapar reläuppgifter för det här paret, giltiga i 5 minuter, och skickar dem till båda sidorna utan att spara dem.",
+              "Så länge vårt relä är tillgängligt skapar den reläuppgifter för det här paret, giltiga i 5 minuter, och skickar dem till båda sidorna utan att spara dem.",
             ],
             [
               "email",
@@ -1289,13 +1289,13 @@ export const sv: Messages = {
         },
         relay: {
           name: "Vårt relä",
-          kept: "Inget när trafiken har passerat. Ingen logg som standard; bara för att åtgärda ett fel eller stoppa missbruk slår vi på en, med anslutningstider, IP-adresser och datamängder, i högst 7 dagar.",
+          kept: "Inget när trafiken har passerat. Ingen logg över trafiken. Bara för att åtgärda ett fel eller stoppa missbruk slår vi på en, med anslutningstider, IP-adresser och datamängder, i högst 7 dagar. Medan det förnyar sitt certifikat loggar det också adresserna som når det på port 80, aldrig webbläsares, i ungefär fem veckor.",
           never: "Nyckeln, filen eller hemligheten. Det kan inte låsa upp det det bär.",
           lines: [
             ["", "Varje webbläsares publika IP-adress, när webbläsaren frågar efter den."],
             [
               "direct",
-              "Båda IP-adresserna, eftersom varje webbläsare reserverar en reläadress även när en direkt väg vinner.",
+              "Så länge vårt relä är tillgängligt, båda IP-adresserna, eftersom varje webbläsare reserverar en reläadress även när en direkt väg vinner.",
             ],
             [
               "relay",
@@ -1329,7 +1329,7 @@ export const sv: Messages = {
             ["email", "En token för den rätta koden, i flikens sessionslagring."],
             [
               "direct,relay",
-              "Reläuppgifter för det här paret, giltiga i 5 minuter för att starta ett relä, i minnet medan sidan är öppen.",
+              "Så länge vårt relä är tillgängligt, reläuppgifter för det här paret, giltiga i 5 minuter för att starta ett relä, i minnet medan sidan är öppen.",
             ],
             ["", "Deras val av tema och språk, i webbläsarens lokala lagring, tills de rensas."],
           ],
@@ -1393,14 +1393,14 @@ export const sv: Messages = {
           "Länk-ID:t, ett slumpmässigt försöks-ID och mottagarens IP-adress och webbläsaruppgifter.",
           "Vilken mottagarsida som är ihopkopplad med vilken länk, i minnet.",
           "Att en mottagare anslöt eller nekades och varför, med de 6 första tecknen i länk-ID:t.",
-          "Ingenting än. Om du tillåter reläet ger vår server de två sidorna inloggningsuppgifter till det som slutar gälla efter 5 minuter.",
+          "Ingenting än. Om du tillåter reläet och det är tillgängligt ger vår server de två sidorna inloggningsuppgifter till det som slutar gälla efter 5 minuter.",
         ],
         [
           "Webbläsarna kopplar upp sig",
           "Krypterade meddelanden för uppkopplingen och deras storlek. Den kan inte läsa dem, utom för en länk vi mejlat.",
           "Ingenting. Den skickar dem vidare.",
           "Varje meddelandes storlek, med de 6 första tecknen i länk-ID:t.",
-          "Varje webbläsares IP-adress, när den frågar efter sin offentliga adress (STUN). Om du tillåter reläet reserverar varje webbläsare också en reläadress, så reläet ser båda IP-adresserna även när en direkt väg vinner.",
+          "Varje webbläsares IP-adress, när den frågar efter sin offentliga adress (STUN). Om du tillåter reläet och det är tillgängligt reserverar varje webbläsare också en reläadress, så reläet ser båda IP-adresserna även när en direkt väg vinner.",
         ],
         [
           "Filen eller hemligheten skickas",
