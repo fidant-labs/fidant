@@ -1,9 +1,8 @@
 // Renders the public pages at build time (see vite.config.ts), with no browser around.
 
 import { renderToString } from "preact-render-to-string";
-import { App, pageTitle, routeOf } from "./App.tsx";
+import { App, pageDescription, pageTitle } from "./App.tsx";
 import { STEPS } from "./how/steps.tsx";
-import type { Messages } from "./i18n/en.ts";
 import { I18nProvider } from "./i18n/I18n.tsx";
 import { type Lang, MESSAGES } from "./i18n/language.ts";
 
@@ -23,27 +22,6 @@ export const PAGES: readonly string[] = [
 /** Any path no page has: it renders the not-found page. */
 export const NOT_FOUND = "/404";
 
-function description(t: Messages, path: string): string {
-  const step = STEPS.find(({ slug }) => path === `/how/${slug}`);
-  if (step) {
-    return t.how.sections[step.id].body[0] ?? t.how.lede;
-  }
-  const route = routeOf(path);
-  switch (route) {
-    case "landing":
-    case "send":
-    case "secret":
-    case "how":
-    case "about":
-    case "privacy":
-    case "security":
-    case "terms":
-      return t[route].lede;
-    default:
-      return t.notFound.body;
-  }
-}
-
 export function renderPage(
   path: string,
   lang: Lang,
@@ -51,8 +29,11 @@ export function renderPage(
   const t = MESSAGES[lang];
   const markup = renderToString(
     <I18nProvider initial={lang}>
-      <App start={{ path, hash: "" }} secure theme="system" prerender />
+      <App secure theme="system" prerender={path} />
     </I18nProvider>,
   );
-  return { markup, title: pageTitle(t, path), description: description(t, path) };
+  if (markup.includes(' style="')) {
+    throw new Error(`renderPage: ${path} renders a style attribute, which the CSP blocks`);
+  }
+  return { markup, title: pageTitle(t, path), description: pageDescription(t, path) };
 }

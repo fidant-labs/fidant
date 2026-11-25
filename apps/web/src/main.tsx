@@ -1,7 +1,7 @@
 import { render } from "preact";
-import { App, routeOf } from "./App.tsx";
+import { App } from "./App.tsx";
 import { I18nProvider } from "./i18n/I18n.tsx";
-import { barePath, startLanguage } from "./i18n/language.ts";
+import { startLanguage } from "./i18n/language.ts";
 import { applyTheme, initialTheme } from "./theme.ts";
 
 /** Encryption needs Web Crypto, which browsers only offer on HTTPS or localhost. */
@@ -33,16 +33,12 @@ window.addEventListener("drop", ignoreStrayDrop);
 applyTheme(initialTheme());
 
 const root = document.getElementById("app");
-if (root) {
-  const path = barePath(location.pathname);
+// The pre-paint script is opening the Swedish page, so this one stays unrendered.
+if (root && !document.documentElement.hidden) {
   // Over the page the server sent, render reuses its elements and corrects any that differ.
   render(
     <I18nProvider initial={startLanguage(location.pathname)}>
-      <App
-        start={{ path, hash: routeOf(path) === "how" ? location.hash : "" }}
-        secure={hasSecureCrypto()}
-        theme={initialTheme()}
-      />
+      <App secure={hasSecureCrypto()} theme={initialTheme()} />
     </I18nProvider>,
     root,
   );

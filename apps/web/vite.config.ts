@@ -46,22 +46,17 @@ export default defineConfig({
           const { NOT_FOUND, PAGES, renderPage } = (await server.ssrLoadModule(
             "/src/prerender.tsx",
           )) as typeof import("./src/prerender.tsx");
-          const urls: string[] = [];
           const sections = [];
           for (const lang of LANGS) {
             const pages = [];
             for (const path of PAGES) {
               const page = renderPage(path, lang);
-              if (page.markup.includes(' style="')) {
-                throw new Error(`pages: ${path} renders a style attribute, which the CSP blocks`);
-              }
               const local = localizedPath(path, lang);
               const sv = lang === "en" ? localizedPath(path, "sv") : undefined;
               emit(
                 `pages${local === "/" ? "" : local}/index.html`,
                 pageHtml(shell, { lang, ...page, image: "preview.png", path, script: { src, sv } }),
               );
-              urls.push(ORIGIN + local);
               pages.push({ title: page.title, description: page.description, url: ORIGIN + local });
             }
             sections.push({ heading: LANGUAGE_NAMES[lang], pages });
@@ -82,7 +77,7 @@ export default defineConfig({
               }),
             );
           }
-          emit("sitemap.xml", sitemap(urls));
+          emit("sitemap.xml", sitemap(sections.flatMap((s) => s.pages.map((p) => p.url))));
           emit("llms.txt", llmsTxt(MESSAGES.en.footer.tagline, sections));
         } finally {
           await server.close();

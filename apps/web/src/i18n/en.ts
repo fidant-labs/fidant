@@ -766,7 +766,6 @@ export const en = {
     license: "Open source, MIT license",
   },
   preview: {
-    title: "Private file transfer with Fidant",
     receiveTitle: "Sent to you with Fidant",
     receiveDescription:
       "Open the link to receive it. It's encrypted the whole way, and the link works only while the sender's page is open.",
@@ -1538,7 +1537,7 @@ export const en = {
     sees: [
       [
         "Your IP address and browser details",
-        "Like any website you visit. We use them only to show you this page and connect you. Our server never writes them to its logs. Our relay doesn't log them either, except while we fix a fault or stop abuse (see below).",
+        "Like any website you visit, along with which page you open, whose address names the language you chose. We use them only to show you this page and connect you. Our server never writes them to its logs. Our relay doesn't log them either, except while we fix a fault or stop abuse (see below).",
       ],
       [
         "A link ID",

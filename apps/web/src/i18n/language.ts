@@ -20,7 +20,7 @@ export function pickLanguage(stored: string | null, browser: string): Lang {
   return /^sv\b/i.test(browser) ? "sv" : "en";
 }
 
-export function initialLanguage(): Lang {
+function initialLanguage(): Lang {
   let stored: string | null = null;
   try {
     stored = localStorage.getItem(STORAGE_KEY);
@@ -39,16 +39,20 @@ export function rememberLanguage(lang: Lang) {
 }
 
 const SV_PREFIX = /^\/sv(?=\/|$)/;
+const RECEIVE = /^(?:\/sv)?\/r\//;
 
-/** The path without its /sv prefix: /sv/how is /how, /sv is /. */
+/** The path without its /sv prefix: /sv/how is /how, /sv is /. Receive paths, with or without /sv, come back unchanged. */
 export function barePath(path: string): string {
+  if (RECEIVE.test(path)) {
+    return path;
+  }
   const bare = path.replace(SV_PREFIX, "");
   return bare === "" || bare === "/" ? "/" : bare;
 }
 
 /** The same page in `lang`. Receive links have one path for both languages. */
 export function localizedPath(path: string, lang: Lang): string {
-  if (path.startsWith("/r/")) {
+  if (RECEIVE.test(path)) {
     return path;
   }
   const bare = barePath(path);

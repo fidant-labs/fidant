@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { llmsTxt, sitemap } from "./site-files.ts";
+import { llmsTxt, pageUrl, sitemap } from "./site-files.ts";
 
 test("sitemap lists each URL", () => {
   assert.equal(
@@ -39,4 +39,10 @@ test("llmsTxt lists each page with its link and description", () => {
 - [Om](https://fidant.se/sv/about): Vem.
 `,
   );
+});
+
+test("pageUrl names the page in its language", () => {
+  assert.equal(pageUrl("/", "en"), "https://fidant.se/");
+  assert.equal(pageUrl("/", "sv"), "https://fidant.se/sv");
+  assert.equal(pageUrl("/about", "sv"), "https://fidant.se/sv/about");
 });

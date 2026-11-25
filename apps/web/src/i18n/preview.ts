@@ -1,5 +1,5 @@
-import { ORIGIN } from "../site-files.ts";
-import { type Lang, localizedPath, MESSAGES } from "./language.ts";
+import { ORIGIN, pageUrl } from "../site-files.ts";
+import { type Lang, MESSAGES } from "./language.ts";
 
 export type PageHead = {
   lang: Lang;
@@ -33,7 +33,7 @@ export function pageHtml(html: string, page: PageHead): string {
     `<meta name="twitter:card" content="summary_large_image" />`,
   ];
   if (page.path !== undefined) {
-    const url = (lang: Lang) => ORIGIN + localizedPath(page.path ?? "/", lang);
+    const url = (lang: Lang) => pageUrl(page.path ?? "/", lang);
     tags.push(
       `<meta property="og:url" content="${url(page.lang)}" />`,
       `<link rel="canonical" href="${url(page.lang)}" />`,

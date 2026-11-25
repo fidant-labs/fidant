@@ -10,6 +10,7 @@ test("barePath and localizedPath swap the /sv prefix", () => {
     ["/about", "/about", "/sv/about"],
     ["/sv/how/link", "/how/link", "/sv/how/link"],
     ["/svenska", "/svenska", "/sv/svenska"],
+    ["/sv/r/abc", "/sv/r/abc", "/sv/r/abc"],
   ] as const) {
     assert.equal(barePath(path), bare, path);
     assert.equal(localizedPath(path, "en"), bare, path);

@@ -3,12 +3,13 @@ import { buttonVariants } from "#components/ui/button";
 import { HowPage, howStep } from "./how/HowPage.tsx";
 import type { Messages } from "./i18n/en.ts";
 import { useI18n } from "./i18n/I18n.tsx";
-import { barePath, localizedPath } from "./i18n/language.ts";
+import { barePath, type Lang, localizedPath } from "./i18n/language.ts";
 import { InfoPage } from "./info/InfoPage.tsx";
 import { LandingPage } from "./landing/LandingPage.tsx";
 import { PrivacyPage } from "./privacy/PrivacyPage.tsx";
 import { ReceivePage } from "./receive/ReceivePage.tsx";
 import { SendPage } from "./send/SendPage.tsx";
+import { pageUrl } from "./site-files.ts";
 import { applyTheme, type Theme } from "./theme.ts";
 import { Footer, Header, Link, LiveDot, lede, Page, Problem, type Route } from "./ui.tsx";
 
@@ -47,7 +48,7 @@ const NAMED: ReadonlyArray<Route> = [
 ];
 
 /** The route of a path without its /sv prefix. */
-export function routeOf(path: string): Route {
+function routeOf(path: string): Route {
   const named = NAMED.find((name) => new RegExp(`^/${name}/?$`).test(path));
   if (named) {
     return named;
@@ -66,6 +67,18 @@ export function pageTitle(t: Messages, path: string): string {
   return step ? `${t.how.sections[step.id].heading} – Fidant` : t.tabTitles[routeOf(path)];
 }
 
+export function pageDescription(t: Messages, path: string): string {
+  const step = howStep(path);
+  if (step) {
+    return t.how.sections[step.id].body[0] ?? t.how.lede;
+  }
+  const route = routeOf(path);
+  if (route === "receive") {
+    return t.preview.receiveDescription;
+  }
+  return route === "notFound" ? t.notFound.body : t[route].lede;
+}
+
 type Place = { path: string; hash: string };
 
 /**
@@ -74,18 +87,15 @@ type Place = { path: string; hash: string };
  * while another page shows.
  */
 export function App({
-  start,
   secure,
   theme: startTheme,
   prerender,
 }: {
-  /** The path without its /sv prefix, and on /how the fragment. */
-  start: Place;
   /** Web Crypto is available, so the send and receive pages can run. */
   secure: boolean;
   theme: Theme;
-  /** Rendered at build time: the send forms stay inert until the app takes over. */
-  prerender?: boolean;
+  /** Rendered at build time for this path: the send forms stay inert until the app takes over. */
+  prerender?: string;
 }) {
   const { t, lang } = useI18n();
   // The path, not just the route, so moving between /how steps renders the new step. On /how pages
@@ -97,7 +107,9 @@ export function App({
     const path = barePath(location.pathname);
     return { path, hash: routeOf(path) === "how" ? location.hash : "" };
   };
-  const [place, setPlace] = useState(start);
+  const [place, setPlace] = useState<Place>(() =>
+    prerender === undefined ? where() : { path: prerender, hash: "" },
+  );
   const { path } = place;
   const route = routeOf(path);
   const [theme, setTheme] = useState(startTheme);
@@ -134,7 +146,17 @@ export function App({
 
   useEffect(() => {
     document.title = pageTitle(t, path);
-  }, [path, t]);
+    const description = pageDescription(t, path);
+    document.querySelector('meta[name="description"]')?.setAttribute("content", description);
+    if (route !== "receive" && route !== "notFound") {
+      const set = (selector: string, to: Lang) =>
+        document.querySelector(selector)?.setAttribute("href", pageUrl(path, to));
+      set('link[rel="canonical"]', lang);
+      set('link[rel="alternate"][hreflang="en"]', "en");
+      set('link[rel="alternate"][hreflang="sv"]', "sv");
+      set('link[rel="alternate"][hreflang="x-default"]', "en");
+    }
+  }, [path, route, t, lang]);
 
   // A page change hides the focused link, so focus moves to the new page's or section's heading.
   const firstRoute = useRef(true);
@@ -186,12 +208,12 @@ export function App({
           </div>
         )}
         {secure && kept.current.has("send") && (
-          <div hidden={route !== "send"} inert={prerender}>
+          <div hidden={route !== "send"} inert={prerender !== undefined}>
             <SendPage kind="file" onUnfinished={setSendOpen} />
           </div>
         )}
         {secure && kept.current.has("secret") && (
-          <div hidden={route !== "secret"} inert={prerender}>
+          <div hidden={route !== "secret"} inert={prerender !== undefined}>
             <SendPage kind="text" onUnfinished={setSecretOpen} />
           </div>
         )}
