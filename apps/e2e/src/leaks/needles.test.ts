@@ -233,3 +233,33 @@ test("finds 12 characters of a name token in base64 at every alignment", () => {
     }
   }
 });
+
+test("finds 12 characters of an uppercased name token in base64 at every alignment", () => {
+  const file = canaryFile(random.fork("b64 upper token"), { size: 1000 });
+  const secrets = fileSecrets("file#1", file);
+  const token = file.token.toUpperCase();
+  for (const encoding of ["base64", "base64url"] as const) {
+    for (let start = 0; start + 12 <= token.length; start++) {
+      for (let shift = 0; shift < 3; shift++) {
+        const bytes = Buffer.concat([
+          random.bytes(shift),
+          Buffer.from(token.slice(start, start + 12)),
+        ]);
+        const found = matches(secrets, Buffer.from(bytes.toString(encoding).replaceAll("=", "")));
+        assert.deepEqual(
+          found.map((match) => match.secret.label),
+          ["file#1 name"],
+          `${encoding} from ${start} shift ${shift}`,
+        );
+      }
+    }
+  }
+});
+
+test("gives only case-insensitive secrets uppercase base64 forms", () => {
+  const text = "abcdefghijklmnop";
+  const upper = Buffer.from(text.toUpperCase()).toString("base64");
+  const exact: ByteSecret = { class: "M", label: "exact", bytes: Buffer.from(text) };
+  assert.equal(matches([exact], Buffer.from(upper)).length, 0);
+  assert.equal(matches([{ ...exact, caseInsensitive: true }], Buffer.from(upper)).length, 1);
+});

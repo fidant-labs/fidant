@@ -251,7 +251,15 @@ export class Needles {
     this.sizes = secrets.filter((secret): secret is SizeSecret => "size" in secret);
     const byteSecrets = secrets
       .filter((secret): secret is ByteSecret => "bytes" in secret)
-      .flatMap((secret) => [secret, ...base64Secrets(secret)]);
+      .flatMap((secret) => [
+        secret,
+        ...base64Secrets(secret),
+        // The text is case-insensitive, its base64 is not: uppercase text encodes differently.
+        // Mixed case stays unwatched in base64 (see SIG-275).
+        ...(secret.caseInsensitive
+          ? base64Secrets({ ...secret, bytes: asciiUpper(secret.bytes) })
+          : []),
+      ]);
     const anchors = { exact: 0, folded: 0 };
     let offset = 0;
     for (const secret of byteSecrets) {
@@ -469,6 +477,9 @@ function hashSlot(lo: number, hi: number): number {
   h = Math.imul(h, 0xc2b2ae35);
   return h ^ (h >>> 16);
 }
+
+const asciiUpper = (bytes: Uint8Array) =>
+  Buffer.from(bytes.map((byte) => (byte >= 0x61 && byte <= 0x7a ? byte & ~0x20 : byte)));
 
 const lower = (byte: number) => (byte >= 0x41 && byte <= 0x5a ? byte | 0x20 : byte);
 
