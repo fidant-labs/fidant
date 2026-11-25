@@ -1,4 +1,4 @@
-# 0013: Emailing a link is opt-in, and headlines describe the default
+# 0014: Emailing a link is opt-in, and headlines describe the default
 
 - Status: Accepted
 - Date: 2026-11-25

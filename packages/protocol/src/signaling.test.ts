@@ -564,6 +564,7 @@ test("rejects bad sender names and languages in an email message", () => {
     "An\u2028na",
     "An\u2029na",
     "An\u202Ena",
+    "An\u061Cna",
     "\u0000",
     42,
     null,
