@@ -1,0 +1,11 @@
+[
+  {
+    "id": "sto",
+    "urls": [
+      "stun:sto.relay.fidant.se:3478",
+      "turn:sto.relay.fidant.se:3478?transport=udp",
+      "turns:sto.relay.fidant.se:443?transport=tcp"
+    ],
+    "publicKey": "-----BEGIN PUBLIC KEY-----\nMIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAoUI9DHep1yiKVTvUtsiV\noswZyRLMwMeS8ItfElfZ/rzYikgn/3UVTqTDn/nUmQ2rjNE6IsOqoEMkOQtwXKUh\n4pEBiymM9/86jwNDasDWQslEDwgzpHHBtMMBIm+QAenycpCMP2VCCKxZikCHT8Zv\nxnIy1/8yLKMqFw1UXD/KhhkCw1C41CW8BNbUZxs4FR0rkC9JMzHDCGj1ekjDZBfH\n0U6HJd2wzY4Jbm9BO0JuO94lMB8MJHgI4yfTpY+N5fUcpOSGqR+z8gX87B4t2Kno\nFN3GlAQ3jcEq94dsuallmyzZPZtWjiDlsfoPfzPNo3MzMYtS1hbGYNxq7bedaF6Z\nxQvm72Sfo6YVH5bGV1glN7HEG5mVY8uUuztj1QoUfsIh/BCEYB3kVo374ei5kAfQ\ngr+MU0LflJd0+mz6ERuGe3hIsDNgEVKY2kfHkucyLKN4yk8SLD7DPMnjeEF9BU2D\nZmEzL41AKVFXwRBLoq9/edsDaqC4AGKHBlwpY/KLPDDjAgMBAAE=\n-----END PUBLIC KEY-----\n"
+  }
+]

@@ -60,7 +60,8 @@ jobs:
       - run: pnpm --filter ./apps/infra test
       - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
-          role-to-assume: arn:aws:iam::${{ secrets[matrix.account] }}:role/fidant-ci-deploy
+          # Names each secret directly: an index like secrets[matrix.account] makes GitHub send every secret to the runner.
+          role-to-assume: arn:aws:iam::${{ matrix.account == 'FIDANT_DNS_ACCOUNT' && secrets.FIDANT_DNS_ACCOUNT || secrets.FIDANT_POC_ACCOUNT }}:role/fidant-ci-deploy
           aws-region: eu-north-1
       - run: pnpm --filter ./apps/infra cdk deploy ${{ matrix.stack }} --require-approval never
         env:

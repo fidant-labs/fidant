@@ -73,6 +73,12 @@ test("turn.conf names the rendered TURN URLs and turnserver.conf the secret", ()
   assert.doesNotMatch(conf, /external-ip/);
 });
 
+test("e2e.conf turns the relay list off, so the box keeps its own coturn", () => {
+  const files = boxFiles({ ip: "192.0.2.30", secret: "s3cret", turnCert });
+  const conf = files.get("/etc/systemd/system/sigill.service.d/e2e.conf")?.content ?? "";
+  assert.match(conf, /^Environment=RELAYS_FILE=$/m);
+});
+
 test("winningJournald takes the last value read and lists the files", () => {
   const output = [
     "# /etc/systemd/journald.conf",

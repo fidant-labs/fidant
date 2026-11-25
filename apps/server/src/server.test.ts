@@ -1,15 +1,29 @@
 import assert from "node:assert/strict";
-import { X509Certificate } from "node:crypto";
+import {
+  constants,
+  createHmac,
+  generateKeyPairSync,
+  privateDecrypt,
+  X509Certificate,
+} from "node:crypto";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { createServer, get as httpGet, type IncomingHttpHeaders, request } from "node:http";
-import { get as httpsGet } from "node:https";
+import {
+  createServer,
+  get as httpGet,
+  type IncomingHttpHeaders,
+  type IncomingMessage,
+  request,
+} from "node:http";
+import { get as httpsGet, request as httpsRequest } from "node:https";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { parseServerMessage } from "@sigill/protocol";
 import { WebSocket as WsClient } from "ws";
-import { ensureCert, serveStatic, startServer } from "./server.ts";
+import { relaySecret } from "./relay-secret.ts";
+import { type Relay, startRelays } from "./relays.ts";
+import { ensureCert, serveRelays, serveStatic, startServer } from "./server.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "sigill-server-"));
 const root = join(dir, "dist");
@@ -127,14 +141,15 @@ test("serves over https with a generated certificate", async () => {
   const server = await startServer({ port: 0, root, certDir, hosts: ["localhost", "127.0.0.1"] });
   try {
     const { port } = server.address() as AddressInfo;
+    const ca = ensureCert(certDir, []).cert;
     const status = await new Promise<number>((done, fail) => {
-      httpsGet({ host: "localhost", port, path: "/", rejectUnauthorized: false }, (res) => {
+      httpsGet({ host: "localhost", port, path: "/", ca }, (res) => {
         res.resume();
         done(res.statusCode ?? 0);
       }).on("error", fail);
     });
     assert.equal(status, 200);
-    const cert = new X509Certificate(ensureCert(certDir, []).cert);
+    const cert = new X509Certificate(ca);
     assert.match(cert.subjectAltName ?? "", /DNS:localhost/);
     assert.match(cert.subjectAltName ?? "", /IP Address:127\.0\.0\.1/);
   } finally {
@@ -143,8 +158,12 @@ test("serves over https with a generated certificate", async () => {
 });
 
 /** Opens a /signal socket on a TLS server and returns its raw text frames after the hello. */
-async function rawSocket(port: number): Promise<{ socket: WsClient; next(): Promise<string> }> {
-  const socket = new WsClient(`wss://localhost:${port}/signal`, { rejectUnauthorized: false });
+async function rawSocket(
+  port: number,
+  ca: Buffer,
+): Promise<{ socket: WsClient; next(): Promise<string> }> {
+  // Trusts only the server's own certificate, so TLS checks stay on.
+  const socket = new WsClient(`wss://localhost:${port}/signal`, { ca });
   const frames: string[] = [];
   const waiting: ((frame: string) => void)[] = [];
   socket.on("message", (data) => {
@@ -179,17 +198,19 @@ for (const { turn, allow, name } of iceCases) {
       "stun:127.0.0.1:3478",
     ];
     const logs: string[] = [];
+    const certDir = join(dir, "certs");
     const server = await startServer({
       port: 0,
       root,
-      certDir: join(dir, "certs"),
+      certDir,
       hosts: ["localhost"],
       ice: turn ? { urls, secret } : undefined,
       log: (event, fields) => logs.push(JSON.stringify({ event, fields })),
     });
     const { port } = server.address() as AddressInfo;
-    const host = await rawSocket(port);
-    const guest = await rawSocket(port);
+    const ca = ensureCert(certDir, []).cert;
+    const host = await rawSocket(port, ca);
+    const guest = await rawSocket(port, ca);
     try {
       const link = "AAAAAAAAAAAAAAAAAAAAAA";
       const attempt = "ZZZZZZZZZZZZZZZZZZZZZZ";
@@ -231,3 +252,212 @@ for (const { turn, allow, name } of iceCases) {
     }
   });
 }
+
+const relayKey = generateKeyPairSync("rsa", { modulusLength: 2048 });
+const relayMaster = "cd".repeat(32);
+const relayAt = (id: string): Relay => ({
+  id,
+  urls: [`stun:${id}.test:3478`, `turn:${id}.test:3478?transport=udp`],
+  publicKey: relayKey.publicKey.export({ type: "spki", format: "pem" }).toString(),
+  host: `${id}.test`,
+  port: 3478,
+});
+const relays = startRelays([relayAt("bad"), relayAt("loc")], relayMaster, {
+  check: async ({ id }) => id === "loc",
+});
+const relaySecrets = [
+  relayMaster,
+  relaySecret(relayMaster, "bad"),
+  relaySecret(relayMaster, "loc"),
+];
+const withRelays = createServer(serveRelays(relays, serveStatic(root)));
+let relayPort = 0;
+before(async () => {
+  await new Promise<void>((done) => withRelays.listen(0, done));
+  relayPort = (withRelays.address() as AddressInfo).port;
+});
+after(() => {
+  withRelays.close();
+  relays.stop();
+});
+
+type Reply = { status: number; headers: IncomingHttpHeaders; body: string };
+
+function call(port: number, path: string, { method = "GET", tls = false } = {}): Promise<Reply> {
+  return new Promise((done, fail) => {
+    const options = { host: "localhost", port, path, method, rejectUnauthorized: false };
+    const onResponse = (res: IncomingMessage) => {
+      let body = "";
+      res.on("data", (chunk) => {
+        body += chunk;
+      });
+      res.on("end", () => done({ status: res.statusCode ?? 0, headers: res.headers, body }));
+    };
+    const req = tls ? httpsRequest(options, onResponse) : request(options, onResponse);
+    req.on("error", fail).end();
+  });
+}
+
+function assertRelayHeaders(res: Reply, path: string): void {
+  assert.equal(res.headers["cache-control"], "no-store", path);
+  assert.equal(res.headers["x-content-type-options"], "nosniff", path);
+  assert.equal(res.headers["referrer-policy"], "no-referrer", path);
+  assert.match(String(res.headers["content-security-policy"]), /default-src 'self'/, path);
+}
+
+test("hands out a relay's sealed secret and a newline at /relay-secret/<id>", async () => {
+  const sealed = relays.handOut("loc");
+  for (const path of ["/relay-secret/loc", "/relay-secret/loc?id=bad"]) {
+    const res = await call(relayPort, path);
+    assert.equal(res.status, 200, path);
+    assert.equal(res.headers["content-type"], "text/plain; charset=utf-8", path);
+    assertRelayHeaders(res, path);
+    assert.equal(res.body, `${sealed}\n`, path);
+  }
+  const opened = privateDecrypt(
+    { key: relayKey.privateKey, padding: constants.RSA_PKCS1_OAEP_PADDING, oaepHash: "sha256" },
+    Buffer.from(sealed ?? "", "base64"),
+  );
+  assert.equal(opened.toString(), relaySecret(relayMaster, "loc"));
+  const head = await call(relayPort, "/relay-secret/loc", { method: "HEAD" });
+  assert.equal(head.status, 200);
+  assert.equal(head.headers["content-type"], "text/plain; charset=utf-8");
+  assertRelayHeaders(head, "HEAD");
+  assert.equal(head.body, "");
+});
+
+test("reports each relay's state at /relay-status in list order", async () => {
+  for (const path of ["/relay-status", "/relay-status?id=loc"]) {
+    const res = await call(relayPort, path);
+    assert.equal(res.status, 200, path);
+    assert.equal(res.headers["content-type"], "application/json", path);
+    assertRelayHeaders(res, path);
+    assert.equal(res.body, '[{"id":"bad","up":false},{"id":"loc","up":true}]', path);
+  }
+  const head = await call(relayPort, "/relay-status", { method: "HEAD" });
+  assert.equal(head.status, 200);
+  assert.equal(head.headers["content-type"], "application/json");
+  assert.equal(head.body, "");
+});
+
+test("answers 404 to any other path under /relay-secret/ or /relay-status/", async () => {
+  for (const path of [
+    "/relay-secret",
+    "/relay-secret/",
+    "/relay-secret/sto",
+    "/relay-secret/loc/",
+    "/relay-secret/loc/x",
+    "/relay-secret/LOC",
+    "/relay-secret/%6Coc",
+    "/relay-secret/loc%2F",
+    "/relay-secret/constructor",
+    "/relay-secret/__proto__",
+    "/relay-status/",
+    "/relay-status/loc",
+  ]) {
+    const res = await call(relayPort, path);
+    assert.equal(res.status, 404, path);
+    assertRelayHeaders(res, path);
+    assert.equal(res.body, "", path);
+  }
+});
+
+test("answers 405 to the relay routes for methods other than GET and HEAD", async () => {
+  for (const [method, path] of [
+    ["POST", "/relay-secret/loc"],
+    ["PUT", "/relay-status"],
+    ["DELETE", "/relay-secret/sto"],
+    ["OPTIONS", "/relay-status/"],
+  ] as const) {
+    const res = await call(relayPort, path, { method });
+    assert.equal(res.status, 405, `${method} ${path}`);
+    assert.equal(res.headers.allow, "GET, HEAD", `${method} ${path}`);
+    assertRelayHeaders(res, `${method} ${path}`);
+    assert.equal(res.body, "", `${method} ${path}`);
+  }
+});
+
+test("paths that only start like a relay route go to the static files", async () => {
+  for (const path of ["/relay-statuses", "/relay-secrets/loc"]) {
+    const res = await call(relayPort, path);
+    assert.equal(res.status, 200, path);
+    assert.equal(res.body, "<!doctype html><title>home.en</title>", path);
+  }
+});
+
+test("no relay status, 404 or 405 holds the master or a derived secret", async () => {
+  const replies = [
+    await call(relayPort, "/relay-status"),
+    await call(relayPort, "/relay-secret/sto"),
+    await call(relayPort, "/relay-secret/loc", { method: "POST" }),
+    await call(relayPort, "/relay-secret/loc"),
+  ];
+  const text = JSON.stringify(replies);
+  assert.equal(
+    relaySecrets.some((secret) => text.includes(secret)),
+    false,
+  );
+});
+
+test("without a relay list, /relay-status is empty and no secret is handed out", async () => {
+  const server = await startServer({
+    port: 0,
+    root,
+    certDir: join(dir, "certs"),
+    hosts: ["localhost"],
+  });
+  try {
+    const { port } = server.address() as AddressInfo;
+    const status = await call(port, "/relay-status", { tls: true });
+    assert.equal(status.status, 200);
+    assert.equal(status.headers["content-type"], "application/json");
+    assert.equal(status.body, "[]");
+    assert.equal((await call(port, "/relay-secret/loc", { tls: true })).status, 404);
+  } finally {
+    server.close();
+  }
+});
+
+test("hands the first relay up's ICE servers, with its own credentials, in joined", async () => {
+  const logs: string[] = [];
+  const server = await startServer({
+    port: 0,
+    root,
+    certDir: join(dir, "certs"),
+    hosts: ["localhost"],
+    relays,
+    log: (event, fields) => logs.push(JSON.stringify({ event, fields })),
+  });
+  const { port } = server.address() as AddressInfo;
+  const host = await rawSocket(port);
+  const guest = await rawSocket(port);
+  try {
+    const link = "AAAAAAAAAAAAAAAAAAAAAA";
+    const attempt = "ZZZZZZZZZZZZZZZZZZZZZZ";
+    host.socket.send(JSON.stringify({ t: "host", links: [link], turn: true }));
+    host.socket.send(JSON.stringify({ t: "relay", link: attempt, data: "x" }));
+    await host.next();
+    guest.socket.send(JSON.stringify({ t: "join", link, attempt }));
+    for (const frame of [await guest.next(), await host.next()]) {
+      const message = parseServerMessage(frame);
+      assert.ok(message?.t === "joined", frame);
+      const [ice, ...rest] = message.iceServers;
+      assert.deepEqual(rest, []);
+      assert.ok(ice && "username" in ice, frame);
+      assert.deepEqual(ice.urls, relayAt("loc").urls);
+      const secret = relaySecret(relayMaster, "loc");
+      assert.equal(
+        ice.credential,
+        createHmac("sha1", secret).update(ice.username).digest("base64"),
+      );
+      assert.equal(
+        relaySecrets.some((secret) => frame.includes(secret) || logs.join().includes(secret)),
+        false,
+      );
+    }
+  } finally {
+    host.socket.terminate();
+    guest.socket.terminate();
+    server.close();
+  }
+});

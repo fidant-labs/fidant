@@ -28,6 +28,7 @@ import {
   zoneNames,
 } from "./config.ts";
 import { DnsStack } from "./dns.ts";
+import { statusLines } from "./relay-cap/cap.mts";
 import { renderRelayUserData, renderUserData } from "./user-data.ts";
 
 const account = "111111111111";
@@ -936,29 +937,52 @@ function onlyId(box: Template, type: string): string {
   return ids[0] ?? "";
 }
 
-test("the relay cap checks the box's traffic every 5 minutes", () => {
-  const box = appBox();
-  const [instanceId] = instanceNamed(box, "^fidant-app-");
+const relayCamelPorts = [
+  { protocol: "tcp", fromPort: 22, toPort: 22, cidrListAliases: ["lightsail-connect"] },
+  { protocol: "tcp", fromPort: 80, toPort: 80, cidrs: ["0.0.0.0/0"], ipv6Cidrs: ["::/0"] },
+  { protocol: "tcp", fromPort: 443, toPort: 443, cidrs: ["0.0.0.0/0"], ipv6Cidrs: ["::/0"] },
+  { protocol: "tcp", fromPort: 3478, toPort: 3478, cidrs: ["0.0.0.0/0"], ipv6Cidrs: ["::/0"] },
+  { protocol: "udp", fromPort: 3478, toPort: 3478, cidrs: ["0.0.0.0/0"], ipv6Cidrs: ["::/0"] },
+  { protocol: "udp", fromPort: 49152, toPort: 65535, cidrs: ["0.0.0.0/0"], ipv6Cidrs: ["::/0"] },
+];
+
+function relayCapFunction(box: Template) {
   const functions = Object.entries(box.findResources("AWS::Lambda::Function"))
     .filter(([id]) => id.startsWith("RelayCap"))
     .map(([, fn]) => fn);
   assert.equal(functions.length, 1);
-  const properties = functions[0]?.Properties;
+  return functions[0]?.Properties;
+}
+
+test("the relay cap checks the app box's and the relay box's pooled traffic every 5 minutes", () => {
+  const box = appBox();
+  const [appId] = instanceNamed(box, "^fidant-app-");
+  const [relayId] = instanceNamed(box, "^fidant-relay-sto-");
+  const properties = relayCapFunction(box);
   assert.equal(properties.Runtime, "nodejs24.x");
   assert.equal(properties.Handler, "index.handler");
   assert.equal(properties.Timeout, 30);
   const variables = properties.Environment.Variables;
-  assert.deepEqual(variables.BOX, { Ref: instanceId });
+  assert.deepEqual(Object.keys(variables).sort(), ["BOXES", "LIMIT_BYTES", "RELAYS", "STATUS_URL"]);
   assert.equal(variables.LIMIT_BYTES, "1800000000000");
-  assert.deepEqual(JSON.parse(variables.OPEN_PORTS), camelPorts);
-  assert.deepEqual(JSON.parse(variables.CAPPED_PORTS), camelPorts.slice(0, 3));
+  assert.equal(variables.RELAYS, '["sto"]');
+  assert.equal(variables.STATUS_URL, "https://fidant.se/relay-status");
+  assert.deepEqual(sdkCall(variables.BOXES), [
+    { box: `{Ref:${appId}}`, openPorts: camelPorts, cappedPorts: camelPorts.slice(0, 3) },
+    {
+      box: `{Ref:${relayId}}`,
+      openPorts: relayCamelPorts,
+      cappedPorts: relayCamelPorts.slice(0, 2),
+    },
+  ]);
   box.hasResourceProperties("AWS::Events::Rule", { ScheduleExpression: "rate(5 minutes)" });
   box.hasResourceProperties("AWS::Lambda::EventInvokeConfig", { MaximumRetryAttempts: 0 });
 });
 
-test("the relay cap may only read instance metrics, set the box's ports, and keep its state", () => {
+test("the relay cap may only read instance metrics, set the two boxes' ports, and keep its state", () => {
   const box = appBox();
-  const [instanceId] = instanceNamed(box, "^fidant-app-");
+  const [appId] = instanceNamed(box, "^fidant-app-");
+  const [relayId] = instanceNamed(box, "^fidant-relay-sto-");
   const policies = Object.values(box.findResources("AWS::IAM::Policy")).filter((policy) =>
     policy.Properties.Roles?.[0].Ref.startsWith("RelayCap"),
   );
@@ -973,7 +997,10 @@ test("the relay cap may only read instance metrics, set the box's ports, and kee
   assert.deepEqual(statements[1], {
     Action: "lightsail:PutInstancePublicPorts",
     Effect: "Allow",
-    Resource: { "Fn::GetAtt": [instanceId, "InstanceArn"] },
+    Resource: [
+      { "Fn::GetAtt": [appId, "InstanceArn"] },
+      { "Fn::GetAtt": [relayId, "InstanceArn"] },
+    ],
   });
   assert.deepEqual(statements[2].Action, ["ssm:GetParameter", "ssm:PutParameter"]);
   assert.equal(statements[2].Effect, "Allow");
@@ -988,7 +1015,7 @@ test("relay traffic past 80 %, the cap, and a failing cap email the alert addres
     Endpoint: "budget-alert@fidant.se",
   });
   const alarms = alarmsNamed(box, "Fidant relay ");
-  assert.equal(alarms.length, 3);
+  assert.equal(alarms.length, 5);
   const byName = (name: string) => alarms.find((alarm) => alarm.AlarmName === name);
   const notify = [alertTopic(box)];
   for (const [name, threshold] of [
@@ -1007,6 +1034,45 @@ test("relay traffic past 80 %, the cap, and a failing cap email the alert addres
       assert.deepEqual(alarm.Dimensions, [{ Name: "Service", Value: "relay" }]);
       assert.equal(alarm.Statistic, "Maximum");
     }
+  }
+});
+
+test("a relay that is down and a status that can't be read each email the alert address after 10 minutes", () => {
+  const box = appBox();
+  const notify = [alertTopic(box)];
+  const logged = statusLines(["sto"], [{ id: "sto", up: true }], new Date()).map((line) => {
+    const metric = JSON.parse(line);
+    const [declared] = metric._aws.CloudWatchMetrics;
+    const name = declared.Metrics[0].Name;
+    return {
+      Namespace: declared.Namespace,
+      MetricName: name,
+      Dimensions: declared.Dimensions[0].map((key: string) => ({ Name: key, Value: metric[key] })),
+    };
+  });
+  for (const [name, metricName] of [
+    ["Fidant relay status unreachable", "RelayStatusOk"],
+    ["Fidant relay sto unavailable", "RelayUp"],
+  ] as const) {
+    const alarm = alarmsNamed(box, name)[0];
+    assert.ok(alarm, name);
+    assert.deepEqual(
+      {
+        Namespace: alarm.Namespace,
+        MetricName: alarm.MetricName,
+        Dimensions: alarm.Dimensions,
+      },
+      logged.find((metric) => metric.MetricName === metricName),
+    );
+    assert.equal(alarm.Statistic, "Maximum");
+    assert.equal(alarm.Period, 300);
+    assert.equal(alarm.Threshold, 1);
+    assert.equal(alarm.ComparisonOperator, "LessThanThreshold");
+    assert.equal(alarm.EvaluationPeriods, 2);
+    assert.equal(alarm.DatapointsToAlarm, 2);
+    assert.equal(alarm.TreatMissingData, "ignore");
+    assert.deepEqual(alarm.AlarmActions, notify);
+    assert.deepEqual(alarm.OKActions, notify);
   }
 });
 

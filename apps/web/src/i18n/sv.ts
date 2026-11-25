@@ -101,7 +101,7 @@ export const sv: Messages = {
   },
   landing: {
     title: "Skicka en fil som bara mottagaren kan öppna.",
-    lede: "Fidant krypterar filen i din webbläsare innan den går till den du väljer. Den sparas aldrig, och om du inte ber oss mejla länken kan ingen på vägen, inte heller vi, läsa den.",
+    lede: "Fidant krypterar filen i din webbläsare innan den går till den du väljer. Den sparas aldrig, och bara den som har länken kan öppna den.",
     cta: "Skicka en fil",
     how: "Läs hur det fungerar",
     noAccount: "Inget konto. Inget sparas.",
@@ -131,7 +131,7 @@ export const sv: Messages = {
   },
   how: {
     title: "Så fungerar det",
-    lede: "Vad som händer med din fil, steg för steg. Kort sagt: den låses på din dator. Bara den som har länken kan låsa upp den. Om du ber oss mejla länken gäller det även oss.",
+    lede: "Vad som händer med din fil, steg för steg. Kort sagt: den låses på din dator. Bara den som har länken kan låsa upp den.",
     sections: {
       stays: {
         heading: "Din fil stannar på din dator",
@@ -333,10 +333,12 @@ export const sv: Messages = {
       missing: "Skriv ett namn.",
       taken: "Det namnet finns redan på listan.",
     },
+    emailChoice: "Mejla länken åt mig (mindre privat)",
+    emailMore: "Vad det innebär att mejla en länk",
     emailLabel: "Mottagarens e-postadress",
     emailError: "Skriv en giltig e-postadress, till exempel namn@example.se.",
     emailNotice:
-      "Fidant mejlar länken åt dig, så vår server ser länkens nyckel en gång. Nyckeln sparas inte och loggas inte. Länken, nyckeln också, ligger kvar i mottagarens inkorg, så alla som kan läsa den inkorgen skulle kunna ta emot filen.",
+      "Vår server ser den här länkens nyckel en gång, för att skriva mejlet. Den sparar eller loggar den inte, men vår e-posttjänst och den som läser mejlet på vägen kan också se den, och länken, med nyckeln, ligger kvar i mottagarens inkorg: den som kan läsa den inkorgen kan ta emot filen. Tills kontrollord finns skulle vår server också kunna ställa sig mellan er för den här länken. Om du skickar länken själv slipper du allt detta.",
     fileFirst: "Välj en fil först.",
     full: (max: number) => `Du kan skicka till högst ${max} personer åt gången.`,
     oneLinkEach: "Varje person får en egen länk, som fungerar en gång.",
@@ -547,7 +549,7 @@ export const sv: Messages = {
     doneOne: (name: string) => `Hemligheten kom fram oskadd via länken till ${name}.`,
     doneMany: (n: number) => `Hemligheten kom fram oskadd via alla ${n} länkar.`,
     emailNotice:
-      "Fidant mejlar länken åt dig, så vår server ser länkens nyckel en gång. Nyckeln sparas inte och loggas inte. Länken, nyckeln också, ligger kvar i mottagarens inkorg, så alla som kan läsa den inkorgen skulle kunna ta emot hemligheten.",
+      "Vår server ser den här länkens nyckel en gång, för att skriva mejlet. Den sparar eller loggar den inte, men vår e-posttjänst och den som läser mejlet på vägen kan också se den, och länken, med nyckeln, ligger kvar i mottagarens inkorg: den som kan läsa den inkorgen kan ta emot hemligheten. Tills kontrollord finns skulle vår server också kunna ställa sig mellan er för den här länken. Om du skickar länken själv slipper du allt detta.",
     status: {
       declined: (name: string) =>
         `Länken till ${name} öppnades och hemligheten avböjdes. Länken fungerar fortfarande.`,
@@ -586,7 +588,7 @@ export const sv: Messages = {
     senderHolds: ({ online, links, connected, relay, emailed, sending, mailed, kind }) => {
       if (!online) {
         return mailed
-          ? "Bara antalet mejl den skickade åt dig, i förvrängd form och i upp till en timme, när den har märkt att anslutningen har stängts. Det tar upp till en minut om nätverket bröts."
+          ? "Bara antalet mejl den skickade åt dig, i förvrängd form, i upp till en timme, när den har märkt att anslutningen har stängts. Det tar upp till en minut om nätverket bröts."
           : "Ingenting, när den har märkt att anslutningen har stängts. Det tar upp till en minut om nätverket bröts.";
       }
       const choice = relay
@@ -645,7 +647,7 @@ export const sv: Messages = {
       `Båda webbläsarnas IP-adresser och ${items[kind].seen}. Reläet kan inte låsa upp ${items[kind].the}.`,
     relayLogsLabel: "Vårt relä loggar",
     relayLogs: (kind: Kind) =>
-      `Inget i vanliga fall. Bara när vi felsöker eller stoppar missbruk: anslutningstider, IP-adresser och hur mycket data som passerade, i högst 7 dagar. Aldrig namn, nycklar eller ${items[kind].data}.`,
+      `Ingen logg över trafiken i vanliga fall. Bara när vi felsöker eller stoppar missbruk: anslutningstider, IP-adresser och hur mycket data som passerade, i högst 7 dagar. Aldrig namn, nycklar eller ${items[kind].data}. Medan det förnyar sitt certifikat loggar det också adresserna som når det på port 80, aldrig webbläsarnas, i ungefär fem veckor.`,
     relayKeepsLabel: "Vårt relä sparar",
     relayKeeps: (kind: Kind) =>
       `Ingenting av ${items[kind].the} när ${items[kind].it} har passerat. Loggrader som sparas när vi felsöker eller stoppar missbruk raderas inom 7 dagar.`,
@@ -657,7 +659,7 @@ export const sv: Messages = {
       }${mailed ? " Det gör också antalet mejl den skickade åt dig, i förvrängd form, i upp till en timme." : ""}`,
     afterwardsRecipient: (emailed: boolean) =>
       emailed
-        ? "När den här sidan kopplas från släpper servern det den har om sidan, inom högst en minut, utom det som kodkontrollen behöver: din e-postadress och om den här fliken har angett rätt kod finns kvar tills avsändarens sida stängs, och antalet koder som skickats till din adress, i förvrängd form, i upp till en timme. Loggraderna finns kvar."
+        ? "När den här sidan kopplas från släpper servern det den har om sidan, inom högst en minut, utom det som kodkontrollen behöver: din e-postadress och om den här fliken har angett rätt kod finns kvar tills avsändarens sida stängs, och antalet koder som skickats till din adress och antalet koder som din IP-adress har bett om, båda i förvrängd form, i upp till en timme. Loggraderna finns kvar."
         : "När den här sidan kopplas från släpper servern det den har om sidan, inom högst en minut. Loggraderna finns kvar.",
     logs: (kind: Kind) =>
       `Vad som hände, till exempel att en länk öppnades, med ${new Intl.ListFormat("sv", {
@@ -670,8 +672,7 @@ export const sv: Messages = {
   },
   footer: {
     label: "Webbplats",
-    tagline:
-      "Filer krypteras i din webbläsare och kan bara läsas av mottagaren, om du inte ber oss mejla länken.",
+    tagline: "Filer krypteras i din webbläsare. Bara länken kan låsa upp dem.",
     about: "Om Fidant",
     terms: "Villkor",
     security: "Säkerhet",
@@ -686,7 +687,7 @@ export const sv: Messages = {
   },
   about: {
     title: "Om Fidant",
-    lede: "Fidant är ett sätt att skicka en fil till någon utan att behöva lita på någon på vägen, inte heller på oss, så länge du inte ber oss mejla länken.",
+    lede: "Fidant är ett sätt att skicka en fil till någon utan att behöva lita på någon på vägen, inte heller på oss.",
     sections: [
       {
         heading: "Vem som driver det",
@@ -758,7 +759,7 @@ export const sv: Messages = {
         heading: "Det här skyddar den inte mot",
         body: [
           "Den som får tag på en länk kan öppna filen, och en länk som vi mejlar kräver också en kod som vi skickar till samma adress. Skicka varje länk bara till den den är till, på ett sätt du litar på.",
-          "En länk som vi mejlar ligger kvar i mottagarens inkorg. Den som kan läsa inkorgen kan också få koden, och därmed filen. Och eftersom vår server har haft länkens nyckel måste du lita på att vi inte läser filen på vägen. Vill du undvika båda, lämna e-postadressen tom och skicka länken själv.",
+          "En länk som vi mejlar ligger kvar i mottagarens inkorg. Den som kan läsa inkorgen kan också få koden, och därmed filen. Och eftersom vår server har haft länkens nyckel måste du lita på att vi inte läser filen på vägen. Vill du undvika båda, låt ”Mejla länken åt mig” vara urkryssad och skicka länken själv.",
           "Avsändarens namn skrivs av avsändaren och kontrolleras inte.",
           "De två webbläsarna ser varandras IP-adress, precis som i ett videosamtal. När filen går via vårt relä ser reläet båda IP-adresserna och ungefär hur stor filen är.",
           "En dator som redan är kapad kan läsa filen innan den krypteras eller efter att den låsts upp.",
@@ -783,8 +784,8 @@ export const sv: Messages = {
       parts: {
         heading: "Delarna",
         body: [
-          "Fidant har tre delar. Webbappen körs i avsändarens och mottagarens webbläsare och sköter all kryptering. Vår server i Stockholm levererar webbappen och skickar vidare meddelanden för att koppla upp de två webbläsarna, över en WebSocket. Vårt relä på samma maskin talar om för webbläsare vilken offentlig adress de har (STUN) och för vidare krypterad trafik när två webbläsare inte når varandra direkt (TURN). Om en avsändare ber oss mejla en länk skickar vår server också mejl via en e-posttjänst.",
-          "Det finns inga konton, ingen databas och ingen fillagring. Servern har det den vet bara i minnet.",
+          "Fidant har tre delar. Webbappen körs i avsändarens och mottagarens webbläsare och sköter all kryptering. Vår server i Stockholm levererar webbappen och skickar vidare meddelanden för att koppla upp de två webbläsarna, över en WebSocket. Vårt relä, på en egen maskin i Stockholm, talar om för webbläsare vilken offentlig adress de har (STUN) och för vidare krypterad trafik när två webbläsare inte når varandra direkt (TURN). Om en avsändare ber oss mejla en länk skickar vår server också mejl via en e-posttjänst.",
+          "Det finns inga konton, ingen fillagring och ingen databas över personer eller överföringar. Servern har det den vet om sidor och överföringar bara i minnet. På disk har servern egna hemligheter, bland dem den som reläets hemlighet kommer från, och reläet har sin nuvarande och sin förra hemlighet i en liten databasfil.",
           "Allt är öppen källkod, så varje påstående på den här sidan går att kontrollera mot koden.",
         ],
         link: ["Koden på GitHub", "https://github.com/sigill-labs/sigill"],
@@ -839,7 +840,7 @@ export const sv: Messages = {
         body: [
           "Mottagarens webbläsare räknar kontrollsumman medan filen kommer fram och kontrollerar storleken, antalet delar, utfyllnaden och kontrollsumman mot END. Filen sparas bara om allt stämmer. Varje annat slut, till exempel en ram som inte går att dekryptera eller en förbindelse som stängs för tidigt, kastar det som har skrivits.",
           "Chrome och Edge kan skriva filen direkt till en plats på disken som mottagaren väljer. Andra webbläsare samlar den i minnet och startar nedladdningen i slutet, och för en fil över 256 MiB varnas mottagaren först. Nedladdningen märks alltid som rena binärdata, vilken typ avsändaren än anger, så en fil kan inte köras som en webbsida på Fidants webbplats.",
-          "Namn med styrtecken, radavgränsare eller Unicode-tecken som åsidosätter eller isolerar textriktning nekas, så ett namn som slutar på .exe kan inte se ut att sluta på .pdf.",
+          "Namn med styrtecken, radavgränsare, Unicode-tecken som åsidosätter eller isolerar textriktning, tomma utfyllnadstecken eller långa rader av mellanslag nekas, så ett namn som slutar på .exe kan inte se ut att sluta på .pdf.",
         ],
       },
       padding: {
@@ -855,7 +856,7 @@ export const sv: Messages = {
         body: [
           "WebRTC provar de direkta vägarna först: över det lokala nätverket, eller via varje sidas offentliga adress, som webbläsaren får veta från vår STUN-tjänst. Filen går då direkt mellan webbläsarna. Avsändarens sida visar vilken väg varje förbindelse tog.",
           "Om ingen direkt väg fungerar, vilket är vanligt på mobildata och kontorsnätverk, går trafiken via vårt TURN-relä i Stockholm. Reläet för vidare krypterade paket. Det kan inte dekryptera dem och sparar dem inte.",
-          "För att använda reläet behöver en webbläsare inloggningsuppgifter, som vår server skapar för varje ihopkoppling och bara ger till de två ihopkopplade sidorna. De slutar gälla efter 5 minuter. Webbläsare når reläet över UDP, eller över TLS på port 443 där ett nätverk bara släpper igenom webbtrafik. Reläet skickar bara vidare över UDP, och bara från sin egen adress. Det vägrar skicka till andra datorer på privata eller interna nätverk (med ett godtaget undantag: reläets egen server, se beslut 0007) och begränsar hur många anslutningar som går via det samtidigt.",
+          "För att använda reläet behöver en webbläsare inloggningsuppgifter, som vår server skapar för varje ihopkoppling och bara ger till de två ihopkopplade sidorna. De slutar gälla efter 5 minuter. Vår server kontrollerar varje minut att reläet kan föra vidare trafik och erbjuder det när en kontroll lyckas. Den slutar erbjuda det efter två misslyckade kontroller i rad. Reläet får hemligheten bakom inloggningsuppgifterna från vår server, förseglad så att bara reläet kan öppna den. Webbläsare når reläet över UDP, eller över TLS på port 443 där ett nätverk bara släpper igenom webbtrafik. Reläet skickar bara vidare över UDP, och bara från sin egen adress. Det vägrar skicka till andra datorer på privata eller interna nätverk (med ett godtaget undantag: reläets egen server, se beslut 0007) och begränsar hur många anslutningar som går via det samtidigt.",
           "På alla vägar ser varje webbläsare den andras IP-adress, precis som i ett videosamtal.",
         ],
       },
@@ -892,8 +893,8 @@ export const sv: Messages = {
           "Den som skickar en fil eller delar en hemlighet kan ange en mottagares e-postadress. Avsändarens sida skickar då ett meddelande till vår server med länk-ID:t, adressen, länkens hemlighet, namnet avsändaren skrev och sidans språk. Det är det enda fallet där en länks hemlighet lämnar webbläsaren.",
           "Vår server väljer ett slumpmässigt värde och mejlar mottagaren länken med värdet framför länkens hemlighet: https://fidant.se/r/<länk-ID>#e.<värde>.<hemlighet>. Den gör ett försök, med en tidsgräns, och försöker aldrig igen. Den har länkens hemlighet och avsändarens namn bara tills försöket är över, och sparar eller loggar dem aldrig. Mejlet är ren text. Det visar namnet avsändaren skrev, markerat som inte verifierat, och säger ingenting om vad som skickas, inte ens om det är en fil eller en delad hemlighet.",
           "Innan mottagarens sida ansluter skickar den värdet till vår server. Bara om det stämmer visar servern en maskerad adress, till exempel a***@example.se, och mejlar en sexsiffrig kod dit när mottagaren ber om den. En kod gäller i 10 minuter, och efter 5 felaktiga försök slutar den gälla. Rätt kod ger en slumpmässig token som bara den webbläsarfliken har, och servern kopplar inte ihop någon med en mejlad länk utan en sådan. Den som bara har länk-ID:t, eller en mejlad länk som har slutat fungera, kan inte se adressen, inte få oss att skicka koder och inte ansluta.",
-          "Vår server har adressen, värdet, koderna och tokens i minnet medan avsändarens sida har länken. När avsändaren tar bort mottagaren, stänger sidan eller tappar anslutningen till vår server, eller när servern startas om, försvinner allt det och den mejlade länken slutar fungera. För att begränsa missbruk räknar servern mejl i en timme under en förvrängd form av varje adress (en HMAC med en slumpmässig nyckel), aldrig under själva adressen: högst 20 mejl i timmen från en anslutning, 50 från en IP-adress och 5 till en e-postadress, och högst 5 koder per länk, med 30 sekunders mellanrum, och 10 i timmen till en adress.",
-          "Haken: nyckeln står i mejlet. Vår server har haft den, vår e-posttjänst och den som läser mejlet på vägen kan se den, och den ligger kvar i mottagarens inkorg. Koden hindrar att en vidarebefordrad länk eller en e-postskanner tar emot filen eller den delade hemligheten, men inte den som kan läsa inkorgen. Och eftersom vår server har haft nyckeln skulle den kunna ställa sig mellan de två webbläsarna för den länken. Kontrollord som båda skärmarna visar, som är planerade, ska göra det möjligt att upptäcka det. Vill du undvika allt det här, lämna e-postadressen tom och skicka länken själv.",
+          "Vår server har adressen, värdet, koderna och tokens i minnet medan avsändarens sida har länken. När avsändaren tar bort mottagaren, stänger sidan eller tappar anslutningen till vår server, eller när servern startas om, försvinner allt det och den mejlade länken slutar fungera. För att begränsa missbruk räknar servern mejl i en timme under en förvrängd form av varje adress (en HMAC med en slumpmässig nyckel), aldrig under själva adressen: högst 20 mejl i timmen från en anslutning, 50 från en IP-adress (en IPv6-adress räknas efter sina första 48 bitar) och 5 till en e-postadress, och högst 5 koder per länk, med 30 sekunders mellanrum, 5 i timmen som en IP-adress ber om och 10 i timmen till en e-postadress. Hela servern skickar högst 500 mejl och 500 koder i timmen. Vem som helst kan nå gränserna för en e-postadress, eller för hela servern, så att inga fler mejl eller koder skickas i upp till en timme.",
+          "Haken: nyckeln står i mejlet. Vår server har haft den, vår e-posttjänst och den som läser mejlet på vägen kan se den, och den ligger kvar i mottagarens inkorg. Koden hindrar att en vidarebefordrad länk eller en e-postskanner tar emot filen eller den delade hemligheten, men inte den som kan läsa inkorgen. Och eftersom vår server har haft nyckeln skulle den kunna ställa sig mellan de två webbläsarna för den länken. Kontrollord som båda skärmarna visar, som är planerade, ska göra det möjligt att upptäcka det. Vill du undvika allt det här, låt ”Mejla länken åt mig” vara urkryssad och skicka länken själv.",
         ],
       },
       site: {
@@ -907,9 +908,9 @@ export const sv: Messages = {
       seen: {
         heading: "Vad vår server och vårt relä ser och sparar",
         body: [
-          "Vår server ser varje sidas IP-adress och webbläsaruppgifter, länk-ID:na, avsändarens val om reläet, vilken väg avsändaren rapporterar för varje försök (direkt, STUN, relä eller misslyckad), om en länk redan har använts, när varje sida ansluter och kopplar ner samt de krypterade meddelandena för uppkopplingen och deras storlek. Den ser aldrig filen, dess namn, typ eller exakta storlek, och inte heller en delad hemlighet eller dess längd. Den ser aldrig en länks hemlighet eller nycklarna och kan inte läsa meddelandena, utom för en länk som vi mejlar: då får den länkens hemlighet en gång för att skriva mejlet, tillsammans med mottagarens e-postadress och namnet avsändaren skrev. Den har det den vet bara i minnet och glömmer en sida inom en minut efter att den kopplat ner. Undantagen är en mejlad länks adress, koder och tokens, som finns kvar tills avsändarens sida släpper länken, och antalet mejl, som finns kvar en timme.",
+          "Vår server ser varje sidas IP-adress och webbläsaruppgifter, länk-ID:na, avsändarens val om reläet, vilken väg avsändaren rapporterar för varje försök (direkt, STUN, relä eller misslyckad), om en länk redan har använts, när varje sida ansluter och kopplar ner samt de krypterade meddelandena för uppkopplingen och deras storlek. Den ser aldrig filen, dess namn, typ eller exakta storlek, och inte heller en delad hemlighet eller dess längd. Den ser aldrig en länks hemlighet eller nycklarna och kan inte läsa meddelandena, utom för en länk som vi mejlar: då får den länkens hemlighet en gång för att skriva mejlet, tillsammans med mottagarens e-postadress och namnet avsändaren skrev. Den har det den vet om sidor bara i minnet och glömmer en sida inom en minut efter att den kopplat ner. Undantagen är en mejlad länks adress, koder och tokens, som finns kvar tills avsändarens sida släpper länken, och antalet mejl, som finns kvar en timme.",
           "Dess loggrader har en fast lista med fält, till exempel de 6 första tecknen i ett länk-ID och om en förbindelse gick direkt. Aldrig namn, e-postadresser, koder, nycklar, filinnehåll eller IP-adresser. De raderas efter 30 dagar.",
-          "Vårt relä ser båda IP-adresserna och den krypterade trafiken, alltså filens storlek bara ungefär och ingenting av en delad hemlighets längd. På port 443 vidarebefordrar ett program på samma server varje förbindelse till reläet utan att dekryptera den, och loggar ingenting. Reläet för ingen logg. Bara för att rätta ett fel eller stoppa missbruk slår vi på en, med tider för anslutningar, IP-adresser och datamängder, i högst 7 dagar.",
+          "Vårt relä ser båda IP-adresserna och den krypterade trafiken, alltså filens storlek bara ungefär och ingenting av en delad hemlighets längd. Det för ingen logg över trafiken. Bara för att rätta ett fel eller stoppa missbruk slår vi på en, med tider för anslutningar, IP-adresser och datamängder, i högst 7 dagar. Det sparar sin nuvarande och sin förra hemlighet, och ingenting av filen. Medan det förnyar sitt certifikat, några sekunder ungefär varannan månad, loggar det adresserna som når det på port 80. Det är Let's Encrypts kontroller och skannrar på internet, aldrig webbläsare, och de raderas inom ungefär fem veckor.",
         ],
         link: ["Alla loggfält, på integritetssidan", "/privacy"],
       },
@@ -986,11 +987,11 @@ export const sv: Messages = {
         items: {
           local: {
             heading: "Direkt, på samma nätverk",
-            body: "När båda webbläsarna är på samma lokala nätverk ansluter de över sina lokala adresser. Filen går direkt mellan dem, och vår server och vårt relä ser ingenting av den. Varje webbläsare frågar ändå vår STUN-tjänst om sin offentliga adress, vilket visar den IP-adressen, och om du tillåter reläet ser det båda IP-adresserna.",
+            body: "När båda webbläsarna är på samma lokala nätverk ansluter de över sina lokala adresser. Filen går direkt mellan dem, och vår server och vårt relä ser ingenting av den. Varje webbläsare frågar ändå vår STUN-tjänst om sin offentliga adress, vilket visar den IP-adressen, och om du tillåter reläet och det är tillgängligt ser det båda IP-adresserna.",
           },
           stun: {
             heading: "Direkt, via offentliga adresser",
-            body: "Varje webbläsare frågar vår STUN-tjänst om sin offentliga adress, vilket visar vår STUN-tjänst den IP-adressen men inget annat. Filen går sedan direkt mellan webbläsarna över internet. Om du tillåter reläet ser det ändå båda IP-adresserna.",
+            body: "Varje webbläsare frågar vår STUN-tjänst om sin offentliga adress, vilket visar vår STUN-tjänst den IP-adressen men inget annat. Filen går sedan direkt mellan webbläsarna över internet. Om du tillåter reläet och det är tillgängligt ser det ändå båda IP-adresserna.",
           },
           relay: {
             heading: "Via vårt relä",
@@ -1129,7 +1130,7 @@ export const sv: Messages = {
         ],
         [
           "Data som blir kvar på våra maskiner",
-          "Inga konton, ingen databas och ingen fillagring. Servern har det den vet bara i minnet och glömmer en sida inom en minut efter att den kopplat ner, utom förvrängda antal mejl och koder, som den sparar i en timme. Loggarna har fasta fält, aldrig namn, e-postadresser, koder, nycklar, filinnehåll eller IP-adresser, och raderas efter 30 dagar.",
+          "Inga konton, ingen fillagring och ingen databas över personer eller överföringar. Servern har det den vet om sidor bara i minnet och glömmer en sida inom en minut efter att den kopplat ner, utom förvrängda antal mejl och koder och två räknare med sändningstider för hela servern, som den sparar i en timme. Loggarna har fasta fält, aldrig namn, e-postadresser, koder, nycklar, filinnehåll eller IP-adresser, och raderas efter 30 dagar. Reläet för som standard ingen logg över trafiken. Medan det förnyar sitt certifikat loggar det i ungefär fem veckor adresserna som når det på port 80, aldrig webbläsarnas.",
         ],
         [
           "Spårning, eller kod från andra webbplatser",
@@ -1140,6 +1141,210 @@ export const sv: Messages = {
           "Bocka ur reläet för den sändningen. Vår server ger då inga inloggningsuppgifter till reläet, och avsändarens webbläsare avslutar en förbindelse som går via det.",
         ],
       ],
+    },
+    explorer: {
+      heading: "Se vad din överföring lämnar efter sig",
+      body: [
+        "Välj hur du skickar och se varje plats där ett spår av det sparas: vad och hur länge. Platser som inte ingår i den vägen säger det.",
+      ],
+      questions: {
+        what: { legend: "Vad skickar du?", options: { file: "En fil", secret: "En hemlighet" } },
+        link: {
+          legend: "Hur når länken mottagaren?",
+          options: { self: "Jag skickar den själv", email: "Fidant mejlar den" },
+        },
+        route: {
+          legend: "Vilken väg tar den krypterade trafiken?",
+          options: {
+            direct: "Direkt, med vårt relä tillåtet",
+            relay: "Via vårt relä",
+            norelay: "Direkt, med vårt relä avböjt",
+          },
+        },
+      },
+      kept: "Sparas",
+      never: "Aldrig",
+      notUsed: "Ingår inte i den här vägen.",
+      places: {
+        sender: {
+          name: "Din webbläsare",
+          kept: "Mest tills du stänger fliken; se varje rad",
+          never: "Fidant sparar ingen fil, hemlighet, länk eller nyckel på din enhet.",
+          lines: [
+            [
+              "",
+              "Länken och dess nyckel, i den här flikens minne tills du stänger den. Om du kopierar en länk ligger den också kvar i ditt urklipp tills du ersätter den, eller längre med urklippshistorik, synkade urklipp och andra appar.",
+            ],
+            [
+              "file",
+              "Din fil ligger kvar där den är. Sidan läser den för att kryptera den och kopierar den ingenstans.",
+            ],
+            [
+              "secret",
+              "Hemligheten i sin textruta, tills du stänger fliken. En webbläsare kan spara den med sin session.",
+            ],
+            ["", "Ditt val av tema och språk, i webbläsarens lokala lagring, tills du rensar den."],
+            [
+              "direct,relay",
+              "Så länge vårt relä är tillgängligt, reläuppgifter för det här paret, giltiga i 5 minuter för att starta ett relä, i minnet medan sidan är öppen.",
+            ],
+          ],
+        },
+        channel: {
+          name: "Där du klistrar in länken",
+          kept: "Så länge den tjänsten sparar meddelanden",
+          never: "Fidant ser aldrig det meddelandet.",
+          lines: [
+            [
+              "self",
+              "Hela länken, nyckeln också, i den chatt-, mejl- eller meddelandetjänst du skickar den med. Dess länkförhandsvisning kan öppna adressen men får aldrig nyckeln, som står efter #.",
+            ],
+          ],
+        },
+        server: {
+          name: "Vår server, i minnet",
+          kept: "Medan sidorna är öppna, och borta inom en minut efter. På en mejlad länk finns räknare i upp till en timme.",
+          never:
+            "Din fil, dess namn, storlek eller typ, eller hemligheten, utom på en mejlad länk enligt nedan.",
+          lines: [
+            [
+              "",
+              "Båda IP-adresserna, länkens ID och vilken sida som är ihopkopplad med vilken länk.",
+            ],
+            [
+              "",
+              "Krypterade uppkopplingsmeddelanden passerar och sparas inte. På en länk du skickar själv kan den inte läsa dem.",
+            ],
+            [
+              "direct,relay",
+              "Så länge vårt relä är tillgängligt skapar den reläuppgifter för det här paret, giltiga i 5 minuter, och skickar dem till båda sidorna utan att spara dem.",
+            ],
+            [
+              "email",
+              "Mottagarens mejladress, ett slumpvärde och koden, medan din sida är öppen. Länkens nyckel och namnet du skrev bara tills mejlet har skickats eller misslyckats.",
+            ],
+            [
+              "email",
+              "Eftersom den hade nyckeln kunde den läsa länkens uppkopplingsmeddelanden, och så filen eller hemligheten. Kontrollord är planerade för att täppa till det.",
+            ],
+            [
+              "email",
+              "Sändningstider, i upp till en timme, under nyckelstyrda hashar (HMAC) av mottagarens adress och din IP-adress, och två räknare för hela servern, en för alla mejl och en för alla koder, utan koppling till någon adress, för att upprätthålla gränser. Token som en rätt kod ger, medan din sida är öppen.",
+            ],
+          ],
+        },
+        proxy: {
+          name: "Vår frontproxy",
+          kept: "Medan någon anslutning från den är öppen, och upp till 2 minuter efter att den sista stängts",
+          never:
+            "Något av det den bär: den för trafiken vidare utan att dekryptera den. Den loggar ingenting.",
+          lines: [
+            [
+              "",
+              "Varje käll-IP-adress (en IPv6-adress per sin /64) och dess antal anslutningar, i minnet.",
+            ],
+          ],
+        },
+        caddy: {
+          name: "Vår webbserver (Caddy)",
+          kept: "Ingen åtkomstlogg. Dess egen logg: 30 dagar",
+          never: "Delen av länken efter #, som webbläsare aldrig skickar.",
+          lines: [
+            [
+              "",
+              "Den dekrypterar HTTPS: den ser varje förfrågans sökväg, som /r/ med länkens ID, varje webbläsares IP-adress och alla meddelanden sidorna skickar till vår server, bara i minnet. Uppkopplingsmeddelandena förblir krypterade.",
+            ],
+            [
+              "email",
+              "På en mejlad länk ingår mottagarens mejladress, namnet du skrev, länkens nyckel, koden och token i de meddelandena.",
+            ],
+            [
+              "",
+              "Dess egen logg, om start, går till journalen. Den sparar ingen åtkomstlogg, och dess fel- och TLS-loggar är avstängda.",
+            ],
+          ],
+        },
+        log: {
+          name: "Vår serverlogg",
+          kept: "30 dagar",
+          never: "Namn, mejladresser, koder, nycklar, IP-adresser eller filinnehåll.",
+          lines: [
+            [
+              "",
+              "Korta rader: att en avsändare registrerade sig och hur många länkar, att en mottagare anslöt, storleken på varje uppkopplingsmeddelande och vilken väg anslutningen tog. En länk syns bara med sina 6 första tecken.",
+            ],
+            [
+              "email",
+              "Om mejlet skickades, varje kod som skickades eller nekades, och en rätt kod.",
+            ],
+            [
+              "",
+              "Att en mottagare lämnade, och att din sida stängdes, med hur många länkar den hade.",
+            ],
+            [
+              "norelay",
+              "Om en anslutning via relä ändå kommer till stånd, att din sida avslutade den.",
+            ],
+          ],
+        },
+        relay: {
+          name: "Vårt relä",
+          kept: "Inget när trafiken har passerat. Ingen logg över trafiken. Bara för att åtgärda ett fel eller stoppa missbruk slår vi på en, med anslutningstider, IP-adresser och datamängder, i högst 7 dagar. Medan det förnyar sitt certifikat loggar det också adresserna som når det på port 80, aldrig webbläsares, i ungefär fem veckor.",
+          never: "Nyckeln, filen eller hemligheten. Det kan inte låsa upp det det bär.",
+          lines: [
+            ["", "Varje webbläsares publika IP-adress, när webbläsaren frågar efter den."],
+            [
+              "direct",
+              "Så länge vårt relä är tillgängligt, båda IP-adresserna, eftersom varje webbläsare reserverar en reläadress även när en direkt väg vinner.",
+            ],
+            [
+              "relay",
+              "Båda IP-adresserna, och den krypterade trafiken, som det skickar vidare och inte sparar.",
+            ],
+          ],
+        },
+        mail: {
+          name: "Vår mejltjänst och mottagarens inkorg",
+          kept: "Tills mejltjänsten och mottagarens mejlleverantör raderar mejlen, enligt egna regler",
+          never: "Filens namn, storlek eller typ, eller om det är en fil eller en hemlighet.",
+          lines: [
+            [
+              "email",
+              "Ett mejl med hela länken, nyckeln också, och namnet du skrev, markerat som okontrollerat. Ett andra mejl med koden. Den som läser mejlet på vägen, eller en länkskanner som hämtar länken, kan få hela länken med nyckeln. En skanner kan inte ansluta utan koden.",
+            ],
+          ],
+        },
+        recipient: {
+          name: "Mottagarens webbläsare",
+          kept: "Mest tills fliken stängs; se varje rad",
+          never:
+            "Fidant sparar ingen nyckel på deras enhet, utöver det webbläsarens historik sparar.",
+          lines: [
+            ["", "Länken, nyckeln också, i webbläsarens historik."],
+            ["file", "Filen, där de sparar den."],
+            [
+              "secret",
+              "Hemligheten, bara i sidans minne tills de kopierar den. Då ligger den i deras urklipp också.",
+            ],
+            ["email", "En token för den rätta koden, i flikens sessionslagring."],
+            [
+              "direct,relay",
+              "Så länge vårt relä är tillgängligt, reläuppgifter för det här paret, giltiga i 5 minuter för att starta ett relä, i minnet medan sidan är öppen.",
+            ],
+            ["", "Deras val av tema och språk, i webbläsarens lokala lagring, tills de rensas."],
+          ],
+        },
+        networks: {
+          name: "Näten på vägen",
+          kept: "Okänt",
+          never: "Något läsbart: all trafik är krypterad.",
+          lines: [
+            ["", "Båda IP-adresserna och tidpunkterna."],
+            ["file", "Filens storlek, bara ungefär."],
+            ["secret", "Inte hemlighetens längd: varje hemlighet är lika stor på nätet."],
+          ],
+        },
+      },
     },
     data: {
       heading: "Steg för steg",
@@ -1172,14 +1377,14 @@ export const sv: Messages = {
         [
           "Du ber oss mejla en länk",
           "Mottagarens e-postadress, länkens hemlighet, namnet du skrev och sidans språk. E-posttjänsten får mejlet med länken.",
-          "Adressen, språket och ett slumpmässigt värde medan din sida har länken. Hemligheten och ditt namn bara tills mejlet har skickats eller misslyckats. Antal mejl per förvrängd e-postadress och per förvrängd IP-adress, i en timme.",
+          "Adressen, språket och ett slumpmässigt värde medan din sida har länken. Hemligheten och ditt namn bara tills mejlet har skickats eller misslyckats. Antal mejl per förvrängd e-postadress och per förvrängd IP-adress, och ett antal för alla mejl servern skickat, utan koppling till någon adress, i en timme.",
           "Om mejlet skickades, med de 6 första tecknen i länk-ID:t.",
           "Ingenting.",
         ],
         [
           "En mottagare med en mejlad länk anger koden",
           "Värdet ur länken och koden som skrevs.",
-          "Den senaste koden med dess giltighetstid och försök, och den token en rätt kod ger, medan din sida har länken. Antal koder per förvrängd e-postadress, i en timme.",
+          "Den senaste koden med dess giltighetstid och försök, och den token en rätt kod ger, medan din sida har länken. Antal koder per förvrängd e-postadress och per förvrängd IP-adress, och ett antal för alla koder servern skickat, utan koppling till någon adress, i en timme.",
           "Varje kod som skickades eller nekades och varför, och en rätt kod, med de 6 första tecknen i länk-ID:t.",
           "Ingenting.",
         ],
@@ -1188,21 +1393,21 @@ export const sv: Messages = {
           "Länk-ID:t, ett slumpmässigt försöks-ID och mottagarens IP-adress och webbläsaruppgifter.",
           "Vilken mottagarsida som är ihopkopplad med vilken länk, i minnet.",
           "Att en mottagare anslöt eller nekades och varför, med de 6 första tecknen i länk-ID:t.",
-          "Ingenting än. Om du tillåter reläet ger vår server de två sidorna inloggningsuppgifter till det som slutar gälla efter 5 minuter.",
+          "Ingenting än. Om du tillåter reläet och det är tillgängligt ger vår server de två sidorna inloggningsuppgifter till det som slutar gälla efter 5 minuter.",
         ],
         [
           "Webbläsarna kopplar upp sig",
           "Krypterade meddelanden för uppkopplingen och deras storlek. Den kan inte läsa dem, utom för en länk vi mejlat.",
           "Ingenting. Den skickar dem vidare.",
           "Varje meddelandes storlek, med de 6 första tecknen i länk-ID:t.",
-          "Varje webbläsares IP-adress, när den frågar efter sin offentliga adress (STUN). Om du tillåter reläet reserverar varje webbläsare också en reläadress, så reläet ser båda IP-adresserna även när en direkt väg vinner.",
+          "Varje webbläsares IP-adress, när den frågar efter sin offentliga adress (STUN). Om du tillåter reläet och det är tillgängligt reserverar varje webbläsare också en reläadress, så reläet ser båda IP-adresserna även när en direkt väg vinner.",
         ],
         [
           "Filen eller hemligheten skickas",
           "Ingenting av den. Din sida rapporterar vägen: direkt, STUN, relä eller misslyckad.",
           "Ingenting.",
           "Vägen.",
-          "På vägen via reläet: de krypterade paketen, som det för vidare och inte sparar. Båda IP-adresserna så fort du tillåter reläet.",
+          "På vägen via reläet: de krypterade paketen, som det för vidare och inte sparar. Båda IP-adresserna så fort du tillåter reläet och det är tillgängligt.",
         ],
         [
           "Mottagaren bekräftar leveransen",
@@ -1221,9 +1426,9 @@ export const sv: Messages = {
         [
           "Efteråt",
           "Ingenting.",
-          "Bara de förvrängda antalen mejl och koder, i högst en timme.",
+          "Bara de förvrängda antalen mejl och koder, och två räknare för hela servern med tiderna då mejl och koder skickades, utan koppling till någon adress, i högst en timme.",
           "Loggraderna raderas efter 30 dagar.",
-          "Ingen logg. Bara för att rätta ett fel eller stoppa missbruk slår vi på en, med tider för anslutningar, IP-adresser och datamängder, i högst 7 dagar.",
+          "Ingen logg över trafiken. Bara för att rätta ett fel eller stoppa missbruk slår vi på en, med tider för anslutningar, IP-adresser och datamängder, i högst 7 dagar. Dessutom loggar det, medan det förnyar sitt certifikat, adresserna som når det på port 80, aldrig webbläsarnas, i ungefär fem veckor.",
         ],
       ],
     },
@@ -1251,7 +1456,7 @@ export const sv: Messages = {
     sees: [
       [
         "Din IP-adress och uppgifter om din webbläsare",
-        "Som på alla webbplatser du besöker. Vi använder dem bara för att visa dig sidan och koppla ihop er. Vår server skriver aldrig in dem i sina loggar. Vårt relä loggar inte heller något, utom medan vi åtgärdar ett fel eller stoppar missbruk (se nedan).",
+        "Som på alla webbplatser du besöker. Vi använder dem bara för att visa dig sidan och koppla ihop er. Vår server skriver aldrig in dem i sina loggar. Vårt relä loggar dem inte heller, utom medan vi åtgärdar ett fel eller stoppar missbruk (se nedan).",
       ],
       [
         "Ett länk-ID",
@@ -1271,15 +1476,15 @@ export const sv: Messages = {
       ],
       [
         "Antal mejl och koder",
-        "För att begränsa hur många mejl någon kan skicka räknar vi under en timme mejlen och koderna till varje adress och mejlen som varje IP-adress ber oss skicka. Antalet sparas under en förvrängd form av adressen (en HMAC), aldrig under själva adressen.",
+        "För att begränsa hur många mejl någon kan skicka räknar vi under en timme mejlen och koderna till varje adress och mejlen och koderna som varje IP-adress ber oss skicka. Varje antal per adress sparas under en förvrängd form av adressen (en HMAC), aldrig under själva adressen. Två räknare till, för alla mejl och alla koder som servern skickat, innehåller bara sändningstider och har ingen koppling till någon adress.",
       ],
     ],
     keepHeading: "Vad vi sparar",
-    keep: "Vi har inga konton, ingen databas, inga cookies och ingen spårning. Förutom loggraderna nedan, en relälogg medan vi åtgärdar ett fel eller stoppar missbruk, antalet mejl och koder ovan, som finns kvar en timme, och e-posttjänstens lista över adresser som studsat sparas ingenting när avsändarens sida har stängts, inom högst två minuter.",
+    keep: "Vi har inga konton, ingen databas över personer eller överföringar, inga cookies och ingen spårning. Förutom loggraderna nedan, en relälogg medan vi åtgärdar ett fel eller stoppar missbruk, antalet mejl och koder ovan, som finns kvar en timme, och e-posttjänstens lista över adresser som studsat sparas ingenting om dig när avsändarens sida har stängts, inom högst två minuter.",
     logFields,
     logRetention: "Loggraderna raderas efter 30 dagar.",
     relayLog:
-      "Vårt relä, som för den låsta filen vidare när två webbläsare inte kan ansluta direkt, har ingen logg. Bara för att åtgärda ett fel eller stoppa missbruk slår vi på en. Den sparar då för varje vidarebefordrad anslutning båda IP-adresserna och portarna, när den började och slutade och hur mycket data som gick igenom. Aldrig namn, nycklar eller fildata. Vi stänger av den och raderar den inom 7 dagar.",
+      "Vårt relä, som för den låsta filen vidare när två webbläsare inte kan ansluta direkt, för ingen logg över trafiken. Bara för att åtgärda ett fel eller stoppa missbruk slår vi på en. Den sparar då för varje vidarebefordrad anslutning båda IP-adresserna och portarna, när den började och slutade och hur mycket data som gick igenom. Aldrig namn, nycklar eller fildata. Vi stänger av den och raderar den inom 7 dagar. Dessutom loggar reläet adresserna som når det på port 80 medan det förnyar sitt certifikat, några sekunder ungefär varannan månad. Det är Let's Encrypts kontroller och skannrar på internet, aldrig webbläsare, och de raderas inom ungefär fem veckor.",
     limitsHeading: "Det här kan vi inte skydda dig mot",
     limits: [
       "Den som har länken kan öppna filen. En länk vi mejlar kräver också en kod som vi skickar till samma adress, så den som kan läsa den inkorgen kan öppna den. Skicka varje länk bara till den som den är avsedd för.",

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseIceServers } from "@sigill/protocol";
 import { type Mailer, smtpMailer } from "./mail.ts";
+import { loadRelays, type Relays, readOrCreateMaster, startRelays } from "./relays.ts";
 import { startServer } from "./server.ts";
 import type { Logger } from "./signaling.ts";
 import type { IceConfig } from "./turn.ts";
@@ -15,13 +16,23 @@ if (!existsSync(join(root, "index.html"))) {
   process.exit(1);
 }
 
+// A relay list that isn't empty replaces TURN_URLS. The messages name no secret.
+let relays: Relays | undefined;
+try {
+  const list = loadRelays(process.env, existsSync("/var/lib/sigill"));
+  relays = list && startRelays(list.relays, readOrCreateMaster(list.masterFile));
+} catch (error) {
+  console.error((error as Error).message);
+  process.exit(1);
+}
+
 // TURN is optional. Both variables or neither: half a configuration is a
 // mistake, not a choice. The secret is read from a file so it never shows in
 // the process environment, and it is never printed.
 const turnUrls = process.env.TURN_URLS;
 const turnSecretFile = process.env.TURN_SECRET_FILE;
 let ice: IceConfig | undefined;
-if (turnUrls || turnSecretFile) {
+if (!relays && (turnUrls || turnSecretFile)) {
   if (!turnUrls || !turnSecretFile) {
     console.error("Set both TURN_URLS and TURN_SECRET_FILE, or neither.");
     process.exit(1);
@@ -105,6 +116,7 @@ const server = await startServer({
   certDir: process.env.CERT_DIR ?? fileURLToPath(new URL("../../../.certs/", import.meta.url)),
   hosts: ["localhost", "127.0.0.1", ...lanAddresses],
   ice,
+  relays,
   log,
   mail,
 });

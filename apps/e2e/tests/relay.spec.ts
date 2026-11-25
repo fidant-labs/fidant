@@ -1,15 +1,25 @@
-import { createHash } from "node:crypto";
+import { constants, createHash, privateDecrypt } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import type { Page } from "@playwright/test";
+// ponytail: relative import, not a workspace dependency on the server, for one small function.
+import { relaySecret } from "../../server/src/relay-secret.ts";
 import { type Actor, canaryFile, expect, type Observed, test } from "../src/fixtures.ts";
-import { coturnLog, serverStdoutLog } from "../src/paths.ts";
+import { coturnLog, serverStderrLog, serverStdoutLog } from "../src/paths.ts";
 
-// Transfers that cannot go directly: the recipient may only use relay candidates, so every byte
-// passes through the local coturn, unless the sender refuses the relay. The forced transfer runs
-// once with only the TURN-over-UDP URL and once with only the TURN-over-TCP one, so each transport
-// is proven on its own. The harness's leak check also scans coturn's log.
+// Recipients may use only relay candidates, once over UDP and once over TCP; the leak check scans coturn's log.
 
 test.skip(!process.env.SIGILL_E2E_TURN_URLS, "coturn not found; brew install coturn");
+
+// The server checks each relay at startup, and again after every restart, so `loc` is up soon.
+test.beforeAll(async ({ playwright }) => {
+  const request = await playwright.request.newContext({ ignoreHTTPSErrors: true });
+  const status = `${process.env.SIGILL_E2E_BASE_URL}/relay-status`;
+  await expect
+    .poll(async () => (await request.get(status)).json(), { timeout: 15_000 })
+    .toContainEqual({ id: "loc", up: true });
+  await request.dispose();
+});
 
 type Transport = "udp" | "tcp";
 
@@ -24,6 +34,13 @@ const sizeOf = async (file: string) => (await readFile(file).catch(() => Buffer.
 /** Whether the server logged `line` since `start` bytes. */
 const logged = async (start: number, line: string) =>
   (await since(serverStdoutLog, start)).toString().split("\n").includes(line);
+/** coturn's successful allocations since `start` bytes, without the server's relay checks. */
+const allocations = async (start: number) =>
+  (await since(coturnLog, start))
+    .toString()
+    .split("\n")
+    .filter((line) => line.includes("ALLOCATE processed, success"))
+    .filter((line) => !/user <\d+:probe>/.test(line));
 
 /** The signaling messages of type `t` that an actor sent or received so far. */
 const signals = async (seen: Observed, type: "frame-sent" | "frame-received", t: string) =>
@@ -156,9 +173,64 @@ for (const transport of ["udp", "tcp"] as const) {
     // The sender reports the path, so the server logs it, about a second after the channel opens.
     await expect.poll(() => logged(stdoutStart, '{"event":"path","path":"relay"}')).toBe(true);
     // coturn allocated relay addresses for the browsers.
-    expect((await since(coturnLog, coturnStart)).toString()).toMatch(/ALLOCATE processed, success/);
+    expect((await allocations(coturnStart)).length).toBeGreaterThan(0);
   });
 }
+
+test("the relay list: the wrong secret is down, each relay gets its own sealed secret", async ({
+  page,
+  request,
+}) => {
+  const status = await request.get("/relay-status");
+  expect(status.headers()["content-type"]).toBe("application/json");
+  expect(status.headers()["cache-control"]).toBe("no-store");
+  expect(await status.json()).toEqual([
+    { id: "bad", up: false },
+    { id: "loc", up: true },
+  ]);
+
+  const master = (await readFile(process.env.SIGILL_E2E_RELAY_MASTER_FILE ?? "", "utf8")).trim();
+  const keys = dirname(process.env.SIGILL_E2E_RELAYS_FILE ?? "");
+  const secrets: Record<string, string> = { master };
+  for (const id of ["bad", "loc"]) {
+    const response = await request.get(`/relay-secret/${id}`);
+    expect(response.status()).toBe(200);
+    expect(response.headers()["content-type"]).toBe("text/plain; charset=utf-8");
+    expect(response.headers()["cache-control"]).toBe("no-store");
+    const body = await response.text();
+    expect(/^[A-Za-z0-9+/]+={0,2}\n$/.test(body), `${id}'s hand-out is base64 and LF`).toBe(true);
+    const opened = privateDecrypt(
+      {
+        key: await readFile(join(keys, `${id}.key`)),
+        padding: constants.RSA_PKCS1_OAEP_PADDING,
+        oaepHash: "sha256",
+      },
+      Buffer.from(body, "base64"),
+    ).toString();
+    secrets[id] = relaySecret(master, id);
+    expect(opened === secrets[id], `${id}'s hand-out opens to ${id}'s secret`).toBe(true);
+  }
+  expect((await request.get("/relay-secret/nope")).status()).toBe(404);
+
+  // Neither route logs, so an upgrade on a wrong path writes a line that proves the log is current.
+  const stdoutStart = await sizeOf(serverStdoutLog);
+  await page.goto("/");
+  await page.evaluate(
+    () =>
+      new Promise((done) => {
+        new WebSocket(`wss://${location.host}/not-signal`).onclose = done;
+      }),
+  );
+  await expect
+    .poll(() => logged(stdoutStart, '{"event":"upgrade-rejected","reason":"path"}'))
+    .toBe(true);
+  const logs = (
+    await Promise.all([serverStdoutLog, serverStderrLog].map((log) => readFile(log, "utf8")))
+  ).join("\n");
+  for (const [name, secret] of Object.entries(secrets)) {
+    expect(logs.includes(secret), `the ${name} secret in the server logs`).toBe(false);
+  }
+});
 
 test("a sender who refuses the relay: no credentials, no bytes, plain words on both pages", async ({
   actor,
@@ -166,14 +238,13 @@ test("a sender who refuses the relay: no credentials, no bytes, plain words on b
   leaks,
   canary,
 }) => {
-  // The sender gives up on the refused connection after its 20 s setup timeout.
-  test.setTimeout(90_000);
   const stdoutStart = await sizeOf(serverStdoutLog);
   const coturnStart = await sizeOf(coturnLog);
   const file = leaks.watch(canaryFile(canary.fork("file"), { size: 100_001 }));
 
   const { context, page: sender } = await actor("sender");
   await context.addInitScript(watchPeers, null);
+  await sender.clock.install();
   await sender.goto("/send");
   await sender.getByLabel("Choose a file").setInputFiles({
     name: file.name,
@@ -193,9 +264,14 @@ test("a sender who refuses the relay: no credentials, no bytes, plain words on b
 
   const recipient = await relayOnly(actor, "recipient", "udp");
   await recipient.goto(link);
+  for (const page of [sender, recipient]) {
+    await expect.poll(async () => (await peerList(page, "peerStates"))?.length).toBeGreaterThan(0);
+  }
+  // The sender gives up on the refused connection after its 20 s setup timeout.
+  await sender.clock.fastForward(20_000);
   await expect(
     recipient.getByRole("heading", { name: "Couldn't connect directly to the sender" }),
-  ).toBeVisible({ timeout: 45_000 });
+  ).toBeVisible();
   await expect(recipient.getByText("The sender doesn't allow our relay")).toBeVisible();
   await expect(
     sender.getByRole("list", { name: "Recipients" }).getByText("couldn't connect directly"),
@@ -228,9 +304,7 @@ test("a sender who refuses the relay: no credentials, no bytes, plain words on b
       expect(JSON.stringify(message)).not.toMatch(/username|credential/);
     }
   }
-  expect((await since(coturnLog, coturnStart)).toString()).not.toMatch(
-    /ALLOCATE processed, success/,
-  );
+  expect(await allocations(coturnStart)).toEqual([]);
   await expect.poll(() => logged(stdoutStart, '{"event":"path","path":"failed"}')).toBe(true);
 
   await allowRelay.check();

@@ -19,7 +19,7 @@ You treat custom widgets as broken until the code shows otherwise, and you prefe
 - **BankID, when the diff adds it.** A QR code has a text alternative and a same-device option; expiry is announced and the user can restart (2.2.1).
 - **Focus.** Each step change in the send and receive flows puts focus somewhere predictable, such as the new step's heading (2.4.3). Dialogs use `<dialog>` with `showModal()` and return focus to their trigger on close. Focus stays visible and unobscured (2.4.7, 2.4.11), and keyboard users never get trapped (2.1.2).
 - **Visual.** Text contrast at least 4.5:1 (3:1 for large text), UI components and focus indicators at least 3:1 (1.4.3, 1.4.11), in every colour scheme the app ships. Content reflows at 320 CSS px without horizontal scroll (1.4.10). Targets are at least 24 by 24 CSS px (2.5.8). Motion respects `prefers-reduced-motion`.
-- **Invariants.** Accessible names, descriptions and live-region text stay in the page. An accessibility change must not put file names or keys into anything that leaves the browser, such as a URL path or query or a log line.
+- **Invariants.** Accessible names, descriptions and live-region text stay in the page. An accessibility change must not put file names or keys into a URL path or query, a log line or anything else the `AGENTS.md` Invariants section forbids.
 
 ## How to work
 

@@ -1,7 +1,7 @@
 # 0012: Email recipients
 
 - Status: Accepted
-- Date: 2026-11-24
+- Date: 2026-11-25
 - Linear: SIG-105
 
 ## Context

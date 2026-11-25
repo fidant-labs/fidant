@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { type AddressInfo, createServer } from "node:net";
 import { test } from "node:test";
+import { parseClientMessage } from "@sigill/protocol";
 import { compose, isLoopback, type Mail, smtpMailer } from "./mail.ts";
 
 const url =
@@ -188,4 +189,124 @@ test("rejects with an error that does not quote the server's answer", async (t) 
     assert.equal(error.cause, undefined);
     return true;
   });
+});
+
+// From the security audit of 2026-11-25: hostile addresses and sender names, sent the way a
+// client would send them.
+test("an address or sender name the parser accepts adds no recipient, header or command", async (t) => {
+  const smtp = await fakeSmtp(t);
+  const send = smtpMailer({ url: smtp.url, from: "Fidant <noreply@mail.fidant.test>" });
+  /** The `email` message as the server would get it, or undefined when the parser refuses it. */
+  const parsed = (fields: { to?: string; from?: string }) => {
+    const message = parseClientMessage(
+      JSON.stringify({
+        t: "email",
+        link: "A".repeat(22),
+        secret: "A".repeat(43),
+        to,
+        from: "Bertil",
+        lang: "en",
+        ...fields,
+      }),
+    );
+    return message?.t === "email" ? message : undefined;
+  };
+
+  // What would add a line, a recipient or a second address never gets past the parser.
+  const injected = [
+    "a@b.se\r\nBcc: x@y.se",
+    "a@b.se\nRCPT TO:<x@y.se>",
+    "a@b.se\u0000",
+    "a@b.se,x@y.se",
+    "a@b.se;x@y.se",
+    "a@b.se x@y.se",
+    "Name <x@y.se>",
+    "<a@x.se>",
+    "a@x.se>",
+    '"a b"@x.se',
+    "@r.se:a@x.se",
+  ];
+  for (const bad of injected) {
+    assert.equal(parsed({ to: bad }), undefined, JSON.stringify(bad));
+  }
+  for (const bad of ["a\rb", "a\nb", "a\u0000b", "x\u0085y", "x\u2028y", "\u202egpj"]) {
+    assert.equal(parsed({ from: bad }), undefined, JSON.stringify(bad));
+  }
+
+  const allowed = new Set([
+    "from",
+    "to",
+    "subject",
+    "message-id",
+    "date",
+    "mime-version",
+    "content-type",
+    "content-transfer-encoding",
+  ]);
+  /** Sends one notice and checks the envelope and the header names of what reached the wire. */
+  const sendAndCheck = async (message: { to: string; from: string }, label: string) => {
+    const [commandsBefore, messagesBefore] = [smtp.commands.length, smtp.messages.length];
+    await send({ to: message.to, lang: "en", url, from: message.from });
+    const envelope = smtp.commands
+      .slice(commandsBefore)
+      .filter((line) => /^(MAIL|RCPT)/i.test(line));
+    // One sender and one recipient. The mailer may quote an odd local part.
+    assert.equal(envelope.length, 2, `${label}: ${envelope.join(" | ")}`);
+    assert.equal(envelope[0], "MAIL FROM:<noreply@mail.fidant.test>", label);
+    const domain = message.to.slice(message.to.lastIndexOf("@"));
+    assert.ok(
+      envelope[1]?.startsWith("RCPT TO:<") && envelope[1].endsWith(`${domain}>`),
+      `${label}: ${envelope[1]}`,
+    );
+    assert.equal(smtp.messages.length, messagesBefore + 1, label);
+    const text = smtp.messages.at(-1) ?? "";
+    const head = text.slice(0, text.indexOf("\r\n\r\n")).replace(/\r\n[ \t]+/g, " ");
+    for (const line of head.split("\r\n")) {
+      const name = line.slice(0, line.indexOf(":")).toLowerCase();
+      assert.ok(allowed.has(name), `${label} added the header ${JSON.stringify(line)}`);
+    }
+  };
+
+  // Odd forms the parser may accept. Each one that it does must stay one address.
+  const oddAddresses = [
+    "a'b@x.se",
+    "=?utf-8?q?x?=@x.se",
+    "-oQ/tmp@x.se",
+    "a|b`{c}@x.se",
+    "a/b=c%d!e#f@x.se",
+    ".a..b.@x.se",
+    "a%0d%0aBcc:x@x.se",
+    "a(c)@x.se",
+    "a@localhost",
+    "a@127.0.0.1",
+    "a@xn--80ak6aa92e.com",
+    `${"l".repeat(245)}@x.se`,
+  ];
+  let sent = 0;
+  for (const odd of oddAddresses) {
+    const message = parsed({ to: odd });
+    if (message) {
+      await sendAndCheck(message, JSON.stringify(odd));
+      sent += 1;
+    }
+  }
+  assert.ok(sent >= 5, "the parser refused nearly every odd address, so little was checked");
+
+  const oddNames = [
+    ".",
+    "..",
+    "x Fake line",
+    "Content-Type: text/html",
+    "Bcc: x@y.se",
+    "<a href=x>y</a>",
+    "\u200b",
+    "é".repeat(100),
+  ];
+  for (const odd of oddNames) {
+    const message = parsed({ from: odd });
+    assert.ok(message, `the parser refused the name ${JSON.stringify(odd)}`);
+    await sendAndCheck(message, JSON.stringify(odd));
+    const body = smtp.messages.at(-1) ?? "";
+    assert.ok(!/^content-type: text\/html/im.test(body.slice(0, body.indexOf("\r\n\r\n"))));
+  }
 });

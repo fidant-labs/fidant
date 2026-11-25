@@ -8,6 +8,7 @@ import {
   FrameWriter,
   HEADER_BYTES,
   MAX_CHUNK_BYTES,
+  MIN_CHUNK_BYTES,
   RecipientKind,
   SenderKind,
 } from "./frames.ts";
@@ -31,8 +32,11 @@ import {
 import { BlobSink, type Sink } from "./sink.ts";
 
 type Transit = {
-  /** Called for each sender → recipient frame. Return undefined to drop it. */
-  toRecipient?(frame: Uint8Array<ArrayBuffer>, pair: Pair): Uint8Array<ArrayBuffer> | undefined;
+  /** Called for each sender → recipient frame. Return undefined to drop it, several to deliver them in order. */
+  toRecipient?(
+    frame: Uint8Array<ArrayBuffer>,
+    pair: Pair,
+  ): Uint8Array<ArrayBuffer> | Uint8Array<ArrayBuffer>[] | undefined;
   /** Called after each recipient → sender frame is delivered. */
   afterToSender?(frame: Uint8Array<ArrayBuffer>, pair: Pair): void;
 };
@@ -65,16 +69,15 @@ function channelPair(transit: Transit = {}): Pair {
       if (readyState !== "open") {
         throw new Error("channel is closed");
       }
-      let copy: Uint8Array<ArrayBuffer> | undefined = data.slice();
+      const copy = data.slice();
       if (toRecipient) {
-        copy = transit.toRecipient ? transit.toRecipient(copy, pair) : copy;
-        if (copy) {
-          deliver(other, copy);
+        const out = transit.toRecipient ? transit.toRecipient(copy, pair) : copy;
+        for (const frame of out === undefined ? [] : [out].flat()) {
+          deliver(other, frame);
         }
       } else {
         deliver(other, copy);
-        const sent = copy;
-        setTimeout(() => transit.afterToSender?.(sent, pair));
+        setTimeout(() => transit.afterToSender?.(copy, pair));
       }
     },
     addEventListener: self.addEventListener.bind(self) as FrameChannel["addEventListener"],
@@ -344,17 +347,58 @@ test("treats a missing END as truncation", async () => {
   await assert.rejects(r.sending);
 });
 
-test("treats a dropped chunk as a failure", async () => {
+async function failsOnSequence(toRecipient: NonNullable<Transit["toRecipient"]>): Promise<void> {
   const sink = new RecordingSink();
-  let chunks = 0;
-  const pair = channelPair({
-    toRecipient: (frame) => (frame[1] === SenderKind.CHUNK && ++chunks === 2 ? undefined : frame),
-  });
-  const r = run({ bytes: new Uint8Array(randomBytes(200_000)), pair, sink });
-  await assert.rejects(r.receiving, /seq/);
+  const pair = channelPair({ toRecipient });
+  const r = run({ bytes: new Uint8Array(randomBytes(300_000)), pair, sink });
+  await assert.rejects(
+    r.receiving,
+    (error) => failedWith("invalid")(error) && /seq/.test(String(error)),
+  );
   assert.equal(sink.aborted, true);
   pair.close();
   await assert.rejects(r.sending);
+}
+
+test("treats a dropped chunk as a failure", async () => {
+  let chunks = 0;
+  await failsOnSequence((frame) =>
+    frame[1] === SenderKind.CHUNK && ++chunks === 2 ? undefined : frame,
+  );
+});
+
+test("treats a dropped last chunk as invalid", async () => {
+  let held: Uint8Array<ArrayBuffer> | undefined;
+  await failsOnSequence((frame) => {
+    if (frame[1] !== SenderKind.CHUNK) {
+      return frame;
+    }
+    const before = held;
+    held = frame;
+    return before;
+  });
+});
+
+test("treats a reordered chunk as invalid", async () => {
+  let chunks = 0;
+  let held: Uint8Array<ArrayBuffer> | undefined;
+  await failsOnSequence((frame) => {
+    if (frame[1] !== SenderKind.CHUNK) {
+      return frame;
+    }
+    if (++chunks === 2) {
+      held = frame;
+      return undefined;
+    }
+    return chunks === 3 && held ? [frame, held] : frame;
+  });
+});
+
+test("treats a repeated chunk as invalid", async () => {
+  let chunks = 0;
+  await failsOnSequence((frame) =>
+    frame[1] === SenderKind.CHUNK && ++chunks === 2 ? [frame, frame.slice()] : frame,
+  );
 });
 
 test("rejects when aborted during the offer and discards a late sink", async () => {
@@ -460,12 +504,18 @@ test("aborts when the sender ignores the credit window", async () => {
   const transferId = createTransferId();
   const writer = new FrameWriter(await deriveFileKey(secret, transferId), "s");
   const count = CREDIT_WINDOW_CHUNKS * 4;
-  const meta = { name: "a.bin", size: count * 16, type: "", chunkSize: 16, from: "" };
+  const meta = {
+    name: "a.bin",
+    size: count * MIN_CHUNK_BYTES,
+    type: "",
+    chunkSize: MIN_CHUNK_BYTES,
+    from: "",
+  };
   pair.sender.send(encodeInit(transferId));
   pair.sender.send(await writer.encrypt(SenderKind.META, encodeMeta(meta)));
   await acceptance;
   for (let i = 0; i < count; i++) {
-    pair.sender.send(await writer.encrypt(SenderKind.CHUNK, new Uint8Array(16)));
+    pair.sender.send(await writer.encrypt(SenderKind.CHUNK, new Uint8Array(MIN_CHUNK_BYTES)));
   }
 
   await assert.rejects(
