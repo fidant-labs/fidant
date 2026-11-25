@@ -117,6 +117,11 @@ export const sv: Messages = {
     relayNote:
       "Om de två webbläsarna inte kan ansluta direkt går filen i stället via vårt relä, fortfarande krypterad. Reläet ser då båda IP-adresserna och ungefär hur stor filen är, men kan inte låsa upp den.",
     caveat: "Haken: eftersom inget sparas måste fliken vara öppen tills filen har kommit fram.",
+    tryHeading: "Prova på dig själv",
+    tryBody:
+      "Skicka en fil till dig själv, öppna länken på mobilen och se den komma fram. Det tar ungefär en minut.",
+    tryCta: "Skicka en fil till dig själv",
+    trySecret: "Eller dela en hemlighet",
   },
   how: {
     title: "Så fungerar det",
@@ -203,6 +208,7 @@ export const sv: Messages = {
   format: {
     bytes: (n: number) => `${n.toLocaleString("sv")} byte`,
     progress: (percent: string, done: string, total: string) => `${percent} · ${done} av ${total}`,
+    timeLeft: (duration: string) => `Ungefär ${duration} kvar`,
   },
   send: {
     fileHeading: "Din fil",
@@ -210,7 +216,26 @@ export const sv: Messages = {
     continue: "Fortsätt",
     back: "Tillbaka till filen",
     title: "Skicka en fil",
-    lede: "Din fil skickas från den här webbläsaren till dem du väljer. Den är krypterad hela vägen och laddas aldrig upp eller sparas.",
+    lede: "Välj en fil och skapa sedan en länk till varje person. Din fil skickas från den här webbläsaren till dem. Den är krypterad hela vägen och laddas aldrig upp eller sparas.",
+    step: (n: number) => `Steg ${n} av 2`,
+    peopleHeading: "Skapa en länk till varje person",
+    change: "Byt",
+    fromSummary: (name: string) => `från ${name}`,
+    connectionOptions: "Anslutningsalternativ",
+    addEmail: "Skapa och mejla länk",
+    share: "Dela",
+    shareFor: (name: string) => `Dela länken till ${name}`,
+    sendingBar: (delivered: number, total: number) =>
+      `Skickar från den här fliken · ${delivered} av ${total} levererade · håll den öppen`,
+    allDone: "Alla har fått filen. Du kan stänga fliken.",
+    summary: (done: number, total: number) => `${done} av ${total} har fått filen`,
+    delivered: "Levererad",
+    doneTitle: "Allt levererat",
+    doneOne: (name: string) => `Filen kom fram oskadd via länken till ${name}.`,
+    doneMany: (n: number) => `Filen kom fram oskadd via alla ${n} länkar.`,
+    closeTab: "Du kan stänga fliken.",
+    sendMore: "Skicka till någon mer",
+    showDetails: "Visa detaljer",
     localhost:
       "Sidan är öppnad på localhost, så länkarna fungerar inte på andra datorer. Öppna i stället nätverksadressen som servern skrev ut.",
     lostServer:
@@ -240,7 +265,7 @@ export const sv: Messages = {
     locked: "Ta bort alla mottagare för att ändra ditt namn eller din fil.",
     recipientLabel: "Vem ska få den?",
     recipientPlaceholder: "Mottagarens namn",
-    add: "Lägg till",
+    add: "Skapa länk",
     nameError: {
       missing: "Skriv ett namn.",
       taken: "Det namnet finns redan på listan.",
@@ -323,7 +348,8 @@ export const sv: Messages = {
     receivingCaption: "Tar emot från avsändaren. Ha fliken öppen tills det är klart.",
     doneTitle: "Nedladdningen är klar",
     verified: "Vi har kontrollerat den: det här är exakt den fil som skickades.",
-    autoDownload: "Nedladdningen bör starta av sig själv.",
+    autoDownload: "Webbläsaren bör spara den nu. Syns den inte?",
+    onceNotice: "Länken fungerar en gång, och bara medan avsändarens sida är öppen.",
     savedWhereChosen: "Den är sparad där du valde.",
     saveFile: "Spara filen",
     doneCaption: "Skickad från avsändarens dator till din. Krypterad hela vägen.",
@@ -455,6 +481,10 @@ export const sv: Messages = {
     first: "Skriv eller klistra in hemligheten först.",
     locked: "Ta bort alla mottagare för att ändra ditt namn eller din hemlighet.",
     keepOpen: "Ha fliken öppen tills alla har fått hemligheten. Den skickas härifrån.",
+    allDone: "Alla har fått hemligheten. Du kan stänga fliken.",
+    summary: (done: number, total: number) => `${done} av ${total} har fått hemligheten`,
+    doneOne: (name: string) => `Hemligheten kom fram oskadd via länken till ${name}.`,
+    doneMany: (n: number) => `Hemligheten kom fram oskadd via alla ${n} länkar.`,
     emailNotice:
       "Fidant mejlar länken åt dig, så vår server ser länkens nyckel en gång. Nyckeln sparas inte och loggas inte. Länken, nyckeln också, ligger kvar i mottagarens inkorg, så alla som kan läsa den inkorgen skulle kunna ta emot hemligheten.",
     status: {

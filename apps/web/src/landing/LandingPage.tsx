@@ -14,9 +14,14 @@ const EXAMPLE_KEY = "Zt4kP0x9QmR2sV7bN1cL8hJ5wE3yA6uD0fG4iK2oT9c"; // gitleaks:a
 function LinkAnatomy() {
   const { t } = useI18n();
   const l = t.landing;
+  const length = `https://${location.host}/r/${EXAMPLE_ID}#${EXAMPLE_KEY}`.length;
   return (
-    <figure class="m-0">
-      <p class="m-0 rounded-lg border border-border bg-muted/50 px-4 py-3 font-mono text-[0.85rem] leading-relaxed wrap-anywhere sm:text-[0.95rem]">
+    <figure class="@container m-0">
+      {/* Shrinks to keep the link on one line; below 0.7rem it wraps instead. 0.62em is a little over a monospace character's width. */}
+      <p
+        class="m-0 rounded-lg border border-border bg-muted/50 px-4 py-3 font-mono text-[length:clamp(0.7rem,calc((100cqi_-_2.2rem)/(var(--chars)*0.62)),0.95rem)] leading-relaxed wrap-anywhere"
+        style={{ "--chars": length }}
+      >
         <span class="text-muted-foreground">https://{location.host}/r/</span>
         <span class="underline decoration-muted-foreground decoration-2 underline-offset-4">
           {EXAMPLE_ID}
@@ -112,6 +117,41 @@ export function LandingPage() {
       </section>
 
       <p class="mt-16 max-w-2xl border-l-2 border-foreground pl-4 text-[1.05rem]">{l.caveat}</p>
+
+      <section
+        class="mt-20 rounded-3xl bg-foreground px-6 py-10 text-background sm:px-12 sm:py-14"
+        aria-labelledby="try-heading"
+      >
+        <div class="flex items-center gap-3" aria-hidden="true">
+          <Icon name="computer" class="size-9" />
+          <span class="w-10 border-t-2 border-dashed border-background/40 sm:w-16" />
+          <Icon name="lock" class="size-5 opacity-70" />
+          <span class="w-10 border-t-2 border-dashed border-background/40 sm:w-16" />
+          <Icon name="phone" class="size-9" />
+        </div>
+        <h2
+          id="try-heading"
+          class={`${display} mt-6 mb-0 text-[2rem] leading-tight sm:text-[2.6rem]`}
+        >
+          {l.tryHeading}
+        </h2>
+        <p class="mt-3 max-w-xl text-[1.1rem] opacity-80">{l.tryBody}</p>
+        <div class="mt-8 flex flex-wrap items-center gap-x-6 gap-y-4">
+          <Link
+            href="/send"
+            class={cn(
+              buttonVariants({ size: "lg" }),
+              "h-12 gap-2 bg-background px-6 text-base text-foreground hover:bg-background/90",
+            )}
+          >
+            {l.tryCta} <Icon name="arrow" class="size-4" />
+          </Link>
+          <Link href="/secret" class="rounded-sm font-medium underline underline-offset-4">
+            {l.trySecret}
+          </Link>
+        </div>
+        <p class="mt-6 mb-0 text-[0.9rem] opacity-70">{l.noAccount}</p>
+      </section>
     </main>
   );
 }

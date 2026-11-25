@@ -132,6 +132,11 @@ export const en = {
     relayNote:
       "If the two browsers can't connect directly, the file passes through our relay instead, still encrypted. The relay then sees both IP addresses and roughly how big the file is, and can't unlock it.",
     caveat: "The catch: since nothing is stored, keep your tab open until the file has arrived.",
+    tryHeading: "Try it on yourself",
+    tryBody:
+      "Send a file to yourself, open the link on your phone and watch it arrive. It takes about a minute.",
+    tryCta: "Send a file to yourself",
+    trySecret: "Or share a secret",
   },
   how: {
     title: "How it works",
@@ -218,6 +223,7 @@ export const en = {
   format: {
     bytes: (n: number) => (n === 1 ? "1 byte" : `${n.toLocaleString("en-US")} bytes`),
     progress: (percent: string, done: string, total: string) => `${percent} · ${done} of ${total}`,
+    timeLeft: (duration: string) => `About ${duration} left`,
   },
   send: {
     fileHeading: "Your file",
@@ -225,7 +231,26 @@ export const en = {
     continue: "Continue",
     back: "Back to the file",
     title: "Send a file",
-    lede: "Your file is sent from this browser to the people you choose. It's encrypted the whole way and never uploaded or stored.",
+    lede: "Choose a file, then create a link for each person. Your file is sent from this browser to them. It's encrypted the whole way and never uploaded or stored.",
+    step: (n: number) => `Step ${n} of 2`,
+    peopleHeading: "Create a link for each person",
+    change: "Change",
+    fromSummary: (name: string) => `from ${name}`,
+    connectionOptions: "Connection options",
+    addEmail: "Create and email link",
+    share: "Share",
+    shareFor: (name: string) => `Share link for ${name}`,
+    sendingBar: (delivered: number, total: number) =>
+      `Sending from this tab · ${delivered} of ${total} delivered · keep it open`,
+    allDone: "Everyone has the file. You can close this tab.",
+    summary: (done: number, total: number) => `${done} of ${total} have the file`,
+    delivered: "Delivered",
+    doneTitle: "All delivered",
+    doneOne: (name: string) => `The file arrived intact through ${name}'s link.`,
+    doneMany: (n: number) => `The file arrived intact through all ${n} links.`,
+    closeTab: "You can close this tab.",
+    sendMore: "Send to someone else",
+    showDetails: "Show details",
     localhost:
       "This page is open on localhost, so the links won't work on other computers. Open the network address the server printed instead.",
     lostServer:
@@ -255,7 +280,7 @@ export const en = {
     locked: "Remove everyone to change your name or file.",
     recipientLabel: "Who is it for?",
     recipientPlaceholder: "Their name",
-    add: "Add",
+    add: "Create link",
     nameError: {
       missing: "Enter a name.",
       taken: "That name is already on the list.",
@@ -341,7 +366,8 @@ export const en = {
     receivingCaption: "Receiving from the sender. Keep this tab open until it's done.",
     doneTitle: "Download complete",
     verified: "We checked it: this is exactly the file that was sent.",
-    autoDownload: "Your download should start by itself.",
+    autoDownload: "Your browser should be saving it now. Didn't see it?",
+    onceNotice: "This link works once, and only while the sender's page is open.",
     savedWhereChosen: "It's saved where you chose.",
     saveFile: "Save file",
     doneCaption: "Sent from the sender's computer to yours. Encrypted the whole way.",
@@ -471,6 +497,10 @@ export const en = {
     first: "Write or paste the secret first.",
     locked: "Remove everyone to change your name or secret.",
     keepOpen: "Keep this tab open until everyone has the secret. It's sent from here.",
+    allDone: "Everyone has the secret. You can close this tab.",
+    summary: (done: number, total: number) => `${done} of ${total} have the secret`,
+    doneOne: (name: string) => `The secret arrived intact through ${name}'s link.`,
+    doneMany: (n: number) => `The secret arrived intact through all ${n} links.`,
     emailNotice:
       "Fidant emails this link for you, so our server sees its key once. The key isn't stored or logged. The link, key included, stays in their mailbox, so anyone who can read that mailbox could receive the secret.",
     // Only the statuses whose file wording would be wrong; the rest come from send.status.

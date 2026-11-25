@@ -14,6 +14,12 @@ import type { Kind, Relayed } from "./lib/server-facts.ts";
 import type { Theme } from "./theme.ts";
 
 export const ICONS = {
+  phone: (
+    <>
+      <rect x="7" y="2.5" width="10" height="19" rx="2" />
+      <path d="M11 18.5h2" />
+    </>
+  ),
   computer: (
     <>
       <rect x="4" y="4.5" width="16" height="11" rx="1.5" />
@@ -349,9 +355,22 @@ export function Footer({ theme, onTheme }: ThemeProps) {
 }
 
 /** Page content under the fixed header; `wide` for layouts with side panels. */
-export function Page({ children, wide }: { children: ComponentChildren; wide?: boolean }) {
+export function Page({
+  children,
+  wide,
+  tall,
+}: {
+  children: ComponentChildren;
+  wide?: boolean;
+  /** At least a screen high, so only the top of the footer shows. */
+  tall?: boolean;
+}) {
   return (
-    <main class={`mx-auto px-4 pt-24 pb-16 ${wide ? "max-w-6xl" : "max-w-xl"}`}>{children}</main>
+    <main
+      class={`mx-auto px-4 pt-24 pb-16 ${wide ? "max-w-6xl" : "max-w-xl"} ${tall ? "min-h-[calc(100dvh-4.5rem)]" : ""}`}
+    >
+      {children}
+    </main>
   );
 }
 
@@ -414,11 +433,18 @@ export function FileCard({ name, size }: { name: string; size: string }) {
   );
 }
 
-function Facts({ rows }: { rows: ReadonlyArray<readonly [string, ComponentChildren]> }) {
+function Facts({
+  rows,
+  inline,
+}: {
+  rows: ReadonlyArray<readonly [string, ComponentChildren]>;
+  /** Short values share a line; a value too wide for what is left starts a new one. */
+  inline?: boolean;
+}) {
   return (
-    <dl class="mt-3 grid gap-2">
+    <dl class={inline ? "mt-3 flex flex-wrap gap-x-10 gap-y-2" : "mt-3 grid gap-2"}>
       {rows.map(([term, value]) => (
-        <div key={term}>
+        <div key={term} class={inline ? "max-w-full min-w-0" : undefined}>
           <dt class="text-muted-foreground">{term}</dt>
           <dd class="m-0 wrap-anywhere">{value}</dd>
         </div>
@@ -436,7 +462,7 @@ export function TechDetails({
   return (
     <details class="mt-8 text-[0.9rem] [&_code]:text-[0.85rem]">
       <summary class="cursor-pointer text-muted-foreground">{t.common.techDetails}</summary>
-      <Facts rows={rows} />
+      <Facts rows={rows} inline />
     </details>
   );
 }
@@ -470,8 +496,11 @@ export function ServerPanel({
   viaRelay,
   emailed,
   kind,
+  folded,
 }: {
   kind: Kind;
+  /** Starts closed, under a summary that opens it. */
+  folded?: boolean;
   sees: string;
   holds: string;
   relayed: Relayed;
@@ -504,6 +533,16 @@ export function ServerPanel({
         ] as const)
       : []),
   ];
+  if (folded) {
+    return (
+      <details class="mt-10 text-[0.9rem]">
+        <summary class="cursor-pointer font-medium text-muted-foreground">
+          {t.server.heading}
+        </summary>
+        <Facts rows={rows} />
+      </details>
+    );
+  }
   return (
     <section class="mt-8 text-[0.9rem]" aria-labelledby={headingId}>
       <h2 id={headingId} class="m-0 text-[1rem] font-bold">
@@ -524,6 +563,29 @@ export function Problem({ title, body }: { title: string; body: string }) {
       </AlertTitle>
       <AlertDescription>{body}</AlertDescription>
     </Alert>
+  );
+}
+
+/** Shows `active` in place of `idle` without the width changing: both share one grid cell and the hidden one keeps its space. */
+export function SwapLabel({
+  idle,
+  active,
+  on,
+}: {
+  idle: ComponentChildren;
+  active: ComponentChildren;
+  on: boolean;
+}) {
+  return (
+    <span class="grid justify-items-center">
+      <span class={`col-start-1 row-start-1 ${on ? "invisible" : ""}`}>{idle}</span>
+      <span
+        class={`col-start-1 row-start-1 inline-flex items-center gap-1.5 ${on ? "" : "invisible"}`}
+      >
+        <Icon name="check" class="size-4" />
+        {active}
+      </span>
+    </span>
   );
 }
 

@@ -58,12 +58,20 @@ import { cn } from "cn";
 import { type ComponentChildren, Fragment, type VNode } from "preact";
 import { useEffect, useMemo, useReducer, useRef, useState } from "preact/hooks";
 import { Button, buttonVariants } from "#components/ui/button";
+import { Card, CardContent } from "#components/ui/card";
 import { Input } from "#components/ui/input";
 import { Label } from "#components/ui/label";
 import type { Messages } from "../i18n/en.ts";
 import { useI18n } from "../i18n/I18n.tsx";
 import { encodeBase64url } from "../lib/base64url.ts";
-import { displayName, formatBytes, formatProgress, toHex } from "../lib/format.ts";
+import {
+  displayName,
+  etaTracker,
+  formatBytes,
+  formatProgress,
+  formatTimeLeft,
+  toHex,
+} from "../lib/format.ts";
 import { deriveSignalKey } from "../lib/keys.ts";
 import { LINK_ID_BYTES, parseRecipientLocation } from "../lib/link.ts";
 import { createRecipientPeer, type OpenPath, type Peer } from "../lib/peer.ts";
@@ -83,17 +91,50 @@ import {
 import { decodeText, isTextOffer } from "../lib/text-secret.ts";
 import {
   Direct,
-  FileCard,
   Icon,
   Page,
   PathLine,
   Problem,
   ServerPanel,
+  SwapLabel,
   TechDetails,
   useCopyNote,
 } from "../ui.tsx";
 
 const caption = "text-[0.9rem] text-muted-foreground";
+
+/** The offered file, with whatever belongs to it right now: the buttons, the progress or the check. */
+function FileBox({
+  offer,
+  aside,
+  children,
+}: {
+  offer: Offer;
+  /** Beside the file on wider screens, under it on phones. */
+  aside?: ComponentChildren;
+  children?: ComponentChildren;
+}) {
+  const { lang } = useI18n();
+  return (
+    <Card className="my-6">
+      <CardContent className="flex flex-col gap-4">
+        <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          {!offer.text && (
+            <div class="flex min-w-0 items-center gap-3">
+              <Icon name="file" class="size-8 text-muted-foreground" />
+              <div class="min-w-0">
+                <p class="m-0 font-semibold wrap-anywhere">{offer.name}</p>
+                <p class="m-0 text-muted-foreground">{formatBytes(offer.size, lang)}</p>
+              </div>
+            </div>
+          )}
+          {aside}
+        </div>
+        {children}
+      </CardContent>
+    </Card>
+  );
+}
 
 /** Which problem to show. Text comes from the dictionary at render time, so a language switch re-renders it. */
 type ProblemKey = keyof Messages["receive"]["problems"];
@@ -107,7 +148,7 @@ type View =
   | { s: "verify"; to: string; asked: boolean; sending: boolean; result: CodeResult | undefined }
   | { s: "refused"; problem: ProblemKey; text?: boolean }
   | { s: "offer"; offer: Offer }
-  | { s: "receiving"; offer: Offer; bytes: number }
+  | { s: "receiving"; offer: Offer; bytes: number; left?: number | undefined }
   | { s: "done"; offer: Offer; blob: Blob | undefined; sha256: string }
   | { s: "declined"; text: boolean }
   | { s: "failed"; problem: ProblemKey; text?: boolean };
@@ -483,6 +524,7 @@ export function ReceivePage() {
       }
       attempt.channelOpen = true;
       let offered: Offer | undefined;
+      let timeLeft: ReturnType<typeof etaTracker> | undefined;
       receiveFile({
         channel,
         maxMessageSize,
@@ -504,6 +546,7 @@ export function ReceivePage() {
               attempt.decide = undefined;
               if (sink) {
                 attempt.receiving = true;
+                timeLeft = etaTracker(offer.size);
                 setView({ s: "receiving", offer, bytes: 0 });
               }
               resolve(sink);
@@ -515,7 +558,8 @@ export function ReceivePage() {
           if (!current()) {
             return;
           }
-          setView((v) => (v.s === "receiving" ? { ...v, bytes } : v));
+          const left = timeLeft?.(performance.now(), bytes);
+          setView((v) => (v.s === "receiving" ? { ...v, bytes, left } : v));
         },
       }).then(
         (result) => {
@@ -658,7 +702,7 @@ export function ReceivePage() {
 
   if (!link) {
     return (
-      <Page>
+      <Page tall>
         <Problem {...t.receive.problems.badLink} />
       </Page>
     );
@@ -669,6 +713,7 @@ export function ReceivePage() {
   const kind: Kind = isText === undefined ? "unknown" : isText ? "secret" : "file";
   const panel = reachedServer ? (
     <ServerPanel
+      folded
       sees={t.server.seesRecipient}
       holds={t.server.recipientHolds(tie, emailed, kind)}
       relayed={relayed}
@@ -732,26 +777,47 @@ export function ReceivePage() {
       const { offer } = view;
       body = (
         <>
-          <h1>{offer.text ? t.secret.offerTitle(offer.from) : t.receive.offerTitle(offer.from)}</h1>
-          {offer.from && <p class="text-muted-foreground">{t.receive.unverified}</p>}
-          {!offer.text && <FileCard name={offer.name} size={formatBytes(offer.size, lang)} />}
-          {!offer.text && offer.size > BLOB_WARN_BYTES && !canPickSaveFile() && (
-            <p class="mt-3 text-muted-foreground">{t.receive.memoryWarning}</p>
-          )}
-          <div class="mt-6 mb-8 flex flex-col items-start gap-2">
-            {offer.text ? (
-              <Button type="button" size="lg" onClick={onShow}>
-                <Icon name="eye" class="size-4" /> {t.secret.show}
-              </Button>
-            ) : (
-              <Button type="button" size="lg" onClick={onAccept} disabled={picking}>
-                <Icon name="download" class="size-4" /> {t.receive.download}
-              </Button>
+          <h1 class="mb-1">
+            {offer.text ? t.secret.offerTitle(offer.from) : t.receive.offerTitle(offer.from)}
+          </h1>
+          {offer.from && <p class="mt-0 text-muted-foreground">{t.receive.unverified}</p>}
+          <FileBox
+            offer={offer}
+            aside={
+              <div class="flex flex-none flex-col gap-2 sm:flex-row sm:items-center">
+                {offer.text ? (
+                  <Button type="button" size="lg" className="w-full sm:w-auto" onClick={onShow}>
+                    <Icon name="eye" class="size-4" /> {t.secret.show}
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    size="lg"
+                    className="w-full sm:w-auto"
+                    onClick={onAccept}
+                    disabled={picking}
+                  >
+                    <Icon name="download" class="size-4" /> {t.receive.download}
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="lg"
+                  className="w-full sm:w-auto"
+                  onClick={onDecline}
+                  disabled={picking}
+                >
+                  {t.receive.decline}
+                </Button>
+              </div>
+            }
+          >
+            {!offer.text && offer.size > BLOB_WARN_BYTES && !canPickSaveFile() && (
+              <p class="m-0 text-muted-foreground">{t.receive.memoryWarning}</p>
             )}
-            <Button type="button" variant="link" onClick={onDecline} disabled={picking}>
-              {t.receive.decline}
-            </Button>
-          </div>
+          </FileBox>
+          <p class={`-mt-2 ${caption}`}>{t.receive.onceNotice}</p>
           <Direct from={offer.from || t.common.sender} to={t.common.you} state="ready" />
           <p class={caption}>{t.receive.offerCaption(offer.from)}</p>
           {path && <PathLine path={path} />}
@@ -761,25 +827,25 @@ export function ReceivePage() {
       break;
     }
     case "receiving": {
-      const { offer, bytes } = view;
+      const { offer, bytes, left } = view;
       body = (
         <>
           <h1>{offer.text ? t.secret.receivingTitle : t.receive.receivingTitle}</h1>
           {!offer.text && (
-            <>
-              <FileCard name={offer.name} size={formatBytes(offer.size, lang)} />
-              <div class="my-3 flex flex-wrap items-center gap-3">
+            <FileBox offer={offer}>
+              <div class="flex flex-col gap-1.5">
                 <progress
-                  class="min-w-40 flex-1 accent-primary"
+                  class="w-full accent-primary"
                   aria-label={t.receive.progressLabel}
                   max={Math.max(offer.size, 1)}
                   value={offer.size === 0 ? 0 : bytes}
                 />
-                <span class="text-[0.85rem] text-muted-foreground tabular-nums">
-                  {formatProgress(bytes, offer.size, lang)}
-                </span>
+                <div class="flex flex-wrap justify-between gap-x-4 text-[0.85rem] text-muted-foreground tabular-nums">
+                  <span>{formatProgress(bytes, offer.size, lang)}</span>
+                  {left !== undefined && <span>{formatTimeLeft(left, lang)}</span>}
+                </div>
               </div>
-            </>
+            </FileBox>
           )}
           <Direct from={t.common.sender} to={t.common.you} state="active" />
           <p class={caption}>{t.receive.receivingCaption}</p>
@@ -807,18 +873,20 @@ export function ReceivePage() {
               <p class="text-muted-foreground">{t.secret.notSaved}</p>
             </>
           ) : (
-            <>
-              <FileCard name={offer.name} size={formatBytes(offer.size, lang)} />
-              <p>{t.receive.verified}</p>
-              {blob ? (
-                <div class="flex flex-wrap items-center gap-4">
-                  <p class="text-muted-foreground">{t.receive.autoDownload}</p>
-                  <SaveLink blob={blob} name={offer.name} label={t.receive.saveFile} />
-                </div>
-              ) : (
-                <p class="text-muted-foreground">{t.receive.savedWhereChosen}</p>
-              )}
-            </>
+            <FileBox
+              offer={offer}
+              aside={blob && <SaveLink blob={blob} name={offer.name} label={t.receive.saveFile} />}
+            >
+              <div class="border-t border-border pt-4">
+                <p class="m-0 flex items-start gap-2 font-medium">
+                  <Icon name="check" class="mt-0.5 size-5" />
+                  {t.receive.verified}
+                </p>
+                <p class="mt-1 mb-0 pl-7 text-muted-foreground">
+                  {blob ? t.receive.autoDownload : t.receive.savedWhereChosen}
+                </p>
+              </div>
+            </FileBox>
           )}
           <Direct from={t.common.sender} to={t.common.you} state="done" />
           <p class={caption}>{t.receive.doneCaption}</p>
@@ -833,7 +901,7 @@ export function ReceivePage() {
         <>
           <h1>{view.text ? t.secret.declinedTitle : t.receive.declinedTitle}</h1>
           <p>{t.receive.declinedBody}</p>
-          <Button type="button" variant="link" onClick={() => start()}>
+          <Button type="button" variant="outline" onClick={() => start()}>
             {view.text ? t.secret.showAgain : t.receive.showAgain}
           </Button>
         </>
@@ -854,7 +922,7 @@ export function ReceivePage() {
     }
   }
   return (
-    <Page>
+    <Page tall>
       {/* A new key per step makes its heading a new node, so moving focus there is announced. */}
       <Fragment key={view.s}>{body}</Fragment>
       {panel}
@@ -937,9 +1005,16 @@ function ShownText({ blob, onUnreadable }: { blob: Blob; onUnreadable(): void })
           onClick={() => text !== undefined && copy(text)}
           disabled={text === undefined}
         >
-          {t.secret.copy}
+          <SwapLabel
+            idle={t.secret.copy}
+            active={t.secret.copyNote.copied}
+            on={note === "copied"}
+          />
         </Button>
-        <span class="text-[0.85rem] text-muted-foreground" role="status">
+        <span
+          class={`text-[0.85rem] text-muted-foreground ${note === "copied" ? "sr-only" : ""}`}
+          role="status"
+        >
           {note && t.secret.copyNote[note]}
         </span>
       </div>
