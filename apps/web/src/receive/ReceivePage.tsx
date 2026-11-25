@@ -1093,13 +1093,17 @@ function ShownText({ blob, onUnreadable }: { blob: Blob; onUnreadable(): void })
         tabIndex={0}
         translate={false}
         // Select-all would take the whole page, which is not a form field: keep it to the text.
+        // The phone menu's Select All still takes the page: only user-select: all would stop
+        // it, and that removes partial selection, while the Copy button already copies it all.
         onKeyDown={(e) => {
-          const pre = e.currentTarget.firstElementChild;
           // Shift or Alt with A is another shortcut, such as tab search; toLowerCase keeps Caps Lock working.
           const ctrlOrCmdOnly = (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey;
-          if (ctrlOrCmdOnly && e.key.toLowerCase() === "a" && pre) {
+          // A Cyrillic or Greek layout gives another key for the A key, which browsers still take
+          // as select-all. A Latin letter there is its own shortcut, such as Ctrl+Q on AZERTY.
+          const isA = e.key.toLowerCase() === "a" || (e.code === "KeyA" && !/^[a-z]$/i.test(e.key));
+          if (ctrlOrCmdOnly && isA) {
             e.preventDefault();
-            getSelection()?.selectAllChildren(pre);
+            getSelection()?.selectAllChildren(e.currentTarget);
           }
         }}
       >

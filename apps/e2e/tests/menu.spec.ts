@@ -1,15 +1,17 @@
 import type { Page } from "@playwright/test";
-import { canaryFile, chooseFile, expect, makeName, recipientRow, test } from "../src/fixtures.ts";
+import {
+  canaryFile,
+  choose,
+  chooseFile,
+  expect,
+  makeName,
+  recipientRow,
+  test,
+} from "../src/fixtures.ts";
 
 const nav = (page: Page) => page.locator("header nav");
 
 const footer = (page: Page) => page.locator("footer");
-
-async function choose(page: Page, menu: string, option: string) {
-  await footer(page).getByRole("button", { name: menu }).click();
-  await page.getByRole("menuitemradio", { name: option }).click();
-  await expect(page.getByRole("menu")).toBeHidden();
-}
 
 for (const path of ["/privacy", "/privacy/"]) {
   test(`${path} shows the Privacy page`, async ({ page }) => {
@@ -84,11 +86,13 @@ test("the language menu switches language and the choice survives a reload", asy
   await choose(page, "Language", "Svenska");
   await expect(page.locator("main h1")).toHaveText("Integritet");
   await expect(page.locator("html")).toHaveAttribute("lang", "sv");
+  await expect(page).toHaveURL(/\/sv\/privacy$/);
   await page.reload();
   await expect(page.locator("main h1")).toHaveText("Integritet");
 
   await choose(page, "Språk", "English");
   await expect(page.locator("main h1")).toHaveText("Privacy");
+  await expect(page).toHaveURL(/\/privacy$/);
   await page.reload();
   await expect(page.locator("main h1")).toHaveText("Privacy");
   await expect(page.locator("html")).toHaveAttribute("lang", "en");

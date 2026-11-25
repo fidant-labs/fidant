@@ -654,7 +654,7 @@ export function SendPage({
   const hasRecipients = sender.recipients.length > 0;
   const tooLong = textLength > MAX_TEXT_LENGTH;
   const full = sender.recipients.length >= MAX_LINKS;
-  const isLocalhost = LOCAL_HOSTS.has(location.hostname);
+  const isLocalhost = typeof location !== "undefined" && LOCAL_HOSTS.has(location.hostname);
   // ponytail: counts by status, so it over-counts if a recipient's signaling drops mid-transfer; track joined/left if that matters
   const connected = sender.recipients.filter(isActive).length;
   const emailed = sender.recipients.filter(emailBound);
@@ -664,9 +664,9 @@ export function SendPage({
   const allDone = hasRecipients && !unfinished;
   const finished = allDone && !more && !typed;
   // Read during render: once effects run, a remounted form or list no longer holds focus.
-  const sectionHadFocus = !!document
-    .getElementById(id("recipients"))
-    ?.contains(document.activeElement);
+  const sectionHadFocus =
+    typeof document !== "undefined" &&
+    !!document.getElementById(id("recipients"))?.contains(document.activeElement);
   useEffect(() => {
     if (!finished) {
       return;
