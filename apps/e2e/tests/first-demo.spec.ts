@@ -613,6 +613,112 @@ test("a recipient who leaves mid-download returns the sender's card to waiting",
   await expect(delivered(sender, name)).toBeAttached();
 });
 
+/**
+ * Runs in the recipient page through addInitScript, so it may use nothing from this module. A
+ * save dialog that does what `globalThis.pick` says: `cancel` closes it, `refuse` is denied, `fail`
+ * picks a file whose second write runs out of space, and anything else picks a file that takes
+ * every write. Each call on the picked file is logged to `globalThis.saved`.
+ */
+function fakeSavePicker() {
+  const g = globalThis as { pick?: string; saved?: string[]; showSaveFilePicker?: unknown };
+  g.showSaveFilePicker = async () => {
+    const mode = g.pick;
+    if (mode === "cancel") {
+      throw new DOMException("The user aborted a request.", "AbortError");
+    }
+    if (mode === "refuse") {
+      throw new DOMException("Not allowed.", "NotAllowedError");
+    }
+    const log = (call: string) => g.saved?.push(call);
+    let writes = 0;
+    return {
+      createWritable: async () => ({
+        write: async () => {
+          log("write");
+          if (mode === "fail" && ++writes === 2) {
+            throw new DOMException("No space left.", "QuotaExceededError");
+          }
+        },
+        close: async () => log("close"),
+        abort: async () => log("abort"),
+      }),
+      remove: async () => log("remove"),
+    };
+  };
+}
+
+test("a recipient's save dialog can be cancelled, refused or fail without saving a partial file", async ({
+  demo,
+  leaks,
+  canary,
+}) => {
+  // Three chunks, so a failure on the second write leaves a partial file to remove.
+  const file = makeFile(leaks, canary, 100_001);
+  const sender = await openSender(demo, file);
+  const name = makeName(leaks, canary, "Anna");
+  const link = await addRecipient(leaks, sender, name);
+  const card = recipientRow(sender, name);
+
+  const recipient = await demo.open("recipient");
+  // Registered after the fixture's script, which deletes the browser's own picker.
+  await recipient.context().addInitScript(fakeSavePicker);
+  let downloads = 0;
+  recipient.on("download", () => downloads++);
+  await recipient.goto(link);
+  const button = recipient.getByRole("button", { name: "Download" });
+  const tryAgain = recipient.getByRole("button", { name: "Try again" });
+  const opened = card.getByText(`${name}'s link has been opened`);
+  const waiting = card.getByText(`Waiting for ${name}'s link to be opened`);
+  /** Clicks Download on the open offer with the dialog doing `mode`, after clearing the log. */
+  const pick = async (mode: string) => {
+    await expect(opened).toBeVisible();
+    await recipient.evaluate((m) => {
+      Object.assign(globalThis, { pick: m, saved: [] });
+    }, mode);
+    await button.click();
+  };
+  const saved = () => recipient.evaluate(() => (globalThis as { saved?: string[] }).saved);
+  const problem = (title: string, body: string) =>
+    Promise.all([
+      expect(recipient.getByRole("heading", { level: 1, name: title })).toBeVisible(),
+      expect(recipient.getByText(body)).toBeVisible(),
+      expect(tryAgain).toBeVisible(),
+    ]);
+
+  // Cancelled: the offer stays open and nothing was picked.
+  await pick("cancel");
+  await expect(button).toBeEnabled();
+  await expect(opened).toBeVisible();
+  await expect(tryAgain).toHaveCount(0);
+  expect(await saved()).toEqual([]);
+
+  // Refused: nothing was created, and the link is free again.
+  await pick("refuse");
+  await problem("The file couldn't be created", "Try again, or choose another place to save it.");
+  expect(await saved()).toEqual([]);
+  // Retrying before the sender sees the drop would find the link still busy.
+  await expect(waiting).toBeVisible();
+  await tryAgain.click();
+
+  // Out of space on the second write: the file is aborted and removed, never closed.
+  await pick("fail");
+  await problem("The file couldn't be saved", "Check that there's enough space on your disk.");
+  expect(await saved()).toEqual(["write", "write", "abort", "remove"]);
+  await expect(waiting).toBeVisible();
+  await tryAgain.click();
+
+  // Picked and written in full.
+  await pick("ok");
+  await expect(recipient.getByRole("heading", { name: "Download complete" })).toBeFocused({
+    timeout: 60_000,
+  });
+  await expect(recipient.getByText("this is exactly the file that was sent")).toBeVisible();
+  await expect(recipient.getByText("It's saved where you chose.")).toBeVisible();
+  expect(await saved()).toEqual(["write", "write", "write", "close"]);
+  await expect(delivered(sender, name)).toBeAttached();
+  expect(downloads, "browser downloads").toBe(0);
+});
+
 type Tamper = "flip" | "other";
 
 /**
