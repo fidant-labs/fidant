@@ -164,16 +164,33 @@ export function parseStatus(
   return valid ? (value as RelayStatus) : undefined;
 }
 
+const statusLimit = 64 * 1024;
+
 export async function readStatus(
   url: string,
   fetcher: typeof fetch = fetch,
 ): Promise<RelayStatus | undefined> {
   try {
-    const response = await fetcher(url, { signal: AbortSignal.timeout(10_000) });
+    const response = await fetcher(url, { redirect: "error", signal: AbortSignal.timeout(10_000) });
+    const reader = response.body?.getReader();
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    while (reader) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      size += value.byteLength;
+      if (size > statusLimit) {
+        await reader.cancel();
+        return undefined;
+      }
+      chunks.push(value);
+    }
     return parseStatus(
       response.status,
       response.headers.get("content-type"),
-      await response.text(),
+      Buffer.concat(chunks).toString("utf8"),
     );
   } catch {
     return undefined;
@@ -209,4 +226,19 @@ export async function runCap(deps: CapDeps, config: CapConfig, now: Date): Promi
   }
   await deps.writeState(JSON.stringify(state));
   deps.log(metricLine(total, now));
+}
+
+export async function runOnce(
+  deps: CapDeps,
+  config: CapConfig,
+  now: Date,
+  fetchStatus: (url: string) => Promise<RelayStatus | undefined> = readStatus,
+): Promise<void> {
+  try {
+    await runCap(deps, config, now);
+  } finally {
+    for (const line of statusLines(config.relays, await fetchStatus(config.statusUrl), now)) {
+      deps.log(line);
+    }
+  }
 }

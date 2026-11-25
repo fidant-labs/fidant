@@ -13,6 +13,7 @@ import {
   parseStatus,
   readStatus,
   runCap,
+  runOnce,
   statusLines,
 } from "./cap.mts";
 
@@ -378,4 +379,61 @@ test("a read status logs that it was read and whether each configured relay is u
     emf({ Relay: "sto" }, "RelayUp", 0),
     emf({ Relay: "osl" }, "RelayUp", 0),
   ]);
+});
+
+test("a status body over 64 KiB is not read to the end", async () => {
+  let pulled = 0;
+  const huge = () =>
+    new Response(
+      new ReadableStream({
+        pull(controller) {
+          pulled += 1;
+          controller.enqueue(new Uint8Array(16 * 1024));
+          if (pulled > 1000) {
+            controller.close();
+          }
+        },
+      }),
+      { headers: { "content-type": json } },
+    );
+  assert.equal(await readStatus("https://fidant.se/relay-status", async () => huge()), undefined);
+  assert.ok(pulled < 20, `pulled ${pulled} chunks`);
+});
+
+test("reading the relay status refuses redirects", async () => {
+  const seen: (RequestInit | undefined)[] = [];
+  const redirecting: typeof fetch = async (_url, init) => {
+    seen.push(init);
+    throw new TypeError("fetch failed");
+  };
+  assert.equal(await readStatus("https://fidant.se/relay-status", redirecting), undefined);
+  assert.equal(seen[0]?.redirect, "error");
+});
+
+test("the cap runs before the status is fetched, and a failing cap still logs the status", async () => {
+  const order: string[] = [];
+  const runConfig = { ...config, statusUrl: "https://fidant.se/relay-status" };
+  const status = async () => {
+    order.push("status");
+    return undefined;
+  };
+  const { deps } = fake({
+    async boxBytes() {
+      order.push("cap");
+      return 0;
+    },
+    log: (line) => order.push(line.includes("RelayStatusOk") ? "line" : "other"),
+  });
+  await runOnce(deps, runConfig, new Date("2026-03-10T00:00:00Z"), status);
+  assert.ok(order.indexOf("status") > order.lastIndexOf("cap"));
+  assert.ok(order.includes("line"));
+  const lines: string[] = [];
+  const broken = fake({
+    async readState() {
+      throw new Error("ssm down");
+    },
+    log: (line) => lines.push(line),
+  });
+  await assert.rejects(runOnce(broken.deps, runConfig, new Date(), status), /ssm down/);
+  assert.equal(lines.length, 1);
 });

@@ -4,7 +4,7 @@ import {
   PutInstancePublicPortsCommand,
 } from "@aws-sdk/client-lightsail";
 import { GetParameterCommand, PutParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
-import { configFromEnv, readStatus, runCap, statusLines } from "./cap.mts";
+import { configFromEnv, runOnce } from "./cap.mts";
 
 const lightsail = new LightsailClient({});
 const ssm = new SSMClient({});
@@ -58,10 +58,5 @@ const deps = {
 };
 
 export async function handler() {
-  const config = configFromEnv(process.env);
-  const status = await readStatus(config.statusUrl);
-  for (const line of statusLines(config.relays, status, new Date())) {
-    console.log(line);
-  }
-  await runCap(deps, config, new Date());
+  await runOnce(deps, configFromEnv(process.env), new Date());
 }
