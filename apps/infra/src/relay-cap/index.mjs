@@ -26,12 +26,12 @@ async function metricSum(instanceName, metricName, startTime, endTime) {
 }
 
 const deps = {
-  async boxBytes(box, start, end) {
+  async boxTraffic(box, start, end) {
     const [received, sent] = await Promise.all([
       metricSum(box, "NetworkIn", start, end),
       metricSum(box, "NetworkOut", start, end),
     ]);
-    return received + sent;
+    return { in: received, out: sent };
   },
   async readState() {
     try {

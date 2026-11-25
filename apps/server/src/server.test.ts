@@ -300,9 +300,10 @@ async function rawSocket(
   port: number,
   ca: Buffer,
   opened: WsClient[],
+  origin?: string,
 ): Promise<{ socket: WsClient; next(): Promise<string> }> {
   // Trusts only the server's own certificate, so TLS checks stay on.
-  const socket = new WsClient(`wss://localhost:${port}/signal`, { ca });
+  const socket = new WsClient(`wss://localhost:${port}/signal`, { ca, origin });
   opened.push(socket);
   const frames: string[] = [];
   const waiting: ((frame: string) => void)[] = [];
@@ -610,4 +611,65 @@ test("hands the first relay up's ICE servers, with its own credentials, in joine
     }
     server.close();
   }
+});
+
+test("without a web root, serves the relay routes and 404 for every other path", async (t) => {
+  const { server: bare } = await startServer({
+    port: 0,
+    root: undefined,
+    certDir: join(dir, "bare-certs"),
+    hosts: ["localhost"],
+  });
+  t.after(() => bare.close());
+  const { port } = bare.address() as AddressInfo;
+  const ca = ensureCert(join(dir, "bare-certs"), []).cert;
+  const ask = (method: string, path: string) => call(port, path, { method, ca });
+  const status = await ask("GET", "/relay-status");
+  assert.equal(status.status, 200);
+  assert.equal(status.body, "[]");
+  const home = await ask("GET", "/");
+  assert.equal(home.status, 404);
+  assert.equal(home.body, "");
+  assert.ok(home.headers["content-security-policy"]);
+  for (const [method, path] of [
+    ["GET", "/index.html"],
+    ["GET", "/assets/app.js"],
+    ["GET", "/r/anything"],
+    ["HEAD", "/"],
+    ["POST", "/"],
+  ] as const) {
+    assert.equal((await ask(method, path)).status, 404, `${method} ${path}`);
+  }
+  assert.equal((await ask("POST", "/relay-status")).status, 405);
+  const opened: WsClient[] = [];
+  t.after(() => {
+    for (const socket of opened) {
+      socket.terminate();
+    }
+  });
+  await rawSocket(port, ca, opened);
+});
+
+test("startServer hands siteOrigin to signaling", async (t) => {
+  const { server: site } = await startServer({
+    port: 0,
+    root: undefined,
+    certDir: join(dir, "origin-certs"),
+    hosts: ["localhost"],
+    siteOrigin: "https://fidant.se",
+  });
+  t.after(() => site.close());
+  const { port } = site.address() as AddressInfo;
+  const ca = ensureCert(join(dir, "origin-certs"), []).cert;
+  const opened: WsClient[] = [];
+  t.after(() => {
+    for (const socket of opened) {
+      socket.terminate();
+    }
+  });
+  await rawSocket(port, ca, opened, "https://fidant.se");
+  await assert.rejects(
+    rawSocket(port, ca, opened, "https://other.example"),
+    /Unexpected server response: 403/,
+  );
 });
