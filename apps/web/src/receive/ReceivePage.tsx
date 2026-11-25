@@ -185,7 +185,12 @@ const CONNECT_TIMEOUT_MS = 30_000;
 /** How many new attempts follow a dropped socket or an `unknown` refusal before giving up. */
 const MAX_REJOINS = 4;
 
-export function ReceivePage() {
+export function ReceivePage({
+  onUnfinished,
+}: {
+  /** Told whether a file or text is offered or arriving, which leaving the tab would lose. */
+  onUnfinished(unfinished: boolean): void;
+}) {
   const { t, lang } = useI18n();
   const problemFor = (view: { problem: ProblemKey; text?: boolean }): ProblemText => {
     const problems: Record<ProblemKey, ProblemText> = view.text
@@ -195,6 +200,8 @@ export function ReceivePage() {
   };
   const link = useMemo(() => parseRecipientLocation(location), []);
   const [view, setView] = useState<View>({ s: "connecting" });
+  const unfinished = view.s === "offer" || view.s === "receiving";
+  useEffect(() => onUnfinished(unfinished), [onUnfinished, unfinished]);
   const [picking, setPicking] = useState(false);
   const [relayed, countRelay] = useReducer(addRelay, NO_RELAYS);
   const [reachedServer, setReachedServer] = useState(false);

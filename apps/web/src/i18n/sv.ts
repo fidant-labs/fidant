@@ -84,6 +84,12 @@ export const sv: Messages = {
     security: "Säkerhet – Fidant",
     technical: "Teknisk beskrivning – Fidant",
   },
+  openTransfer: {
+    send: "En filöverföring är fortfarande öppen i den här fliken.",
+    secret: "En hemlighet delas fortfarande från den här fliken.",
+    receive: "En överföring till dig är fortfarande öppen i den här fliken.",
+    back: "Gå tillbaka",
+  },
   menu: {
     language: "Språk",
     theme: "Tema",

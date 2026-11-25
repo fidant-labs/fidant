@@ -99,6 +99,12 @@ export const en = {
     security: "Security – Fidant",
     technical: "Technical description – Fidant",
   },
+  openTransfer: {
+    send: "A file transfer is still open in this tab.",
+    secret: "A secret is still being shared from this tab.",
+    receive: "A transfer to you is still open in this tab.",
+    back: "Go back to it",
+  },
   menu: {
     language: "Language",
     theme: "Theme",

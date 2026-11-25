@@ -92,6 +92,16 @@ export const ICONS = {
 
 type IconName = keyof typeof ICONS;
 
+/** A green dot with a ring that keeps expanding, for a transfer still open. Decorative. */
+export function LiveDot() {
+  return (
+    <span class="relative flex size-2.5 flex-none" aria-hidden="true">
+      <span class="absolute inline-flex size-full animate-ping rounded-full bg-emerald-500 opacity-75 motion-reduce:hidden" />
+      <span class="relative inline-flex size-2.5 rounded-full bg-emerald-500" />
+    </span>
+  );
+}
+
 /** Decorative: the text next to an icon always carries its meaning. */
 export function Icon({ name, class: cls }: { name: IconName; class?: string }) {
   return (
@@ -228,7 +238,14 @@ function Choice<T extends string>({
   );
 }
 
-export function Header({ current }: { current: Route }) {
+export function Header({
+  current,
+  open,
+}: {
+  current: Route;
+  /** Pages that still hold an unfinished transfer. */
+  open: { send: boolean; secret: boolean };
+}) {
   const { t } = useI18n();
   return (
     <header class="fixed inset-x-0 top-0 z-50 border-b border-border/60 bg-background/70 backdrop-blur-xl backdrop-saturate-150">
@@ -264,6 +281,7 @@ export function Header({ current }: { current: Route }) {
                   class={`${buttonVariants({ variant: section === current ? "secondary" : "ghost" })} max-sm:px-1 max-sm:text-[0.8125rem]`}
                 >
                   {t.menu[section]}
+                  {(section === "send" || section === "secret") && open[section] && <LiveDot />}
                 </Link>
               </li>
             ))}

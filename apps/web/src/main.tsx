@@ -1,5 +1,6 @@
 import { render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
+import { buttonVariants } from "#components/ui/button";
 import { HowPage } from "./how/HowPage.tsx";
 import { I18nProvider, useI18n } from "./i18n/I18n.tsx";
 import { InfoPage } from "./info/InfoPage.tsx";
@@ -8,7 +9,7 @@ import { PrivacyPage } from "./privacy/PrivacyPage.tsx";
 import { ReceivePage } from "./receive/ReceivePage.tsx";
 import { SendPage } from "./send/SendPage.tsx";
 import { applyTheme, initialTheme, type Theme } from "./theme.ts";
-import { Footer, Header, Page, Problem, type Route } from "./ui.tsx";
+import { Footer, Header, Link, LiveDot, Page, Problem, type Route } from "./ui.tsx";
 
 /** Encryption needs Web Crypto, which browsers only offer on HTTPS or localhost. */
 function hasSecureCrypto(): boolean {
@@ -60,6 +61,19 @@ function App() {
     setTheme(next);
   };
   const kept = useRef(new Set<Route>());
+  const [sendOpen, setSendOpen] = useState(false);
+  const [secretOpen, setSecretOpen] = useState(false);
+  const [receiveOpen, setReceiveOpen] = useState(false);
+  // Only the path: the fragment holds the key, and the mounted page already has it in memory.
+  const receivePath = useRef("");
+  const away =
+    sendOpen && route !== "send"
+      ? "send"
+      : secretOpen && route !== "secret"
+        ? "secret"
+        : receiveOpen && route !== "receive"
+          ? "receive"
+          : undefined;
   useEffect(() => {
     const onPop = () => setRoute(routeOf(location.pathname));
     addEventListener("popstate", onPop);
@@ -99,9 +113,12 @@ function App() {
   if (holdsTransfer) {
     kept.current.add(route);
   }
+  if (route === "receive" && !receivePath.current) {
+    receivePath.current = location.pathname;
+  }
   return (
     <div class="flex min-h-dvh flex-col has-[[data-bottom-bar]:not([hidden]_*)]:pb-24">
-      <Header current={route} />
+      <Header current={route} open={{ send: sendOpen, secret: secretOpen }} />
       <div class="flex-1">
         {route === "landing" && <LandingPage />}
         {/* The privacy page uses no crypto, so it opens even without a secure connection. */}
@@ -114,21 +131,41 @@ function App() {
         {!secure && holdsTransfer && <InsecurePage />}
         {secure && kept.current.has("receive") && (
           <div id="receive" hidden={route !== "receive"}>
-            <ReceivePage />
+            <ReceivePage onUnfinished={setReceiveOpen} />
           </div>
         )}
         {secure && kept.current.has("send") && (
           <div hidden={route !== "send"}>
-            <SendPage kind="file" />
+            <SendPage kind="file" onUnfinished={setSendOpen} />
           </div>
         )}
         {secure && kept.current.has("secret") && (
           <div hidden={route !== "secret"}>
-            <SendPage kind="text" />
+            <SendPage kind="text" onUnfinished={setSecretOpen} />
           </div>
         )}
       </div>
       <Footer theme={theme} onTheme={chooseTheme} />
+      <div
+        role="status"
+        class="pointer-events-none fixed inset-x-0 bottom-4 z-40 flex justify-center px-4"
+      >
+        {away && (
+          <div
+            data-bottom-bar
+            class="pointer-events-auto flex items-center gap-3 rounded-full border border-border bg-popover/90 py-1.5 pr-1.5 pl-4 text-sm text-popover-foreground shadow-xl backdrop-blur-xl animate-in fade-in slide-in-from-bottom-4"
+          >
+            <LiveDot />
+            <span>{t.openTransfer[away]}</span>
+            <Link
+              href={away === "receive" ? receivePath.current : `/${away}`}
+              class={`${buttonVariants({ size: "sm" })} rounded-full`}
+            >
+              {t.openTransfer.back}
+            </Link>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

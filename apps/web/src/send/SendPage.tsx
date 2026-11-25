@@ -148,7 +148,14 @@ function glideTo(el: HTMLElement) {
   requestAnimationFrame(step);
 }
 
-export function SendPage({ kind }: { kind: "file" | "text" }) {
+export function SendPage({
+  kind,
+  onUnfinished,
+}: {
+  kind: "file" | "text";
+  /** Told whether any recipient is still unfinished, the same test that guards closing the tab. */
+  onUnfinished(unfinished: boolean): void;
+}) {
   const { t, lang } = useI18n();
   const text = kind === "text";
   // Both kinds can be mounted at once, so the text page prefixes its element IDs.
@@ -566,6 +573,7 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
   const connected = sender.recipients.filter(isActive).length;
   const emailed = sender.recipients.filter(emailBound);
   const unfinished = sender.recipients.some((r) => r.status !== "delivered");
+  useEffect(() => onUnfinished(unfinished), [onUnfinished, unfinished]);
   const delivered = sender.recipients.filter((r) => r.status === "delivered").length;
   const allDone = hasRecipients && !unfinished;
   const finished = allDone && !more;
