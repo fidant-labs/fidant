@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { CfnOutput, Duration, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
-import { SnsAction } from "aws-cdk-lib/aws-cloudwatch-actions";
+import { LambdaAction, SnsAction } from "aws-cdk-lib/aws-cloudwatch-actions";
 import * as events from "aws-cdk-lib/aws-events";
 import * as targets from "aws-cdk-lib/aws-events-targets";
 import * as iam from "aws-cdk-lib/aws-iam";
@@ -207,17 +207,45 @@ export class BoxStack extends Stack {
       setting.node.addDependency(previous, ...(policyDependable ? [policyDependable] : []));
       previous = setting;
     }
+    const configurationSetArn = this.formatArn({
+      service: "ses",
+      resource: "configuration-set",
+      resourceName: configurationSet.configurationSetName,
+    });
     new iam.User(this, "MailUser", { userName: "fidant-mail" }).addToPolicy(
       new iam.PolicyStatement({
         actions: ["ses:SendRawEmail"],
-        resources: [
-          identity.emailIdentityArn,
-          this.formatArn({
-            service: "ses",
-            resource: "configuration-set",
-            resourceName: configurationSet.configurationSetName,
-          }),
-        ],
+        resources: [identity.emailIdentityArn, configurationSetArn],
+      }),
+    );
+    // Turns sending off when a reputation alarm fires. Nothing turns it back on automatically.
+    const mailPause = new lambda.Function(this, "MailPause", {
+      runtime: lambda.Runtime.NODEJS_24_X,
+      handler: "index.handler",
+      code: lambda.Code.fromInline(
+        [
+          'const { SESv2Client, PutConfigurationSetSendingOptionsCommand } = require("@aws-sdk/client-sesv2");',
+          "exports.handler = async () => {",
+          "  await new SESv2Client({}).send(",
+          "    new PutConfigurationSetSendingOptionsCommand({",
+          "      ConfigurationSetName: process.env.CONFIGURATION_SET,",
+          "      SendingEnabled: false,",
+          "    }),",
+          "  );",
+          "};",
+        ].join("\n"),
+      ),
+      timeout: Duration.seconds(10),
+      logGroup: new logs.LogGroup(this, "MailPauseLogs", {
+        retention: logs.RetentionDays.ONE_MONTH,
+        removalPolicy: RemovalPolicy.DESTROY,
+      }),
+      environment: { CONFIGURATION_SET: configurationSet.configurationSetName },
+    });
+    mailPause.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["ses:PutConfigurationSetSendingOptions"],
+        resources: [configurationSetArn],
       }),
     );
     for (const [index, record] of identity.dkimRecords.entries()) {
@@ -298,31 +326,34 @@ export class BoxStack extends Stack {
             treatMissingData: cloudwatch.TreatMissingData.IGNORE,
           }),
       ),
-      ...(
-        [
-          ["BounceRate", "bounce rate 5 % or more", 0.05],
-          ["ComplaintRate", "complaint rate 0.1 % or more", 0.001],
-        ] as const
-      ).map(
-        ([name, label, threshold]) =>
-          new cloudwatch.Alarm(this, `Mail${name}`, {
-            alarmName: `Fidant SES reputation: ${label}`,
-            metric: new cloudwatch.Metric({
-              namespace: "AWS/SES",
-              metricName: `Reputation.${name}`,
-              statistic: cloudwatch.Stats.MAXIMUM,
-              period: Duration.hours(1),
-            }),
-            threshold,
-            comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
-            evaluationPeriods: 1,
-            treatMissingData: cloudwatch.TreatMissingData.IGNORE,
-          }),
-      ),
     ];
-    for (const alarm of alarms) {
+    const mailAlarms = (
+      [
+        ["BounceRate", "bounce rate 2 % or more, mail paused", 0.02],
+        ["ComplaintRate", "complaint rate 0.05 % or more, mail paused", 0.0005],
+      ] as const
+    ).map(
+      ([name, label, threshold]) =>
+        new cloudwatch.Alarm(this, `Mail${name}`, {
+          alarmName: `Fidant SES reputation: ${label}`,
+          metric: new cloudwatch.Metric({
+            namespace: "AWS/SES",
+            metricName: `Reputation.${name}`,
+            statistic: cloudwatch.Stats.MAXIMUM,
+            period: Duration.hours(1),
+          }),
+          threshold,
+          comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+          evaluationPeriods: 1,
+          treatMissingData: cloudwatch.TreatMissingData.IGNORE,
+        }),
+    );
+    for (const alarm of [...alarms, ...mailAlarms]) {
       alarm.addAlarmAction(notify);
       alarm.addOkAction(notify);
+    }
+    for (const alarm of mailAlarms) {
+      alarm.addAlarmAction(new LambdaAction(mailPause, { useUniquePermissionId: true }));
     }
   }
 }

@@ -121,7 +121,7 @@ iv     = direction(1: 0 sender, 1 recipient) ‖ 00 00 00 ‖ seq(8)
 1. When the file is chosen, or each time a shared secret changes, the sender's browser computes its SHA-256 (`apps/web/src/lib/sha256.ts`, streamed in 4 MiB slices).
 2. INIT, then META. The recipient sees the name, size, type and the sender's typed name (for a shared secret, only the sender's name), and chooses.
 3. The recipient sends ACCEPT or DECLINE, encrypted. ACCEPT also proves that the recipient holds the key. No file data is sent before it. After DECLINE the link still works.
-4. CHUNK frames, `chunkSize = min(48 KiB, maxMessageSize − 64)` (64 is `FRAME_OVERHEAD_BYTES` in `send-file.ts`: the 26-byte header and tag, with margin), sent while the channel buffer holds at most 4 MiB (`bufferedAmount`) and only within the recipient's credit: right after ACCEPT the recipient sends CREDIT for 128 chunks (`CREDIT_WINDOW_CHUNKS` in `receive-file.ts`), and every 64 chunks its sink writes it raises the credit to 128 past what is written. The sender sends CHUNK i (counting from 0) only while i is below the highest CREDIT. END needs no credit.
+4. CHUNK frames, `chunkSize = min(48 KiB, maxMessageSize − 64)` (64 is `FRAME_OVERHEAD_BYTES` in `frames.ts`: the 26-byte header and tag, with margin), sent while the channel buffer holds at most 4 MiB (`bufferedAmount`) and only within the recipient's credit: right after ACCEPT the recipient sends CREDIT for 128 chunks (`CREDIT_WINDOW_CHUNKS` in `receive-file.ts`), and every 64 chunks its sink writes it raises the credit to 128 past what is written. The sender sends CHUNK i (counting from 0) only while i is below the highest CREDIT. END needs no credit.
 5. END with the checksum and the exact size.
 6. The recipient checks and sends RECEIPT with the checksum it computed. The sender marks the link delivered only when it matches.
 
@@ -135,7 +135,7 @@ META's `chunkSize` must be at least 986 bytes (`MIN_CHUNK_BYTES`): the META fram
 
 ### Names
 
-META refuses names, types and sender names containing C0 or C1 control characters, line and paragraph separators (U+2028, U+2029), any Unicode Bidi_Control character (U+061C, U+200E, U+200F, U+202A–202E, U+2066–2069), a filler that always draws as blank (U+115F, U+1160, U+2800, U+3164, U+FFA0) or three or more spaces of any kind (also when invisible characters such as U+200B sit between them), so a name ending in `.exe` can't be displayed as one ending in `.pdf` or have its ending pushed out of sight. A single space of any kind is allowed, since macOS puts U+202F in screenshot names (`hasForbiddenCharacters` in `packages/protocol`). The sender's name is typed by the sender and not verified.
+META refuses names, types and sender names containing C0 or C1 control characters, line and paragraph separators (U+2028, U+2029), any Unicode Bidi_Control character (U+061C, U+200E, U+200F, U+202A–202E, U+2066–2069), a filler that always draws as blank (U+115F, U+1160, U+2800, U+3164, U+FFA0, U+13441, U+13442, U+16FE4, U+1D159) or three or more spaces of any kind (also when invisible characters such as U+200B sit between them), so a name ending in `.exe` can't be displayed as one ending in `.pdf` or have its ending pushed out of sight. A single space of any kind is allowed, since macOS puts U+202F in screenshot names (`hasForbiddenCharacters` in `packages/protocol`). The sender's name is typed by the sender and not verified.
 
 ## Padding
 
@@ -297,7 +297,7 @@ recipient → server     join {link, attempt, token}
 | Codes from the whole server                       | 500 an hour                              |
 | A code's life                                     | 10 minutes, or until the fifth wrong try |
 
-- The limits per email address and for the whole server can be used up by anyone, a stranger with no link included: they can stop notices or codes to one address, or all of them, for up to an hour, and a sender who gets `limit` can tell that the notice limit was reached. A client's own limit on codes comes first, so codes it is refused don't count against the address (0016).
+- The limits per email address and for the whole server can be used up by anyone, a stranger with no link included: they can stop notices or codes to one address, or all of them, for up to an hour, and a sender who gets `limit` can tell that the notice limit was reached. A refused code counts against nothing, and a client's own limit on codes (5) is below the address's (10), so one client can't use up an address's codes on its own (0016).
 - The counters per email address and per client address hold only send times, under an HMAC-SHA-256 of the lowercased address or the client address with a 32-byte random key made when the server starts. The two counters for the whole server hold only send times. They outlive the link, stay in memory for at most an hour and are pruned on the heartbeat. The per-socket count lives on the socket and goes with it.
 
 ### The mail service
@@ -306,6 +306,7 @@ recipient → server     join {link, attempt, token}
 - Mail service errors can quote the address, so the server keeps none of them and logs only the outcome.
 - Locally, `pnpm e2e` runs Mailpit, which catches every mail and never sends it on. `pnpm start` sends no mail unless those variables are set.
 - In production the mail service will be Amazon SES in eu-north-1 (planned, SIG-108). Until then the box sets no mail variables, so fidant.se offers no email field.
+- SES stops all sending when the account's bounce rate reaches 2 % or its complaint rate 0.05 %, below the rates at which AWS reviews the account. Every `email` and code then gets `failed` until a maintainer turns sending back on. The alarms read only these rates, never a bounce or complaint itself.
 
 ### Who can read an emailed link's key
 

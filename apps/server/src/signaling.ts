@@ -37,7 +37,7 @@ export const SIGNAL_PATH = "/signal";
 export const HEARTBEAT_MS = 30_000;
 
 /** Caps on open sockets, incoming messages, bytes queued to a socket, and notices and codes emailed. Tests lower them through the `limits` option. */
-const LIMITS = {
+export const LIMITS = {
   sockets: 1000,
   socketsPerAddress: 32,
   // ponytail: fixed window reset by the heartbeat, so a socket can send twice this across a
@@ -630,8 +630,9 @@ export function attachSignaling(
       answerCode(socket, link, "limit");
       return;
     }
-    // A client's own cap is checked first, so codes it is refused never count against the
-    // address: someone asking for codes on their own links can't lock its recipient out.
+    // A refused code is never counted, and a client's own cap (codesPerClient) is below the
+    // address's (codesPerRecipient), so one client asking for codes on its own links can't lock
+    // the address out.
     if (
       (last !== undefined && now - last < CODE_GAP_MS) ||
       clientTimes.length >= limits.codesPerClient ||

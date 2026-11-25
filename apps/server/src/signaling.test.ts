@@ -17,7 +17,7 @@ import {
 } from "@sigill/protocol";
 import { WebSocket as WsClient } from "ws";
 import type { Mail, Mailer } from "./mail.ts";
-import { attachSignaling, clientAddress, HEARTBEAT_MS } from "./signaling.ts";
+import { attachSignaling, clientAddress, HEARTBEAT_MS, LIMITS } from "./signaling.ts";
 
 const logLines: { event: string; fields: LogFields | undefined }[] = [];
 const RELAY = { urls: ["turn:relay.example:3478"], username: "1700000000", credential: "hmac" };
@@ -136,6 +136,11 @@ async function joinAs(
   assert.deepEqual(await host.next(), joined);
   return Object.assign(guest, { attempt });
 }
+
+// One client asking for codes on its own links must not be able to lock an address out.
+test("keeps a client's code cap below an address's", () => {
+  assert.ok(LIMITS.codesPerClient < LIMITS.codesPerRecipient);
+});
 
 test("says hello first with whether the server can email links", async (t) => {
   await connect((await mailServer(t)).url, true);
@@ -1596,7 +1601,7 @@ async function connectFrom(t: { after(fn: () => void): void }, url: string, addr
 
 test("bounds the notices one IPv6 /48 can send by moving between its /64s (SIG-221)", {}, async (t) => {
   const { url, mails } = await mailServer(t);
-  const [networks, each] = [200, 20];
+  const [networks, each] = [3, 20];
   for (let network = 0; network < networks; network += 1) {
     const client = await connectFrom(t, url, `2001:db8:1:${network.toString(16)}::1`);
     const links = Array.from({ length: each }, linkId);
@@ -1609,8 +1614,8 @@ test("bounds the notices one IPv6 /48 can send by moving between its /64s (SIG-2
     }
     client.close();
   }
-  // Production noticesPerClient is 50; the server-wide 500 alone would let 500 through.
-  assert.ok(mails.length <= 50, `${mails.length} notices went out from one /48`);
+  // 60 notices from three /64s of one /48: noticesPerClient (50) must stop the last 10.
+  assert.equal(mails.length, 50, `${mails.length} notices went out from one /48`);
 });
 
 test("sends a recipient their code although another client asked for codes on its own links to that address (SIG-223)", {}, async (t) => {
