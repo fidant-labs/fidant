@@ -8,7 +8,7 @@ import {
   type Page,
 } from "@playwright/test";
 import { parseStackOrigins } from "./hosts.ts";
-import { type Leaks, LeakWatch } from "./leak-watch.ts";
+import { failOnLeaks, type Leaks, LeakWatch } from "./leak-watch.ts";
 import { base32Token, runSeed, SeededRandom } from "./leaks/canary.ts";
 import { deleteSavedMail } from "./mail.ts";
 import {
@@ -75,12 +75,8 @@ export const test = base.extend<Fixtures>({
     async ({}, use, testInfo) => {
       const watch = await LeakWatch.start(testDirName(testInfo), process.env.SIGILL_E2E_REGISTRY);
       await use(watch);
-      const report = await watch.check();
-      // check() saved this test's mail, so the next test does not take it for its own.
-      await deleteSavedMail(join(observationsDir, testDirName(testInfo)));
-      if (report) {
-        throw new Error(report);
-      }
+      // check() saved this test's mail: delete it, so the next test does not take it for its own.
+      await failOnLeaks(watch, () => deleteSavedMail(join(observationsDir, testDirName(testInfo))));
     },
     { auto: true },
   ],
