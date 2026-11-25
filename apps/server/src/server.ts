@@ -154,7 +154,7 @@ export function startServer(options: {
   relays?: Relays | undefined;
   log?: Logger;
   mail?: { send: Mailer; origin: string } | undefined;
-}): Promise<Server> {
+}): Promise<{ server: Server; signaling: { close(): void } }> {
   const server = createServer(
     ensureCert(options.certDir, options.hosts),
     serveRelays(options.relays, serveStatic(options.root)),
@@ -168,6 +168,6 @@ export function startServer(options: {
   server.on("close", () => signaling.close());
   return new Promise((done, fail) => {
     server.once("error", fail);
-    server.listen(options.port, () => done(server));
+    server.listen(options.port, () => done({ server, signaling }));
   });
 }

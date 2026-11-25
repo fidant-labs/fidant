@@ -110,7 +110,7 @@ const lanAddresses = Object.values(networkInterfaces())
 // names, metadata, keys or relay payloads. Messages for humans go to stderr.
 const log: Logger = (event, fields) => console.log(JSON.stringify({ event, ...fields }));
 
-const server = await startServer({
+const { server, signaling } = await startServer({
   port: Number(process.env.PORT ?? 8443),
   root,
   certDir: process.env.CERT_DIR ?? fileURLToPath(new URL("../../../.certs/", import.meta.url)),
@@ -123,6 +123,14 @@ const server = await startServer({
 
 const { port } = server.address() as AddressInfo;
 log("listening", { port });
+
+// On a restart, close every socket with 1012 so browsers reconnect at once instead of counting a
+// failure. Exit within a second even if a socket never answers its close frame.
+process.once("SIGTERM", () => {
+  signaling.close();
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 1000).unref();
+});
 // Only for a person at a terminal. Under systemd stderr goes to the journal, which should hold
 // nothing but the allowlisted log lines, not the box's addresses.
 if (process.stderr.isTTY) {

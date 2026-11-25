@@ -75,7 +75,8 @@ export async function startServer(
 
   /**
    * Once the server listens: on the local stack, publish its PID for restartServer() and, like
-   * systemd's Restart=always, start it again on the same port when something SIGTERMs it.
+   * systemd's Restart=always, start it again on the same port when something SIGTERMs it. The
+   * server handles SIGTERM and exits with code 0, so either counts as a restart.
    */
   const watch = (port: number) => {
     if (!wrapper && child.pid !== undefined) {
@@ -85,7 +86,7 @@ export async function startServer(
       if (stopped) {
         return;
       }
-      if (wrapper || signal !== "SIGTERM") {
+      if (wrapper || (signal !== "SIGTERM" && code !== 0)) {
         event(`server exited unexpectedly (code ${code}, signal ${signal})`);
         return;
       }

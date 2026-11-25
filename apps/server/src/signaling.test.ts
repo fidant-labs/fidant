@@ -469,6 +469,18 @@ test("terminates a guest that never answers pings and tells the host it left", a
   assert.ok(performance.now() - joinedAt < 200, "the silent guest outlived two heartbeats");
 });
 
+test("close() closes every socket with 1012, so clients know the server is restarting", async (t) => {
+  const closing = createServer();
+  const closingSignaling = attachSignaling(closing, { log: () => {} });
+  t.after(() => closing.close());
+  await new Promise<void>((done) => closing.listen(0, done));
+  const url = `ws://localhost:${(closing.address() as AddressInfo).port}/signal`;
+  const host = await connect(url);
+  const guest = await connect(url);
+  closingSignaling.close();
+  assert.deepEqual(await Promise.all([host.closed, guest.closed]), [1012, 1012]);
+});
+
 test("keys clients by address, trusting X-Forwarded-For only from loopback", () => {
   assert.equal(clientAddress("203.0.113.7", undefined), "203.0.113.7");
   assert.equal(clientAddress("::ffff:203.0.113.7", undefined), "203.0.113.7");

@@ -81,6 +81,8 @@ const ALL_CODES = "codes";
 
 /** WebSocket close code for a protocol violation. */
 const POLICY_VIOLATION = 1008;
+/** WebSocket close code that tells clients the server is restarting, so they reconnect at once. */
+const SERVICE_RESTART = 1012;
 
 type Peer = {
   role: "none" | "host" | "guest";
@@ -756,7 +758,7 @@ export function attachSignaling(
       clearInterval(heartbeat);
       server.off("upgrade", onUpgrade);
       for (const socket of peers.keys()) {
-        socket.terminate();
+        socket.close(SERVICE_RESTART);
       }
       wss.close();
     },
