@@ -32,6 +32,7 @@ import {
   inRelay,
   pauseRelay,
   type RouterMode,
+  relayHost,
   relayIp,
   remoteBrowsers,
   resumeRelay,
@@ -616,10 +617,13 @@ async function relayedChannel(
   return { path, echoed: sent === received };
 }
 
-/** TURN on the relay box by address, with credentials for `secret`. */
-const relayIce = (transport: "udp" | "tcp", secret: string): RTCIceServer => ({
-  // By address: Chrome resolves names through --host-resolver-rules for TCP only.
-  urls: `turn:${relayIp}:3478?transport=${transport}`,
+/** TURN on the relay box, with credentials for `secret`. */
+const relayIce = (transport: "udp" | "tcp" | "tls", secret: string): RTCIceServer => ({
+  urls:
+    transport === "tls"
+      ? `turns:${relayHost}:443?transport=tcp`
+      : // By address: Chrome resolves names through --host-resolver-rules for TCP only.
+        `turn:${relayIp}:3478?transport=${transport}`,
   ...turnCredentials(secret, Date.now()),
 });
 
@@ -767,6 +771,71 @@ test.describe("the relay box", () => {
       const [sender, recipient] = await relayPeers(actor);
       const { echoed } = await relayedChannel(sender, recipient, relayIce("udp", secret));
       expect(echoed).toBe(true);
+    });
+
+    test("relays over TLS on 443", async ({ actor }) => {
+      await routerMode("router-b", "tcp-443");
+      try {
+        const [sender, recipient] = await relayPeers(actor);
+        const { path, echoed } = await relayedChannel(sender, recipient, relayIce("tls", secret));
+        expect(echoed).toBe(true);
+        expect(path).toMatch(/^relay\+tls\//);
+      } finally {
+        await routerMode("router-b", "cone");
+      }
+    });
+
+    test("reloads a renewed certificate without dropping coturn", async ({ actor }) => {
+      const tls = "/etc/fidant-relay/tls";
+      // Laid out as certbot does: live/ holds links into archive/. The key stays the run's, so
+      // the browsers' SPKI pin still matches.
+      await inRelay(
+        "sh",
+        "-c",
+        `mkdir -p /tmp/archive /tmp/lineage /tmp/mismatch && cp ${tls}/turn.key /tmp/archive/privkey1.pem \
+          && openssl req -x509 -key /tmp/archive/privkey1.pem -days 1 -subj /CN=${relayHost} \
+            -addext subjectAltName=DNS:${relayHost} -out /tmp/archive/fullchain1.pem \
+          && ln -sf /tmp/archive/privkey1.pem /tmp/lineage/privkey.pem \
+          && ln -sf /tmp/archive/fullchain1.pem /tmp/lineage/fullchain.pem \
+          && ln -sf /tmp/archive/fullchain1.pem /tmp/mismatch/fullchain.pem \
+          && openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:prime256v1 -out /tmp/mismatch/privkey.pem`,
+      );
+      const installed = (lineage: string) =>
+        inRelay(
+          "sh",
+          "-c",
+          `RENEWED_LINEAGE=${lineage} fidant-relay-cert-installed 2>&1; echo "exit $?"`,
+        );
+      const files = () => inRelay("sh", "-c", `ls ${tls}; sha256sum ${tls}/*`);
+      const pid = () => inRelay("systemctl", "show", "-p", "MainPID", "--value", "coturn");
+      const fingerprint = "openssl x509 -noout -fingerprint -sha256";
+      const served = () =>
+        inRelay(
+          "sh",
+          "-c",
+          `openssl s_client -connect 127.0.0.1:443 </dev/null 2>/dev/null | ${fingerprint}`,
+        );
+
+      const before = await files();
+      expect(await installed("/tmp/mismatch")).toBe(
+        "fidant-relay: the certificate and key in /tmp/mismatch don't match\nexit 1\n",
+      );
+      expect(await files()).toBe(before);
+
+      const running = await pid();
+      expect(await installed("/tmp/lineage")).toBe("exit 0\n");
+      expect(await pid()).toBe(running);
+      await inRelay("cmp", "/tmp/lineage/fullchain.pem", `${tls}/turn.crt`);
+      expect(await inRelay("stat", "-c", "%a %U:%G", `${tls}/turn.key`)).toBe(
+        "640 root:turnserver\n",
+      );
+      const renewed = await inRelay("sh", "-c", `${fingerprint} -in /tmp/lineage/fullchain.pem`);
+      await expect.poll(served).toBe(renewed);
+
+      const [sender, recipient] = await relayPeers(actor);
+      const { path, echoed } = await relayedChannel(sender, recipient, relayIce("tls", secret));
+      expect(echoed).toBe(true);
+      expect(path).toMatch(/^relay\+tls\//);
     });
 
     test("keeps secrets and client addresses out of its journal", async () => {

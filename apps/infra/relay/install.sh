@@ -198,6 +198,69 @@ OnUnitInactiveSec=60s
 WantedBy=timers.target
 EOF
 
+# certbot's deploy hook, run on the first certificate and on every renewal. No set -x: it handles a key.
+cat >/usr/local/bin/fidant-relay-cert-installed <<'EOF'
+#!/bin/sh
+set -eu
+tls=/etc/fidant-relay/tls
+had_cert=no
+if [ -e $tls/turn.crt ]; then
+  had_cert=yes
+fi
+install -m 640 -g turnserver /dev/null $tls/turn.key.new
+cat "$RENEWED_LINEAGE/privkey.pem" >$tls/turn.key.new
+install -m 644 /dev/null $tls/turn.crt.new
+cat "$RENEWED_LINEAGE/fullchain.pem" >$tls/turn.crt.new
+openssl pkey -pubout -in $tls/turn.key.new >$tls/turn.pub.new
+if ! openssl x509 -pubkey -noout -in $tls/turn.crt.new | cmp -s - $tls/turn.pub.new; then
+  rm -f $tls/turn.key.new $tls/turn.crt.new $tls/turn.pub.new
+  echo "fidant-relay: the certificate and key in $RENEWED_LINEAGE don't match" >&2
+  exit 1
+fi
+rm -f $tls/turn.pub.new
+mv $tls/turn.key.new $tls/turn.key
+mv $tls/turn.crt.new $tls/turn.crt
+# USR2 keeps relayed transfers, but a coturn that started without a certificate opens TLS only on restart.
+if systemctl is-active --quiet coturn; then
+  if [ "$had_cert" = yes ]; then
+    systemctl kill -s USR2 coturn
+  else
+    systemctl restart coturn
+  fi
+fi
+EOF
+chmod 700 /usr/local/bin/fidant-relay-cert-installed
+
+# Gets the first certificate. certbot keeps the hook in the renewal config, and certbot.timer renews.
+cat >/usr/local/bin/fidant-relay-cert <<'EOF'
+#!/bin/sh
+set -eu
+. /etc/fidant-relay/relay.env
+if [ -d "/etc/letsencrypt/live/$RELAY_NAME" ]; then
+  exit 0
+fi
+exec certbot certonly --standalone --non-interactive --agree-tos --register-unsafely-without-email \
+  --preferred-challenges http -d "$RELAY_NAME" --deploy-hook /usr/local/bin/fidant-relay-cert-installed
+EOF
+chmod 700 /usr/local/bin/fidant-relay-cert
+cat >/etc/systemd/system/fidant-relay-cert.service <<'EOF'
+[Unit]
+Description=Get the relay's first certificate
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/fidant-relay-cert
+EOF
+# Every 15 minutes: Let's Encrypt allows 5 failed validations per host name an hour.
+cat >/etc/systemd/system/fidant-relay-cert.timer <<'EOF'
+[Timer]
+OnActiveSec=30s
+OnUnitInactiveSec=15min
+
+[Install]
+WantedBy=timers.target
+EOF
+
 # Logging off: each blocked packet would put its source address in the journal.
 ufw logging off
 ufw default deny incoming
@@ -211,7 +274,7 @@ systemctl daemon-reload
 systemctl unmask coturn
 systemctl enable coturn
 systemctl restart coturn
-systemctl enable --now fidant-relay-secret.timer
+systemctl enable --now fidant-relay-secret.timer fidant-relay-cert.timer
 
 set +x
 echo "fidant-relay: public key for $RELAY_ID"
