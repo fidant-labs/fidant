@@ -1004,13 +1004,34 @@ test.describe("the relay box", () => {
     });
 
     test("keeps secrets and client addresses out of its journal", async () => {
+      // A hand-out of the current secret, sealed on the relay, so argv holds only file names.
+      await inRelay(
+        "sh",
+        "-c",
+        `tr -d '\\n' </var/lib/fidant-relay/current | openssl pkeyutl -encrypt -pubin \
+          -inkey /etc/fidant-relay/relay.pub -pkeyopt rsa_padding_mode:oaep \
+          -pkeyopt rsa_oaep_md:sha256 -pkeyopt rsa_mgf1_md:sha256 | base64 -w0 >/tmp/hand-out \
+          && echo 'not a hand-out' >/tmp/garbage`,
+      );
+      // Through a unit, so what apply prints lands in the journal.
+      const apply = (body: string) =>
+        inRelay(
+          "sh",
+          "-c",
+          `systemd-run --wait --collect --quiet sh -c 'fidant-relay-apply-secret <${body}'; echo "exit $?"`,
+        );
+      expect(await apply("/tmp/hand-out")).toBe("exit 0\n");
+      expect(await apply("/tmp/garbage")).toBe("exit 1\n");
       let lines: string[] = [];
       // The fetch ran, offline here, and exited cleanly. The timer first fires 10 s after install.
       await expect
         .poll(
           async () => {
-            lines = (await inRelay("journalctl", "-o", "cat", "--no-pager")).split("\n");
-            return lines.some((line) => line.startsWith("Finished fidant-relay-secret.service"));
+            lines = (await inRelay("journalctl", "-o", "export", "--no-pager")).split("\n");
+            return [
+              "MESSAGE=Finished fidant-relay-secret.service",
+              "MESSAGE=fidant-relay: cannot open the secret",
+            ].every((start) => lines.some((line) => line.startsWith(start)));
           },
           { timeout: 20_000 },
         )
