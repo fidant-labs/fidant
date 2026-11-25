@@ -28,7 +28,7 @@ https://fidant.se/r/<link ID>#<secret>
 ```
 
 - **Link ID**: 16 random bytes, base64url (22 characters). The server sees it and uses it only to pair the two browsers.
-- **Secret**: 32 random bytes, base64url (43 characters), in the URL fragment. Browsers don't send the fragment to servers, and the site sets `Referrer-Policy: no-referrer`. The app sends the secret nowhere except in the one message that asks our server to email that link (see "Emailed links"); apart from that it only derives keys from it. The router reads the fragment only on `/how`, where it is a section anchor.
+- **Secret**: 32 random bytes, base64url (43 characters), in the URL fragment. Browsers don't send the fragment to servers, and the site sets `Referrer-Policy: no-referrer`. The app sends the secret nowhere except in the one message that asks our server to email that link (see "Emailed links"); apart from that it only derives keys from it. The router reads the fragment on `/how`, where it is a section anchor, and on the receive page, where it keeps the page's first address, fragment included, in memory only. That lets the "Go back to it" bar return to an unfinished transfer: the link it shows carries only the path, and following it puts the secret back in the address bar and the session history. Nothing more reaches the server.
 
 Both come from `crypto.getRandomValues`. Every recipient gets their own link ID and secret. A link Fidant emails carries a marked fragment, `#e.<value>.<secret>` (see "Emailed links").
 

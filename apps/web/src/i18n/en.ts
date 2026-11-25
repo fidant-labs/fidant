@@ -774,7 +774,7 @@ export const en = {
         heading: "The link",
         body: [
           "For each recipient, the sender's browser creates a link of the form https://fidant.se/r/<link ID>#<secret>. The link ID is 16 random bytes and the secret 32 random bytes, both from the browser's cryptographic random number generator.",
-          "The link ID only names the link: our server uses it to pair the sender with the recipient. The secret is in the fragment, the part after #, which browsers don't send to servers, and the site tells browsers not to send the page address on to other sites either. The app never sends the secret anywhere, unless the sender asks us to email the link (see Emailed links below). Apart from that, it only derives keys from it.",
+          "The link ID only names the link: our server uses it to pair the sender with the recipient. The secret is in the fragment, the part after #, which browsers don't send to servers, and the site tells browsers not to send the page address on to other sites either. The app never sends the secret anywhere, unless the sender asks us to email the link (see Emailed links below). Apart from that, it only derives keys from it and keeps the receive page's first address, secret included, in memory, so the \"Go back to it\" bar can return you to an unfinished transfer. The link in that bar carries only the path; following it puts the secret back in the address bar.",
           "Every recipient gets their own link ID and secret, so one recipient's link says nothing about another's.",
         ],
       },
