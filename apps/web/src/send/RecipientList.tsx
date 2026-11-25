@@ -11,9 +11,9 @@ import { Button } from "#components/ui/button";
 import { Card, CardContent } from "#components/ui/card";
 import type { Messages } from "../i18n/en.ts";
 import { useI18n } from "../i18n/I18n.tsx";
-import { CHECK_ATTEMPTS } from "../lib/check.ts";
 import { formatProgress } from "../lib/format.ts";
 import {
+  CHECK_ATTEMPTS,
   CHECK_DIFFERS,
   CHECK_EXPIRED,
   CHECK_LIMIT,

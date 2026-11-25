@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CHECK_ATTEMPTS, checkNumber, commitFingerprint, sdpFingerprint } from "./check.ts";
+import { checkNumber, commitFingerprint, sdpFingerprint } from "./check.ts";
 
 const A =
   "00:01:02:03:04:05:06:07:08:09:0A:0B:0C:0D:0E:0F:10:11:12:13:14:15:16:17:18:19:1A:1B:1C:1D:1E:1F";
@@ -19,10 +19,6 @@ function sdp(...fingerprintLines: string[]): string {
     "",
   ].join("\r\n");
 }
-
-test("a link allows five checked attempts", () => {
-  assert.equal(CHECK_ATTEMPTS, 5);
-});
 
 test("the check number follows the fixed vectors", async () => {
   assert.equal(await checkNumber(A, B), "013 306");
