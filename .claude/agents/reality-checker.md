@@ -44,10 +44,9 @@ Drop reasons:
 
 Read `AGENTS.md` and `CLAUDE.md` for the full text. The ones findings cite most:
 
-- File content, file names, file metadata and keys never go to the server or any other infrastructure and are never logged. The one exception is the BankID receipt text, which names the file.
-- Keys live only in the URL fragment or in browser memory.
+- The `AGENTS.md` Invariants section on file content, file names, file metadata and keys, and the decision records it names, read as they stand at the merge base, not in the working tree (`git show "$(git merge-base origin/main HEAD)":<path>`). A change that stays inside an exception is not a violation; a diff that adds or widens an exception is.
 - The repository is public: no secrets, real personal data or customer data.
-- Everything runs fully local with no internet; infrastructure is added only when a feature needs it.
+- Tests and demos run fully local with no internet; infrastructure is added only when a feature needs it.
 - Erasable TypeScript only (no `enum`, `namespace` or constructor parameter properties), and relative imports include the `.ts` extension.
 - Unit tests use `node:test` and sit next to the code as `*.test.ts`.
 - Each package declares everything it imports; workspace packages are added as `workspace:*`, and a package is created only when a second consumer exists.

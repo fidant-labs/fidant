@@ -598,7 +598,8 @@ export const sv: Messages = {
     copy: "Kopiera hemligheten",
     copyNote: {
       copied: "Kopierad",
-      failed: "Det gick inte att kopiera. Markera hemligheten och kopiera den själv.",
+      failed:
+        "Det gick inte att kopiera. Markera hemligheten i rutan ovanför och kopiera den själv.",
     },
     declinedTitle: "Du tackade nej till hemligheten",
     showAgain: "Visa hemligheten igen",
@@ -618,7 +619,7 @@ export const sv: Messages = {
     senderHolds: ({ online, links, connected, relay, emailed, sending, mailed, kind }) => {
       if (!online) {
         return mailed
-          ? "Bara antalet mejl den skickade åt dig, i förvrängd form och i upp till en timme, när den har märkt att anslutningen har stängts. Det tar upp till en minut om nätverket bröts."
+          ? "Bara antalet mejl den skickade åt dig, i förvrängd form, i upp till en timme, när den har märkt att anslutningen har stängts. Det tar upp till en minut om nätverket bröts."
           : "Ingenting, när den har märkt att anslutningen har stängts. Det tar upp till en minut om nätverket bröts.";
       }
       const choice = relay
@@ -689,7 +690,7 @@ export const sv: Messages = {
       }${mailed ? " Det gör också antalet mejl den skickade åt dig, i förvrängd form, i upp till en timme." : ""}`,
     afterwardsRecipient: (emailed: boolean) =>
       emailed
-        ? "När den här sidan kopplas från släpper servern det den har om sidan, inom högst en minut, utom det som kodkontrollen behöver: din e-postadress och om den här fliken har angett rätt kod finns kvar tills avsändarens sida stängs, och antalet koder som skickats till din adress, i förvrängd form, i upp till en timme. Loggraderna finns kvar."
+        ? "När den här sidan kopplas från släpper servern det den har om sidan, inom högst en minut, utom det som kodkontrollen behöver: din e-postadress och om den här fliken har angett rätt kod finns kvar tills avsändarens sida stängs, och antalet koder som skickats till din adress och antalet koder som din IP-adress har bett om, båda i förvrängd form, i upp till en timme. Loggraderna finns kvar."
         : "När den här sidan kopplas från släpper servern det den har om sidan, inom högst en minut. Loggraderna finns kvar.",
     logs: (kind: Kind) =>
       `Vad som hände, till exempel att en länk öppnades, med ${new Intl.ListFormat("sv", {
@@ -873,7 +874,7 @@ export const sv: Messages = {
         body: [
           "Mottagarens webbläsare räknar kontrollsumman medan filen kommer fram och kontrollerar storleken, antalet delar, utfyllnaden och kontrollsumman mot END. Filen sparas bara om allt stämmer. Varje annat slut, till exempel en ram som inte går att dekryptera eller en förbindelse som stängs för tidigt, kastar det som har skrivits.",
           "Chrome och Edge kan skriva filen direkt till en plats på disken som mottagaren väljer. Andra webbläsare samlar den i minnet och startar nedladdningen i slutet, och för en fil över 256 MiB varnas mottagaren först. Nedladdningen märks alltid som rena binärdata, vilken typ avsändaren än anger, så en fil kan inte köras som en webbsida på Fidants webbplats.",
-          "Namn med styrtecken, radavgränsare eller Unicode-tecken som åsidosätter eller isolerar textriktning nekas, så ett namn som slutar på .exe kan inte se ut att sluta på .pdf.",
+          "Namn med styrtecken, radavgränsare, Unicode-tecken som åsidosätter eller isolerar textriktning, tomma utfyllnadstecken eller långa rader av mellanslag nekas, så ett namn som slutar på .exe kan inte se ut att sluta på .pdf.",
         ],
       },
       padding: {
@@ -926,7 +927,7 @@ export const sv: Messages = {
           "Den som skickar en fil eller delar en hemlighet kan ange en mottagares e-postadress. Avsändarens sida skickar då ett meddelande till vår server med länk-ID:t, adressen, länkens hemlighet, namnet avsändaren skrev och sidans språk. Det är det enda fallet där en länks hemlighet lämnar webbläsaren.",
           "Vår server väljer ett slumpmässigt värde och mejlar mottagaren länken med värdet framför länkens hemlighet: https://fidant.se/r/<länk-ID>#e.<värde>.<hemlighet>. Den gör ett försök, med en tidsgräns, och försöker aldrig igen. Den har länkens hemlighet och avsändarens namn bara tills försöket är över, och sparar eller loggar dem aldrig. Mejlet är ren text. Det visar namnet avsändaren skrev, markerat som inte verifierat, och säger ingenting om vad som skickas, inte ens om det är en fil eller en delad hemlighet.",
           "Innan mottagarens sida ansluter skickar den värdet till vår server. Bara om det stämmer visar servern en maskerad adress, till exempel a***@example.se, och mejlar en sexsiffrig kod dit när mottagaren ber om den. En kod gäller i 10 minuter, och efter 5 felaktiga försök slutar den gälla. Rätt kod ger en slumpmässig token som bara den webbläsarfliken har, och servern kopplar inte ihop någon med en mejlad länk utan en sådan. Den som bara har länk-ID:t, eller en mejlad länk som har slutat fungera, kan inte se adressen, inte få oss att skicka koder och inte ansluta.",
-          "Vår server har adressen, värdet, koderna och tokens i minnet medan avsändarens sida har länken. När avsändaren tar bort mottagaren, stänger sidan eller tappar anslutningen till vår server, eller när servern startas om, försvinner allt det och den mejlade länken slutar fungera. För att begränsa missbruk räknar servern mejl i en timme under en förvrängd form av varje adress (en HMAC med en slumpmässig nyckel), aldrig under själva adressen: högst 20 mejl i timmen från en anslutning, 50 från en IP-adress och 5 till en e-postadress, och högst 5 koder per länk, med 30 sekunders mellanrum, och 10 i timmen till en adress.",
+          "Vår server har adressen, värdet, koderna och tokens i minnet medan avsändarens sida har länken. När avsändaren tar bort mottagaren, stänger sidan eller tappar anslutningen till vår server, eller när servern startas om, försvinner allt det och den mejlade länken slutar fungera. För att begränsa missbruk räknar servern mejl i en timme under en förvrängd form av varje adress (en HMAC med en slumpmässig nyckel), aldrig under själva adressen: högst 20 mejl i timmen från en anslutning, 50 från en IP-adress (en IPv6-adress räknas efter sina första 48 bitar) och 5 till en e-postadress, och högst 5 koder per länk, med 30 sekunders mellanrum, 5 i timmen som en IP-adress ber om och 10 i timmen till en e-postadress. Hela servern skickar högst 500 mejl och 500 koder i timmen. Vem som helst kan nå gränserna för en e-postadress, eller för hela servern, så att inga fler mejl eller koder skickas i upp till en timme.",
           "Haken: nyckeln står i mejlet. Vår server har haft den, vår e-posttjänst och den som läser mejlet på vägen kan se den, och den ligger kvar i mottagarens inkorg. Koden hindrar att en vidarebefordrad länk eller en e-postskanner tar emot filen eller den delade hemligheten, men inte den som kan läsa inkorgen. Och eftersom vår server har haft nyckeln skulle den kunna ställa sig mellan de två webbläsarna för den länken, eller själv öppna länken. Kontrollnumret, som är ikryssat som standard för en länk som vi mejlar, gör att du kan upptäcka det: mottagaren läser upp numret på sin skärm, och om det inte är samma som på din skickas ingenting. Vill du undvika allt det här, låt ”Mejla länken åt mig” vara urkryssad och skicka länken själv.",
         ],
       },
@@ -1163,7 +1164,7 @@ export const sv: Messages = {
         ],
         [
           "Data som blir kvar på våra maskiner",
-          "Inga konton, ingen fillagring och ingen databas över personer eller överföringar. Servern har det den vet om sidor bara i minnet och glömmer en sida inom en minut efter att den kopplat ner, utom förvrängda antal mejl och koder, som den sparar i en timme. Loggarna har fasta fält, aldrig namn, e-postadresser, koder, nycklar, filinnehåll eller IP-adresser, och raderas efter 30 dagar. Reläet för som standard ingen logg över trafiken. Medan det förnyar sitt certifikat loggar det i ungefär fem veckor adresserna som når det på port 80, aldrig webbläsarnas.",
+          "Inga konton, ingen fillagring och ingen databas över personer eller överföringar. Servern har det den vet om sidor bara i minnet och glömmer en sida inom en minut efter att den kopplat ner, utom förvrängda antal mejl och koder och två räknare med sändningstider för hela servern, som den sparar i en timme. Loggarna har fasta fält, aldrig namn, e-postadresser, koder, nycklar, filinnehåll eller IP-adresser, och raderas efter 30 dagar. Reläet för som standard ingen logg över trafiken. Medan det förnyar sitt certifikat loggar det i ungefär fem veckor adresserna som når det på port 80, aldrig webbläsarnas.",
         ],
         [
           "Spårning, eller kod från andra webbplatser",
@@ -1262,7 +1263,7 @@ export const sv: Messages = {
             ],
             [
               "email",
-              "Sändningstider, i upp till en timme, under nyckelstyrda hashar (HMAC) av mottagarens adress och din IP-adress, för att upprätthålla gränser. Token som en rätt kod ger, medan din sida är öppen.",
+              "Sändningstider, i upp till en timme, under nyckelstyrda hashar (HMAC) av mottagarens adress och din IP-adress, och två räknare för hela servern, en för alla mejl och en för alla koder, utan koppling till någon adress, för att upprätthålla gränser. Token som en rätt kod ger, medan din sida är öppen.",
             ],
           ],
         },
@@ -1410,14 +1411,14 @@ export const sv: Messages = {
         [
           "Du ber oss mejla en länk",
           "Mottagarens e-postadress, länkens hemlighet, namnet du skrev och sidans språk. E-posttjänsten får mejlet med länken.",
-          "Adressen, språket och ett slumpmässigt värde medan din sida har länken. Hemligheten och ditt namn bara tills mejlet har skickats eller misslyckats. Antal mejl per förvrängd e-postadress och per förvrängd IP-adress, i en timme.",
+          "Adressen, språket och ett slumpmässigt värde medan din sida har länken. Hemligheten och ditt namn bara tills mejlet har skickats eller misslyckats. Antal mejl per förvrängd e-postadress och per förvrängd IP-adress, och ett antal för alla mejl servern skickat, utan koppling till någon adress, i en timme.",
           "Om mejlet skickades, med de 6 första tecknen i länk-ID:t.",
           "Ingenting.",
         ],
         [
           "En mottagare med en mejlad länk anger koden",
           "Värdet ur länken och koden som skrevs.",
-          "Den senaste koden med dess giltighetstid och försök, och den token en rätt kod ger, medan din sida har länken. Antal koder per förvrängd e-postadress, i en timme.",
+          "Den senaste koden med dess giltighetstid och försök, och den token en rätt kod ger, medan din sida har länken. Antal koder per förvrängd e-postadress och per förvrängd IP-adress, och ett antal för alla koder servern skickat, utan koppling till någon adress, i en timme.",
           "Varje kod som skickades eller nekades och varför, och en rätt kod, med de 6 första tecknen i länk-ID:t.",
           "Ingenting.",
         ],
@@ -1459,7 +1460,7 @@ export const sv: Messages = {
         [
           "Efteråt",
           "Ingenting.",
-          "Bara de förvrängda antalen mejl och koder, i högst en timme.",
+          "Bara de förvrängda antalen mejl och koder, och två räknare för hela servern med tiderna då mejl och koder skickades, utan koppling till någon adress, i högst en timme.",
           "Loggraderna raderas efter 30 dagar.",
           "Ingen logg över trafiken. Bara för att rätta ett fel eller stoppa missbruk slår vi på en, med tider för anslutningar, IP-adresser och datamängder, i högst 7 dagar. Dessutom loggar det, medan det förnyar sitt certifikat, adresserna som når det på port 80, aldrig webbläsarnas, i ungefär fem veckor.",
         ],
@@ -1509,7 +1510,7 @@ export const sv: Messages = {
       ],
       [
         "Antal mejl och koder",
-        "För att begränsa hur många mejl någon kan skicka räknar vi under en timme mejlen och koderna till varje adress och mejlen som varje IP-adress ber oss skicka. Antalet sparas under en förvrängd form av adressen (en HMAC), aldrig under själva adressen.",
+        "För att begränsa hur många mejl någon kan skicka räknar vi under en timme mejlen och koderna till varje adress och mejlen och koderna som varje IP-adress ber oss skicka. Varje antal per adress sparas under en förvrängd form av adressen (en HMAC), aldrig under själva adressen. Två räknare till, för alla mejl och alla koder som servern skickat, innehåller bara sändningstider och har ingen koppling till någon adress.",
       ],
     ],
     keepHeading: "Vad vi sparar",

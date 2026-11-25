@@ -8,6 +8,7 @@ import {
   FrameWriter,
   HEADER_BYTES,
   MAX_CHUNK_BYTES,
+  MIN_CHUNK_BYTES,
   RecipientKind,
   SenderKind,
 } from "./frames.ts";
@@ -602,12 +603,18 @@ test("aborts when the sender ignores the credit window", async () => {
   const transferId = createTransferId();
   const writer = new FrameWriter(await deriveFileKey(secret, transferId), "s");
   const count = CREDIT_WINDOW_CHUNKS * 4;
-  const meta = { name: "a.bin", size: count * 16, type: "", chunkSize: 16, from: "" };
+  const meta = {
+    name: "a.bin",
+    size: count * MIN_CHUNK_BYTES,
+    type: "",
+    chunkSize: MIN_CHUNK_BYTES,
+    from: "",
+  };
   pair.sender.send(encodeInit(transferId));
   pair.sender.send(await writer.encrypt(SenderKind.META, encodeMeta(meta)));
   await acceptance;
   for (let i = 0; i < count; i++) {
-    pair.sender.send(await writer.encrypt(SenderKind.CHUNK, new Uint8Array(16)));
+    pair.sender.send(await writer.encrypt(SenderKind.CHUNK, new Uint8Array(MIN_CHUNK_BYTES)));
   }
 
   await assert.rejects(

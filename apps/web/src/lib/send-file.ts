@@ -39,6 +39,7 @@ import {
   FrameReader,
   FrameWriter,
   MAX_CHUNK_BYTES,
+  MIN_CHUNK_BYTES,
   paddedLength,
   RecipientKind,
   SenderKind,
@@ -154,7 +155,7 @@ export async function sendFile(options: SendFileOptions): Promise<SendResult> {
     }
 
     const chunkSize = Math.min(MAX_CHUNK_BYTES, maxMessageSize - FRAME_OVERHEAD_BYTES);
-    if (chunkSize < 1) {
+    if (chunkSize < MIN_CHUNK_BYTES) {
       throw new Error("max message size too small");
     }
     const meta = { name: file.name, size: file.size, type: file.type, chunkSize, from };

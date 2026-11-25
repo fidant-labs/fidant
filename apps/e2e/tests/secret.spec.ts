@@ -130,6 +130,10 @@ test("a text goes from /secret to the recipient, who shows and copies it", async
     .evaluateAll((controls) => controls.map((control) => (control as HTMLInputElement).value));
   expect(values.filter((value) => value.includes(firstLine))).toEqual([]);
   await expect(page.locator("body")).not.toContainText("secret.txt");
+  // Select-all inside the box takes only the text, not the page's headings and buttons.
+  await shown.focus();
+  await page.keyboard.press("ControlOrMeta+A");
+  expect(await page.evaluate(() => getSelection()?.toString())).toBe(text);
 
   // The canary repeats under --repeat-each, so a clipboard left by an earlier run would pass.
   await page.evaluate(() => navigator.clipboard.writeText("not the text"));

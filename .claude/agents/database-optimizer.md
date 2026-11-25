@@ -11,8 +11,8 @@ If the diff touches none of these, return no findings, in the form the output co
 
 ## What to check in Sigill
 
-- What gets stored: no table, attribute, index or captured request holds file content, file names or file metadata (size, type, timestamps of the file itself). The one exception is the BankID receipt text, which names the file.
-- Keys live only in the URL fragment or in browser memory, so no key, key fragment or anything a key can be recovered from is stored. The one exception is the server key half, only in the `serverHalf` attribute of `key_halves` (0004).
+- What gets stored: read the Invariants section of `AGENTS.md` and the decision records it names as they stand at the merge base, not in the working tree (`git show "$(git merge-base origin/main HEAD)":<path>`). Data in a place an exception allows is not a finding. The same data anywhere else, or a change that widens an exception or adds one, is. Outside those places, no table, attribute, index or captured request holds file content, file names or file metadata (size, type, timestamps of the file itself).
+- Keys: no key, key fragment or anything a key can be recovered from is stored. The server key half is stored only in the `serverHalf` attribute of `key_halves` (0004).
 - Audit log: append-only. No code path updates or deletes items in `audit_events`, `audit_anchors` or `audit_proofs`: writes are conditional `PutItem` with `attribute_not_exists`, and the app's IAM policy denies updates, deletes and table changes on those three tables (0003). `audit_pending` is the one audit table the app may delete from, and only with a condition on its token. A change must not weaken whatever makes edits detectable (the hash chain and the anchors).
 - No updates and no deletes by the app on `key_halves` and `receipts` either: IAM denies updates, deletes and table changes on them, the same actions as on the audit tables, and TTL stays off (0004). Deleting at expiry runs under its own role (SIG-29).
 - Integrity: DynamoDB has no constraints, so uniqueness and "exists before" rules are enforced with `ConditionExpression`, never with a read followed by a write.
