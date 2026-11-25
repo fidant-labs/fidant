@@ -281,6 +281,7 @@ test("a sender who loses the server sees the text wording", async ({ actor }) =>
   await sender.addInitScript(() => {
     const g = globalThis as {
       serverOpen?: boolean;
+      serverClosed?: boolean;
       dropServer?: () => void;
     };
     const sockets: WebSocket[] = [];
@@ -296,6 +297,9 @@ test("a sender who loses the server sees the text wording", async ({ actor }) =>
         this.addEventListener("open", () => {
           g.serverOpen = true;
         });
+        this.addEventListener("close", () => {
+          g.serverClosed = true;
+        });
       }
     };
     g.dropServer = () => {
@@ -305,13 +309,17 @@ test("a sender who loses the server sees the text wording", async ({ actor }) =>
       }
     };
   });
+  await sender.clock.install();
   await sender.goto("/secret");
   await sender.waitForFunction(() => (globalThis as { serverOpen?: boolean }).serverOpen === true);
   await sender.evaluate(() => (globalThis as { dropServer?: () => void }).dropServer?.());
+  await sender.waitForFunction(
+    () => (globalThis as { serverClosed?: boolean }).serverClosed === true,
+  );
   // The page waits LOST_AFTER_MS (10 s) before it says so.
+  await sender.clock.fastForward(10_000);
   await expect(sender.getByRole("alert")).toHaveText(
     "Lost the connection to the server. Trying to reconnect… Secrets already on their way can finish. Nobody new can connect until it's back, so keep this page open.",
-    { timeout: 20_000 },
   );
 });
 
