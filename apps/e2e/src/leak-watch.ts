@@ -161,11 +161,7 @@ export class LeakWatch implements Leaks {
 
   expectLeaks(): void {
     this.#expectLeaks = true;
-    this.exempt();
-  }
-
-  /** Keeps this test's secrets out of the run-level sweep. */
-  exempt(): void {
+    // Keeps this test's secrets out of the run-level sweep.
     if (this.#registry) {
       exemptTest(this.#registry, this.#test);
     }
