@@ -1,5 +1,6 @@
 import type { ComponentChildren } from "preact";
-import { ICONS } from "../ui.tsx";
+import { useEffect, useRef } from "preact/hooks";
+import { display, ICONS } from "../ui.tsx";
 
 const run = "group-data-seen/art:[animation-play-state:running] print:animate-none";
 const animate = {
@@ -97,17 +98,17 @@ function Art({ view, children }: { view: string; children: ComponentChildren }) 
   );
 }
 
-function relayArt() {
+/** A file travelling straight from the left computer to the right one, both at height `y`. */
+function DirectPath({ y }: { y: number }) {
   return (
-    <Art view="0 0 240 144">
-      <path d="M94 50 72 72m74-22 22 22" class="text-muted-foreground" />
-      <Server x={120} y={24} />
-      <Computer x={44} y={108} />
-      <Computer x={196} y={108} />
-      <g class={`${animate.relay} [--art-from:-152px_0] [--art-via:-76px_-76px]`}>
-        <LockedFile x={196} y={100} />
+    <>
+      <path d={`M82 ${y - 8}h76`} class="text-muted-foreground" />
+      <Computer x={44} y={y} />
+      <Computer x={196} y={y} />
+      <g class={`${animate.travel} [--art-from:-152px_0]`}>
+        <LockedFile x={196} y={y - 8} />
       </g>
-    </Art>
+    </>
   );
 }
 
@@ -161,7 +162,17 @@ const ART = {
       <DirectPath y={72} />
     </Art>
   ),
-  relay: relayArt(),
+  relay: (
+    <Art view="0 0 240 144">
+      <path d="M94 50 72 72m74-22 22 22" class="text-muted-foreground" />
+      <Server x={120} y={24} />
+      <Computer x={44} y={108} />
+      <Computer x={196} y={108} />
+      <g class={`${animate.relay} [--art-from:-152px_0] [--art-via:-76px_-76px]`}>
+        <LockedFile x={196} y={100} />
+      </g>
+    </Art>
+  ),
   never: (
     <Art view="0 18 240 106">
       <Server x={42} y={72} />
@@ -182,24 +193,7 @@ const ART = {
       </g>
     </Art>
   ),
-};
-
-/** A file travelling straight from the left computer to the right one, both at height `y`. */
-function DirectPath({ y }: { y: number }) {
-  return (
-    <>
-      <path d={`M82 ${y - 8}h76`} class="text-muted-foreground" />
-      <Computer x={44} y={y} />
-      <Computer x={196} y={y} />
-      <g class={`${animate.travel} [--art-from:-152px_0]`}>
-        <LockedFile x={196} y={y - 8} />
-      </g>
-    </>
-  );
-}
-
-// The /technical drawings, in the page's order.
-const TECHNICAL_ART = {
+  // The /how/<step> pages and /technical.
   parts: (
     <Art view="0 0 240 144">
       <path d="M94 50 72 72m74-22 22 22" stroke-dasharray="3 5" class="text-muted-foreground" />
@@ -383,7 +377,6 @@ const TECHNICAL_ART = {
       <DirectPath y={108} />
     </Art>
   ),
-  turn: relayArt(),
   norelay: (
     <Art view="0 0 240 144">
       <path d="M94 50 72 72m74-22 22 22" stroke-dasharray="3 5" class="text-muted-foreground" />
@@ -394,10 +387,68 @@ const TECHNICAL_ART = {
   ),
 };
 
-const ALL_ART = { ...ART, ...TECHNICAL_ART };
-
-export type ArtId = keyof typeof ALL_ART;
+export type ArtId = keyof typeof ART;
 
 export function Drawing({ id }: { id: ArtId }) {
-  return ALL_ART[id];
+  return ART[id];
+}
+
+/** A ref for the page's <main>: each drawing in it starts its animation once half of it is in view. */
+export function useRevealDrawings() {
+  const main = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.intersectionRatio >= 0.5) {
+            entry.target.setAttribute("data-seen", "");
+            observer.unobserve(entry.target);
+          }
+        }
+      },
+      { threshold: 0.5 },
+    );
+    for (const drawing of main.current?.querySelectorAll("[data-art]") ?? []) {
+      observer.observe(drawing);
+    }
+    return () => observer.disconnect();
+  }, []);
+  return main;
+}
+
+/** A section with its text on the left and, from small screens up, its drawing on the right. */
+export function DrawnSection({
+  id,
+  art,
+  heading,
+  children,
+}: {
+  id: string;
+  art?: ArtId | undefined;
+  heading: string;
+  children: ComponentChildren;
+}) {
+  return (
+    <section
+      id={id}
+      aria-labelledby={`${id}-heading`}
+      class={`mt-12 scroll-mt-20 border-t border-border pt-12 ${art ? "sm:grid sm:grid-cols-[minmax(0,1fr)_12rem] sm:items-center sm:gap-x-8 md:grid-cols-[minmax(0,1fr)_15rem] md:gap-x-12" : ""}`}
+    >
+      {art && <Drawing id={art} />}
+      <div>
+        <h2 id={`${id}-heading`} class={`${display} m-0 mb-4 text-[1.75rem] sm:text-[2.1rem]`}>
+          {heading}
+        </h2>
+        {children}
+      </div>
+    </section>
+  );
+}
+
+export function Paragraphs({ body }: { body: readonly string[] }) {
+  return body.map((paragraph) => (
+    <p key={paragraph} class="max-w-2xl">
+      {paragraph}
+    </p>
+  ));
 }

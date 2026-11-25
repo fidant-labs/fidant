@@ -1,97 +1,134 @@
 import type { ComponentChildren } from "preact";
-import { useEffect, useRef } from "preact/hooks";
 import { useI18n } from "../i18n/I18n.tsx";
+import { Detail, STEPS, type Step } from "../technical/TechnicalPage.tsx";
 import { display, Link } from "../ui.tsx";
-import { type ArtId, Drawing } from "./Drawing.tsx";
+import { Drawing, DrawnSection, Paragraphs, useRevealDrawings } from "./Drawing.tsx";
 
-const SECTIONS = ["stays", "link", "open", "direct", "relay", "never"] as const;
+const link = "rounded-sm font-medium underline underline-offset-4";
 
-/** A ref for the page's <main>: each drawing in it starts its animation once half of it is in view. */
-export function useRevealDrawings() {
-  const main = useRef<HTMLElement>(null);
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.intersectionRatio >= 0.5) {
-            entry.target.setAttribute("data-seen", "");
-            observer.unobserve(entry.target);
-          }
-        }
-      },
-      { threshold: 0.5 },
-    );
-    for (const drawing of main.current?.querySelectorAll("[data-art]") ?? []) {
-      observer.observe(drawing);
-    }
-    return () => observer.disconnect();
-  }, []);
-  return main;
+/** The step a /how/<slug> path names, or undefined for /how itself and unknown slugs. */
+export function howStep(path: string): Step | undefined {
+  const slug = /^\/how\/([a-z]+)\/?$/.exec(path)?.[1];
+  return STEPS.find((step) => step.slug === slug);
 }
 
-/** A section with its text on the left and, from small screens up, its drawing on the right. */
-export function DrawnSection({
-  id,
-  art,
-  heading,
-  children,
-}: {
-  id: string;
-  art?: ArtId | undefined;
-  heading: string;
-  children: ComponentChildren;
-}) {
-  return (
-    <section
-      id={id}
-      aria-labelledby={`${id}-heading`}
-      class={`mt-12 scroll-mt-20 border-t border-border pt-12 ${art ? "sm:grid sm:grid-cols-[1fr_12rem] sm:items-center sm:gap-x-8 md:grid-cols-[1fr_15rem] md:gap-x-12" : ""}`}
-    >
-      {art && <Drawing id={art} />}
-      <div>
-        <h2 id={`${id}-heading`} class={`${display} m-0 mb-4 text-[1.75rem] sm:text-[2.1rem]`}>
-          {heading}
-        </h2>
-        {children}
-      </div>
-    </section>
-  );
+/** /how, or one step of it with its technical detail when the path names one. */
+export function HowPage({ path }: { path: string }) {
+  const step = howStep(path);
+  return step ? <StepPage key={step.slug} step={step} /> : <Overview />;
 }
 
-export function HowPage() {
+/** The page frame for /how and its steps: the menu of steps on the left, the content on the right. */
+function HowLayout({ current, children }: { current?: Step; children: ComponentChildren }) {
   const { t } = useI18n();
   const h = t.how;
   const main = useRevealDrawings();
+  const item = (href: string, label: string, here: boolean) => (
+    <li key={href}>
+      <Link
+        href={href}
+        aria-current={here ? "page" : undefined}
+        class={`-ml-px block border-l-2 py-1.5 pl-4 ${here ? "border-foreground font-semibold text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+      >
+        {label}
+      </Link>
+    </li>
+  );
 
   return (
-    <main ref={main} class="mx-auto max-w-4xl px-4 pt-32 pb-20 lg:pt-40">
+    <main
+      ref={main}
+      class="mx-auto max-w-6xl px-4 pt-28 pb-20 lg:grid lg:grid-cols-[14rem_minmax(0,1fr)] lg:gap-12 lg:pt-36"
+    >
+      <nav aria-label={h.steps} class="mb-10 lg:mb-0">
+        <ol class="m-0 list-none border-l border-border p-0 text-[0.95rem] lg:sticky lg:top-28">
+          {item("/how", h.overview, current === undefined)}
+          {STEPS.map((step, i) =>
+            item(`/how/${step.slug}`, `${i + 1}. ${h.nav[step.id]}`, step === current),
+          )}
+        </ol>
+      </nav>
+      <div>{children}</div>
+    </main>
+  );
+}
+
+function Overview() {
+  const { t } = useI18n();
+  const h = t.how;
+
+  return (
+    <HowLayout>
       <h1 class={`${display} max-w-3xl text-[2.6rem] leading-[1.05] sm:text-[4rem]`}>{h.title}</h1>
       <p class="mt-6 max-w-2xl text-[1.15rem] text-muted-foreground">{h.lede}</p>
-      {SECTIONS.map((id) => {
+      {STEPS.map(({ id, slug }) => {
         const { heading, body } = h.sections[id];
         return (
           <DrawnSection key={id} id={id} art={id} heading={heading}>
-            {body.map((paragraph) => (
-              <p key={paragraph} class="max-w-2xl">
-                {paragraph}
-              </p>
-            ))}
+            <Paragraphs body={body} />
+            <p class="mb-0">
+              <Link href={`/how/${slug}`} class={link}>
+                {h.readMore}
+                <span class="sr-only">: {heading}</span>
+              </Link>
+            </p>
           </DrawnSection>
         );
       })}
       <div class="mt-12 border-t border-border pt-12">
         <p class="mt-0 max-w-2xl text-muted-foreground">{h.more}</p>
         <p class="mb-0">
-          <Link href="/privacy" class="rounded-sm font-medium underline underline-offset-4">
+          <Link href="/privacy" class={link}>
             {h.moreLink}
           </Link>
         </p>
         <p class="mb-0">
-          <Link href="/technical" class="rounded-sm font-medium underline underline-offset-4">
+          <Link href="/technical" class={link}>
             {h.techLink}
           </Link>
         </p>
       </div>
-    </main>
+    </HowLayout>
+  );
+}
+
+/** One step: the step from /how, then its technical detail. */
+function StepPage({ step }: { step: Step }) {
+  const { t } = useI18n();
+  const h = t.how;
+  const { heading, body } = h.sections[step.id];
+  const next = STEPS[STEPS.indexOf(step) + 1];
+
+  return (
+    <HowLayout current={step}>
+      <section
+        aria-labelledby="step-heading"
+        class="sm:grid sm:grid-cols-[minmax(0,1fr)_12rem] sm:items-center sm:gap-x-8 md:grid-cols-[minmax(0,1fr)_15rem] md:gap-x-12"
+      >
+        <Drawing id={step.id} />
+        <div>
+          <h1
+            id="step-heading"
+            class={`${display} max-w-3xl text-[2.4rem] leading-[1.05] sm:text-[3.2rem]`}
+          >
+            {heading}
+          </h1>
+          {body.map((paragraph) => (
+            <p key={paragraph} class="max-w-2xl text-[1.1rem] text-muted-foreground">
+              {paragraph}
+            </p>
+          ))}
+        </div>
+      </section>
+      <Detail step={step} />
+      {next && (
+        <p class="mt-12 border-t border-border pt-12 text-[1.1rem]">
+          {h.next}:{" "}
+          <Link href={`/how/${next.slug}`} class={link}>
+            {h.sections[next.id].heading}
+          </Link>
+        </p>
+      )}
+    </HowLayout>
   );
 }

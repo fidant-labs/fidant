@@ -81,14 +81,57 @@ test("the landing page links to the six steps, which end with links to /privacy 
     await expect(sections.nth(index).locator("h2")).toHaveCount(1);
     await expect(sections.nth(index).locator('svg[aria-hidden="true"]')).toHaveCount(1);
   }
-  const endLinks = page.locator("main > div a");
-  await expect(endLinks).toHaveCount(2);
-  await expect(endLinks.nth(0)).toHaveAttribute("href", "/privacy");
-  await expect(endLinks.nth(1)).toHaveAttribute("href", "/technical");
+  await expect(page.getByRole("link", { name: "Read the privacy page" })).toHaveAttribute(
+    "href",
+    "/privacy",
+  );
+  await expect(page.getByRole("link", { name: "Read the technical description" })).toHaveAttribute(
+    "href",
+    "/technical",
+  );
   await expect(page.locator("footer").getByRole("link", { name: "How it works" })).toHaveAttribute(
     "href",
     "/how",
   );
+});
+
+test("each step has a Read more page with the step menu and the next step", async ({ page }) => {
+  const slugs = ["file", "link", "connect", "direct", "relay", "never"];
+  await page.goto("/how");
+  const menu = page.getByRole("navigation", { name: "Steps" }).getByRole("link");
+  await expect(menu).toHaveCount(slugs.length + 1);
+  await expect(menu.first()).toHaveAttribute("aria-current", "page");
+  const readMore = page.getByRole("link", { name: /^Read more/ });
+  await expect(readMore).toHaveCount(slugs.length);
+  for (const [index, slug] of slugs.entries()) {
+    await expect(readMore.nth(index)).toHaveAttribute("href", `/how/${slug}`);
+  }
+
+  await readMore.first().click();
+  await expect(page).toHaveURL(/\/how\/file$/);
+  await expect(page.locator("main h1")).toHaveText("Your file stays on your computer");
+  await expect(page.locator("main h1")).toBeFocused();
+  await expect(page).toHaveTitle("Your file stays on your computer – Fidant");
+  await expect(menu.nth(1)).toHaveAttribute("aria-current", "page");
+  await expect(page.locator("#parts")).toBeVisible();
+
+  await page.getByRole("link", { name: "You get a link with the key inside" }).click();
+  await expect(page).toHaveURL(/\/how\/link$/);
+  await expect(menu.nth(2)).toHaveAttribute("aria-current", "page");
+  await expect(
+    page.getByRole("heading", { name: "How the link reaches the recipient" }),
+  ).toBeVisible();
+
+  for (const width of [360, 1280]) {
+    await page.setViewportSize({ width, height: 800 });
+    for (const slug of slugs) {
+      await page.goto(`/how/${slug}`);
+      await expect(page.locator("main h1")).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+        width,
+      );
+    }
+  }
 });
 
 test("the top nav links to How it works between Share a secret and Privacy", async ({ page }) => {

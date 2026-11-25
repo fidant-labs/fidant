@@ -1,6 +1,6 @@
 import { render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { HowPage } from "./how/HowPage.tsx";
+import { HowPage, howStep } from "./how/HowPage.tsx";
 import { I18nProvider, useI18n } from "./i18n/I18n.tsx";
 import { InfoPage } from "./info/InfoPage.tsx";
 import { LandingPage } from "./landing/LandingPage.tsx";
@@ -41,6 +41,9 @@ function routeOf(path: string): Route {
   if (named) {
     return named;
   }
+  if (howStep(path)) {
+    return "how";
+  }
   if (path.startsWith("/r/")) {
     return "receive";
   }
@@ -54,7 +57,9 @@ function routeOf(path: string): Route {
  */
 function App() {
   const { t } = useI18n();
-  const [route, setRoute] = useState(() => routeOf(location.pathname));
+  // The path, not just the route, so moving between /how steps renders the new step.
+  const [path, setPath] = useState(location.pathname);
+  const route = routeOf(path);
   const [theme, setTheme] = useState(initialTheme);
   const chooseTheme = (next: Theme) => {
     applyTheme(next);
@@ -62,14 +67,15 @@ function App() {
   };
   const kept = useRef(new Set<Route>());
   useEffect(() => {
-    const onPop = () => setRoute(routeOf(location.pathname));
+    const onPop = () => setPath(location.pathname);
     addEventListener("popstate", onPop);
     return () => removeEventListener("popstate", onPop);
   }, []);
 
   useEffect(() => {
-    document.title = t.tabTitles[route];
-  }, [route, t]);
+    const step = howStep(path);
+    document.title = step ? `${t.how.sections[step.id].heading} – Fidant` : t.tabTitles[route];
+  }, [route, path, t]);
 
   // A page change hides the focused link, so focus moves to the new page's or section's heading.
   const firstRoute = useRef(true);
@@ -93,7 +99,7 @@ function App() {
     }
     heading.tabIndex = -1;
     heading.focus({ preventScroll: target !== null });
-  }, [route]);
+  }, [path]);
 
   const secure = hasSecureCrypto();
   const holdsTransfer = route === "send" || route === "secret" || route === "receive";
@@ -107,7 +113,7 @@ function App() {
         {route === "landing" && <LandingPage />}
         {/* The privacy page uses no crypto, so it opens even without a secure connection. */}
         {route === "privacy" && <PrivacyPage />}
-        {route === "how" && <HowPage />}
+        {route === "how" && <HowPage path={path} />}
         {route === "technical" && <TechnicalPage />}
         {(route === "about" || route === "terms" || route === "security") && (
           <InfoPage page={route} />

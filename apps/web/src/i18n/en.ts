@@ -188,6 +188,19 @@ export const en = {
     more: "Want the details? The privacy page says exactly what our server sees and what it logs.",
     moreLink: "Read the privacy page",
     techLink: "Read the technical description",
+    readMore: "Read more",
+    steps: "Steps",
+    overview: "Overview",
+    next: "Next",
+    /** Short names for the steps in the side menu. */
+    nav: {
+      stays: "The file",
+      link: "The link",
+      open: "Connecting",
+      direct: "Direct",
+      relay: "The relay",
+      never: "What we don't see",
+    },
   },
   insecure: {
     title: "This page needs a secure connection",
@@ -891,56 +904,50 @@ export const en = {
       },
     } satisfies Record<string, Section>,
     modes: {
-      heading: "The modes Fidant runs in",
-      body: [
-        "Three choices set how a transfer runs: what is sent, how the link reaches the recipient, and which route the encrypted traffic takes. The sections below explain each one in detail.",
-      ],
-      groups: {
-        send: {
-          heading: "What is sent",
-          items: {
-            file: {
-              heading: "A file",
-              body: "Any file. Its name, size and type travel encrypted, and the recipient sees them and chooses to download it or decline.",
-            },
-            secret: {
-              heading: "A shared secret",
-              body: "Up to 10,000 characters the sender types or pastes, such as a password. It travels like a file, padded to one chunk, and the recipient's page shows it as text and never downloads it.",
-            },
+      send: {
+        heading: "What is sent",
+        items: {
+          file: {
+            heading: "A file",
+            body: "Any file. Its name, size and type travel encrypted, and the recipient sees them and chooses to download it or decline.",
+          },
+          secret: {
+            heading: "A shared secret",
+            body: "Up to 10,000 characters the sender types or pastes, such as a password. It travels like a file, padded to a fixed size, and the recipient's page shows it as text and never downloads it.",
           },
         },
-        link: {
-          heading: "How the link reaches the recipient",
-          items: {
-            own: {
-              heading: "The sender passes it on",
-              body: "The sender copies each link and sends it themselves, for example by chat or email. The key in the link never reaches our server.",
-            },
-            emailed: {
-              heading: "We email it",
-              body: "The sender gives an email address and our server emails the link. The recipient also needs a code sent to that address. Our server and the mail service then see that link's key.",
-            },
+      },
+      link: {
+        heading: "How the link reaches the recipient",
+        items: {
+          link: {
+            heading: "The sender passes it on",
+            body: "The sender copies each link and sends it themselves, for example by chat or email. The key in the link never reaches our server.",
+          },
+          emailed: {
+            heading: "We email it",
+            body: "The sender gives an email address and our server emails the link. The recipient also needs a code sent to that address. Our server and the mail service then see that link's key.",
           },
         },
-        route: {
-          heading: "The route the traffic takes",
-          items: {
-            local: {
-              heading: "Direct, on the same network",
-              body: "When both browsers are on the same local network, they connect over their local addresses. The file goes straight between them, and our server and relay see none of it.",
-            },
-            stun: {
-              heading: "Direct, through public addresses",
-              body: "Each browser asks our STUN service for its public address, which shows the relay that IP address and nothing else. The file then goes straight between the browsers over the internet.",
-            },
-            turn: {
-              heading: "Through our relay",
-              body: "When no direct route works, the encrypted traffic goes through our TURN relay in Stockholm, over UDP or over TLS on port 443. The relay forwards packets it can't decrypt and doesn't store them.",
-            },
-            norelay: {
-              heading: "Relay refused",
-              body: "The sender can refuse our relay for a send. Our server then gives no relay credentials, and a connection with no direct route fails.",
-            },
+      },
+      route: {
+        heading: "The route the traffic takes",
+        items: {
+          local: {
+            heading: "Direct, on the same network",
+            body: "When both browsers are on the same local network, they connect over their local addresses. The file goes straight between them, and our server and relay see none of it. If you allow the relay, it still sees both IP addresses.",
+          },
+          stun: {
+            heading: "Direct, through public addresses",
+            body: "Each browser asks our STUN service for its public address, which shows our STUN service that IP address and nothing else. The file then goes straight between the browsers over the internet. If you allow the relay, it still sees both IP addresses.",
+          },
+          relay: {
+            heading: "Through our relay",
+            body: "When no direct route works, the encrypted traffic goes through our TURN relay in Stockholm, over UDP or over TLS on port 443. The relay forwards packets it can't decrypt and doesn't store them.",
+          },
+          norelay: {
+            heading: "Relay refused",
+            body: "The sender can refuse our relay for a send. Our server then gives no relay credentials, and a connection with no direct route fails.",
           },
         },
       },
@@ -954,7 +961,7 @@ export const en = {
       rows: [
         [
           "Our server or our host reads the file",
-          "The file is encrypted in your browser with a key from the part of the link after #, which browsers never send to a server. Only someone with the link can decrypt it. The exception is a link we email, whose key our server and the mail service see.",
+          "The file is encrypted in your browser with a key from the part of the link after #, which browsers never send to a server. Only someone with the link can decrypt it. The exception is a link we email, whose key our server and the mail service see. All of this rests on the code we serve being the published code (see What it doesn't protect against).",
         ],
         [
           "Our server puts itself between the two browsers",
@@ -986,11 +993,11 @@ export const en = {
         ],
         [
           "A shared secret lingers in the browser",
-          "It is never downloaded or put in a form field, and the browser is told to keep spelling, autocomplete, writing suggestions and translation off it.",
+          "On the recipient's side it is never downloaded or put in a form field. On both sides the browser is told to keep spelling, autocomplete, writing suggestions and translation off it.",
         ],
         [
           "Data left behind on our machines",
-          "No accounts, database or file storage. The server holds what it knows only in memory and forgets a page within a minute after it disconnects. Logs have fixed fields, never names, email addresses, codes, keys, file data or IP addresses, and are deleted after 30 days.",
+          "No accounts, database or file storage. The server holds what it knows only in memory and forgets a page within a minute after it disconnects, apart from scrambled counts of emails and codes, which it keeps for an hour. Logs have fixed fields, never names, email addresses, codes, keys, file data or IP addresses, and are deleted after 30 days.",
         ],
         [
           "Tracking, or code from other sites",
@@ -1012,7 +1019,7 @@ export const en = {
         [
           "You open the site",
           "Your IP address and browser details, like any website.",
-          "Nothing.",
+          "Nothing. A send page also opens a connection to our server, which it holds in memory while the page is open.",
           "Nothing.",
           "Nothing.",
         ],
@@ -1033,14 +1040,14 @@ export const en = {
         [
           "You ask us to email a link",
           "The recipient's email address, the link's secret, the name you typed and the page's language. The mail service gets the email with the link.",
-          "The address, the language and a random value while your page has the link. The secret and your name only until the email is sent or fails. A count of emails per scrambled address, for an hour.",
+          "The address, the language and a random value while your page has the link. The secret and your name only until the email is sent or fails. Counts of emails per scrambled email address and per scrambled IP address, for an hour.",
           "Whether the email was sent, with the first 6 characters of the link ID.",
           "Nothing.",
         ],
         [
           "A recipient on an emailed link enters the code",
           "The value from the link and the code typed.",
-          "The latest code with its expiry and tries, and the token a right code gets, while your page has the link.",
+          "The latest code with its expiry and tries, and the token a right code gets, while your page has the link. A count of codes per scrambled email address, for an hour.",
           "Each code sent or refused and why, and a right code, with the first 6 characters of the link ID.",
           "Nothing.",
         ],
@@ -1056,14 +1063,14 @@ export const en = {
           "Encrypted setup messages and their sizes. It can't read them, except for a link we emailed.",
           "Nothing. It passes them on.",
           "Each message's size, with the first 6 characters of the link ID.",
-          "Each browser's IP address, when it asks for its public address (STUN).",
+          "Each browser's IP address, when it asks for its public address (STUN). If you allow the relay, each browser also reserves a relay address, so the relay sees both IP addresses even when a direct route wins.",
         ],
         [
           "The file or secret travels",
           "Nothing of it. Your page reports the route: direct, STUN, relay or failed.",
           "Nothing.",
           "The route.",
-          "On the relay route only: both IP addresses and the encrypted packets, which it forwards and doesn't store.",
+          "On the relay route, the encrypted packets, which it forwards and doesn't store. Both IP addresses whenever you allow the relay.",
         ],
         [
           "The recipient confirms delivery",
@@ -1082,7 +1089,7 @@ export const en = {
         [
           "Afterwards",
           "Nothing.",
-          "Only the scrambled email counts, for up to an hour.",
+          "Only the scrambled counts of emails and codes, for up to an hour.",
           "Log lines are deleted after 30 days.",
           "No log. Only to fix a fault or stop abuse do we turn one on, with connection times, IP addresses and data volumes, for at most 7 days.",
         ],

@@ -2,7 +2,7 @@
 // Keep every sentence true of what the code does today, like the privacy page.
 
 import { useI18n } from "../i18n/I18n.tsx";
-import { Link, lede, Page } from "../ui.tsx";
+import { lede, Page, SectionLink } from "../ui.tsx";
 
 export function InfoPage({ page }: { page: "about" | "terms" | "security" }) {
   const { t } = useI18n();
@@ -21,22 +21,5 @@ export function InfoPage({ page }: { page: "about" | "terms" | "security" }) {
         </section>
       ))}
     </Page>
-  );
-}
-
-export function SectionLink({ link: [text, href] }: { link: readonly [string, string] }) {
-  return (
-    <p>
-      {/* Same-site links navigate in place, so a send open in another page survives. */}
-      {href.startsWith("/") ? (
-        <Link href={href} class="font-medium underline underline-offset-4">
-          {text}
-        </Link>
-      ) : (
-        <a href={href} class="font-medium underline underline-offset-4">
-          {text}
-        </a>
-      )}
-    </p>
   );
 }
