@@ -19,3 +19,4 @@ cdk.out/
 # Raw downloads of the split-key bench runner.
 spikes/split-key/.runs/
 .lighthouseci/
+.playwright-mcp/

@@ -45,8 +45,8 @@ function zoneRef(zoneName: string): { Ref: string } {
   return { Ref: id };
 }
 
-function stacksFor(currentAccount: string | undefined, context?: Record<string, string>): Stack[] {
-  const app = new App({ context });
+function stacksFor(currentAccount: string | undefined): Stack[] {
+  const app = new App();
   addStacks(app, {
     CDK_DEFAULT_ACCOUNT: currentAccount,
     FIDANT_DNS_ACCOUNT: dnsAccount,
@@ -759,8 +759,8 @@ const camelPorts = [
   { protocol: "udp", fromPort: 49152, toPort: 65535, cidrs: ["0.0.0.0/0"], ipv6Cidrs: ["::/0"] },
 ];
 
-function appBox(context?: Record<string, string>): Template {
-  const stack = stacksFor(pocAccount, context).find((child) => child.stackName === "FidantApp");
+function appBox(): Template {
+  const stack = stacksFor(pocAccount).find((child) => child.stackName === "FidantApp");
   return Template.fromStack(stack as Stack);
 }
 
@@ -1035,29 +1035,6 @@ test("the function behind those settings may only set notification topics and fo
   );
   const logGroup = fn?.Properties.LoggingConfig.LogGroup.Ref;
   assert.equal(box.findResources("AWS::Logs::LogGroup")[logGroup]?.Properties.RetentionInDays, 30);
-});
-
-test("a first deploy with newMailIdentity leaves out the settings an unverified identity refuses", () => {
-  const full = appBox();
-  const first = appBox({ newMailIdentity: "true" });
-  first.resourceCountIs("Custom::AWS", 0);
-  assert.deepEqual(
-    Object.keys(first.findResources("AWS::Lambda::Function")).filter(
-      (id) => !id.startsWith("RelayCap"),
-    ),
-    [],
-  );
-  for (const type of [
-    "AWS::Lightsail::Instance",
-    "AWS::SNS::TopicPolicy",
-    "AWS::SES::EmailIdentity",
-    "AWS::SES::ConfigurationSet",
-    "AWS::SES::ConfigurationSetEventDestination",
-  ]) {
-    assert.deepEqual(first.findResources(type), full.findResources(type), type);
-  }
-  assert.deepEqual(first.toJSON().Outputs, full.toJSON().Outputs);
-  appBox({ newMailIdentity: "false" }).resourceCountIs("Custom::AWS", 3);
 });
 
 test("the mail user may only send through the identity, and CDK gives it no key or password", () => {

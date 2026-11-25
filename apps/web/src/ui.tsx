@@ -169,7 +169,7 @@ const MENU: ReadonlyArray<readonly ["send" | "secret" | "how" | "privacy", strin
 const LANGS: readonly Lang[] = ["sv", "en"];
 const THEME_ICONS: Record<Theme, IconName> = { system: "computer", light: "sun", dark: "moon" };
 
-/** An icon button that opens a menu of choices, the current one checked. */
+/** A button showing the current choice that opens a menu of all of them, the current one checked. */
 function Choice<T extends string>({
   label,
   icon,
@@ -187,15 +187,14 @@ function Choice<T extends string>({
   return (
     // Not modal: the modal version injects a <style> element, which the CSP blocks.
     <DropdownMenu.Root modal={false}>
-      <DropdownMenu.Trigger
-        aria-label={label}
-        title={label}
-        class={buttonVariants({ variant: "ghost", size: "icon" })}
-      >
-        <Icon name={icon} class="size-[1.15rem]" />
+      <DropdownMenu.Trigger class={`${buttonVariants({ variant: "ghost" })} text-muted-foreground`}>
+        <Icon name={icon} class="size-4" />
+        <span class="sr-only">{label}: </span>
+        {options.find(([option]) => option === value)?.[1]}
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content
+          side="top"
           align="end"
           sideOffset={8}
           class="z-[60] min-w-40 rounded-xl border border-border bg-popover/90 p-1 text-popover-foreground shadow-xl backdrop-blur-xl animate-in fade-in zoom-in-95"
@@ -226,24 +225,8 @@ function Choice<T extends string>({
   );
 }
 
-type ThemeProps = { theme: Theme; onTheme(next: Theme): void };
-
-/** The header shows this menu from the sm breakpoint up, the footer below it. */
-function ThemeMenu({ theme, onTheme }: ThemeProps) {
+export function Header({ current }: { current: Route }) {
   const { t } = useI18n();
-  return (
-    <Choice
-      label={t.menu.theme}
-      icon={THEME_ICONS[theme]}
-      value={theme}
-      options={(["system", "light", "dark"] as const).map((v) => [v, t.menu.themes[v]] as const)}
-      onChange={onTheme}
-    />
-  );
-}
-
-export function Header({ current, theme, onTheme }: { current: Route } & ThemeProps) {
-  const { lang, t, setLang } = useI18n();
   return (
     <header class="fixed inset-x-0 top-0 z-50 border-b border-border/60 bg-background/70 backdrop-blur-xl backdrop-saturate-150">
       <div class="mx-auto flex h-16 max-w-6xl items-center justify-between gap-2 px-3 sm:gap-4 sm:px-4">
@@ -281,18 +264,6 @@ export function Header({ current, theme, onTheme }: { current: Route } & ThemePr
                 </Link>
               </li>
             ))}
-            <li class="max-sm:hidden">
-              <ThemeMenu theme={theme} onTheme={onTheme} />
-            </li>
-            <li>
-              <Choice
-                label={t.menu.language}
-                icon="languages"
-                value={lang}
-                options={LANGS.map((code) => [code, LANGUAGE_NAMES[code], code] as const)}
-                onChange={setLang}
-              />
-            </li>
           </ul>
         </nav>
       </div>
@@ -311,8 +282,8 @@ const FOOTER_LINKS: ReadonlyArray<
   ["security", "/security"],
 ];
 
-export function Footer({ theme, onTheme }: ThemeProps) {
-  const { t } = useI18n();
+export function Footer({ theme, onTheme }: { theme: Theme; onTheme(next: Theme): void }) {
+  const { lang, t, setLang } = useI18n();
   const link =
     "rounded-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline";
   return (
@@ -343,8 +314,23 @@ export function Footer({ theme, onTheme }: ThemeProps) {
       </div>
       <div class="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 pb-8">
         <p class="m-0 text-[0.85rem] text-muted-foreground">{t.footer.license}</p>
-        <div class="sm:hidden">
-          <ThemeMenu theme={theme} onTheme={onTheme} />
+        <div class="flex flex-none items-center gap-1">
+          <Choice
+            label={t.menu.language}
+            icon="languages"
+            value={lang}
+            options={LANGS.map((code) => [code, LANGUAGE_NAMES[code], code] as const)}
+            onChange={setLang}
+          />
+          <Choice
+            label={t.menu.theme}
+            icon={THEME_ICONS[theme]}
+            value={theme}
+            options={(["system", "light", "dark"] as const).map(
+              (v) => [v, t.menu.themes[v]] as const,
+            )}
+            onChange={onTheme}
+          />
         </div>
       </div>
     </footer>

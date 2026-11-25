@@ -821,7 +821,10 @@ export function SendPage({ kind }: { kind: "file" | "text" }) {
       </div>
 
       {step === "file" && (
-        <div class="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-background/80 p-4 backdrop-blur-xl lg:hidden">
+        <div
+          data-bottom-bar
+          class="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-background/80 p-4 backdrop-blur-xl lg:hidden"
+        >
           <Button
             id={id("continue")}
             type="button"
