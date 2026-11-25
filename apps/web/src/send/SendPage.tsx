@@ -451,8 +451,8 @@ export function SendPage({
             linkId: message.link,
             attempt: message.attempt,
             iceServers: message.iceServers,
-            // The page enforces its own choice too, so a server that ignores it can't get the relay used.
-            turn: message.turn && allowRelayRef.current,
+            turn: message.turn,
+            allowRelay: allowRelayRef.current,
           });
           break;
         case "left":
