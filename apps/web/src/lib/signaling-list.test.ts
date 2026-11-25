@@ -32,7 +32,7 @@ test("refuses a list that a page could not use", () => {
 });
 
 test("a page uses its own host unless the build named a server", () => {
-  assert.equal(signalingUrl(undefined, "localhost:8443"), "wss://localhost:8443/signal");
+  assert.equal(signalingUrl("", "localhost:8443"), "wss://localhost:8443/signal");
   assert.equal(signalingUrl("", "fidant.se"), "wss://fidant.se/signal");
   assert.equal(
     signalingUrl("wss://sto.signal.fidant.se/signal", "fidant.se"),

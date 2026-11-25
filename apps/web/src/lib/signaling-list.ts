@@ -45,6 +45,6 @@ export function signalingUrlFrom(text: string): string {
 }
 
 /** The address the build named, or the signaling endpoint of the host that served the page. */
-export function signalingUrl(built: string | undefined, host: string): string {
+export function signalingUrl(built: string, host: string): string {
   return built || `wss://${host}/signal`;
 }

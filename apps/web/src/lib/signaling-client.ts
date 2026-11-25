@@ -44,14 +44,11 @@ export type SignalingClient = {
   close(): void;
 };
 
-declare const __SIGNALING_URL__: string | undefined;
+declare const __SIGNALING_URL__: string;
 
 /** The signaling endpoint the build named, else the one on the server that served this page. */
 export function defaultSignalingUrl(): string {
-  return signalingUrl(
-    typeof __SIGNALING_URL__ === "string" ? __SIGNALING_URL__ : undefined,
-    location.host,
-  );
+  return signalingUrl(__SIGNALING_URL__, location.host);
 }
 
 const RETRY_BASE_MS = 1000;
