@@ -264,7 +264,12 @@ test("rejects malformed paths and other methods", async () => {
 
 test("serves over https with a generated certificate", async () => {
   const certDir = join(dir, "certs");
-  const server = await startServer({ port: 0, root, certDir, hosts: ["localhost", "127.0.0.1"] });
+  const { server } = await startServer({
+    port: 0,
+    root,
+    certDir,
+    hosts: ["localhost", "127.0.0.1"],
+  });
   try {
     const { port } = server.address() as AddressInfo;
     const ca = ensureCert(certDir, []).cert;
@@ -325,7 +330,7 @@ for (const { turn, allow, name } of iceCases) {
     ];
     const logs: string[] = [];
     const certDir = join(dir, "certs");
-    const server = await startServer({
+    const { server } = await startServer({
       port: 0,
       root,
       certDir,
@@ -530,7 +535,7 @@ test("no relay status, 404 or 405 holds the master or a derived secret", async (
 });
 
 test("without a relay list, /relay-status is empty and no secret is handed out", async () => {
-  const server = await startServer({
+  const { server } = await startServer({
     port: 0,
     root,
     certDir: join(dir, "certs"),
@@ -551,7 +556,7 @@ test("without a relay list, /relay-status is empty and no secret is handed out",
 
 test("hands the first relay up's ICE servers, with its own credentials, in joined", async () => {
   const logs: string[] = [];
-  const server = await startServer({
+  const { server } = await startServer({
     port: 0,
     root,
     certDir: join(dir, "certs"),

@@ -351,9 +351,10 @@ test("sends no CHUNK without credit, and aborting still rejects", async () => {
   const controller = new AbortController();
   const o = options(fake.channel, secret, new Uint8Array(100_000), controller.signal);
   const pending = sendFile(o.value);
-  await new Promise((resolve) => setTimeout(resolve, 50));
-  assert.equal(o.wasAccepted(), true);
+  await until(() => o.wasAccepted());
+  // Abort before asserting, so a failure here cannot leave sendFile waiting for credit and the run hanging.
   controller.abort(new Error("stopped"));
+  assert.equal(o.wasAccepted(), true);
   await assert.rejects(pending, /stopped/);
   await fake.done();
   assert.equal(fake.received.chunkFrames.length, 0);
@@ -404,6 +405,14 @@ for (const [label, any] of [
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
 
+/** Waits, for up to 5 s, until `done()` holds, then a little longer for anything that should not follow. */
+async function until(done: () => boolean) {
+  for (let i = 0; i < 250 && !done(); i++) {
+    await settle();
+  }
+  await settle();
+}
+
 function confirmation() {
   let resolve: (matches: boolean) => void = () => {};
   const promise = new Promise<boolean>((r) => {
@@ -420,11 +429,11 @@ test("waits for both checks before META", async () => {
   const own = confirmation();
   let checked = 0;
   const sending = sendFile({ ...o.value, confirm: own.promise, onChecked: () => checked++ });
-  await settle();
+  await until(() => fake.received.kinds.length >= 1);
   assert.deepEqual(fake.received.kinds, [SenderKind.INIT]);
 
   own.resolve(true);
-  await settle();
+  await until(() => fake.received.kinds.length >= 2);
   assert.deepEqual(fake.received.kinds, [SenderKind.INIT, SenderKind.CHECK]);
   assert.deepEqual(fake.received.checks, [true]);
   assert.equal(checked, 0);
