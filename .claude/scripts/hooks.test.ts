@@ -86,6 +86,7 @@ describe("review gate", () => {
 
   test("blocks a cd target it cannot resolve", () => {
     assert.match(gate("cd $WT && gh pr create").err, /cannot resolve/);
+    assert.match(gate(`cd ${repo}/missing && gh pr create`).err, /cannot resolve/);
   });
 
   test("passes after a mark, also with colour and relative diff config", () => {
@@ -123,6 +124,10 @@ describe("review gate", () => {
       "gh pr create --head sig-12-thing --head other",
       "gh pr create --head",
       "gh pr create --head me:sig-12-thing",
+      "gh pr create $'--head' other",
+      "gh pr create {--head,other}",
+      'gh pr "create" --head other',
+      "gh pr cre\\ate --head other",
     ]) {
       const r = gate(`cd ${repo} && ${c}`);
       assert.equal(r.code, 2, c);
@@ -169,6 +174,8 @@ describe("review gate", () => {
       "gh  pr   create",
       "gh pr -R o/r create",
       "gh pr --repo=o/r new",
+      "gh pr\tcreate",
+      'gh pr "create"',
     ]) {
       assert.equal(run(c).status, 2, c);
     }

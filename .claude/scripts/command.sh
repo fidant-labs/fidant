@@ -25,7 +25,7 @@ runs() {
 }
 
 # enter_target: moves into the folder the command runs in: the last literal `cd` in $before,
-# then `git -C <dir>` in $match. Returns 1 when a target holds a variable it cannot resolve.
+# then `git -C <dir>` in $match. Returns 1 when a target holds a variable or does not exist.
 enter_target() {
   local t
   t=$(grep -oE "(^|[;&|(])[[:space:]]*cd[[:space:]]+(\"[^\"]+\"|'[^']+'|[^[:space:];&|)]+)" <<<"$before" \
@@ -40,7 +40,7 @@ _enter() {
   t=${t%[\"\']}
   [ -n "$t" ] || return 0
   case "$t" in *'$'*) unresolved=$t; return 1 ;; esac
-  cd "${t/#\~/$HOME}" 2>/dev/null || true
+  cd "${t/#\~/$HOME}" 2>/dev/null || { unresolved=$t; return 1; }
 }
 
 # head_values <text>: the value of every --head/-H option in <text> (also --head=x, -Hx and grouped

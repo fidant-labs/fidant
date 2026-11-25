@@ -31,17 +31,21 @@ fi
 trap 'rc=$?; [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ] || exit 2' EXIT
 
 if ! command -v jq >/dev/null; then
+  # Broad on purpose: gh, pr, then create or new anywhere in the raw JSON, with quotes and
+  # backslashes (JSON's \t among them) dropped first. A false block is fine, a false pass is not.
   input=$(cat)
-  # Broad on purpose: `pr` then later `create` or `new` as words anywhere in the raw JSON, so -R o/r
-  # between them is caught. A false block is fine, a false pass is not.
-  re=$'(^|[^[:alnum:]_-])pr([^[:alnum:]_].*)?[^[:alnum:]_-](create|new)([^[:alnum:]_-]|$)'
-  [[ $input =~ $re ]] || exit 0
+  input=${input//[\"\'\\]/}
+  [[ $input =~ gh.*pr.*(create|new) ]] || exit 0
   echo "Blocked: the review gate needs jq to read the command. Install jq and retry." >&2
   exit 2
 fi
 
 source "$(dirname "${BASH_SOURCE[0]}")/command.sh" || { echo "Blocked: cannot load command.sh." >&2; exit 2; }
 read_input
+# Match what the shell runs, not how it is written: gh pr "create", $'--head' x, {--head,x}.
+cmd=${cmd//\$\'/\'}
+cmd=${cmd//[\"\'\\\{\}]/}
+cmd=${cmd//,/ }
 runs "${GH_PR}(create|new)" || exit 0
 
 # The hook cwd is the session shell's, so honour the last `cd` the command runs before creating the PR.
