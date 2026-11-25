@@ -300,10 +300,10 @@ function isMaskedAddress(value: unknown): value is string {
 
 /**
  * C0 and C1 control characters (U+0000–001F, U+007F–009F), the line and paragraph
- * separators (U+2028, U+2029) and the Unicode direction controls (U+200E, U+200F,
- * U+202A–202E, U+2066–2069).
+ * separators (U+2028, U+2029) and every Unicode Bidi_Control character (U+061C, U+200E,
+ * U+200F, U+202A–202E, U+2066–2069).
  */
-const FORBIDDEN_CHARACTERS = /[\p{Cc}\p{Zl}\p{Zp}\u200E\u200F\u202A-\u202E\u2066-\u2069]/u;
+const FORBIDDEN_CHARACTERS = /[\p{Cc}\p{Zl}\p{Zp}\p{Bidi_Control}]/u;
 
 /**
  * Whether a file name, type or sender name contains characters META refuses: control
