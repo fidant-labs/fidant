@@ -127,14 +127,15 @@ test("serves over https with a generated certificate", async () => {
   const server = await startServer({ port: 0, root, certDir, hosts: ["localhost", "127.0.0.1"] });
   try {
     const { port } = server.address() as AddressInfo;
+    const ca = ensureCert(certDir, []).cert;
     const status = await new Promise<number>((done, fail) => {
-      httpsGet({ host: "localhost", port, path: "/", rejectUnauthorized: false }, (res) => {
+      httpsGet({ host: "localhost", port, path: "/", ca }, (res) => {
         res.resume();
         done(res.statusCode ?? 0);
       }).on("error", fail);
     });
     assert.equal(status, 200);
-    const cert = new X509Certificate(ensureCert(certDir, []).cert);
+    const cert = new X509Certificate(ca);
     assert.match(cert.subjectAltName ?? "", /DNS:localhost/);
     assert.match(cert.subjectAltName ?? "", /IP Address:127\.0\.0\.1/);
   } finally {
@@ -143,8 +144,12 @@ test("serves over https with a generated certificate", async () => {
 });
 
 /** Opens a /signal socket on a TLS server and returns its raw text frames after the hello. */
-async function rawSocket(port: number): Promise<{ socket: WsClient; next(): Promise<string> }> {
-  const socket = new WsClient(`wss://localhost:${port}/signal`, { rejectUnauthorized: false });
+async function rawSocket(
+  port: number,
+  ca: Buffer,
+): Promise<{ socket: WsClient; next(): Promise<string> }> {
+  // Trusts only the server's own certificate, so TLS checks stay on.
+  const socket = new WsClient(`wss://localhost:${port}/signal`, { ca });
   const frames: string[] = [];
   const waiting: ((frame: string) => void)[] = [];
   socket.on("message", (data) => {
@@ -179,17 +184,19 @@ for (const { turn, allow, name } of iceCases) {
       "stun:127.0.0.1:3478",
     ];
     const logs: string[] = [];
+    const certDir = join(dir, "certs");
     const server = await startServer({
       port: 0,
       root,
-      certDir: join(dir, "certs"),
+      certDir,
       hosts: ["localhost"],
       ice: turn ? { urls, secret } : undefined,
       log: (event, fields) => logs.push(JSON.stringify({ event, fields })),
     });
     const { port } = server.address() as AddressInfo;
-    const host = await rawSocket(port);
-    const guest = await rawSocket(port);
+    const ca = ensureCert(certDir, []).cert;
+    const host = await rawSocket(port, ca);
+    const guest = await rawSocket(port, ca);
     try {
       const link = "AAAAAAAAAAAAAAAAAAAAAA";
       const attempt = "ZZZZZZZZZZZZZZZZZZZZZZ";
