@@ -87,8 +87,8 @@
 // - Each attempt keeps whether our relay was allowed when the server paired
 //   it (`turn`): the `turn` its `joined` carried, and the sender's own
 //   choice at that moment (`allowRelay`), so a server that ignores the
-//   choice can't override it. Under `turn` false the start effect gets no
-//   ICE server with a credential, only the `stun:` entries. An attempt that ends while
+//   choice can't override it. Under `turn` false the start effect gets only
+//   the `stun:` URLs, with no credential. An attempt that ends while
 //   still connecting (dropped, timeout, left) under `turn` false returns to
 //   "waiting" with `noRelay`, because a refused relay is the likely reason it
 //   never connected. The next join clears it. Under `turn` true it returns
@@ -368,8 +368,13 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
       if (isActive(current)) {
         return { state, effects: [{ type: "refuse", linkId, attempt, reason: "busy" }] };
       }
-      // The parser only lets credential-free entries carry `stun:` URLs.
-      const allowed = turn ? iceServers : iceServers.filter((server) => !("credential" in server));
+      // Keep only the `stun:` URLs, without credentials, as the server does for a refused relay.
+      const allowed = turn
+        ? iceServers
+        : iceServers.flatMap((server) => {
+            const urls = server.urls.filter((url) => url.startsWith("stun:"));
+            return urls.length > 0 ? [{ urls }] : [];
+          });
       return {
         state: replace(state, { ...reset(current, "connecting"), attempt, turn }),
         effects: [{ type: "start", linkId, attempt, iceServers: allowed }],

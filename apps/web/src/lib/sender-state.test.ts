@@ -88,7 +88,12 @@ test("add ignores a duplicate link ID and stops at MAX_LINKS", () => {
 });
 
 test("a relay refused by the sender or the server starts without TURN servers", () => {
-  const stun = { urls: ["stun:127.0.0.1:3478"] };
+  // The server sends STUN and TURN URLs in one entry with the credential.
+  const mixed = {
+    urls: ["stun:127.0.0.1:3478", "turn:127.0.0.1:3478?transport=udp"],
+    username: "1700000000",
+    credential: "hmac",
+  };
   for (const [turn, allowRelay] of [
     [false, true],
     [true, false],
@@ -98,11 +103,13 @@ test("a relay refused by the sender or the server starts without TURN servers", 
       type: "joined",
       linkId,
       attempt: A,
-      iceServers: [stun, ...TURN],
+      iceServers: [mixed, ...TURN],
       turn,
       allowRelay,
     });
-    assert.deepEqual(joined.effects, [{ type: "start", linkId, attempt: A, iceServers: [stun] }]);
+    assert.deepEqual(joined.effects, [
+      { type: "start", linkId, attempt: A, iceServers: [{ urls: ["stun:127.0.0.1:3478"] }] },
+    ]);
     // The backstop keys on the same choice: a relay path still ends the attempt.
     const relayed = update(joined.state, { type: "path", linkId, attempt: A, path: "relay" });
     assert.equal(findRecipient(relayed.state, linkId)?.noRelay, true, `turn ${turn}`);
