@@ -296,7 +296,7 @@ recipient → server     join {link, attempt, token}
 | Codes from the whole server                       | 500 an hour                              |
 | A code's life                                     | 10 minutes, or until the fifth wrong try |
 
-- The limits per email address and for the whole server can be used up by anyone, a stranger with no link included: they can stop notices or codes to one address, or all of them, for up to an hour, and a sender who gets `limit` can tell that the notice limit was reached. A client's own limit on codes comes first, so codes it is refused don't count against the address (0016).
+- The limits per email address and for the whole server can be used up by anyone, a stranger with no link included: they can stop notices or codes to one address, or all of them, for up to an hour, and a sender who gets `limit` can tell that the notice limit was reached. A refused code counts against nothing, and a client's own limit on codes (5) is below the address's (10), so one client can't use up an address's codes on its own (0016).
 - The counters per email address and per client address hold only send times, under an HMAC-SHA-256 of the lowercased address or the client address with a 32-byte random key made when the server starts. The two counters for the whole server hold only send times. They outlive the link, stay in memory for at most an hour and are pruned on the heartbeat. The per-socket count lives on the socket and goes with it.
 
 ### The mail service

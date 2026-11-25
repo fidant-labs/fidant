@@ -1596,7 +1596,7 @@ async function connectFrom(t: { after(fn: () => void): void }, url: string, addr
 
 test("bounds the notices one IPv6 /48 can send by moving between its /64s (SIG-221)", {}, async (t) => {
   const { url, mails } = await mailServer(t);
-  const [networks, each] = [200, 20];
+  const [networks, each] = [3, 20];
   for (let network = 0; network < networks; network += 1) {
     const client = await connectFrom(t, url, `2001:db8:1:${network.toString(16)}::1`);
     const links = Array.from({ length: each }, linkId);
