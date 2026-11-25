@@ -650,7 +650,7 @@ async function bufferedRelay(t: { after(fn: () => void): void }) {
   const limited = createServer();
   const limitedSignaling = attachSignaling(limited, {
     log: (event) => events.push(event),
-    limits: { bufferedBytes: 64 * 1024, messagesPerWindow: 100_000 },
+    limits: { bufferedBytes: 64 * 1024, messagesPerWindow: 10_000_000 },
   });
   t.after(() => {
     limitedSignaling.close();
@@ -1554,16 +1554,25 @@ test("closes a socket that never reads once the replies queued for it pass the l
   // The queue is at the limit. Each message below earns the guest an `error` reply it never
   // reads, and unlike a relay those replies are queued whatever is already waiting.
   const count = (event: string) => relay.events.filter((e) => e === event).length;
-  const [asked, before] = [5000, count("error")];
+  const before = count("error");
   const message = JSON.stringify({ t: "relay", link: linkId(), data: "sync" });
-  for (let i = 0; i < asked; i += 1) {
-    relay.guest.send(message);
-  }
-  const deadline = Date.now() + 5000;
-  while (count("left") === 0 && count("error") < before + asked && Date.now() < deadline) {
+  // The kernel's socket buffers grow on localhost and take replies Node no longer counts as
+  // queued, so a fixed number of messages may never reach the limit: send until the socket closes.
+  let asked = 0;
+  const deadline = Date.now() + 10_000;
+  while (count("left") === 0 && Date.now() < deadline) {
+    for (let i = 0; i < 1000; i += 1) {
+      relay.guest.send(message);
+    }
+    asked += 1000;
     await new Promise((done) => setTimeout(done, 5));
   }
-  assert.equal(count("left"), 1, `the server queued ${count("error") - before} more replies`);
+  assert.equal(count("rate-limited"), 0, "the rate limit closed the socket, not the queue limit");
+  assert.equal(
+    count("left"),
+    1,
+    `the server queued ${count("error") - before} of ${asked} replies`,
+  );
 });
 
 // Guards the ws library's own limit (maxPendingAutoPongs), so a ws upgrade that drops it fails here.
