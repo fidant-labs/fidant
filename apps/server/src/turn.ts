@@ -10,14 +10,14 @@ export type IceConfig = { urls: string[]; secret: string };
 // leaked credential is useless soon after.
 const ttlSeconds = 5 * 60;
 
-// The TURN REST API scheme that coturn checks with --use-auth-secret: the
-// username is the expiry time, the credential is HMAC-SHA1 of it under the
-// shared secret. The secret itself never leaves this function.
+// The coturn --use-auth-secret scheme: the username is the expiry, the credential its HMAC-SHA1.
 export function turnCredentials(
   secret: string,
   nowMs: number,
+  label?: string,
 ): { username: string; credential: string } {
-  const username = String(Math.floor(nowMs / 1000) + ttlSeconds);
+  const expiry = String(Math.floor(nowMs / 1000) + ttlSeconds);
+  const username = label === undefined ? expiry : `${expiry}:${label}`;
   const credential = createHmac("sha1", secret).update(username).digest("base64");
   return { username, credential };
 }

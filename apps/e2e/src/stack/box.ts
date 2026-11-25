@@ -91,10 +91,14 @@ export function boxFiles({
       { content: doc(`${unit}.d/turn.conf`).replaceAll("$turn_urls", turnUrls), mode: 0o644 },
     ],
     ["/etc/sigill/turn-secret", { content: `${secret}\n`, mode: 0o600 }],
-    // The repo is mounted read-only, so the server keeps its certificate elsewhere.
+    // RELAYS_FILE set but empty keeps the box on its own coturn, whatever relays.json lists.
     [
       `${unit}.d/e2e.conf`,
-      { content: "[Service]\nEnvironment=CERT_DIR=/var/lib/sigill/certs\n", mode: 0o644 },
+      {
+        content:
+          "[Service]\nEnvironment=CERT_DIR=/var/lib/sigill/certs\nEnvironment=RELAYS_FILE=\n",
+        mode: 0o644,
+      },
     ],
   ]);
 }
