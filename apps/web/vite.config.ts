@@ -4,7 +4,20 @@ import tailwindcss from "@tailwindcss/vite";
 import { createServer, defineConfig } from "vite";
 import { LANGUAGE_NAMES, localizedPath, MESSAGES, pathLanguage } from "./src/i18n/language.ts";
 import { pageHtml } from "./src/i18n/preview.ts";
+import { signalingUrlFrom } from "./src/lib/signaling-list.ts";
 import { llmsTxt, pageUrl, sitemap } from "./src/site-files.ts";
+
+const signalsFile = process.env.SIGNALS_FILE;
+
+function readSignals(file: string): string {
+  try {
+    return readFileSync(file, "utf8");
+  } catch {
+    throw new Error("The signaling list could not be read.");
+  }
+}
+
+const signalingUrl = signalsFile ? signalingUrlFrom(readSignals(signalsFile)) : "";
 
 const latinGeist = /^assets\/geist-latin-wght-normal-[\w-]+\.woff2$/;
 const LANGS = ["en", "sv"] as const;
@@ -12,6 +25,7 @@ const LANGS = ["en", "sv"] as const;
 let root = "";
 
 export default defineConfig({
+  define: { __SIGNALING_URL__: JSON.stringify(signalingUrl) },
   plugins: [
     tailwindcss(),
     {
