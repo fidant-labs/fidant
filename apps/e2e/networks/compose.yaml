@@ -62,6 +62,8 @@ x-host: &host
     retries: 30
 
 x-browser: &browser
+  # Tag only, no digest: the tag must follow @playwright/test in the lockfile, which Dependabot's npm
+  # group bumps, so a digest here would go stale on every bump. Microsoft's registry (MCR) serves it.
   image: mcr.microsoft.com/playwright:v${PLAYWRIGHT_VERSION:?}-noble
   init: true
   shm_size: 1gb
@@ -128,7 +130,8 @@ services:
     network_mode: service:net-b1
 
   coturn:
-    image: coturn/coturn:4.7.0-r4@sha256:a00afb5b4890de4df22bbe70379c6b316685dffee297d53cac1271dcb91fab93
+    image: sigill-e2e-coturn
+    build: coturn
     user: ${SIGILL_E2E_UID:?}:${SIGILL_E2E_GID:?}
     # Replaces the image's default command, which looks up the external IP on the internet.
     command: ["-c", "/etc/sigill/turnserver.conf"]

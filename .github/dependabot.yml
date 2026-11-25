@@ -20,3 +20,24 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+  # The e2e network suite's base images, pinned by tag and digest. Major updates are left out:
+  # box.test.ts holds node to .node-version and ubuntu to the Lightsail blueprint.
+  - package-ecosystem: docker
+    directories:
+      - /apps/e2e/networks
+      - /apps/e2e/networks/box
+      - /apps/e2e/networks/coturn
+      - /apps/e2e/networks/relay
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope
+    ignore:
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
+      - dependency-name: ubuntu
+        update-types: ["version-update:semver-major"]
+    groups:
+      docker:
+        patterns: ["*"]
