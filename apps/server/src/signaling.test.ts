@@ -11,7 +11,7 @@ import {
   MAX_RELAY_DATA,
   parseEmailedFragment,
   parseServerMessage,
-  REFUSE_REASONS,
+  REFUSED_REASONS,
   type ServerMessage,
   UPGRADE_REJECT_REASONS,
 } from "@sigill/protocol";
@@ -489,7 +489,7 @@ test("logs only allowlisted fields and never relay payloads", async () => {
 
   const allowed = new Set(["link", "links", "bytes", "reason", "code", "port", "path"]);
   const logReasons: readonly unknown[] = [
-    ...REFUSE_REASONS,
+    ...REFUSED_REASONS,
     ...UPGRADE_REJECT_REASONS,
     ...CODE_RESULTS,
     "unverified",

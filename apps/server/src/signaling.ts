@@ -24,6 +24,7 @@ import {
   type LogFields,
   maskAddress,
   parseClientMessage,
+  type RefusedReason,
   type RefuseReason,
   SERVICE_RESTART,
   type ServerMessage,
@@ -441,7 +442,7 @@ export function attachSignaling(
     const hostSocket = hosts.get(link);
     if (!hostSocket || guests.has(link)) {
       // Just after a start, senders may not have re-hosted yet, so the link may not be dead.
-      const reason: RefuseReason = hostSocket
+      const reason: RefusedReason = hostSocket
         ? "busy"
         : Date.now() - startedAt < startingMs
           ? "starting"
