@@ -117,22 +117,22 @@ async function openSender(
   return page;
 }
 
-const CHECK_CHOICE = /^Check a number with this recipient before the (file|secret) goes$/;
-
-/** Adds a recipient on the sender page, with the check number if `check`, and returns their link, with its secret watched. */
+/** Adds a recipient on the sender page and returns their link, with its secret watched. Clicks the safety number button if `check`, else presses Enter, which must make a plain link. */
 async function addRecipient(
   leaks: Leaks,
   sender: Page,
   name: string,
   check = false,
 ): Promise<string> {
-  await sender.getByLabel("Who is it for?").fill(name);
-  // Off by default for a link the sender passes on themselves.
-  await expect(sender.getByLabel(CHECK_CHOICE)).not.toBeChecked();
+  const who = sender.getByLabel("Who is it for?");
+  await who.fill(name);
   if (check) {
-    await sender.getByLabel(CHECK_CHOICE).check();
+    await sender
+      .getByRole("button", { name: "Create link with safety number", exact: true })
+      .click();
+  } else {
+    await who.press("Enter");
   }
-  await sender.getByRole("button", { name: "Create link", exact: true }).click();
   const link = (await sender.getByLabel(`Link for ${name}`, { exact: true }).textContent()) ?? "";
   const secret = new URL(link).hash.slice(1);
   expect(secret, `link secret for ${name}`).toMatch(/^[A-Za-z0-9_-]{43}$/);
@@ -1008,7 +1008,7 @@ test.describe("a hostile path", () => {
     expect(kinds, "the sender took the swapped commit and offered").toContain("offer");
   });
 
-  test("someone in the middle with an emailed link's key shows two different check numbers and gets nothing", async ({
+  test("someone in the middle with an emailed link's key shows two different safety numbers and gets nothing", async ({
     demo,
     leaks,
     canary,
@@ -1054,16 +1054,16 @@ test.describe("a hostile path", () => {
 
 const NUMBER = /^\d{3} \d{3}$/;
 
-/** The check number on the sender's card for `name`, once it shows. */
+/** The safety number on the sender's card for `name`, once it shows. */
 async function senderNumber(sender: Page, name: string): Promise<string> {
   const number = recipientRow(sender, name).getByText(NUMBER);
   await expect(number).toBeVisible({ timeout: 30_000 });
   return (await number.textContent()) ?? "";
 }
 
-/** The check number on the recipient page, once it shows. */
+/** The safety number on the recipient page, once it shows. */
 async function recipientNumber(page: Page): Promise<string> {
-  await expect(page.getByRole("heading", { name: "Check number" })).toBeVisible({
+  await expect(page.getByRole("heading", { name: "Safety number" })).toBeVisible({
     timeout: 30_000,
   });
   const number = page.getByText(NUMBER);
@@ -1071,7 +1071,7 @@ async function recipientNumber(page: Page): Promise<string> {
   return (await number.textContent()) ?? "";
 }
 
-/** Both pages show the same check number; returns it. */
+/** Both pages show the same safety number; returns it. */
 async function sameNumber(sender: Page, name: string, recipient: Page): Promise<string> {
   const theirs = await recipientNumber(recipient);
   await expect.poll(() => senderNumber(sender, name)).toBe(theirs);
@@ -1088,8 +1088,8 @@ async function differ(sender: Page, name: string, recipient: Page): Promise<void
   await expect(recipient.getByRole("button", { name: "Download" })).toHaveCount(0);
 }
 
-test.describe("check number", () => {
-  test("an emailed recipient and the sender see the same check number, and the file waits for both", async ({
+test.describe("safety number", () => {
+  test("an emailed recipient and the sender see the same safety number, and the file waits for both", async ({
     demo,
     leaks,
     canary,
@@ -1105,7 +1105,7 @@ test.describe("check number", () => {
     await enterCode(recipient, await requestCode(recipient, to));
     await sameNumber(sender, name, recipient);
     await watchToken(leaks, recipient, emailed, name);
-    await expect(recipient.getByRole("heading", { name: "Check number" })).toBeFocused();
+    await expect(recipient.getByRole("heading", { name: "Safety number" })).toBeFocused();
     await expect(recipient.getByText("Read this number to the sender.")).toBeVisible();
     await expect(
       recipientRow(sender, name).getByText(
@@ -1119,7 +1119,7 @@ test.describe("check number", () => {
     ).toBeVisible();
     // The sender's click alone sends nothing about the file.
     await expect(recipient.getByRole("button", { name: "Download" })).toHaveCount(0);
-    await expect(recipient.getByRole("heading", { name: "Check number" })).toBeVisible();
+    await expect(recipient.getByRole("heading", { name: "Safety number" })).toBeVisible();
 
     await recipient.getByRole("button", { name: "They said it matches" }).click();
     await expect(recipient.getByRole("heading", { name: "You've been sent a file" })).toBeVisible({
@@ -1163,7 +1163,7 @@ test.describe("check number", () => {
 
     await recipient.getByRole("button", { name: "They said it matches" }).focus();
     await recipient.keyboard.press("Enter");
-    await expect(recipient.getByRole("heading", { name: "Check number" })).toBeFocused();
+    await expect(recipient.getByRole("heading", { name: "Safety number" })).toBeFocused();
     await expect(
       recipient.locator("[role=status]", {
         hasText: "Waiting for the sender to say it matches too.",
@@ -1572,7 +1572,7 @@ interface Emailed {
 /**
  * Adds `name` with the address `to` and waits for the notice. Watches the link's secret, the
  * server's value, the address and, if given, the sender's typed name `from` where decision 0012
- * lets them appear. The check number is on by default for an emailed link; `check` false turns it off.
+ * lets them appear. `check` presses Enter, which must make a safety number link; false clicks the plain button.
  */
 async function addEmailed(
   leaks: Leaks,
@@ -1585,12 +1585,21 @@ async function addEmailed(
   await sender.getByLabel("Who is it for?").fill(name);
   // Emailing is opt-in; the choice stays ticked for the next recipient.
   await sender.getByLabel("Email the link for me (less private)").check();
-  await expect(sender.getByLabel(CHECK_CHOICE)).toBeChecked();
-  if (!check) {
-    await sender.getByLabel(CHECK_CHOICE).uncheck();
+  // With email on, the safety number is the default, so Enter picks it.
+  await expect(
+    sender
+      .locator("form")
+      .filter({ has: sender.getByLabel("Who is it for?") })
+      .locator("button[type=submit]")
+      .first(),
+  ).toHaveText("Create and email link with safety number");
+  const address = sender.getByLabel("Their email address");
+  await address.fill(to);
+  if (check) {
+    await address.press("Enter");
+  } else {
+    await sender.getByRole("button", { name: "Create and email link", exact: true }).click();
   }
-  await sender.getByLabel("Their email address").fill(to);
-  await sender.getByRole("button", { name: "Create and email link", exact: true }).click();
   await expect(
     recipientRow(sender, name).getByText(`Email sent to ${maskAddress(to)}`),
   ).toBeVisible();

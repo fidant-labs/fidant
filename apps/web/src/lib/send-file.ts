@@ -4,7 +4,7 @@
 // Frames on the channel (see frames.ts):
 //
 //   sender → recipient   INIT(transferId)                     plaintext
-//   both directions      CHECK(matches)                       only with the check number on
+//   both directions      CHECK(matches)                       only with the safety number on
 //   sender → recipient   META{name, size, type, chunkSize, from}  encrypted
 //   recipient → sender   ACCEPT  (or DECLINE: stop here)
 //   recipient → sender   CREDIT(granted)                      again as chunks are written
@@ -12,7 +12,7 @@
 //   sender → recipient   END(sha256, size)
 //   recipient → sender   RECEIPT(sha256 the recipient computed)
 //
-// With the check number on, each side sends CHECK once its own user compared
+// With the safety number on, each side sends CHECK once its own user compared
 // the numbers, and META goes only after both said they match. Either side's
 // CHECK(0) ends the transfer before anything about the file was sent.
 //
@@ -88,7 +88,7 @@ export type SendFileOptions = {
   sha256: Promise<Uint8Array>;
   /** Aborting stops the transfer; sendFile then rejects. */
   signal: AbortSignal;
-  /** With the check number on: resolves with whether the sender said the numbers match. */
+  /** With the safety number on: resolves with whether the sender said the numbers match. */
   confirm?: Promise<boolean>;
   /** Both sides said the numbers match; META goes next. */
   onChecked?(): void;
@@ -99,7 +99,7 @@ export type SendFileOptions = {
 };
 
 export type SendResult =
-  /** Someone said the check numbers differ, so nothing about the file was sent. */
+  /** Someone said the safety numbers differ, so nothing about the file was sent. */
   | { type: "check-differs"; by: "sender" | "recipient" }
   /** The recipient declined the offer. */
   | { type: "declined" }

@@ -315,6 +315,7 @@ export const en = {
     fromSummary: (name: string) => `from ${name}`,
     connectionOptions: "Connection options",
     addEmail: "Create and email link",
+    addEmailCheck: "Create and email link with safety number",
     share: "Share",
     shareFor: (name: string) => `Share link for ${name}`,
     sendingBar: (delivered: number, total: number) =>
@@ -337,7 +338,9 @@ export const en = {
     fromHint: "Shown to the people you send to.",
     fromHintEmail:
       "If we email a link, your name also goes in that email, marked as not verified. Our server puts it there and doesn't keep it.",
-    allowRelay: "Allow our relay if a direct connection isn't possible",
+    allowRelay: "Use our relay if needed",
+    allowRelayHint: (kind: Kind) =>
+      `Some networks block direct connections. Then it goes through our relay in Stockholm, still encrypted. The relay sees both IP addresses${kind === "file" ? " and roughly the size" : ""}, but can't open it.`,
     fromError: {
       unsafe:
         "Your name contains characters that can't be sent, or three or more spaces in a row. Remove them and try again.",
@@ -358,6 +361,7 @@ export const en = {
     recipientLabel: "Who is it for?",
     recipientPlaceholder: "Their name",
     add: "Create link",
+    addCheck: "Create link with safety number",
     nameError: {
       missing: "Enter a name.",
       taken: "That name is already on the list.",
@@ -367,10 +371,11 @@ export const en = {
     emailLabel: "Their email address",
     emailError: "Enter a valid email address, like name@example.com.",
     emailNotice:
-      "Our server will see this link's key once, to write the email. It doesn't store or log the key, but our mail service and anyone who reads the email on its way can see the key too. The link, key included, stays in the recipient's mailbox: anyone who can read that mailbox could receive the file. For this link, our server could also put itself between you and the recipient. To see if it does, keep the check number ticked and compare it with the recipient. Sending the link yourself avoids all of this.",
+      "Our server will see this link's key once, to write the email. It doesn't store or log the key, but our mail service and anyone who reads the email on its way can see the key too. The link, key included, stays in the recipient's mailbox: anyone who can read that mailbox could receive the file. For this link, our server could also put itself between you and the recipient. To see if it does, create the link with a safety number and compare it with the recipient. Sending the link yourself avoids all of this.",
     check: {
-      choice: "Check a number with this recipient before the file goes",
-      number: "Check number",
+      hint: (kind: Kind) =>
+        `With a safety number, you compare 6 digits with them by phone or in person before ${items[kind].the} is sent, so you know nobody is in between.`,
+      number: "Safety number",
       ask: (name: string) => `Ask ${name} to read the number on their screen. Does it match?`,
       matches: "It matches",
       differs: "It differs",
@@ -380,7 +385,7 @@ export const en = {
       differed:
         "The numbers didn't match, so nothing was sent. Someone may have been in between. The link still works if you want to try again.",
       expired:
-        "The check number wasn't confirmed within 5 minutes, so nothing was sent. The link still works if you want to try again.",
+        "The safety number wasn't confirmed within 5 minutes, so nothing was sent. The link still works if you want to try again.",
       limit: (times: number) =>
         `The check failed ${times} times, so this link no longer works. Someone may be trying to get between you. Add the recipient again for a new link.`,
     },
@@ -391,7 +396,7 @@ export const en = {
     status: {
       waiting: (name: string) => `Waiting for ${name}'s link to be opened`,
       connecting: (name: string) => `Connecting through ${name}'s link…`,
-      checking: (name: string) => `${name}'s link has been opened. Compare the check number.`,
+      checking: (name: string) => `${name}'s link has been opened. Compare the safety number.`,
       offered: (name: string) => `${name}'s link has been opened`,
       declined: (name: string) =>
         `${name}'s link was opened and the file was declined. The link still works.`,
@@ -474,7 +479,7 @@ export const en = {
     showAgain: "Show the file again",
     tryAgain: "Try again",
     check: {
-      heading: "Check number",
+      heading: "Safety number",
       read: "Read this number to the sender.",
       matches: "They said it matches",
       differs: "They said it differs",
@@ -608,9 +613,8 @@ export const en = {
     summary: (done: number, total: number) => `${done} of ${total} links have delivered the secret`,
     doneOne: (name: string) => `The secret arrived intact through ${name}'s link.`,
     doneMany: (n: number) => `The secret arrived intact through all ${n} links.`,
-    checkChoice: "Check a number with this recipient before the secret goes",
     emailNotice:
-      "Our server will see this link's key once, to write the email. It doesn't store or log the key, but our mail service and anyone who reads the email on its way can see the key too. The link, key included, stays in the recipient's mailbox: anyone who can read that mailbox could receive the secret. For this link, our server could also put itself between you and the recipient. To see if it does, keep the check number ticked and compare it with the recipient. Sending the link yourself avoids all of this.",
+      "Our server will see this link's key once, to write the email. It doesn't store or log the key, but our mail service and anyone who reads the email on its way can see the key too. The link, key included, stays in the recipient's mailbox: anyone who can read that mailbox could receive the secret. For this link, our server could also put itself between you and the recipient. To see if it does, create the link with a safety number and compare it with the recipient. Sending the link yourself avoids all of this.",
     // Only the statuses whose file wording would be wrong; the rest come from send.status.
     status: {
       declined: (name: string) =>
@@ -844,7 +848,7 @@ export const en = {
         heading: "What it doesn't protect against",
         body: [
           "Anyone who gets hold of a link can open the file. A link we email also needs a code we send to the same address. Send each link only to the person it is for, over a channel you trust.",
-          "A link we email stays in the recipient's mailbox. Anyone who can read that mailbox can also get the code, and so the file. And our server had that link's key. So you have to trust us not to read the file on its way, unless you keep the check number on and compare it with the recipient. To avoid both, leave “Email the link for me” unticked and send the link yourself.",
+          "A link we email stays in the recipient's mailbox. Anyone who can read that mailbox can also get the code, and so the file. And our server had that link's key. So you have to trust us not to read the file on its way, unless you create the link with a safety number and compare it with the recipient. To avoid both, leave “Email the link for me” unticked and send the link yourself.",
           "The sender's name is typed by the sender and not verified.",
           "The two browsers see each other's IP address, the same as on a video call. When the file goes through our relay, the relay sees both IP addresses and roughly how big the file is.",
           "A computer that is already compromised can read the file before it is encrypted or after it is unlocked.",
@@ -897,15 +901,15 @@ export const en = {
           "The sender's page opens a WebSocket to our server and registers its link IDs. When the recipient opens their link, their page joins with the link ID and a random attempt ID, new for each page load and each retry. The server pairs at most one recipient page with a link at a time and tells both sides.",
           "The browsers then set up a WebRTC connection. The offer, the answer and the network candidates are encrypted with the signal key before they reach our server. Each message is bound to its link, attempt and direction, so the server can't read or change the messages. The server also can't send a message back to the side that sent it, move it to another link or replay it into another attempt. Replaying old messages can at most make one attempt fail, which dropping them would do anyway.",
           "This matters beyond privacy: the setup messages carry the fingerprints of WebRTC's own DTLS encryption. Because the server can't change them, it can't put itself between the two browsers. All of this rests on our server not having the key. For a link we email, our server had the key, so it could read and change that link's setup messages and put itself in between.",
-          "That is what the check number is for. Each browser makes a new certificate for every connection. The recipient's browser first sends a commitment to its fingerprint, a hash, before the sender's browser makes its offer. Both browsers then compute six digits from the two fingerprints of their own connection. With someone in between there are two connections, so the two screens show different numbers. Because of the commitment, a party in the middle can only guess: one chance in a million per connection. The number is shown on screen only, never sent or stored.",
-          "With the check number on, which it is by default for a link we email, the recipient reads their number aloud and the sender compares it. Nothing about the file is sent until both have said it matches, and “It differs” on either side stops the attempt. Once the recipient's browser has answered an offer, it connects again only when the recipient clicks Try again. The sender's page stops offering a link after 5 attempts that ended before both confirmed, each limited to 5 minutes. The check shows that nobody sat between the two browsers. It can't show that the page code itself is honest.",
+          "That is what the safety number is for. Each browser makes a new certificate for every connection. The recipient's browser first sends a commitment to its fingerprint, a hash, before the sender's browser makes its offer. Both browsers then compute six digits from the two fingerprints of their own connection. With someone in between there are two connections, so the two screens show different numbers. Because of the commitment, a party in the middle can only guess: one chance in a million per connection. The number is shown on screen only, never sent or stored.",
+          "With a safety number, which a link we email gets by default, the recipient reads their number aloud and the sender compares it. Nothing about the file is sent until both have said it matches, and “It differs” on either side stops the attempt. Once the recipient's browser has answered an offer, it connects again only when the recipient clicks Try again. The sender's page stops offering a link after 5 attempts that ended before both confirmed, each limited to 5 minutes. The check shows that nobody sat between the two browsers. It can't show that the page code itself is honest.",
           "If the connection to our server drops, both pages try to reconnect by themselves. The sender's page registers its links again, except links we emailed: our server forgot those with the old connection, so they stop working and the sender's page says so. A recipient who was still connecting tries again a few times before giving up. For a minute after our server starts, it tells a recipient whose link it doesn't know yet to wait. So the recipient keeps trying while the sender's page registers the link again. A transfer that has already started doesn't need our server and carries on.",
         ],
       },
       layers: {
         heading: "Two layers of encryption",
         body: [
-          "WebRTC encrypts the connection between the browsers with DTLS. Fidant doesn't rely on that alone: every frame after INIT is also encrypted with AES-256-GCM under the file key, which only the two browsers have. For a link we email, our server had the link's secret, which the file key comes from. So it could decrypt the frames by putting itself in the middle. With the check number on, it would see no more than INIT and CHECK.",
+          "WebRTC encrypts the connection between the browsers with DTLS. Fidant doesn't rely on that alone: every frame after INIT is also encrypted with AES-256-GCM under the file key, which only the two browsers have. For a link we email, our server had the link's secret, which the file key comes from. So it could decrypt the frames by putting itself in the middle. With the safety number on, it would see no more than INIT and CHECK.",
           "Each frame starts with a 10-byte header with its version, kind and sequence number. The header is authenticated with the frame, and the nonce is built from the direction and the sequence number, so the two directions never share a nonce. A browser accepts only the next sequence number, so a dropped, reordered, repeated or altered frame stops the transfer.",
         ],
       },
@@ -914,7 +918,7 @@ export const en = {
         body: [
           "When the sender chooses the file, their browser computes its SHA-256 checksum.",
           "INIT: the sender sends the transfer ID. It is the only frame not encrypted. Changing it changes the file key, so the next frame fails to decrypt. Replaying it in a later attempt doesn't work either, because the recipient's new attempt ID changes the key.",
-          "CHECK: with the check number on, each side's answer, encrypted, once the person on that side has compared the numbers: matches or differs. META waits for both answers.",
+          "CHECK: with the safety number on, each side's answer, encrypted, once the person on that side has compared the numbers: matches or differs. META waits for both answers.",
           "META: the file name, size and type and the sender's typed name, encrypted. The recipient sees them and chooses.",
           "ACCEPT or DECLINE: the recipient's answer, encrypted. ACCEPT also proves that the recipient has the key. No file data is sent before it.",
           "CREDIT: how many chunks the sender may send, encrypted. The recipient grants 128 at a time and more as it writes them, so a slow recipient never has more than about 6 MiB waiting. A sender that gets further ahead than that is stopped.",
@@ -951,7 +955,7 @@ export const en = {
       norelay: {
         heading: "Refusing the relay",
         body: [
-          "The sender can untick \"Allow our relay if a direct connection isn't possible\". Our server then gives that send no relay credentials, only the STUN address, so an unmodified browser can't use the relay. The sender's browser also enforces the choice itself: it starts the connection without relay credentials, whatever our server sends. As a backstop, if the sender's browser still sees a relayed connection, it ends it. File data only flows after the recipient accepts, so in practice the browser ends such a connection before any file data has passed.",
+          "The sender can untick \"Use our relay if needed\". Our server then gives that send no relay credentials, only the STUN address, so an unmodified browser can't use the relay. The sender's browser also enforces the choice itself: it starts the connection without relay credentials, whatever our server sends. As a backstop, if the sender's browser still sees a relayed connection, it ends it. File data only flows after the recipient accepts, so in practice the browser ends such a connection before any file data has passed.",
           "The limit: a modified recipient can still send its side through our relay with credentials from another pairing, or through any public relay. That recipient has the key anyway. The choice decides which infrastructure carries the encrypted traffic, not who can read the file.",
         ],
       },
@@ -960,7 +964,7 @@ export const en = {
         body: [
           "One send can go to up to 256 people. Each has their own link, key, connection and transfer.",
           "A link counts as used only once the recipient's RECEIPT matches. After that it is refused. A link that is already open in one tab is refused in another.",
-          "Until then the link can be opened again: after a decline, a dropped connection or a failed check. Every new attempt has a new transfer ID and attempt ID, and so a new file key. A link with the check number on stops working after 5 attempts that ended before both people confirmed the number.",
+          "Until then the link can be opened again: after a decline, a dropped connection or a failed check. Every new attempt has a new transfer ID and attempt ID, and so a new file key. A link with the safety number on stops working after 5 attempts that ended before both people confirmed the number.",
           "Nothing is stored, so a link works only while the sender's page is open. When it closes, our server forgets its links within a minute.",
         ],
       },
@@ -982,7 +986,7 @@ export const en = {
           "Our server picks a random value and emails the recipient the link with that value in front of the link's secret: https://fidant.se/r/<link ID>#e.<value>.<secret>. It makes one attempt, with a time limit, and never retries. It has the link's secret and the sender's name only until that attempt ends, and never stores or logs them. The email is plain text. It gives the name the sender typed, marked as not verified, and says nothing about what is sent, not even whether it is a file or a shared secret.",
           "Before it connects, the recipient's page sends the value to our server. Only if it matches does the server show a masked address, like a***@example.se, and on request email a 6-digit code there. A code works for 10 minutes, and 5 wrong tries end it. The right code gets a random token that only that browser tab keeps, and the server connects nobody to an emailed link without one. Someone with only the link ID, or an emailed link that has stopped working, can't see the address, can't make us send codes and can't connect.",
           "Our server keeps the address, the value, the codes and the tokens in memory while the sender's page has the link. When the sender removes the recipient, closes the page or loses the connection to our server, or when the server restarts, all of it is gone and the emailed link stops working. To limit abuse, the server counts emails for an hour under a scrambled form of each address (an HMAC with a random key), never the address itself. It allows at most 20 emails an hour from one connection, 50 from one IP address and 5 to one email address. For codes, it allows at most 5 per link, 30 seconds apart, 5 an hour asked for by one IP address and 10 an hour to one email address. Both IP address limits count an IPv6 address by its first 48 bits. The whole server sends at most 500 emails and 500 codes an hour, counted with send times only, tied to no address. Anyone can use up the limits for one email address, or for the whole server, for up to an hour.",
-          "The catch: the key is in the email. Our server had it. Our mail service and anyone who reads the email on its way can see it. The key also stays in the recipient's mailbox. The code stops a forwarded link or a mail scanner from receiving the file or the shared secret, but not someone who can read that mailbox. And because our server had the key, it could put itself between the two browsers for that link, or open the link itself. The check number, ticked by default for a link we email, lets you catch that. The recipient reads the number on their screen, and if it isn't the one on yours, nothing is sent. If you don't want any of this, leave “Email the link for me” unticked and send the link yourself.",
+          "The catch: the key is in the email. Our server had it. Our mail service and anyone who reads the email on its way can see it. The key also stays in the recipient's mailbox. The code stops a forwarded link or a mail scanner from receiving the file or the shared secret, but not someone who can read that mailbox. And because our server had the key, it could put itself between the two browsers for that link, or open the link itself. The safety number, which a link we email gets by default, lets you catch that. The recipient reads the number on their screen, and if it isn't the one on yours, neither the file nor the shared secret is sent. If you don't want any of this, leave “Email the link for me” unticked and send the link yourself.",
         ],
       },
       site: {
@@ -997,10 +1001,10 @@ export const en = {
         heading: "What it doesn't protect against",
         body: [
           "The link is the key. Anyone who gets a link can open the file or shared secret behind it until the link has been used. A link we email also needs a code sent to the same address, so anyone who can read that mailbox can open it. Send each link only to the person it is for, over a channel you trust.",
-          "For a link we email, our server, our mail service and the recipient's mailbox have the key. Our server could put itself between the two browsers; with the check number on, you would see it, because the two numbers would differ.",
-          "Your browser runs the code our server sends it. A server that sent different code could read files, and could skip the check number. The code is public, but browsers can't yet check that what they got matches it.",
+          "For a link we email, our server, our mail service and the recipient's mailbox have the key. Our server could put itself between the two browsers; with the safety number on, you would see it, because the two numbers would differ.",
+          "Your browser runs the code our server sends it. A server that sent different code could read files, and could skip the safety number. The code is public, but browsers can't yet check that what they got matches it.",
           "The sender's name is typed by the sender and not verified.",
-          "The other browser sees your IP address. The networks on the way, and our relay when it is used, see both IP addresses, when the transfer happens and roughly how big the file is. Our server sees both IP addresses, which recipient connects to which sender and when, and how many recipients a sender has. For a link we email, it also sees the recipient's email address. So it learns who sends to whom, though not what, unless it puts itself in the middle of a link we emailed with the check number turned off.",
+          "The other browser sees your IP address. The networks on the way, and our relay when it is used, see both IP addresses, when the transfer happens and roughly how big the file is. Our server sees both IP addresses, which recipient connects to which sender and when, and how many recipients a sender has. For a link we email, it also sees the recipient's email address. So it learns who sends to whom, though not what, unless it puts itself in the middle of a link we emailed without a safety number.",
           "Malware on either computer can read the file before it is encrypted or after it is decrypted.",
           "When the recipient copies a shared secret, it goes to the device's clipboard, where clipboard history, clipboard sync to other devices and other apps can read it. Once a shared secret has been shown, Fidant can't reach it: it can't take it back or delete it.",
           "Fidant has not been independently audited yet.",
@@ -1146,7 +1150,7 @@ export const en = {
         [
           "We email it",
           "Our server while it sends the email, our mail service, anyone who reads the email on its way, the recipient's mailbox provider, and anyone who can read that mailbox.",
-          "The recipient's browser connects only after a 6-digit code sent to the same address. The code works for 10 minutes, and 5 wrong tries end it. Our server could put itself between the two browsers for that link, which the check number shows unless you turned it off.",
+          "The recipient's browser connects only after a 6-digit code sent to the same address. The code works for 10 minutes, and 5 wrong tries end it. Our server could put itself between the two browsers for that link, which the safety number shows unless you created the link without one.",
         ],
       ],
     },
@@ -1161,11 +1165,11 @@ export const en = {
         ],
         [
           "Our server puts itself between the two browsers",
-          "The setup messages are encrypted and bound to their link, attempt and direction. They carry the fingerprints of the WebRTC encryption, which the server therefore can't swap for its own. For a link we email, the server had the key and could swap the fingerprints. Then the two screens show different check numbers, so with the check number on you'd catch it.",
+          "The setup messages are encrypted and bound to their link, attempt and direction. They carry the fingerprints of the WebRTC encryption, which the server therefore can't swap for its own. For a link we email, the server had the key and could swap the fingerprints. Then the two screens show different safety numbers, so with the safety number on you'd catch it.",
         ],
         [
           "The networks on the way or our relay read the traffic",
-          "Two layers of encryption: WebRTC's DTLS, and AES-256-GCM under a file key only the two browsers have, new for every attempt. For a link we email, our server could also get the file key by putting itself in the middle (see above). The check number shows this when it is on.",
+          "Two layers of encryption: WebRTC's DTLS, and AES-256-GCM under a file key only the two browsers have, new for every attempt. For a link we email, our server could also get the file key by putting itself in the middle (see above). The safety number shows this when it is on.",
         ],
         [
           "The traffic gives away the file name, the exact size or a secret's length",
@@ -1293,7 +1297,7 @@ export const en = {
             ],
             [
               "email",
-              "Because it had the key, it could read this link's setup messages and try to put itself in the middle. The check number shows you if it does, unless you turned it off.",
+              "Because it had the key, it could read this link's setup messages and try to put itself in the middle. The safety number shows you if it does, unless you created the link without one.",
             ],
             [
               "email",
@@ -1603,8 +1607,8 @@ export const en = {
     limitsHeading: "What we can't protect you from",
     limits: [
       "Anyone who has the link can open the file. A link we email also needs a code we send to the same address, so anyone who can read that mailbox can open it. Send each link only to the person it is for.",
-      "Your browser runs the code our server sends it. A server that sent different code could read files, and could skip the check number. The code is public, but browsers can't yet check that what they got matches it.",
-      "The other browser sees your IP address, as on a video call. Our server sees both IP addresses, which recipient connects to which sender and when, and how many recipients a sender has. So it learns who sends to whom, though not what, unless we emailed the link with the check number turned off.",
+      "Your browser runs the code our server sends it. A server that sent different code could read files, and could skip the safety number. The code is public, but browsers can't yet check that what they got matches it.",
+      "The other browser sees your IP address, as on a video call. Our server sees both IP addresses, which recipient connects to which sender and when, and how many recipients a sender has. So it learns who sends to whom, though not what, unless we emailed the link without a safety number.",
       "Each browser asks our relay for its public address, so the relay sees each IP address. The networks on the way, and our relay when the file goes through it, see both IP addresses, when the transfer happens and roughly how big the file is.",
     ],
     limitsLink: ["Every risk, and what Fidant does about it", "/how/protection"] as readonly [
