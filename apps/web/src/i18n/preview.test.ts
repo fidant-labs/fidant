@@ -18,15 +18,17 @@ test("each page copy carries its own link preview in its own language", () => {
   );
   assert.ok(receiveSv.includes(`<meta name="twitter:card" content="summary_large_image" />`));
   assert.equal(receiveSv.match(/<meta name="description"/g)?.length, 1);
+  assert.ok(receiveSv.includes(`<title>Ta emot – Fidant</title>`));
 
   const homeEn = previewPage(html, "en", "home");
   assert.ok(homeEn.includes(`<html lang="en">`));
+  assert.ok(homeEn.includes(`<title>Fidant: private file transfer</title>`));
   assert.ok(
     homeEn.includes(`<meta property="og:title" content="Private file transfer with Fidant" />`),
   );
   assert.ok(
     homeEn.includes(
-      `<meta property="og:description" content="Files encrypted in your browser, readable only by the recipient unless you ask us to email the link." />`,
+      `<meta property="og:description" content="Files encrypted in your browser. Only the link can unlock them." />`,
     ),
   );
   assert.ok(
