@@ -4,7 +4,14 @@ import { dirname, join } from "node:path";
 import type { Page } from "@playwright/test";
 // ponytail: relative import, not a workspace dependency on the server, for one small function.
 import { relaySecret } from "../../server/src/relay-secret.ts";
-import { type Actor, canaryFile, expect, type Observed, test } from "../src/fixtures.ts";
+import {
+  type Actor,
+  canaryFile,
+  chooseFile,
+  expect,
+  type Observed,
+  test,
+} from "../src/fixtures.ts";
 import { coturnLog, serverStderrLog, serverStdoutLog } from "../src/paths.ts";
 
 // Recipients may use only relay candidates, once over UDP and once over TCP; the leak check scans coturn's log.
@@ -122,7 +129,7 @@ for (const transport of ["udp", "tcp"] as const) {
 
     const sender = await relayOnly(actor, "sender", transport);
     await sender.goto("/send");
-    await sender.getByLabel("Choose a file").setInputFiles({
+    await chooseFile(sender, {
       name: file.name,
       mimeType: file.mime,
       buffer: file.bytes,
@@ -246,7 +253,7 @@ test("a sender who refuses the relay: no credentials, no bytes, plain words on b
   await context.addInitScript(watchPeers, null);
   await sender.clock.install();
   await sender.goto("/send");
-  await sender.getByLabel("Choose a file").setInputFiles({
+  await chooseFile(sender, {
     name: file.name,
     mimeType: file.mime,
     buffer: file.bytes,
@@ -333,7 +340,7 @@ test("a sender who refuses the relay and fails setup shows the refused relay", a
       Promise.reject(new DOMException("injected", "OperationError"));
   });
   await sender.goto("/send");
-  await sender.getByLabel("Choose a file").setInputFiles({
+  await chooseFile(sender, {
     name: file.name,
     mimeType: file.mime,
     buffer: file.bytes,
