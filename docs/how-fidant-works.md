@@ -85,7 +85,7 @@ sender ⇄ recipient     WebRTC data channel "sigill" opens
 
 ## The check number
 
-`apps/web/src/lib/check.ts`, `apps/web/src/lib/peer.ts`, `apps/web/src/lib/send-file.ts`, `apps/web/src/lib/sender-state.ts`, `apps/web/src/receive/ReceivePage.tsx`, `docs/decisions/0016-check-number.md`
+`apps/web/src/lib/check.ts`, `apps/web/src/lib/peer.ts`, `apps/web/src/lib/send-file.ts`, `apps/web/src/lib/sender-state.ts`, `apps/web/src/receive/ReceivePage.tsx`, `docs/decisions/0017-check-number.md`
 
 The sender chooses per recipient, when adding them, whether to "Check a number with this recipient before the file goes" ("before the secret goes" on `/secret`). It is ticked by default for a recipient Fidant emails and unticked for a link the sender passes on themselves. With it on, both pages show a six-digit number from that exact connection before anything about the file goes. The recipient reads theirs aloud and the sender compares it with their own screen.
 
