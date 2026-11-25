@@ -7,12 +7,8 @@ export type Port = {
   cidrListAliases?: string[];
 };
 export type CapState = { month: string; boxes: Record<string, number>; capped: boolean };
-export type CapConfig = {
-  box: string;
-  limitBytes: number;
-  openPorts: Port[];
-  cappedPorts: Port[];
-};
+export type BoxPorts = { box: string; openPorts: Port[]; cappedPorts: Port[] };
+export type CapConfig = { boxes: BoxPorts[]; limitBytes: number };
 export type CapDeps = {
   boxBytes(box: string, start: Date, end: Date): Promise<number>;
   readState(): Promise<string | undefined>;
@@ -51,24 +47,36 @@ export function parseState(json: string | undefined): CapState | undefined {
 export function decide(
   previous: CapState | undefined,
   month: string,
-  box: string,
-  boxBytes: number,
+  counts: Record<string, number>,
   limitBytes: number,
 ): { state: CapState; total: number; ports: "keep" | "open" | "capped" } {
   const boxes = previous?.month === month ? { ...previous.boxes } : {};
-  boxes[box] = Math.max(boxes[box] ?? 0, boxBytes);
+  for (const [box, bytes] of Object.entries(counts)) {
+    boxes[box] = Math.max(boxes[box] ?? 0, bytes);
+  }
   const total = Object.values(boxes).reduce((sum, n) => sum + n, 0);
   const capped = total >= limitBytes;
   const ports = capped ? "capped" : previous?.capped ? "open" : "keep";
   return { state: { month, boxes, capped }, total, ports };
 }
 
-function portList(env: Record<string, string | undefined>, name: string): Port[] {
-  const value = JSON.parse(required(env, name));
-  if (!Array.isArray(value) || value.length === 0) {
-    throw new Error(`${name} must be a non-empty array`);
+function boxList(json: string): BoxPorts[] {
+  const value = JSON.parse(json);
+  const valid =
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every(
+      (entry) =>
+        typeof entry?.box === "string" &&
+        entry.box !== "" &&
+        [entry.openPorts, entry.cappedPorts].every(
+          (ports) => Array.isArray(ports) && ports.length > 0,
+        ),
+    );
+  if (!valid) {
+    throw new Error("BOXES must be a non-empty array of boxes with non-empty port lists");
   }
-  return value;
+  return value.map(({ box, openPorts, cappedPorts }) => ({ box, openPorts, cappedPorts }));
 }
 
 function required(env: Record<string, string | undefined>, name: string): string {
@@ -80,17 +88,12 @@ function required(env: Record<string, string | undefined>, name: string): string
 }
 
 export function configFromEnv(env: Record<string, string | undefined>): CapConfig {
-  const box = required(env, "BOX");
+  const boxes = boxList(required(env, "BOXES"));
   const limit = required(env, "LIMIT_BYTES");
   if (!/^[1-9]\d*$/.test(limit)) {
     throw new Error("LIMIT_BYTES must be a positive integer");
   }
-  return {
-    box,
-    limitBytes: Number(limit),
-    openPorts: portList(env, "OPEN_PORTS"),
-    cappedPorts: portList(env, "CAPPED_PORTS"),
-  };
+  return { boxes, limitBytes: Number(limit) };
 }
 
 export function metricLine(total: number, now: Date): string {
@@ -112,16 +115,15 @@ export function metricLine(total: number, now: Date): string {
 
 export async function runCap(deps: CapDeps, config: CapConfig, now: Date): Promise<void> {
   const previous = parseState(await deps.readState());
-  const bytes = await deps.boxBytes(config.box, monthStart(now), now);
-  const { state, total, ports } = decide(
-    previous,
-    monthOf(now),
-    config.box,
-    bytes,
-    config.limitBytes,
-  );
+  const counts: Record<string, number> = {};
+  for (const { box } of config.boxes) {
+    counts[box] = await deps.boxBytes(box, monthStart(now), now);
+  }
+  const { state, total, ports } = decide(previous, monthOf(now), counts, config.limitBytes);
   if (ports !== "keep") {
-    await deps.putPorts(config.box, ports === "capped" ? config.cappedPorts : config.openPorts);
+    for (const { box, openPorts, cappedPorts } of config.boxes) {
+      await deps.putPorts(box, ports === "capped" ? cappedPorts : openPorts);
+    }
   }
   await deps.writeState(JSON.stringify(state));
   deps.log(metricLine(total, now));

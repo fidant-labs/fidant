@@ -917,29 +917,50 @@ function onlyId(box: Template, type: string): string {
   return ids[0] ?? "";
 }
 
-test("the relay cap checks the box's traffic every 5 minutes", () => {
-  const box = appBox();
-  const [instanceId] = instanceNamed(box, "^fidant-app-");
+const relayCamelPorts = [
+  { protocol: "tcp", fromPort: 22, toPort: 22, cidrListAliases: ["lightsail-connect"] },
+  { protocol: "tcp", fromPort: 80, toPort: 80, cidrs: ["0.0.0.0/0"], ipv6Cidrs: ["::/0"] },
+  { protocol: "tcp", fromPort: 443, toPort: 443, cidrs: ["0.0.0.0/0"], ipv6Cidrs: ["::/0"] },
+  { protocol: "tcp", fromPort: 3478, toPort: 3478, cidrs: ["0.0.0.0/0"], ipv6Cidrs: ["::/0"] },
+  { protocol: "udp", fromPort: 3478, toPort: 3478, cidrs: ["0.0.0.0/0"], ipv6Cidrs: ["::/0"] },
+  { protocol: "udp", fromPort: 49152, toPort: 65535, cidrs: ["0.0.0.0/0"], ipv6Cidrs: ["::/0"] },
+];
+
+function relayCapFunction(box: Template) {
   const functions = Object.entries(box.findResources("AWS::Lambda::Function"))
     .filter(([id]) => id.startsWith("RelayCap"))
     .map(([, fn]) => fn);
   assert.equal(functions.length, 1);
-  const properties = functions[0]?.Properties;
+  return functions[0]?.Properties;
+}
+
+test("the relay cap checks the app box's and the relay box's pooled traffic every 5 minutes", () => {
+  const box = appBox();
+  const [appId] = instanceNamed(box, "^fidant-app-");
+  const [relayId] = instanceNamed(box, "^fidant-relay-sto-");
+  const properties = relayCapFunction(box);
   assert.equal(properties.Runtime, "nodejs24.x");
   assert.equal(properties.Handler, "index.handler");
   assert.equal(properties.Timeout, 30);
   const variables = properties.Environment.Variables;
-  assert.deepEqual(variables.BOX, { Ref: instanceId });
+  assert.deepEqual(Object.keys(variables).sort(), ["BOXES", "LIMIT_BYTES"]);
   assert.equal(variables.LIMIT_BYTES, "1800000000000");
-  assert.deepEqual(JSON.parse(variables.OPEN_PORTS), camelPorts);
-  assert.deepEqual(JSON.parse(variables.CAPPED_PORTS), camelPorts.slice(0, 3));
+  assert.deepEqual(sdkCall(variables.BOXES), [
+    { box: `{Ref:${appId}}`, openPorts: camelPorts, cappedPorts: camelPorts.slice(0, 3) },
+    {
+      box: `{Ref:${relayId}}`,
+      openPorts: relayCamelPorts,
+      cappedPorts: relayCamelPorts.slice(0, 2),
+    },
+  ]);
   box.hasResourceProperties("AWS::Events::Rule", { ScheduleExpression: "rate(5 minutes)" });
   box.hasResourceProperties("AWS::Lambda::EventInvokeConfig", { MaximumRetryAttempts: 0 });
 });
 
-test("the relay cap may only read instance metrics, set the box's ports, and keep its state", () => {
+test("the relay cap may only read instance metrics, set the two boxes' ports, and keep its state", () => {
   const box = appBox();
-  const [instanceId] = instanceNamed(box, "^fidant-app-");
+  const [appId] = instanceNamed(box, "^fidant-app-");
+  const [relayId] = instanceNamed(box, "^fidant-relay-sto-");
   const policies = Object.values(box.findResources("AWS::IAM::Policy")).filter((policy) =>
     policy.Properties.Roles?.[0].Ref.startsWith("RelayCap"),
   );
@@ -954,7 +975,10 @@ test("the relay cap may only read instance metrics, set the box's ports, and kee
   assert.deepEqual(statements[1], {
     Action: "lightsail:PutInstancePublicPorts",
     Effect: "Allow",
-    Resource: { "Fn::GetAtt": [instanceId, "InstanceArn"] },
+    Resource: [
+      { "Fn::GetAtt": [appId, "InstanceArn"] },
+      { "Fn::GetAtt": [relayId, "InstanceArn"] },
+    ],
   });
   assert.deepEqual(statements[2].Action, ["ssm:GetParameter", "ssm:PutParameter"]);
   assert.equal(statements[2].Effect, "Allow");
