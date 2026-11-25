@@ -82,7 +82,15 @@ export const sv: Messages = {
     about: "Om Fidant – Fidant",
     terms: "Användarvillkor – Fidant",
     security: "Säkerhet – Fidant",
+    notFound: "Sidan finns inte – Fidant",
   },
+  notFound: {
+    title: "Sidan finns inte",
+    body: "Det finns ingen sida på den här adressen. Den kan ha flyttats, eller så är länken felskriven.",
+    home: "Till startsidan",
+  },
+  noscript:
+    "Krypteringen sker i din webbläsare, så Fidant behöver JavaScript. Slå på det för att skicka eller ta emot en fil.",
   openTransfer: {
     send: "En filöverföring är fortfarande öppen i den här fliken.",
     secret: "En hemlighet delas fortfarande från den här fliken.",
@@ -718,7 +726,6 @@ export const sv: Messages = {
     license: "Öppen källkod, MIT-licens",
   },
   preview: {
-    title: "Privat filöverföring med Fidant",
     receiveTitle: "Skickat till dig med Fidant",
     receiveDescription:
       "Öppna länken för att ta emot det. Det är krypterat hela vägen, och länken fungerar bara medan avsändarens sida är öppen.",
@@ -904,7 +911,7 @@ export const sv: Messages = {
       norelay: {
         heading: "Att neka reläet",
         body: [
-          'Avsändaren kan bocka ur "Tillåt vårt relä om en direkt anslutning inte går". Vår server ger då inga inloggningsuppgifter till reläet för den sändningen, bara STUN-adressen, så en omodifierad webbläsare kan inte använda reläet. Som extra skydd avslutar avsändarens webbläsare förbindelsen om den ändå ser att den går via reläet. Fildata skickas först när mottagaren har tackat ja, så i praktiken sker det innan något av den har passerat.',
+          'Avsändaren kan bocka ur "Tillåt vårt relä om en direkt anslutning inte går". Vår server ger då inga inloggningsuppgifter till reläet för den sändningen, bara STUN-adressen, så en omodifierad webbläsare kan inte använda reläet. Avsändarens webbläsare upprätthåller också själv valet: den startar förbindelsen utan inloggningsuppgifter till reläet, vad vår server än skickar. Som extra skydd avslutar avsändarens webbläsare förbindelsen om den ändå ser att den går via reläet. Fildata skickas först när mottagaren har tackat ja, så i praktiken sker det innan något av den har passerat.',
           "Gränsen: en modifierad mottagare kan ändå skicka sin del via vårt relä med uppgifter från en annan ihopkoppling, eller via vilket offentligt relä som helst. Den mottagaren har ju nyckeln ändå. Valet avgör vilken infrastruktur som bär den krypterade trafiken, inte vem som kan läsa filen.",
         ],
       },
@@ -1497,7 +1504,7 @@ export const sv: Messages = {
     sees: [
       [
         "Din IP-adress och uppgifter om din webbläsare",
-        "Som på alla webbplatser du besöker. Vi använder dem bara för att visa dig sidan och koppla ihop er. Vår server skriver aldrig in dem i sina loggar. Vårt relä loggar dem inte heller, utom medan vi åtgärdar ett fel eller stoppar missbruk (se nedan).",
+        "Som på alla webbplatser du besöker, och vilken sida du öppnar, vars adress visar vilket språk du har valt. Vi använder dem bara för att visa dig sidan och koppla ihop er. Vår server skriver aldrig in dem i sina loggar. Vårt relä loggar dem inte heller, utom medan vi åtgärdar ett fel eller stoppar missbruk (se nedan).",
       ],
       [
         "Ett länk-ID",

@@ -101,7 +101,15 @@ export const en = {
     about: "About – Fidant",
     terms: "Terms of use – Fidant",
     security: "Security – Fidant",
+    notFound: "Page not found – Fidant",
   },
+  notFound: {
+    title: "Page not found",
+    body: "There's no page at this address. It may have moved, or the link may be mistyped.",
+    home: "Go to the front page",
+  },
+  noscript:
+    "The encryption runs in your browser, so Fidant needs JavaScript. Turn it on to send or receive a file.",
   openTransfer: {
     send: "A file transfer is still open in this tab.",
     secret: "A secret is still being shared from this tab.",
@@ -762,7 +770,6 @@ export const en = {
     license: "Open source, MIT license",
   },
   preview: {
-    title: "Private file transfer with Fidant",
     receiveTitle: "Sent to you with Fidant",
     receiveDescription:
       "Open the link to receive it. It's encrypted the whole way, and the link works only while the sender's page is open.",
@@ -948,7 +955,7 @@ export const en = {
       norelay: {
         heading: "Refusing the relay",
         body: [
-          "The sender can untick \"Allow our relay if a direct connection isn't possible\". Our server then gives that send no relay credentials, only the STUN address, so an unmodified browser can't use the relay. As a backstop, if the sender's browser still sees a relayed connection, it ends it. File data only flows after the recipient accepts, so in practice that happens before any of it has passed.",
+          "The sender can untick \"Allow our relay if a direct connection isn't possible\". Our server then gives that send no relay credentials, only the STUN address, so an unmodified browser can't use the relay. The sender's browser also enforces the choice itself: it starts the connection without relay credentials, whatever our server sends. As a backstop, if the sender's browser still sees a relayed connection, it ends it. File data only flows after the recipient accepts, so in practice that happens before any of it has passed.",
           "The limit: a modified recipient can still send its side through our relay with credentials from another pairing, or through any public relay. That recipient has the key anyway. The choice decides which infrastructure carries the encrypted traffic, not who can read the file.",
         ],
       },
@@ -1534,7 +1541,7 @@ export const en = {
     sees: [
       [
         "Your IP address and browser details",
-        "Like any website you visit. We use them only to show you this page and connect you. Our server never writes them to its logs. Our relay doesn't log them either, except while we fix a fault or stop abuse (see below).",
+        "Like any website you visit, along with which page you open, whose address names the language you chose. We use them only to show you this page and connect you. Our server never writes them to its logs. Our relay doesn't log them either, except while we fix a fault or stop abuse (see below).",
       ],
       [
         "A link ID",
