@@ -192,7 +192,7 @@ Without a relay list, the server hands out the box's own coturn instead, from `T
 - On 443, HAProxy reads only the TLS server name and ALPN. It passes connections for `turn.fidant.se` to coturn's TLS listener without decrypting them, except Let's Encrypt's `acme-tls/1` checks, which go to Caddy; coturn holds that name's key, a copy of Caddy's Let's Encrypt certificate. coturn sees such a connection as coming from 127.0.0.1, though the peer addresses in it still name the browsers.
 - Its other TLS ports (3479, 5349, 5350) are closed by the firewall.
 
-SIG-154 takes it off the box (planned).
+SIG-192 takes it off the box (planned).
 
 ### The relay box
 
