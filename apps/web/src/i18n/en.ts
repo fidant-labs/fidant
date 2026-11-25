@@ -367,7 +367,7 @@ export const en = {
     emailLabel: "Their email address",
     emailError: "Enter a valid email address, like name@example.com.",
     emailNotice:
-      "Our server will see this link's key once, to write the email. It doesn't store or log it, but our mail service and anyone who reads the email on its way can see it too, and the link, key included, stays in their mailbox: anyone who can read that mailbox could receive the file. Our server could also put itself between you and them for this link: keep the check number ticked and compare it with them, and you'll see if it does. Sending the link yourself avoids all of this.",
+      "Our server will see this link's key once, to write the email. It doesn't store or log the key, but our mail service and anyone who reads the email on its way can see the key too. The link, key included, stays in the recipient's mailbox: anyone who can read that mailbox could receive the file. For this link, our server could also put itself between you and the recipient. To see if it does, keep the check number ticked and compare it with the recipient. Sending the link yourself avoids all of this.",
     check: {
       choice: "Check a number with this recipient before the file goes",
       number: "Check number",
@@ -411,7 +411,7 @@ export const en = {
       failed: (to: string) =>
         `Email not sent to ${to}. To try again, remove this recipient and add them again, or add them without an email address and share the link yourself.`,
       limit: (to: string) =>
-        `Email not sent to ${to}: too many emails right now. Copy the link below and share it yourself. Our server had seen the first link's secret, so this one is new.`,
+        `Email not sent to ${to}: too many emails right now. Copy the link below and share it yourself. It's a new link, because our server had seen the first link's secret.`,
       verifying: (to: string) => `Code sent to ${to}`,
       verified: (to: string) => `Verified with the code sent to ${to}`,
       lost: (to: string) =>
@@ -610,7 +610,7 @@ export const en = {
     doneMany: (n: number) => `The secret arrived intact through all ${n} links.`,
     checkChoice: "Check a number with this recipient before the secret goes",
     emailNotice:
-      "Our server will see this link's key once, to write the email. It doesn't store or log it, but our mail service and anyone who reads the email on its way can see it too, and the link, key included, stays in their mailbox: anyone who can read that mailbox could receive the secret. Our server could also put itself between you and them for this link: keep the check number ticked and compare it with them, and you'll see if it does. Sending the link yourself avoids all of this.",
+      "Our server will see this link's key once, to write the email. It doesn't store or log the key, but our mail service and anyone who reads the email on its way can see the key too. The link, key included, stays in the recipient's mailbox: anyone who can read that mailbox could receive the secret. For this link, our server could also put itself between you and the recipient. To see if it does, keep the check number ticked and compare it with the recipient. Sending the link yourself avoids all of this.",
     // Only the statuses whose file wording would be wrong; the rest come from send.status.
     status: {
       declined: (name: string) =>

@@ -272,7 +272,7 @@ export const sv: Messages = {
     direct: {
       label: "Direkt anslutning",
       explain:
-        "Filen går direkt mellan de två enheterna. Båda sidor kan se den andras internetadress, precis som i ett videosamtal.",
+        "Filen går direkt mellan de två enheterna. Varje sida kan se den andras internetadress, precis som i ett videosamtal.",
     },
     relay: {
       label: "Via vårt relä",
@@ -344,10 +344,10 @@ export const sv: Messages = {
     },
     emailChoice: "Mejla länken åt mig (mindre privat)",
     emailMore: "Vad det innebär att mejla en länk",
-    emailLabel: "Mottagarens e-postadress",
-    emailError: "Skriv en giltig e-postadress, till exempel namn@example.se.",
+    emailLabel: "Mottagarens mejladress",
+    emailError: "Skriv en giltig mejladress, till exempel namn@example.se.",
     emailNotice:
-      "Vår server ser den här länkens nyckel en gång, för att skriva mejlet. Den sparar eller loggar den inte, men vår e-posttjänst och den som läser mejlet på vägen kan också se den, och länken, med nyckeln, ligger kvar i mottagarens inkorg: den som kan läsa den inkorgen kan ta emot filen. Vår server skulle också kunna ställa sig mellan er för den här länken: låt kontrollnumret vara ikryssat och jämför det med mottagaren, så ser du om den gör det. Om du skickar länken själv slipper du allt detta.",
+      "Vår server ser den här länkens nyckel en gång, för att skriva mejlet. Den sparar eller loggar inte nyckeln, men vår mejltjänst och den som läser mejlet på vägen kan också se nyckeln. Länken, med nyckeln, ligger kvar i mottagarens inkorg: den som kan läsa den inkorgen kan ta emot filen. Vår server skulle också kunna ställa sig mellan er för den här länken. Låt kontrollnumret vara ikryssat och jämför det med mottagaren, så ser du om servern gör det. Om du skickar länken själv slipper du allt detta.",
     check: {
       choice: "Jämför ett nummer med mottagaren innan filen skickas",
       number: "Kontrollnummer",
@@ -388,9 +388,9 @@ export const sv: Messages = {
       sending: (to: string) => `Skickar mejl till ${to}…`,
       sent: (to: string) => `Mejl skickat till ${to}`,
       failed: (to: string) =>
-        `Mejlet till ${to} skickades inte. Ta bort mottagaren och lägg till den igen för att försöka på nytt, eller lägg till den utan e-postadress och dela länken själv.`,
+        `Mejlet till ${to} skickades inte. Ta bort mottagaren och lägg till den igen för att försöka på nytt, eller lägg till den utan mejladress och dela länken själv.`,
       limit: (to: string) =>
-        `Mejlet till ${to} skickades inte: för många mejl just nu. Kopiera länken nedan och dela den själv. Vår server hade sett den första länkens hemlighet, så den här är ny.`,
+        `Mejlet till ${to} skickades inte: för många mejl just nu. Kopiera länken nedan och dela den själv. Det är en ny länk, eftersom vår server hade sett den första länkens hemlighet.`,
       verifying: (to: string) => `Kod skickad till ${to}`,
       verified: (to: string) => `Verifierad med koden som skickades till ${to}`,
       lost: (to: string) =>
@@ -410,7 +410,7 @@ export const sv: Messages = {
   receive: {
     connecting: "Ansluter till avsändaren…",
     verify: {
-      title: "Bekräfta din e-postadress för att öppna länken",
+      title: "Bekräfta din mejladress för att öppna länken",
       body: (to: string) => `Vi mejlar en kod till ${to}.`,
       send: "Skicka en kod till mig",
       sending: "Skickar en kod…",
@@ -590,7 +590,7 @@ export const sv: Messages = {
     doneMany: (n: number) => `Hemligheten kom fram oskadd via alla ${n} länkar.`,
     checkChoice: "Jämför ett nummer med mottagaren innan hemligheten skickas",
     emailNotice:
-      "Vår server ser den här länkens nyckel en gång, för att skriva mejlet. Den sparar eller loggar den inte, men vår e-posttjänst och den som läser mejlet på vägen kan också se den, och länken, med nyckeln, ligger kvar i mottagarens inkorg: den som kan läsa den inkorgen kan ta emot hemligheten. Vår server skulle också kunna ställa sig mellan er för den här länken: låt kontrollnumret vara ikryssat och jämför det med mottagaren, så ser du om den gör det. Om du skickar länken själv slipper du allt detta.",
+      "Vår server ser den här länkens nyckel en gång, för att skriva mejlet. Den sparar eller loggar inte nyckeln, men vår mejltjänst och den som läser mejlet på vägen kan också se nyckeln. Länken, med nyckeln, ligger kvar i mottagarens inkorg: den som kan läsa den inkorgen kan ta emot hemligheten. Vår server skulle också kunna ställa sig mellan er för den här länken. Låt kontrollnumret vara ikryssat och jämför det med mottagaren, så ser du om servern gör det. Om du skickar länken själv slipper du allt detta.",
     status: {
       declined: (name: string) =>
         `Länken till ${name} öppnades och hemligheten avböjdes. Länken fungerar fortfarande.`,
