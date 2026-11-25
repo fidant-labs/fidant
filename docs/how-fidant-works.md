@@ -345,5 +345,5 @@ A pull request that changes security or data flow updates this document in the s
 
 The web pages explain the same things for readers, and change with it:
 
-- `/technical` and the `/how/<step>` pages (`file`, `encryption`, `link`, `connect`, `direct`, `relay`, `transfer`, `verification`, `masking`, `traces`, `protection` and the word list `tech`): the `technical` text in `apps/web/src/i18n/en.ts` and `sv.ts`, a reader's version of this document, split over the steps by `STEPS` in `apps/web/src/technical/TechnicalPage.tsx`.
+- The `/how/<step>` pages (`file`, `encryption`, `link`, `connect`, `direct`, `relay`, `transfer`, `verification`, `masking`, `traces`, `protection` and the word list `tech`): the `technical` text in `apps/web/src/i18n/en.ts` and `sv.ts`, a reader's version of this document, split over the steps by `STEPS` in `apps/web/src/how/steps.tsx`.
 - `/how`, `/privacy`, `/security` and the landing page, wherever they say something the change makes untrue.

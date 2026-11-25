@@ -7,7 +7,6 @@ import { LandingPage } from "./landing/LandingPage.tsx";
 import { PrivacyPage } from "./privacy/PrivacyPage.tsx";
 import { ReceivePage } from "./receive/ReceivePage.tsx";
 import { SendPage } from "./send/SendPage.tsx";
-import { TechnicalPage } from "./technical/TechnicalPage.tsx";
 import { applyTheme, initialTheme, type Theme } from "./theme.ts";
 import { Footer, Header, Page, Problem, type Route } from "./ui.tsx";
 
@@ -33,8 +32,12 @@ const NAMED: ReadonlyArray<Route> = [
   "about",
   "terms",
   "security",
-  "technical",
 ];
+
+// The technical description that used to be at /technical now lives on the /how step pages.
+if (/^\/technical\/?$/.test(location.pathname)) {
+  history.replaceState(null, "", "/how");
+}
 
 function routeOf(path: string): Route {
   const named = NAMED.find((name) => new RegExp(`^/${name}/?$`).test(path));
@@ -60,10 +63,14 @@ function App() {
   // The path, not just the route, so moving between /how steps renders the new step. On /how pages
   // the fragment too, so a link to an entry on the same page scrolls to it; elsewhere the fragment
   // can be a decryption key, so it stays out.
-  const where = () =>
-    location.pathname + (location.pathname.startsWith("/how") ? location.hash : "");
+  // A new object on every navigation, so following a link to the anchor already in the address
+  // still scrolls to it.
+  const where = () => ({
+    path: location.pathname,
+    hash: routeOf(location.pathname) === "how" ? location.hash : "",
+  });
   const [place, setPlace] = useState(where);
-  const path = place.split("#")[0] ?? "";
+  const { path } = place;
   const route = routeOf(path);
   const [theme, setTheme] = useState(initialTheme);
   const chooseTheme = (next: Theme) => {
@@ -119,7 +126,6 @@ function App() {
         {/* The privacy page uses no crypto, so it opens even without a secure connection. */}
         {route === "privacy" && <PrivacyPage />}
         {route === "how" && <HowPage path={path} />}
-        {route === "technical" && <TechnicalPage />}
         {(route === "about" || route === "terms" || route === "security") && (
           <InfoPage page={route} />
         )}

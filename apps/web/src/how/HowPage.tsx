@@ -1,8 +1,8 @@
 import type { ComponentChildren } from "preact";
 import { useI18n } from "../i18n/I18n.tsx";
-import { Detail, STEPS, type Step } from "../technical/TechnicalPage.tsx";
 import { display, Link } from "../ui.tsx";
 import { Drawing, DrawnSection, Paragraphs, Terms, useRevealDrawings } from "./Drawing.tsx";
+import { Detail, STEPS, type Step } from "./steps.tsx";
 
 const link = "rounded-sm font-medium underline underline-offset-4";
 
@@ -80,11 +80,6 @@ function Overview() {
         <p class="mb-0">
           <Link href="/privacy" class={link}>
             {h.moreLink}
-          </Link>
-        </p>
-        <p class="mb-0">
-          <Link href="/technical" class={link}>
-            {h.techLink}
           </Link>
         </p>
       </div>

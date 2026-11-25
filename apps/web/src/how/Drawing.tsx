@@ -1,7 +1,7 @@
 import type { ComponentChildren } from "preact";
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
 import { useI18n } from "../i18n/I18n.tsx";
-import { display, ICONS, Link } from "../ui.tsx";
+import { display, ICONS, Link, useCopyNote } from "../ui.tsx";
 
 const run = "group-data-seen/art:[animation-play-state:running] print:animate-none";
 const animate = {
@@ -194,7 +194,7 @@ const ART = {
       </g>
     </Art>
   ),
-  // The /how/<step> pages and /technical.
+  // The /how/<step> pages.
   parts: (
     <Art view="0 0 240 144">
       <path d="M94 50 72 72m74-22 22 22" stroke-dasharray="3 5" class="text-muted-foreground" />
@@ -460,16 +460,7 @@ export function Heading({
   children: ComponentChildren;
 }) {
   const { t } = useI18n();
-  const [copied, setCopied] = useState(false);
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(`${location.origin}${location.pathname}#${id}`);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // No clipboard (an insecure page or a refused permission): the button just does nothing.
-    }
-  };
+  const { note, copy } = useCopyNote();
   return (
     <div class={`group/heading flex items-baseline ${cls}`}>
       <h2 id={`${id}-heading`} class="m-0 [font:inherit]">
@@ -477,9 +468,9 @@ export function Heading({
       </h2>
       <button
         type="button"
-        onClick={copy}
+        onClick={() => copy(`${location.origin}${location.pathname}#${id}`)}
         aria-label={t.how.copyLink}
-        class="ml-2 inline-flex size-[0.9em] translate-y-[0.1em] cursor-pointer items-center justify-center rounded-sm align-baseline text-muted-foreground opacity-0 group-hover/heading:opacity-100 hover:text-foreground focus-visible:opacity-100 [@media(hover:none)]:opacity-60"
+        class="ml-2 inline-flex size-[0.9em] translate-y-[0.1em] cursor-pointer items-center justify-center rounded-sm align-baseline text-muted-foreground opacity-0 group-hover/heading:opacity-100 hover:text-foreground focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
       >
         <svg
           viewBox="0 0 24 24"
@@ -491,11 +482,11 @@ export function Heading({
           stroke-linejoin="round"
           aria-hidden="true"
         >
-          {copied ? ICONS.check : ICONS.link}
+          {note === "copied" ? ICONS.check : ICONS.link}
         </svg>
       </button>
       <span class="sr-only" aria-live="polite">
-        {copied ? t.how.copied : ""}
+        {note === "copied" ? t.how.copied : note === "failed" ? t.how.copyFailed : ""}
       </span>
     </div>
   );

@@ -97,7 +97,6 @@ export const en = {
     about: "About – Fidant",
     terms: "Terms of use – Fidant",
     security: "Security – Fidant",
-    technical: "Technical description – Fidant",
   },
   menu: {
     language: "Language",
@@ -228,13 +227,13 @@ export const en = {
     },
     more: "Want the details? The privacy page says exactly what our server sees and what it logs.",
     moreLink: "Read the privacy page",
-    techLink: "Read the technical description",
     readMore: "Read more",
     steps: "Steps",
     overview: "Overview",
     next: "Next",
     copyLink: "Copy link to this part",
     copied: "Link copied",
+    copyFailed: "Couldn't copy the link. Copy it from the address bar instead.",
     /** Short names for the steps in the side menu. */
     nav: {
       stays: "File",
@@ -764,7 +763,7 @@ export const en = {
           "The file goes directly between the two browsers. If a network blocks that, it passes through our relay instead, still encrypted. Our server only passes on a few small setup messages, which are encrypted so it can't read them, except for a link it emailed, whose key it had.",
           "The recipient's browser checks the file's SHA-256 checksum, so a file that was changed or damaged on the way is not saved.",
         ],
-        link: ["The technical description", "/technical"],
+        link: ["How it works, step by step", "/how"],
       },
       {
         heading: "What it doesn't protect against",
@@ -791,8 +790,6 @@ export const en = {
   },
   // A reader's version of docs/how-fidant-works.md, the source of truth. Change both together.
   technical: {
-    title: "Technical description",
-    lede: "How Fidant works under the hood, for readers who want to check it: the keys, the encryption, the modes Fidant runs in, how each part protects you, what our servers see and keep at each step, and what Fidant doesn't protect against. The How it works page tells the same story without the technical terms.",
     sections: {
       parts: {
         heading: "The parts",
@@ -1000,7 +997,7 @@ export const en = {
         items: {
           local: {
             heading: "Direct, on the same network",
-            body: "When both browsers are on the same local network, they connect over their local addresses. The file goes straight between them, and our server and relay see none of it. If you allow the relay, it still sees both IP addresses.",
+            body: "When both browsers are on the same local network, they connect over their local addresses. The file goes straight between them, and our server and relay see none of it. Each browser still asks our STUN service for its public address, which shows it that IP address, and if you allow the relay, it sees both IP addresses.",
           },
           stun: {
             heading: "Direct, through public addresses",
@@ -1024,7 +1021,7 @@ export const en = {
       ],
       signaling: [
         "Signaling",
-        "Passing the setup messages between two browsers before they can reach each other. WebRTC leaves this to the app. Fidant passes them through our server, encrypted so the server can't read or change them.",
+        "Passing the setup messages between two browsers before they can reach each other. WebRTC leaves this to the app. Fidant passes them through our server, encrypted so the server can't read or change them, except for a link we email.",
       ],
       websocket: [
         "WebSocket",
@@ -1117,7 +1114,7 @@ export const en = {
         ],
         [
           "The networks on the way or our relay read the traffic",
-          "Two layers of encryption: WebRTC's DTLS, and AES-256-GCM under a file key only the two browsers have, new for every attempt.",
+          "Two layers of encryption: WebRTC's DTLS, and AES-256-GCM under a file key only the two browsers have, new for every attempt. For a link we email, our server could also get the file key by putting itself in the middle (see above).",
         ],
         [
           "The traffic gives away the file name, the exact size or a secret's length",
@@ -1141,7 +1138,7 @@ export const en = {
         ],
         [
           "A shared secret lingers in the browser",
-          "On the recipient's side it is never downloaded or put in a form field. On both sides the browser is told to keep spelling, autocomplete, writing suggestions and translation off it.",
+          "On the recipient's side it is never downloaded or put in a form field, and translation is off. The sender's text box tells the browser to keep spelling, autocomplete, writing suggestions and translation off it. It still lingers in two ways: a browser can save the sender's text box with its session, and a copied secret stays on the clipboard (see What it doesn't protect against).",
         ],
         [
           "Data left behind on our machines",

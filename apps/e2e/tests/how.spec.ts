@@ -79,9 +79,7 @@ async function expectBelowHeader(page: Page, selector: string) {
     .toBe(true);
 }
 
-test("the landing page links to the steps, which end with links to /privacy and /technical", async ({
-  page,
-}) => {
+test("the landing page links to the steps, which end with a link to /privacy", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("link", { name: "Read how it works" }).click();
   await expect(page).toHaveURL(/\/how$/);
@@ -97,10 +95,6 @@ test("the landing page links to the steps, which end with links to /privacy and 
   await expect(page.getByRole("link", { name: "Read the privacy page" })).toHaveAttribute(
     "href",
     "/privacy",
-  );
-  await expect(page.getByRole("link", { name: "Read the technical description" })).toHaveAttribute(
-    "href",
-    "/technical",
   );
   await expect(page.locator("footer").getByRole("link", { name: "How it works" })).toHaveAttribute(
     "href",
@@ -159,6 +153,14 @@ test("each step has a Read more page with the step menu and the next step", asyn
   await expect(page.locator("#stun h2")).toBeFocused();
   await expectBelowHeader(page, "#stun");
 
+  // An in-app link to the entry already in the address still brings it back into view.
+  await page.goto("/how/tech#dtls");
+  await page.evaluate(() => scrollTo(0, document.body.scrollHeight));
+  await page.locator('#aes a[href="/how/tech#dtls"]').click();
+  await expect(page).toHaveURL(/\/how\/tech#dtls$/);
+  await expectBelowHeader(page, "#dtls");
+  await expect(page.locator("#dtls h2")).toBeFocused();
+
   for (const width of [360, 1280]) {
     await page.setViewportSize({ width, height: 800 });
     for (const slug of slugs) {
@@ -169,6 +171,26 @@ test("each step has a Read more page with the step menu and the next step", asyn
       );
     }
   }
+});
+
+test("the old /technical address opens /how", async ({ page }) => {
+  await page.goto("/technical");
+  await expect(page).toHaveURL(/\/how$/);
+  await expect(page.locator("main h1")).toHaveText("How it works");
+});
+
+test("a heading's button copies a link to its section", async ({ page, context }) => {
+  await page.goto("/how/link");
+  await context.grantPermissions(["clipboard-read", "clipboard-write"], {
+    origin: new URL(page.url()).origin,
+  });
+  await page.locator("#linkRisks h2").hover();
+  await page.locator("#linkRisks").getByRole("button", { name: "Copy link to this part" }).click();
+  const origin = new URL(page.url()).origin;
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    `${origin}/how/link#linkRisks`,
+  );
+  await expect(page.locator("#linkRisks [aria-live]")).toHaveText("Link copied");
 });
 
 test("the top nav links to How it works between Share a secret and Privacy", async ({ page }) => {

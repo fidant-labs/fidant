@@ -1,19 +1,11 @@
-// The technical description: the reader's version of docs/how-fidant-works.md. Each /how step has a
-// page of it at /how/<slug>, and /technical shows all of them in one page.
+// The /how steps and their technical detail: the reader's version of docs/how-fidant-works.md,
+// split over the pages at /how/<slug>.
 // Keep every sentence true of what the code does today.
 
-import {
-  type ArtId,
-  Drawing,
-  DrawnSection,
-  Heading,
-  Paragraphs,
-  Terms,
-  useRevealDrawings,
-} from "../how/Drawing.tsx";
 import type { Messages, Section } from "../i18n/en.ts";
 import { useI18n } from "../i18n/I18n.tsx";
-import { display, SectionLink } from "../ui.tsx";
+import { SectionLink } from "../ui.tsx";
+import { type ArtId, Drawing, DrawnSection, Heading, Paragraphs, Terms } from "./Drawing.tsx";
 
 type Technical = Messages["technical"];
 type Modes = Technical["modes"];
@@ -246,20 +238,4 @@ export function Detail({ step }: { step: Step }) {
       </DrawnSection>
     );
   });
-}
-
-export function TechnicalPage() {
-  const { t } = useI18n();
-  const main = useRevealDrawings();
-  return (
-    <main ref={main} class="mx-auto max-w-4xl px-4 pt-32 pb-20 lg:pt-40">
-      <h1 class={`${display} max-w-3xl text-[2.6rem] leading-[1.05] sm:text-[4rem]`}>
-        {t.technical.title}
-      </h1>
-      <p class="mt-6 max-w-2xl text-[1.15rem] text-muted-foreground">{t.technical.lede}</p>
-      {STEPS.map((step) => (
-        <Detail key={step.slug} step={step} />
-      ))}
-    </main>
-  );
 }

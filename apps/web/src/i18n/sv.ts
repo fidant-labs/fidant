@@ -82,7 +82,6 @@ export const sv: Messages = {
     about: "Om Fidant – Fidant",
     terms: "Användarvillkor – Fidant",
     security: "Säkerhet – Fidant",
-    technical: "Teknisk beskrivning – Fidant",
   },
   menu: {
     language: "Språk",
@@ -213,13 +212,13 @@ export const sv: Messages = {
     },
     more: "Vill du veta mer? På integritetssidan står exakt vad vår server ser och vad den loggar.",
     moreLink: "Läs integritetssidan",
-    techLink: "Läs den tekniska beskrivningen",
     readMore: "Läs mer",
     steps: "Steg",
     overview: "Översikt",
     next: "Nästa",
     copyLink: "Kopiera länk till den här delen",
     copied: "Länken kopierad",
+    copyFailed: "Det gick inte att kopiera länken. Kopiera den från adressfältet i stället.",
     nav: {
       stays: "Filen",
       encryption: "Kryptering",
@@ -722,7 +721,7 @@ export const sv: Messages = {
           "Filen går direkt mellan de två webbläsarna. Om ett nätverk stoppar det går den i stället krypterad via vårt relä. Vår server skickar bara vidare några små meddelanden för att koppla upp, och de är krypterade så att servern inte kan läsa dem, utom för en länk som den har mejlat och därför haft nyckeln till.",
           "Mottagarens webbläsare kontrollerar filens SHA-256-kontrollsumma, så en fil som ändrats eller skadats på vägen sparas inte.",
         ],
-        link: ["Den tekniska beskrivningen", "/technical"],
+        link: ["Så fungerar det, steg för steg", "/how"],
       },
       {
         heading: "Det här skyddar den inte mot",
@@ -749,8 +748,6 @@ export const sv: Messages = {
   },
   // En läsarversion av docs/how-fidant-works.md, som är källan. Ändra båda tillsammans.
   technical: {
-    title: "Teknisk beskrivning",
-    lede: "Hur Fidant fungerar på insidan, för dig som vill kontrollera det: nycklarna, krypteringen, lägena Fidant kör i, hur varje del skyddar dig, vad våra servrar ser och sparar i varje steg och vad Fidant inte skyddar mot. Sidan Så fungerar det berättar samma sak utan tekniska termer.",
     sections: {
       parts: {
         heading: "Delarna",
@@ -958,7 +955,7 @@ export const sv: Messages = {
         items: {
           local: {
             heading: "Direkt, på samma nätverk",
-            body: "När båda webbläsarna är på samma lokala nätverk ansluter de över sina lokala adresser. Filen går direkt mellan dem, och vår server och vårt relä ser ingenting av den. Om du tillåter reläet ser det ändå båda IP-adresserna.",
+            body: "När båda webbläsarna är på samma lokala nätverk ansluter de över sina lokala adresser. Filen går direkt mellan dem, och vår server och vårt relä ser ingenting av den. Varje webbläsare frågar ändå vår STUN-tjänst om sin offentliga adress, vilket visar den IP-adressen, och om du tillåter reläet ser det båda IP-adresserna.",
           },
           stun: {
             heading: "Direkt, via offentliga adresser",
@@ -982,7 +979,7 @@ export const sv: Messages = {
       ],
       signaling: [
         "Signalering",
-        "Att skicka meddelandena för uppkopplingen mellan två webbläsare innan de når varandra. WebRTC lämnar det till appen. Fidant skickar dem via vår server, krypterade så att servern inte kan läsa eller ändra dem.",
+        "Att skicka meddelandena för uppkopplingen mellan två webbläsare innan de når varandra. WebRTC lämnar det till appen. Fidant skickar dem via vår server, krypterade så att servern inte kan läsa eller ändra dem, utom för en länk vi mejlar.",
       ],
       websocket: [
         "WebSocket",
@@ -1073,7 +1070,7 @@ export const sv: Messages = {
         ],
         [
           "Nätverken på vägen eller vårt relä läser trafiken",
-          "Två lager kryptering: WebRTC:s DTLS, och AES-256-GCM under en filnyckel som bara de två webbläsarna har, ny för varje försök.",
+          "Två lager kryptering: WebRTC:s DTLS, och AES-256-GCM under en filnyckel som bara de två webbläsarna har, ny för varje försök. För en länk vi mejlar skulle vår server också kunna få filnyckeln genom att ställa sig emellan (se ovan).",
         ],
         [
           "Trafiken avslöjar filnamnet, den exakta storleken eller en hemlighets längd",
@@ -1097,7 +1094,7 @@ export const sv: Messages = {
         ],
         [
           "En delad hemlighet blir kvar i webbläsaren",
-          "Hos mottagaren laddas den aldrig ner och läggs aldrig i ett formulärfält. Hos båda får webbläsaren besked om att hålla stavningskontroll, autokomplettering, skrivförslag och översättning borta från den.",
+          "Hos mottagaren laddas den aldrig ner och läggs aldrig i ett formulärfält, och översättning är avstängd. Avsändarens textruta säger åt webbläsaren att hålla stavningskontroll, autokomplettering, skrivförslag och översättning borta från den. Den kan ändå bli kvar på två sätt: en webbläsare kan spara avsändarens textruta med sessionen, och en kopierad hemlighet ligger kvar i urklippet (se Det här skyddar den inte mot).",
         ],
         [
           "Data som blir kvar på våra maskiner",

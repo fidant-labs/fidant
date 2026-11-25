@@ -123,8 +123,7 @@ export type Route =
   | "receive"
   | "about"
   | "terms"
-  | "security"
-  | "technical";
+  | "security";
 
 /** Changes the page without reloading it, so a transfer held in memory survives. */
 export function navigate(href: string) {
