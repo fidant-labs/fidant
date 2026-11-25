@@ -1,11 +1,10 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import type { IncomingMessage, RequestListener, ServerResponse } from "node:http";
 import { createServer, type Server } from "node:https";
 import { isIP } from "node:net";
 import { extname, join, resolve, sep } from "node:path";
-import { isLinkId } from "@sigill/protocol";
 import type { Mailer } from "./mail.ts";
 import type { Relays } from "./relays.ts";
 import { attachSignaling, type Logger } from "./signaling.ts";
@@ -31,53 +30,92 @@ const securityHeaders = {
   "x-content-type-options": "nosniff",
 };
 
-const receivePath = /^\/r\/([^/]+)\/?$/;
+/** Lowercase segments only, so a redirect built from it can never name another host. */
+const pagePath = /^(?:\/[a-z]+)*\/?$/;
+const moved: Record<string, string> = { "/technical": "/how" };
 
-/** The build's copy of index.html whose link preview fits the path and the fetcher's language. */
-function pageFor(pathname: string, acceptLanguage = ""): string {
-  const kind = isLinkId(receivePath.exec(pathname)?.[1]) ? "receive" : "home";
-  const lang = /^sv\b/i.test(acceptLanguage) ? "sv" : "en";
-  return `index.${kind}.${lang}.html`;
+/** Where the build puts a page: pages/index.html for /, pages/<path>/index.html for the rest. */
+function pageFile(path: string): string {
+  return path === "/" ? "pages/index.html" : `pages${path}/index.html`;
+}
+
+function isFile(path: string): Promise<boolean> {
+  return stat(path).then(
+    (s) => s.isFile(),
+    () => false,
+  );
 }
 
 export function serveStatic(root: string) {
   const base = resolve(root);
   const assets = join(base, "assets") + sep;
-  return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
-    if (req.method !== "GET" && req.method !== "HEAD") {
-      res.writeHead(405, { allow: "GET, HEAD", ...securityHeaders }).end();
-      return;
-    }
-    let pathname: string;
-    try {
-      pathname = decodeURIComponent(new URL(req.url ?? "/", "https://localhost").pathname);
-    } catch {
-      res.writeHead(400, securityHeaders).end();
-      return;
-    }
-    let file = resolve(base, `.${pathname}`);
-    if (file !== base && !file.startsWith(base + sep)) {
-      res.writeHead(404, securityHeaders).end();
-      return;
-    }
-    const page = !extname(file);
-    if (page) {
-      file = join(base, pageFor(pathname, req.headers["accept-language"]));
-    }
+  const send = async (
+    res: ServerResponse,
+    status: number,
+    file: string,
+    headers: Record<string, string> = {},
+  ): Promise<void> => {
     try {
       const body = await readFile(file);
-      res.writeHead(200, {
+      res.writeHead(status, {
         "content-type": contentTypes[extname(file)] ?? "application/octet-stream",
         "cache-control": file.startsWith(assets)
           ? "public, max-age=31536000, immutable"
           : "no-cache",
-        ...(page && { vary: "accept-language" }),
+        ...headers,
         ...securityHeaders,
       });
       res.end(body);
     } catch {
       res.writeHead(404, securityHeaders).end();
     }
+  };
+  return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+    if (req.method !== "GET" && req.method !== "HEAD") {
+      res.writeHead(405, { allow: "GET, HEAD", ...securityHeaders }).end();
+      return;
+    }
+    let url: URL;
+    let pathname: string;
+    try {
+      url = new URL(req.url ?? "/", "https://localhost");
+      pathname = decodeURIComponent(url.pathname);
+    } catch {
+      res.writeHead(400, securityHeaders).end();
+      return;
+    }
+    const file = resolve(base, `.${pathname}`);
+    if (file !== base && !file.startsWith(base + sep)) {
+      res.writeHead(404, securityHeaders).end();
+      return;
+    }
+    if (extname(file)) {
+      await send(res, 200, file);
+      return;
+    }
+    if (pathname.startsWith("/r/")) {
+      // Malformed link IDs get the receive page too, which says the link is broken.
+      const lang = /^sv\b/i.test(req.headers["accept-language"] ?? "") ? "sv" : "en";
+      await send(res, 200, join(base, `index.receive.${lang}.html`), {
+        vary: "accept-language",
+        "x-robots-tag": "noindex",
+      });
+      return;
+    }
+    if (pagePath.test(pathname)) {
+      const path = pathname.length > 1 ? pathname.replace(/\/$/, "") : pathname;
+      const target = moved[path] ?? path;
+      if (await isFile(join(base, pageFile(target)))) {
+        if (target === pathname) {
+          await send(res, 200, join(base, pageFile(target)));
+        } else {
+          res.writeHead(301, { location: target + url.search, ...securityHeaders }).end();
+        }
+        return;
+      }
+    }
+    const sv = /^\/sv(?:\/|$)/.test(pathname);
+    await send(res, 404, join(base, sv ? "pages/sv/404.html" : "pages/404.html"));
   };
 }
 
