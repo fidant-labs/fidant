@@ -407,9 +407,9 @@ test.describe("the box", () => {
     await expect(recipient.page.getByText(verifiedText)).toBeVisible({ timeout: 60_000 });
     const download = await downloading;
     expect(sha256Hex(await buffer(await download.createReadStream()))).toBe(sha256Hex(file.bytes));
-    // Relayed by the box's coturn over TLS on 443, through HAProxy, as in production. The box
-    // hands out only turn.fidant.se, and Chrome resolves that name through --host-resolver-rules
-    // for TCP only: its UDP STUN and TURN lookups fail here.
+    // Relayed by the box's coturn over TLS on 443, through HAProxy. e2e.conf sets RELAYS_FILE
+    // empty, so the box's server reads no relay list and hands out only turn.fidant.se, which
+    // Chrome resolves through --host-resolver-rules for TCP only: its UDP lookups fail here.
     await expect
       .poll(async () => `${await pathOf(sender.page)} ${await pathOf(recipient.page)}`)
       .toMatch(/relay\+tls\//);
