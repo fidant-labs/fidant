@@ -7,7 +7,7 @@ import { Alert, AlertDescription, AlertTitle } from "#components/ui/alert";
 import { buttonVariants } from "#components/ui/button";
 import { Card, CardContent } from "#components/ui/card";
 import { useI18n } from "./i18n/I18n.tsx";
-import { LANGUAGE_NAMES, type Lang } from "./i18n/language.ts";
+import { LANGUAGE_NAMES, type Lang, localizedPath } from "./i18n/language.ts";
 import { formatBytes } from "./lib/format.ts";
 import type { OpenPath } from "./lib/peer.ts";
 import type { Kind, Relayed } from "./lib/server-facts.ts";
@@ -139,7 +139,8 @@ export type Route =
   | "receive"
   | "about"
   | "terms"
-  | "security";
+  | "security"
+  | "notFound";
 
 /** Changes the page without reloading it, so a transfer held in memory survives. */
 export function navigate(href: string) {
@@ -158,10 +159,12 @@ export function Link({
   /** Where a plain click goes, when that must differ from what the page shows in `href`. */
   to?: string | undefined;
 }) {
+  const { lang } = useI18n();
+  const local = (path: string) => (path.startsWith("/") ? localizedPath(path, lang) : path);
   return (
     <a
       {...props}
-      href={href}
+      href={local(href)}
       onClick={(event) => {
         if (
           event.button !== 0 ||
@@ -173,7 +176,7 @@ export function Link({
           return;
         }
         event.preventDefault();
-        navigate(to ?? href);
+        navigate(local(to ?? href));
       }}
     />
   );

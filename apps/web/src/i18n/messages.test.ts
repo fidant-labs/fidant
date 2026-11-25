@@ -52,25 +52,8 @@ test("index.html's meta description is the English tagline", () => {
   assert.ok(html.includes(`<meta name="description" content="${en.footer.tagline}" />`));
 });
 
-test("index.html's noscript text is the English landing page", () => {
+test("index.html's noscript text is the English noscript message", () => {
   const html = readFileSync(new URL("../../index.html", import.meta.url), "utf8");
   const noscript = html.match(/<noscript>([\s\S]*)<\/noscript>/)?.[1] ?? "";
-  const { title, lede, stepsHeading, steps } = en.landing;
-  for (const text of [
-    title,
-    lede,
-    stepsHeading,
-    ...steps.map(([step, detail]) => `${step}. ${detail}`),
-  ]) {
-    assert.ok(noscript.includes(`>${text}<`), text);
-  }
-  for (const [label, path] of [
-    [en.footer.about, "/about"],
-    [en.footer.security, "/security"],
-    [en.menu.privacy, "/privacy"],
-    [en.footer.terms, "/terms"],
-    [en.footer.source, "https://github.com/sigill-labs/sigill"],
-  ] as const) {
-    assert.ok(noscript.includes(`<a href="${path}">${label}</a>`), label);
-  }
+  assert.ok(noscript.includes(`>${en.noscript}</p>`));
 });
