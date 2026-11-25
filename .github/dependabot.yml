@@ -20,3 +20,27 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+  # The e2e network suite's base images, pinned by tag and digest. box.test.ts holds node's major to
+  # .node-version and ubuntu's release to the Lightsail blueprint, so those move only by hand; Dependabot
+  # still refreshes their digests. The box and relay run privileged, so a new version waits a week.
+  - package-ecosystem: docker
+    directories:
+      - /apps/e2e/networks
+      - /apps/e2e/networks/box
+      - /apps/e2e/networks/coturn
+      - /apps/e2e/networks/relay
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: chore
+      include: scope
+    ignore:
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
+      - dependency-name: ubuntu
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+    groups:
+      docker:
+        patterns: ["*"]

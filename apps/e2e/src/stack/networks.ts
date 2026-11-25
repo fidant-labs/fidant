@@ -29,10 +29,14 @@ export const boxOrigin = "https://fidant.se";
 /** The relay box container, set up by apps/infra/relay/install.sh. */
 export const relayIp = "198.51.100.40";
 export const relayHost = "sto.relay.sigill.test";
-// node:26-bookworm, not slim: the server's certificate step shells out to openssl.
-// box/Dockerfile copies its node binary.
+/** The node stage of networks/box/Dockerfile, so Dependabot moves the server and the box together. */
 export const serverImage =
-  "node:26.13.1-bookworm@sha256:0a7c0471c10988ef5ab64718fa58bf8d5be578b4d20cf42b10b5fa6ccda39ae1";
+  /^FROM (\S+) AS node$/m.exec(
+    readFileSync(join(e2eDir, "networks", "box", "Dockerfile"), "utf8"),
+  )?.[1] ??
+  (() => {
+    throw new Error("networks/box/Dockerfile has no `FROM <image> AS node` line");
+  })();
 const repo = repoRoot.replace(/\/$/, "");
 
 /** The `playwright run-server` of each browser container, published on the host. */
@@ -281,24 +285,17 @@ async function startNetworks(): Promise<RunningService> {
   };
 }
 
-/** Pulls missing images while rebuilding the three built ones; compose up would pull, then build. */
+/**
+ * Pulls missing images and builds the built ones on every run, so a Dockerfile change takes effect
+ * without a new tag. The layer cache makes an unchanged build take seconds.
+ */
 async function fetchImages(): Promise<void> {
-  const { stdout } = await run("docker", [...compose, "config", "--images"]);
-  const images = [...stdout.split("\n").filter(Boolean), serverImage];
-  if (
-    await run("docker", ["image", "inspect", ...images]).then(
-      () => true,
-      () => false,
-    )
-  ) {
-    return;
-  }
   await Promise.all([
     run("docker", [...compose, "pull", "--policy", "missing", "--ignore-buildable", "--quiet"]),
-    // Built once serverImage is here: the box build copies node out of it.
-    run("docker", ["image", "inspect", serverImage])
-      .catch(() => run("docker", ["pull", "--quiet", serverImage]))
-      .then(() => run("docker", [...compose, "build", "--quiet"])),
+    run("docker", ["image", "inspect", serverImage]).catch(() =>
+      run("docker", ["pull", "--quiet", serverImage]),
+    ),
+    run("docker", [...compose, "build", "--quiet"]),
   ]);
 }
 

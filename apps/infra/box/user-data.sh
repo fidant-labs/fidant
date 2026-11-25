@@ -48,14 +48,32 @@ cat >/usr/local/bin/sigill-deploy <<'EOF'
 #!/bin/bash
 set -euo pipefail
 repo=https://github.com/sigill-labs/sigill.git
-sha=$(git ls-remote "$repo" refs/heads/main | awk '$2 == "refs/heads/main" {print $1}')
-[[ $sha =~ ^[0-9a-f]{40}$ ]]
+sha=$(git ls-remote "$repo" refs/heads/production | awk '$2 == "refs/heads/production" {print $1}')
+[[ $sha =~ ^[0-9a-f]{40}$ ]] || { echo "no production branch" >&2; exit 1; }
 dir=/opt/sigill/releases/$sha
 previous=$(readlink /opt/sigill/current || true)
 [ "$previous" = "$dir" ] && exit 0
 [ -e "/opt/sigill/failed-$sha" ] && exit 0
 as_sigill() { runuser -u sigill -- env HOME=/var/lib/sigill bash -euo pipefail -c "$1"; }
-as_sigill "rm -rf $dir && git clone --quiet --filter=blob:none --no-checkout $repo $dir && cd $dir && git checkout --quiet $sha && pnpm install --frozen-lockfile"
+as_sigill "rm -rf $dir && git clone --quiet --filter=blob:none --no-checkout $repo $dir"
+# The full ref, because a tag named origin/main would shadow the remote branch.
+list=$(as_sigill "git -C $dir rev-list --first-parent refs/remotes/origin/main") || list=
+if [ -z "$list" ]; then
+  echo "could not check $sha against main" >&2
+  as_sigill "rm -rf $dir"
+  exit 1
+fi
+# Not a grep pipe: grep -q can stop reading at a match, and pipefail then fails the pipe on its writer.
+case "$list" in
+*"$sha"*) ;;
+*)
+  echo "refused $sha: not on main" >&2
+  touch "/opt/sigill/failed-$sha"
+  as_sigill "rm -rf $dir"
+  exit 1
+  ;;
+esac
+as_sigill "cd $dir && git checkout --quiet $sha && pnpm install --frozen-lockfile"
 if ! as_sigill "cd $dir && pnpm build"; then
   touch "/opt/sigill/failed-$sha"
   as_sigill "rm -rf $dir"
@@ -149,7 +167,7 @@ EOF
 
 cat >/etc/systemd/system/sigill-deploy.service <<'EOF'
 [Unit]
-Description=Deploy the newest commit on main
+Description=Deploy the production branch
 
 [Service]
 Type=oneshot
