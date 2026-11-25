@@ -1032,7 +1032,7 @@ export const en = {
         items: {
           local: {
             heading: "Direct, on the same network",
-            body: "When both browsers are on the same local network, they connect over their local addresses. The file goes straight between them, and our server and relay see none of it. Each browser still asks our STUN service for its public address, which shows it that IP address, and if you allow the relay, it sees both IP addresses.",
+            body: "When both browsers are on the same local network, they connect over their local addresses. The file goes straight between them, and our server and relay see none of it. Each browser still asks our STUN service for its public address, which shows it that IP address, and if you allow the relay and it is available, it sees both IP addresses.",
           },
           stun: {
             heading: "Direct, through public addresses",
@@ -1445,7 +1445,7 @@ export const en = {
           "Nothing of it. Your page reports the route: direct, STUN, relay or failed.",
           "Nothing.",
           "The route.",
-          "On the relay route, the encrypted packets, which it forwards and doesn't store. Both IP addresses whenever you allow the relay.",
+          "On the relay route, the encrypted packets, which it forwards and doesn't store. Both IP addresses whenever you allow the relay and it is available.",
         ],
         [
           "The recipient confirms delivery",

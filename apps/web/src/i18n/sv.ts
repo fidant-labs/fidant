@@ -987,7 +987,7 @@ export const sv: Messages = {
         items: {
           local: {
             heading: "Direkt, på samma nätverk",
-            body: "När båda webbläsarna är på samma lokala nätverk ansluter de över sina lokala adresser. Filen går direkt mellan dem, och vår server och vårt relä ser ingenting av den. Varje webbläsare frågar ändå vår STUN-tjänst om sin offentliga adress, vilket visar den IP-adressen, och om du tillåter reläet ser det båda IP-adresserna.",
+            body: "När båda webbläsarna är på samma lokala nätverk ansluter de över sina lokala adresser. Filen går direkt mellan dem, och vår server och vårt relä ser ingenting av den. Varje webbläsare frågar ändå vår STUN-tjänst om sin offentliga adress, vilket visar den IP-adressen, och om du tillåter reläet och det är tillgängligt ser det båda IP-adresserna.",
           },
           stun: {
             heading: "Direkt, via offentliga adresser",
@@ -1407,7 +1407,7 @@ export const sv: Messages = {
           "Ingenting av den. Din sida rapporterar vägen: direkt, STUN, relä eller misslyckad.",
           "Ingenting.",
           "Vägen.",
-          "På vägen via reläet: de krypterade paketen, som det för vidare och inte sparar. Båda IP-adresserna så fort du tillåter reläet.",
+          "På vägen via reläet: de krypterade paketen, som det för vidare och inte sparar. Båda IP-adresserna så fort du tillåter reläet och det är tillgängligt.",
         ],
         [
           "Mottagaren bekräftar leveransen",
