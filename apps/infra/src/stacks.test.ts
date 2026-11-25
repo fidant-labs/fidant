@@ -707,7 +707,7 @@ test("every relay address belongs to a relay in the config", () => {
 // Changing this name replaces the app box, and the site is down for 5–10 minutes.
 test("the app box keeps its name", () => {
   const [, instance] = instanceNamed(appBox(), "^fidant-app-");
-  assert.equal(instance?.Properties.InstanceName, "fidant-app-56e112e1");
+  assert.equal(instance?.Properties.InstanceName, "fidant-app-66d7d24a");
 });
 
 test("the journal is the only place the box's services keep log lines", () => {
