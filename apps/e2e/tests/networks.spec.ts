@@ -25,6 +25,7 @@ import {
   test,
 } from "../src/fixtures.ts";
 import { readPeerConnections, recordPeerConnections, selectedPair } from "../src/ice.ts";
+import { base32Token } from "../src/leaks/canary.ts";
 import { checkServerLog, serverLogAllowlist } from "../src/leaks/server-log.ts";
 import { boxJournal, boxSyslog, serverStdoutLog } from "../src/paths.ts";
 import { winningJournald } from "../src/stack/box.ts";
@@ -66,6 +67,8 @@ interface Scenario {
   path: RegExp | "none";
   /** Send a larger file and check that both sides report progress honestly along the way. */
   progress?: true;
+  /** Share a secret from /secret instead of a file. */
+  secret?: true;
 }
 
 const scenarios: Scenario[] = [
@@ -103,6 +106,14 @@ const scenarios: Scenario[] = [
     recipient: "b1",
     routerB: "tcp-443",
     path: / relay\+tls\/\S+$/,
+  },
+  {
+    title: "a secret through the relay (only TCP 443)",
+    sender: "a1",
+    recipient: "b1",
+    routerB: "tcp-443",
+    path: / relay\+tls\/\S+$/,
+    secret: true,
   },
   {
     title: "relay down",
@@ -292,27 +303,30 @@ for (const row of scenarios) {
       return;
     }
 
-    test("transfers the file on the expected path", async ({
-      actor,
-      observed,
-      leaks,
-      canary,
-      baseURL,
-    }) => {
+    const what = row.secret ? "shares the secret" : "transfers the file";
+    test(`${what} on the expected path`, async ({ actor, observed, leaks, canary, baseURL }) => {
       await routerMode("router-b", row.routerB);
       // ponytail: 512 KiB: SCTP over this link moves about 50 KB/s, and it still shows 10 steps.
       const size = row.progress ? 512 * 1024 + 1 : 300_001;
       const file = leaks.watch(canaryFile(canary.fork("file"), { size }));
+      const text = base32Token(canary.fork("text"), 64);
+      leaks.watchContent("text", text);
 
       const sender = await actor("sender");
       await recordPeerConnections(sender.context);
-      await sender.page.goto("/send");
-      await chooseFile(sender.page, {
-        name: file.name,
-        mimeType: file.mime,
-        buffer: file.bytes,
-      });
-      await sender.page.getByLabel("Who is it for?").fill("Anna");
+      if (row.secret) {
+        await sender.page.goto("/secret");
+        await sender.page.getByLabel("Your secret").fill(text);
+        await sender.page.locator("#secret-recipient-name").fill("Anna");
+      } else {
+        await sender.page.goto("/send");
+        await chooseFile(sender.page, {
+          name: file.name,
+          mimeType: file.mime,
+          buffer: file.bytes,
+        });
+        await sender.page.getByLabel("Who is it for?").fill("Anna");
+      }
       await sender.page.getByRole("button", { name: "Create link", exact: true }).click();
       const link =
         (await sender.page.getByLabel("Link for Anna", { exact: true }).textContent()) ?? "";
@@ -321,19 +335,29 @@ for (const row of scenarios) {
       const recipient = await actor("recipient");
       await recordPeerConnections(recipient.context);
       await recipient.page.goto(link);
-      const downloading = recipient.page.waitForEvent("download", { timeout: 60_000 });
-      const downloadButton = recipient.page.getByRole("button", { name: "Download" });
-      await expect(downloadButton).toBeVisible({ timeout: 45_000 });
-      await downloadButton.click();
-      if (row.progress) {
-        await expectHonestProgress(sender.page, recipient.page, size);
+      if (row.secret) {
+        const show = recipient.page.getByRole("button", { name: "Show", exact: true });
+        await expect(show).toBeVisible({ timeout: 45_000 });
+        await show.click();
+        await expect(
+          recipient.page.getByRole("region", { name: "The secret", exact: true }),
+        ).toHaveJSProperty("textContent", text, { timeout: 60_000 });
+        await expect(deliveredRow(sender.page, "Anna")).toBeAttached();
+      } else {
+        const downloading = recipient.page.waitForEvent("download", { timeout: 60_000 });
+        const downloadButton = recipient.page.getByRole("button", { name: "Download" });
+        await expect(downloadButton).toBeVisible({ timeout: 45_000 });
+        await downloadButton.click();
+        if (row.progress) {
+          await expectHonestProgress(sender.page, recipient.page, size);
+        }
+        await expect(recipient.page.getByText(verifiedText)).toBeVisible({ timeout: 60_000 });
+        // path() is not available from a remote browser.
+        const download = await downloading;
+        expect(sha256Hex(await buffer(await download.createReadStream()))).toBe(
+          sha256Hex(file.bytes),
+        );
       }
-      await expect(recipient.page.getByText(verifiedText)).toBeVisible({ timeout: 60_000 });
-      // path() is not available from a remote browser.
-      const download = await downloading;
-      expect(sha256Hex(await buffer(await download.createReadStream()))).toBe(
-        sha256Hex(file.bytes),
-      );
 
       await expect
         .poll(async () => `${await pathOf(sender.page)} ${await pathOf(recipient.page)}`)
