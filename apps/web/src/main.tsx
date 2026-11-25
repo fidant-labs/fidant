@@ -1,6 +1,6 @@
 import { render } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { HowPage } from "./how/HowPage.tsx";
+import { HowPage, howStep } from "./how/HowPage.tsx";
 import { I18nProvider, useI18n } from "./i18n/I18n.tsx";
 import { InfoPage } from "./info/InfoPage.tsx";
 import { LandingPage } from "./landing/LandingPage.tsx";
@@ -32,13 +32,20 @@ const NAMED: ReadonlyArray<Route> = [
   "about",
   "terms",
   "security",
-  "technical",
 ];
+
+// The technical description that used to be at /technical now lives on the /how step pages.
+if (/^\/technical\/?$/.test(location.pathname)) {
+  history.replaceState(null, "", "/how");
+}
 
 function routeOf(path: string): Route {
   const named = NAMED.find((name) => new RegExp(`^/${name}/?$`).test(path));
   if (named) {
     return named;
+  }
+  if (howStep(path)) {
+    return "how";
   }
   if (path.startsWith("/r/")) {
     return "receive";
@@ -53,7 +60,18 @@ function routeOf(path: string): Route {
  */
 function App() {
   const { t } = useI18n();
-  const [route, setRoute] = useState(() => routeOf(location.pathname));
+  // The path, not just the route, so moving between /how steps renders the new step. On /how pages
+  // the fragment too, so a link to an entry on the same page scrolls to it; elsewhere the fragment
+  // can be a decryption key, so it stays out.
+  // A new object on every navigation, so following a link to the anchor already in the address
+  // still scrolls to it.
+  const where = () => ({
+    path: location.pathname,
+    hash: routeOf(location.pathname) === "how" ? location.hash : "",
+  });
+  const [place, setPlace] = useState(where);
+  const { path } = place;
+  const route = routeOf(path);
   const [theme, setTheme] = useState(initialTheme);
   const chooseTheme = (next: Theme) => {
     applyTheme(next);
@@ -61,14 +79,15 @@ function App() {
   };
   const kept = useRef(new Set<Route>());
   useEffect(() => {
-    const onPop = () => setRoute(routeOf(location.pathname));
+    const onPop = () => setPlace(where());
     addEventListener("popstate", onPop);
     return () => removeEventListener("popstate", onPop);
   }, []);
 
   useEffect(() => {
-    document.title = t.tabTitles[route];
-  }, [route, t]);
+    const step = howStep(path);
+    document.title = step ? `${t.how.sections[step.id].heading} – Fidant` : t.tabTitles[route];
+  }, [route, path, t]);
 
   // A page change hides the focused link, so focus moves to the new page's or section's heading.
   const firstRoute = useRef(true);
@@ -92,7 +111,7 @@ function App() {
     }
     heading.tabIndex = -1;
     heading.focus({ preventScroll: target !== null });
-  }, [route]);
+  }, [place]);
 
   const secure = hasSecureCrypto();
   const holdsTransfer = route === "send" || route === "secret" || route === "receive";
@@ -106,11 +125,10 @@ function App() {
         {route === "landing" && <LandingPage />}
         {/* The privacy page uses no crypto, so it opens even without a secure connection. */}
         {route === "privacy" && <PrivacyPage />}
-        {route === "how" && <HowPage />}
-        {(route === "about" ||
-          route === "terms" ||
-          route === "security" ||
-          route === "technical") && <InfoPage page={route} />}
+        {route === "how" && <HowPage path={path} />}
+        {(route === "about" || route === "terms" || route === "security") && (
+          <InfoPage page={route} />
+        )}
         {!secure && holdsTransfer && <InsecurePage />}
         {secure && kept.current.has("receive") && (
           <div id="receive" hidden={route !== "receive"}>
