@@ -83,6 +83,12 @@ export const sv: Messages = {
     terms: "Användarvillkor – Fidant",
     security: "Säkerhet – Fidant",
   },
+  openTransfer: {
+    send: "En filöverföring är fortfarande öppen i den här fliken.",
+    secret: "En hemlighet delas fortfarande från den här fliken.",
+    receive: "En överföring till dig är fortfarande öppen i den här fliken.",
+    back: "Gå tillbaka",
+  },
   menu: {
     language: "Språk",
     theme: "Tema",
@@ -111,11 +117,17 @@ export const sv: Messages = {
         "När de öppnar den går filen från din webbläsare till deras, krypterad hela vägen.",
       ],
     ] as ReadonlyArray<readonly [string, string]>,
+    serverHeading: "Vad vår server vet",
     neverHeading: "Vår server får aldrig",
     seesHeading: "Vår server ser bara",
     relayNote:
       "Om de två webbläsarna inte kan ansluta direkt går filen i stället via vårt relä, fortfarande krypterad. Reläet ser då båda IP-adresserna och ungefär hur stor filen är, men kan inte låsa upp den.",
     caveat: "Haken: eftersom inget sparas måste fliken vara öppen tills filen har kommit fram.",
+    tryHeading: "Prova på dig själv",
+    tryBody:
+      "Skicka en fil till dig själv, öppna länken på mobilen och se den komma fram. Det tar ungefär en minut.",
+    tryCta: "Skicka en fil till dig själv",
+    trySecret: "Eller dela en hemlighet",
   },
   how: {
     title: "Så fungerar det",
@@ -263,14 +275,31 @@ export const sv: Messages = {
   format: {
     bytes: (n: number) => `${n.toLocaleString("sv")} byte`,
     progress: (percent: string, done: string, total: string) => `${percent} · ${done} av ${total}`,
+    timeLeft: (duration: string) => `Ungefär ${duration} kvar`,
   },
   send: {
-    fileHeading: "Din fil",
-    recipientsHeading: "Mottagare",
     continue: "Fortsätt",
-    back: "Tillbaka till filen",
     title: "Skicka en fil",
-    lede: "Din fil skickas från den här webbläsaren till dem du väljer. Den är krypterad hela vägen och laddas aldrig upp eller sparas.",
+    lede: "Välj en fil och skapa sedan en länk till varje person. Din fil skickas från den här webbläsaren till dem. Den är krypterad hela vägen och laddas aldrig upp eller sparas.",
+    step: (n: number) => `Steg ${n} av 2`,
+    peopleHeading: "Skapa en länk till varje person",
+    change: "Byt",
+    fromSummary: (name: string) => `från ${name}`,
+    connectionOptions: "Anslutningsalternativ",
+    addEmail: "Skapa och mejla länk",
+    share: "Dela",
+    shareFor: (name: string) => `Dela länken till ${name}`,
+    sendingBar: (delivered: number, total: number) =>
+      `Skickar från den här fliken · ${delivered} av ${total} levererade · håll den öppen`,
+    allDone: "Alla länkar har levererat filen. Du kan stänga fliken.",
+    summary: (done: number, total: number) => `${done} av ${total} länkar har levererat filen`,
+    delivered: "Levererad",
+    doneTitle: "Allt levererat",
+    doneOne: (name: string) => `Filen kom fram oskadd via länken till ${name}.`,
+    doneMany: (n: number) => `Filen kom fram oskadd via alla ${n} länkar.`,
+    closeTab: "Du kan stänga fliken.",
+    sendMore: "Skicka till någon mer",
+    showDetails: "Visa detaljer",
     localhost:
       "Sidan är öppnad på localhost, så länkarna fungerar inte på andra datorer. Öppna i stället nätverksadressen som servern skrev ut.",
     lostServer:
@@ -287,7 +316,6 @@ export const sv: Messages = {
         "Ditt namn och filnamnet är för långa tillsammans. Korta ditt namn eller byt namn på filen.",
     },
     chooseFile: "Välj en fil",
-    chooseOther: "Välj en annan fil",
     orDrop: "eller släpp den här",
     fileError: {
       unsafe:
@@ -300,7 +328,7 @@ export const sv: Messages = {
     locked: "Ta bort alla mottagare för att ändra ditt namn eller din fil.",
     recipientLabel: "Vem ska få den?",
     recipientPlaceholder: "Mottagarens namn",
-    add: "Lägg till",
+    add: "Skapa länk",
     nameError: {
       missing: "Skriv ett namn.",
       taken: "Det namnet finns redan på listan.",
@@ -312,7 +340,6 @@ export const sv: Messages = {
     fileFirst: "Välj en fil först.",
     full: (max: number) => `Du kan skicka till högst ${max} personer åt gången.`,
     oneLinkEach: "Varje person får en egen länk, som fungerar en gång.",
-    keepOpen: "Ha fliken öppen tills alla har fått filen. Den skickas härifrån.",
     recipients: "Mottagare",
     status: {
       waiting: (name: string) => `Väntar på att länken till ${name} ska öppnas`,
@@ -383,7 +410,8 @@ export const sv: Messages = {
     receivingCaption: "Tar emot från avsändaren. Ha fliken öppen tills det är klart.",
     doneTitle: "Nedladdningen är klar",
     verified: "Vi har kontrollerat den: det här är exakt den fil som skickades.",
-    autoDownload: "Nedladdningen bör starta av sig själv.",
+    autoDownload: "Webbläsaren bör spara den nu. Syns den inte?",
+    onceNotice: "Länken fungerar en gång, och bara medan avsändarens sida är öppen.",
     savedWhereChosen: "Den är sparad där du valde.",
     saveFile: "Spara filen",
     doneCaption: "Skickad från avsändarens dator till din. Krypterad hela vägen.",
@@ -511,10 +539,13 @@ export const sv: Messages = {
         body: "Webbläsaren kunde inte läsa hemligheten den tog emot. Be avsändaren att skicka den igen.",
       },
     },
-    back: "Tillbaka till hemligheten",
     first: "Skriv eller klistra in hemligheten först.",
     locked: "Ta bort alla mottagare för att ändra ditt namn eller din hemlighet.",
-    keepOpen: "Ha fliken öppen tills alla har fått hemligheten. Den skickas härifrån.",
+    allDone: "Alla länkar har levererat hemligheten. Du kan stänga fliken.",
+    summary: (done: number, total: number) =>
+      `${done} av ${total} länkar har levererat hemligheten`,
+    doneOne: (name: string) => `Hemligheten kom fram oskadd via länken till ${name}.`,
+    doneMany: (n: number) => `Hemligheten kom fram oskadd via alla ${n} länkar.`,
     emailNotice:
       "Fidant mejlar länken åt dig, så vår server ser länkens nyckel en gång. Nyckeln sparas inte och loggas inte. Länken, nyckeln också, ligger kvar i mottagarens inkorg, så alla som kan läsa den inkorgen skulle kunna ta emot hemligheten.",
     status: {
@@ -762,7 +793,7 @@ export const sv: Messages = {
         heading: "Länken",
         body: [
           "För varje mottagare skapar avsändarens webbläsare en länk av formen https://fidant.se/r/<länk-ID>#<hemlighet>. Länk-ID:t är 16 slumpmässiga byte och hemligheten 32 slumpmässiga byte, båda från webbläsarens kryptografiska slumptalsgenerator.",
-          "Länk-ID:t är bara ett namn på länken: vår server använder det för att koppla ihop avsändaren med mottagaren. Hemligheten står i fragmentet, delen efter #, som webbläsare inte skickar till servrar, och webbplatsen säger åt webbläsare att inte heller skicka sidans adress vidare till andra webbplatser. Appen skickar aldrig hemligheten någonstans, om inte avsändaren ber oss mejla länken (se Mejlade länkar nedan). Utöver det tar den bara fram nycklar ur den.",
+          'Länk-ID:t är bara ett namn på länken: vår server använder det för att koppla ihop avsändaren med mottagaren. Hemligheten står i fragmentet, delen efter #, som webbläsare inte skickar till servrar, och webbplatsen säger åt webbläsare att inte heller skicka sidans adress vidare till andra webbplatser. Appen skickar aldrig hemligheten någonstans, om inte avsändaren ber oss mejla länken (se Mejlade länkar nedan). Utöver det tar den bara fram nycklar ur den och håller mottagarsidans första adress, med hemligheten, i minnet, så att fältet "Gå tillbaka" kan föra dig tillbaka till en överföring som inte är klar. Länken i fältet har bara sökvägen; när du följer den hamnar hemligheten i adressfältet igen.',
           "Varje mottagare får ett eget länk-ID och en egen hemlighet, så en mottagares länk säger ingenting om någon annans.",
         ],
       },
@@ -1199,42 +1230,8 @@ export const sv: Messages = {
   },
   privacy: {
     title: "Integritet",
-    lede: "Din fil går från din webbläsare till webbläsaren hos den du skickar till, direkt när era nätverk tillåter det och annars via vårt relä. Den låses innan den lämnar din dator, och bara den som har länken kan låsa upp den. Vi får aldrig filen, dess namn eller en hemlighet som du delar, och aldrig nyckeln om du inte ber oss mejla länken.",
-    howHeading: "Så går det till att skicka",
-    steps: [
-      [
-        "Du väljer en fil och lägger till dem du vill skicka den till.",
-        "Filen stannar på din dator. Ingenting laddas upp.",
-      ],
-      [
-        "Du får en länk per person.",
-        "Varje länk innehåller nyckeln som låser upp filen. Du skickar länken själv, till exempel via mejl eller chatt, eller så mejlar vi den till en adress du anger. En länk som vi mejlar kräver också en kod som vi skickar till samma adress.",
-      ],
-      [
-        "De öppnar länken medan din sida fortfarande är öppen.",
-        "Vår server hjälper de två webbläsarna att hitta varandra, som en telefonist som kopplar ett samtal.",
-      ],
-      ["De ser filens namn och storlek och väljer att ladda ner den, eller tackar nej.", ""],
-      [
-        "Filen går från din dator till deras, låst hela vägen.",
-        "Den går direkt när era nätverk tillåter det, annars via vårt relä. Deras webbläsare låser upp den och kontrollerar att det är exakt den fil du skickade.",
-      ],
-    ],
-    keepOpen:
-      "Eftersom filen aldrig sparas någonstans behöver du ha sidan öppen tills alla har laddat ner den.",
-    travelHeading: "Så färdas filen",
-    lockedBox:
-      "Tänk dig att du lämnar över en låst låda personligen. Det finns inget postkontor emellan som håller i den, och bara den som har nyckeln kan öppna den.",
-    keyPart: [
-      "Nyckeln är den sista delen av länken, efter tecknet ",
-      ". Webbläsare skickar aldrig den delen till någon webbplats, inte heller till vår. Därför kan vi inte låsa upp din fil, ens om vi ville. Undantaget är en länk som du ber oss mejla: då ger din webbläsare länkens nyckel till vår server en gång, för att lägga den i mejlet, och vi sparar eller loggar den inte.",
-    ],
-    direct:
-      "Eftersom de två webbläsarna ansluter direkt till varandra kan båda se den andras nätverksadress (IP-adress), precis som i ett videosamtal. Om ett nätverk blockerar det går filen i stället via vårt relä, fortfarande låst. Reläet ser då båda IP-adresserna och ungefär hur stor filen är, men kan inte låsa upp den.",
-    linkWarning:
-      "Alla som har länken kan öppna filen. En länk som vi mejlar kräver också en kod som vi skickar till samma adress, så alla som kan läsa den inkorgen kan öppna den. Skicka varje länk bara till den som den är avsedd för.",
-    serverHeading: "Vad vår server vet",
-    neverHeading: "Aldrig",
+    lede: "Vi får aldrig din fil eller delade hemlighet, eller dess namn. Vi får inte heller nyckeln som låser upp den, om du inte ber oss mejla länken. Här nedan står vad vi ser och sparar, och hur länge.",
+    neverHeading: "Det här får vi aldrig",
     never: [
       ["Din fil", "Varken innehållet, filnamnet, storleken eller filtypen."],
       [
@@ -1250,7 +1247,7 @@ export const sv: Messages = {
         "Inte namnen du ger dem du skickar till. Ditt eget namn når oss bara om du ber oss mejla en länk: det står då i mejlet, och vi sparar det inte.",
       ],
     ],
-    seesHeading: "Bara det den behöver för att koppla ihop er eller mejla en länk",
+    seesHeading: "Det här ser vår server, och bara för att koppla ihop er eller mejla en länk",
     sees: [
       [
         "Din IP-adress och uppgifter om din webbläsare",
@@ -1273,15 +1270,37 @@ export const sv: Messages = {
         "Om du ber oss mejla en länk skickar din webbläsare mottagarens e-postadress, länken med nyckeln och ditt namn till vår server. Nyckeln och ditt namn har vi bara tills mejlet har gått iväg. Adressen har vi i minnet medan din sida är öppen, så att vi kan mejla mottagaren en kod när länken öppnas. Vi har också den senaste koden och vilka flikar som har angett rätt kod. Vi loggar aldrig adressen och skriver den aldrig till disk. Vår e-posttjänst, Amazon SES, levererar mejlen, och studsar går bara dit, aldrig till en inkorg hos oss. Amazon SES har kvar ett mejl med en länk, och därmed nyckeln och ditt namn, bara tills det har levererats: om mottagarens e-postserver inte tar emot det direkt försöker Amazon SES igen i högst 15 minuter och kastar det sedan. En adress som studsar för att den inte går att leverera hamnar på en lista som Amazon SES har för alla sina kunder, i upp till 14 dagar, så att ingen skickar mer e-post till den. Den listan kan vi inte stänga av.",
       ],
       [
-        "Antal mejl",
-        "För att begränsa hur många mejl någon kan skicka räknar vi under en timme mejlen till varje adress och mejlen som varje IP-adress ber oss skicka. Antalet sparas under en förvrängd form av adressen (en HMAC), aldrig under själva adressen.",
+        "Antal mejl och koder",
+        "För att begränsa hur många mejl någon kan skicka räknar vi under en timme mejlen och koderna till varje adress och mejlen som varje IP-adress ber oss skicka. Antalet sparas under en förvrängd form av adressen (en HMAC), aldrig under själva adressen.",
       ],
     ],
     keepHeading: "Vad vi sparar",
-    keep: "Vi har inga konton, ingen databas, inga cookies och ingen spårning. Förutom loggraderna nedan, en relälogg medan vi åtgärdar ett fel eller stoppar missbruk, antalet mejl ovan, som finns kvar en timme, och e-posttjänstens lista över adresser som studsat sparas ingenting när avsändarens sida har stängts, inom högst två minuter.",
+    keep: "Vi har inga konton, ingen databas, inga cookies och ingen spårning. Förutom loggraderna nedan, en relälogg medan vi åtgärdar ett fel eller stoppar missbruk, antalet mejl och koder ovan, som finns kvar en timme, och e-posttjänstens lista över adresser som studsat sparas ingenting när avsändarens sida har stängts, inom högst två minuter.",
     logFields,
     logRetention: "Loggraderna raderas efter 30 dagar.",
     relayLog:
       "Vårt relä, som för den låsta filen vidare när två webbläsare inte kan ansluta direkt, har ingen logg. Bara för att åtgärda ett fel eller stoppa missbruk slår vi på en. Den sparar då för varje vidarebefordrad anslutning båda IP-adresserna och portarna, när den började och slutade och hur mycket data som gick igenom. Aldrig namn, nycklar eller fildata. Vi stänger av den och raderar den inom 7 dagar.",
+    limitsHeading: "Det här kan vi inte skydda dig mot",
+    limits: [
+      "Den som har länken kan öppna filen. En länk vi mejlar kräver också en kod som vi skickar till samma adress, så den som kan läsa den inkorgen kan öppna den. Skicka varje länk bara till den som den är avsedd för.",
+      "Din webbläsare kör den kod vår server skickar. En server som skickade annan kod skulle kunna läsa filer. Koden är offentlig, men webbläsare kan ännu inte kontrollera att det de fick stämmer med den.",
+      "Den andra webbläsaren ser din IP-adress, precis som i ett videosamtal. Vår server ser båda IP-adresserna, vilken mottagare som ansluter till vilken avsändare och när, och hur många mottagare en avsändare har. Så den får veta vem som skickar till vem, men inte vad, utom för en länk vi mejlat.",
+      "Varje webbläsare frågar vårt relä om sin offentliga adress, så reläet ser varje IP-adress. Nätverken på vägen, och vårt relä när filen går via det, ser båda IP-adresserna, när överföringen sker och ungefär hur stor filen är.",
+    ],
+    limitsLink: ["Varje risk, och vad Fidant gör åt den", "/how/protection"] as readonly [
+      string,
+      string,
+    ],
+    checkHeading: "Kontrollera själv",
+    check:
+      "Den här sidan är den korta versionen. Så fungerar det förklarar varje steg, och varje påstående här går att kontrollera mot den offentliga koden.",
+    checkLinks: [
+      ["Så fungerar det, steg för steg", "/how"],
+      ["Det som ses och sparas i varje steg", "/how/traces"],
+      ["Koden på GitHub", "https://github.com/sigill-labs/sigill"],
+    ] as ReadonlyArray<readonly [string, string]>,
+    contactHeading: "Kontakt",
+    contact:
+      "Fidant är ett projekt med öppen källkod, och inget företag eller ingen person ansvarar för det än. Frågor om integritet och dina uppgifter skickas till",
   },
 };

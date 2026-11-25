@@ -1,4 +1,4 @@
-// One card per recipient: status, email, connection path, progress, link, copy and remove.
+// One card per recipient (status, email, connection path, progress, link, copy and remove), and one compact row once its link has delivered.
 //
 // Only the status sentence and the email line sit in polite live regions, so
 // screen readers hear "Sending through Anna's link", "Email sent to a***@example.se"
@@ -18,7 +18,9 @@ import {
   TOO_SMALL_FOR_TEXT,
   unmarked,
 } from "../lib/sender-state.ts";
-import { Direct, Icon, PathLine, useCopyNote } from "../ui.tsx";
+import { Direct, Icon, PathLine, SwapLabel, useCopyNote } from "../ui.tsx";
+
+const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
 
 const STATUS_COLOR: Partial<Record<RecipientStatus, string>> = {
   failed: "text-destructive",
@@ -31,26 +33,44 @@ type Props = {
   recipients: readonly Recipient[];
   fileSize: number;
   statusText: StatusText;
+  summary(done: number, total: number): string;
   onRemove(linkId: string): void;
+  /** Delivered links as full cards too, for the details shown once every link has delivered. */
+  full?: boolean;
 };
 
-export function RecipientList({ recipients, fileSize, statusText, onRemove }: Props) {
+export function RecipientList({
+  recipients,
+  fileSize,
+  statusText,
+  summary,
+  onRemove,
+  full = false,
+}: Props) {
   const { t } = useI18n();
   if (recipients.length === 0) {
     return null;
   }
+  const done = recipients.filter((r) => r.status === "delivered");
+  const ordered = [...recipients.filter((r) => r.status !== "delivered"), ...done];
   return (
-    <ul class="mt-6 mb-4 grid gap-3" aria-label={t.send.recipients}>
-      {recipients.map((recipient) => (
-        <RecipientRow
-          key={recipient.linkId}
-          recipient={recipient}
-          fileSize={fileSize}
-          statusText={statusText}
-          onRemove={onRemove}
-        />
-      ))}
-    </ul>
+    <>
+      {recipients.length > 1 && (
+        <p class="mt-6 mb-0 font-semibold">{summary(done.length, recipients.length)}</p>
+      )}
+      <ul class="mt-3 mb-4 grid gap-3" aria-label={t.send.recipients}>
+        {ordered.map((recipient) => (
+          <RecipientRow
+            key={recipient.linkId}
+            recipient={recipient}
+            fileSize={fileSize}
+            statusText={statusText}
+            onRemove={onRemove}
+            full={full}
+          />
+        ))}
+      </ul>
+    </>
   );
 }
 
@@ -59,9 +79,10 @@ type RowProps = {
   fileSize: number;
   statusText: StatusText;
   onRemove(linkId: string): void;
+  full: boolean;
 };
 
-function RecipientRow({ recipient, fileSize, statusText, onRemove }: RowProps) {
+function RecipientRow({ recipient, fileSize, statusText, onRemove, full }: RowProps) {
   const { name, url, status, bytesSent, linkId, path, noRelay, error, email, mail, unbound } =
     recipient;
   const { t, lang } = useI18n();
@@ -71,16 +92,50 @@ function RecipientRow({ recipient, fileSize, statusText, onRemove }: RowProps) {
   // A link the server may still email, or whose email binding died, is not to be shared.
   const shareable = open && !unmarked(recipient) && !unbound;
   const lost = open && unbound;
+  const removeButton = (
+    <Button
+      type="button"
+      variant="link"
+      size={status === "delivered" && !full ? "sm" : "default"}
+      aria-label={t.send.removeFor(name)}
+      data-remove={linkId}
+      // Focus moves to the next Remove button, so a held Enter would remove it too.
+      onKeyDown={(event) => {
+        if (event.repeat) {
+          event.preventDefault();
+        }
+      }}
+      onClick={() => onRemove(linkId)}
+    >
+      {t.send.remove}
+    </Button>
+  );
+
+  if (status === "delivered" && !full) {
+    return (
+      <li class="min-w-0">
+        <div class="flex items-center gap-2.5 rounded-xl border border-border px-4 py-1.5 text-[0.9rem] text-muted-foreground">
+          <Icon name="check" class="size-4 text-foreground" />
+          <span class="min-w-0 flex-1 truncate" aria-hidden="true">
+            <span class="font-medium text-foreground">{name}</span> · {t.send.delivered}
+            {path && ` · ${t.connection[path === "relay" ? "relay" : "direct"].label}`}
+          </span>
+          <span class="sr-only">{statusText.delivered(name)}</span>
+          {removeButton}
+        </div>
+      </li>
+    );
+  }
 
   return (
-    <li>
+    <li class="min-w-0">
       <Card>
         <CardContent>
+          <p class="m-0 text-[1.05rem] font-semibold wrap-anywhere">{name}</p>
           <p
-            class={`m-0 flex items-center gap-1.5 font-semibold wrap-anywhere ${noRelay ? "text-destructive" : (STATUS_COLOR[status] ?? "")}`}
+            class={`mt-1 mb-0 flex items-center gap-1.5 text-[0.9rem] wrap-anywhere ${noRelay ? "text-destructive" : (STATUS_COLOR[status] ?? "")}`}
             aria-live="polite"
           >
-            {status === "delivered" && <Icon name="check" />}
             {(status === "failed" || noRelay) && <Icon name="alert" />}
             {status === "declined" && !noRelay && <Icon name="declined" />}
             <span>
@@ -119,31 +174,34 @@ function RecipientRow({ recipient, fileSize, statusText, onRemove }: RowProps) {
           <div class="mt-3 flex flex-wrap items-center gap-3">
             {shareable && (
               <Button type="button" aria-label={t.send.copyFor(name)} onClick={() => copy(url)}>
-                {t.send.copy}
+                <SwapLabel
+                  idle={t.send.copy}
+                  active={t.send.copyNote.copied}
+                  on={note === "copied"}
+                />
               </Button>
             )}
-            <Button
-              type="button"
-              variant="link"
-              aria-label={t.send.removeFor(name)}
-              data-remove={linkId}
-              // Focus moves to the next Remove button, so a held Enter would remove it too.
-              onKeyDown={(event) => {
-                if (event.repeat) {
-                  event.preventDefault();
-                }
-              }}
-              onClick={() => onRemove(linkId)}
+            {shareable && canShare && (
+              <Button
+                type="button"
+                variant="outline"
+                aria-label={t.send.shareFor(name)}
+                onClick={() => navigator.share({ url }).catch(() => {})}
+              >
+                {t.send.share}
+              </Button>
+            )}
+            {removeButton}
+            <span
+              class={`text-[0.85rem] text-muted-foreground ${note === "copied" ? "sr-only" : ""}`}
+              role="status"
             >
-              {t.send.remove}
-            </Button>
-            <span class="text-[0.85rem] text-muted-foreground" role="status">
               {note && t.send.copyNote[note]}
             </span>
           </div>
           {shareable && (
             <output
-              class="mt-2 block font-mono text-[0.8rem] text-muted-foreground wrap-anywhere select-all"
+              class={`mt-2 block font-mono text-[0.8rem] text-muted-foreground select-all ${note === "failed" ? "wrap-anywhere" : "truncate"}`}
               aria-label={t.send.linkFor(name)}
             >
               {url}

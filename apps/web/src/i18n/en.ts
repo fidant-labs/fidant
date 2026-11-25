@@ -98,6 +98,12 @@ export const en = {
     terms: "Terms of use – Fidant",
     security: "Security – Fidant",
   },
+  openTransfer: {
+    send: "A file transfer is still open in this tab.",
+    secret: "A secret is still being shared from this tab.",
+    receive: "A transfer to you is still open in this tab.",
+    back: "Go back to it",
+  },
   menu: {
     language: "Language",
     theme: "Theme",
@@ -126,11 +132,17 @@ export const en = {
         "When they open it, the file goes from your browser to theirs, encrypted the whole way.",
       ],
     ] as ReadonlyArray<readonly [string, string]>,
+    serverHeading: "What our server knows",
     neverHeading: "Our server never gets",
     seesHeading: "Our server only sees",
     relayNote:
       "If the two browsers can't connect directly, the file passes through our relay instead, still encrypted. The relay then sees both IP addresses and roughly how big the file is, and can't unlock it.",
     caveat: "The catch: since nothing is stored, keep your tab open until the file has arrived.",
+    tryHeading: "Try it on yourself",
+    tryBody:
+      "Send a file to yourself, open the link on your phone and watch it arrive. It takes about a minute.",
+    tryCta: "Send a file to yourself",
+    trySecret: "Or share a secret",
   },
   how: {
     title: "How it works",
@@ -279,14 +291,31 @@ export const en = {
   format: {
     bytes: (n: number) => (n === 1 ? "1 byte" : `${n.toLocaleString("en-US")} bytes`),
     progress: (percent: string, done: string, total: string) => `${percent} · ${done} of ${total}`,
+    timeLeft: (duration: string) => `About ${duration} left`,
   },
   send: {
-    fileHeading: "Your file",
-    recipientsHeading: "Recipients",
     continue: "Continue",
-    back: "Back to the file",
     title: "Send a file",
-    lede: "Your file is sent from this browser to the people you choose. It's encrypted the whole way and never uploaded or stored.",
+    lede: "Choose a file, then create a link for each person. Your file is sent from this browser to them. It's encrypted the whole way and never uploaded or stored.",
+    step: (n: number) => `Step ${n} of 2`,
+    peopleHeading: "Create a link for each person",
+    change: "Change",
+    fromSummary: (name: string) => `from ${name}`,
+    connectionOptions: "Connection options",
+    addEmail: "Create and email link",
+    share: "Share",
+    shareFor: (name: string) => `Share link for ${name}`,
+    sendingBar: (delivered: number, total: number) =>
+      `Sending from this tab · ${delivered} of ${total} delivered · keep it open`,
+    allDone: "Every link has delivered the file. You can close this tab.",
+    summary: (done: number, total: number) => `${done} of ${total} links have delivered the file`,
+    delivered: "Delivered",
+    doneTitle: "All delivered",
+    doneOne: (name: string) => `The file arrived intact through ${name}'s link.`,
+    doneMany: (n: number) => `The file arrived intact through all ${n} links.`,
+    closeTab: "You can close this tab.",
+    sendMore: "Send to someone else",
+    showDetails: "Show details",
     localhost:
       "This page is open on localhost, so the links won't work on other computers. Open the network address the server printed instead.",
     lostServer:
@@ -303,7 +332,6 @@ export const en = {
         "Your name and the file name are too long together. Shorten your name or rename the file.",
     },
     chooseFile: "Choose a file",
-    chooseOther: "Choose a different file",
     orDrop: "or drop it here",
     fileError: {
       unsafe:
@@ -316,7 +344,7 @@ export const en = {
     locked: "Remove everyone to change your name or file.",
     recipientLabel: "Who is it for?",
     recipientPlaceholder: "Their name",
-    add: "Add",
+    add: "Create link",
     nameError: {
       missing: "Enter a name.",
       taken: "That name is already on the list.",
@@ -328,7 +356,6 @@ export const en = {
     fileFirst: "Choose a file first.",
     full: (max: number) => `You can send to up to ${max} people at a time.`,
     oneLinkEach: "Each person gets their own link, which works once.",
-    keepOpen: "Keep this tab open until everyone has the file. It's sent from here.",
     recipients: "Recipients",
     status: {
       waiting: (name: string) => `Waiting for ${name}'s link to be opened`,
@@ -402,7 +429,8 @@ export const en = {
     receivingCaption: "Receiving from the sender. Keep this tab open until it's done.",
     doneTitle: "Download complete",
     verified: "We checked it: this is exactly the file that was sent.",
-    autoDownload: "Your download should start by itself.",
+    autoDownload: "Your browser should be saving it now. Didn't see it?",
+    onceNotice: "This link works once, and only while the sender's page is open.",
     savedWhereChosen: "It's saved where you chose.",
     saveFile: "Save file",
     doneCaption: "Sent from the sender's computer to yours. Encrypted the whole way.",
@@ -528,10 +556,12 @@ export const en = {
         body: "This browser couldn't read the secret it received. Ask the sender to send it again.",
       },
     },
-    back: "Back to the secret",
     first: "Write or paste the secret first.",
     locked: "Remove everyone to change your name or secret.",
-    keepOpen: "Keep this tab open until everyone has the secret. It's sent from here.",
+    allDone: "Every link has delivered the secret. You can close this tab.",
+    summary: (done: number, total: number) => `${done} of ${total} links have delivered the secret`,
+    doneOne: (name: string) => `The secret arrived intact through ${name}'s link.`,
+    doneMany: (n: number) => `The secret arrived intact through all ${n} links.`,
     emailNotice:
       "Fidant emails this link for you, so our server sees its key once. The key isn't stored or logged. The link, key included, stays in their mailbox, so anyone who can read that mailbox could receive the secret.",
     // Only the statuses whose file wording would be wrong; the rest come from send.status.
@@ -804,7 +834,7 @@ export const en = {
         heading: "The link",
         body: [
           "For each recipient, the sender's browser creates a link of the form https://fidant.se/r/<link ID>#<secret>. The link ID is 16 random bytes and the secret 32 random bytes, both from the browser's cryptographic random number generator.",
-          "The link ID only names the link: our server uses it to pair the sender with the recipient. The secret is in the fragment, the part after #, which browsers don't send to servers, and the site tells browsers not to send the page address on to other sites either. The app never sends the secret anywhere, unless the sender asks us to email the link (see Emailed links below). Apart from that, it only derives keys from it.",
+          "The link ID only names the link: our server uses it to pair the sender with the recipient. The secret is in the fragment, the part after #, which browsers don't send to servers, and the site tells browsers not to send the page address on to other sites either. The app never sends the secret anywhere, unless the sender asks us to email the link (see Emailed links below). Apart from that, it only derives keys from it and keeps the receive page's first address, secret included, in memory, so the \"Go back to it\" bar can return you to an unfinished transfer. The link in that bar carries only the path; following it puts the secret back in the address bar.",
           "Every recipient gets their own link ID and secret, so one recipient's link says nothing about another's.",
         ],
       },
@@ -1243,44 +1273,8 @@ export const en = {
   },
   privacy: {
     title: "Privacy",
-    lede: "Your file goes from your browser to the browser of the person you send it to, directly when your networks allow it and otherwise through our relay. It's locked before it leaves your computer, and only the person with the link can unlock it. We never get the file, its name or a secret you share, and never the key unless you ask us to email the link.",
-    howHeading: "How sending works",
-    // [bold, rest]: the bold part opens each step.
-    steps: [
-      [
-        "You pick a file and add the people to send it to.",
-        "The file stays on your computer. Nothing is uploaded.",
-      ],
-      [
-        "You get one link per person.",
-        "Each link holds the key that unlocks the file. You send the link yourself, for example by email or chat, or we email it to an address you give us. A link we email also asks for a code we send to the same address.",
-      ],
-      [
-        "They open the link while your page is still open.",
-        "Our server helps the two browsers find each other, like an operator connecting a phone call.",
-      ],
-      ["They see the file name and size and choose to download it, or decline.", ""],
-      [
-        "The file goes from your computer to theirs, locked the whole way.",
-        "It goes directly when your networks allow it, otherwise through our relay. Their browser unlocks it and checks that it is exactly the file you sent.",
-      ],
-    ] as ReadonlyArray<readonly [string, string]>,
-    keepOpen:
-      "Because the file is never stored anywhere, keep your page open until everyone has downloaded it.",
-    travelHeading: "How the file travels",
-    lockedBox:
-      "Think of it as handing someone a locked box in person. There is no post office in between that holds on to it, and only someone with the key can open it.",
-    // [before, after] a bold "#".
-    keyPart: [
-      "The key is the last part of the link, after the ",
-      " sign. Browsers never send that part to any website, ours included. That is why we can't unlock your file even if we wanted to. The exception is a link you ask us to email: your browser gives its key to our server once, to put in the email, and we don't store or log it.",
-    ] as readonly [string, string],
-    direct:
-      "Because the two browsers connect directly, each can see the other's network address (IP address), the same as on a video call. If a network blocks that, the file passes through our relay instead, still locked. The relay then sees both IP addresses and roughly how big the file is, and can't unlock it.",
-    linkWarning:
-      "Anyone who has the link can open the file. A link we email also needs a code we send to the same address, so anyone who can read that mailbox can open it. Send each link only to the person it is for.",
-    serverHeading: "What our server knows",
-    neverHeading: "Never",
+    lede: "We never get your file or shared secret, or its name. We never get the key that unlocks it either, unless you ask us to email the link. Below is what we see and keep, and for how long.",
+    neverHeading: "What we never get",
     never: [
       ["Your file", "Not the contents, not the file name, not its size or type."],
       [
@@ -1296,7 +1290,7 @@ export const en = {
         "Not the names you give the people you send to. Your own name reaches us only if you ask us to email a link: it goes in that email, and we don't keep it.",
       ],
     ] as ReadonlyArray<readonly [string, string]>,
-    seesHeading: "Only what it needs to connect you or email a link",
+    seesHeading: "What our server sees, and only to connect you or email a link",
     sees: [
       [
         "Your IP address and browser details",
@@ -1319,16 +1313,38 @@ export const en = {
         "If you ask us to email a link, your browser sends our server the recipient's email address, the link with its key, and your name. We keep the key and your name only until the email has gone. We keep the address in memory while your page is open, so we can email the recipient a code when they open the link. We also keep the latest code and which browser tabs entered the right one. We never log the address or write it to disk. Our mail service, Amazon SES, delivers the emails, and bounces go only to it, never to a mailbox of ours. Amazon SES keeps an email with a link, and so the key and your name, only until it is delivered: if the recipient's mail server doesn't accept it at once, Amazon SES tries again for at most 15 minutes and then drops it. An address that bounces as undeliverable goes on a list that Amazon SES keeps for all its customers, for up to 14 days, so that nobody sends it more mail. We can't turn that list off.",
       ],
       [
-        "Counts of emails",
-        "To limit how many emails anyone can send, we count the emails sent to each address and the emails each IP address asks us to send, for an hour. We keep each count under a scrambled form of the address (an HMAC), never the address itself.",
+        "Counts of emails and codes",
+        "To limit how many emails anyone can send, we count the emails and codes sent to each address and the emails each IP address asks us to send, for an hour. We keep each count under a scrambled form of the address (an HMAC), never the address itself.",
       ],
     ] as ReadonlyArray<readonly [string, string]>,
     keepHeading: "What we keep",
-    keep: "We have no accounts, no database, no cookies and no tracking. Apart from the log lines below, a relay log while we fix a fault or stop abuse, the email counts above, which last an hour, and our mail service's list of bounced addresses, nothing is kept once the sender's page is closed, within 2 minutes at most.",
+    keep: "We have no accounts, no database, no cookies and no tracking. Apart from the log lines below, a relay log while we fix a fault or stop abuse, the email and code counts above, which last an hour, and our mail service's list of bounced addresses, nothing is kept once the sender's page is closed, within 2 minutes at most.",
     logFields,
     logRetention: "Log lines are deleted after 30 days.",
     relayLog:
       "Our relay, which carries the locked file when two browsers can't connect directly, keeps no log. Only to fix a fault or stop abuse do we turn one on. It then records, for each relayed connection, both IP addresses and ports, when it started and ended, and how much data passed through. Never names, keys or file data. We turn it off and delete it within 7 days.",
+    limitsHeading: "What we can't protect you from",
+    limits: [
+      "Anyone who has the link can open the file. A link we email also needs a code we send to the same address, so anyone who can read that mailbox can open it. Send each link only to the person it is for.",
+      "Your browser runs the code our server sends it. A server that sent different code could read files. The code is public, but browsers can't yet check that what they got matches it.",
+      "The other browser sees your IP address, as on a video call. Our server sees both IP addresses, which recipient connects to which sender and when, and how many recipients a sender has. So it learns who sends to whom, though not what, unless we emailed the link.",
+      "Each browser asks our relay for its public address, so the relay sees each IP address. The networks on the way, and our relay when the file goes through it, see both IP addresses, when the transfer happens and roughly how big the file is.",
+    ],
+    limitsLink: ["Every risk, and what Fidant does about it", "/how/protection"] as readonly [
+      string,
+      string,
+    ],
+    checkHeading: "Check it yourself",
+    check:
+      "This page is the short version. How it works explains every step, and every claim here can be checked against the public code.",
+    checkLinks: [
+      ["How it works, step by step", "/how"],
+      ["What is seen and kept at each step", "/how/traces"],
+      ["The code on GitHub", "https://github.com/sigill-labs/sigill"],
+    ] as ReadonlyArray<readonly [string, string]>,
+    contactHeading: "Contact",
+    contact:
+      "Fidant is an open-source project, and no company or person is responsible for it yet. Questions about privacy and your data go to",
   },
 };
 

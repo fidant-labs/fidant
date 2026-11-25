@@ -286,8 +286,13 @@ export function makeName(leaks: Leaks, canary: SeededRandom, first: string): str
 export const recipientRow = (sender: Page, name: string) =>
   sender.getByRole("list", { name: "Recipients" }).getByRole("listitem").filter({ hasText: name });
 
+/** Also finds the row once every link has delivered and the list sits folded under "Show details". */
 export const delivered = (sender: Page, name: string) =>
-  recipientRow(sender, name).getByText(`Delivered through ${name}'s link`);
+  sender
+    .getByRole("list", { name: "Recipients", includeHidden: true })
+    .getByRole("listitem", { includeHidden: true })
+    .filter({ hasText: name })
+    .getByText(`Delivered through ${name}'s link`);
 
 /** Runs in the page through addInitScript, so it may use nothing from this module: `cut()` closes the sender's peers, `stalled` stops its data channels sending. */
 export function breakableSender() {
