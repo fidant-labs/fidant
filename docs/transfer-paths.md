@@ -1,5 +1,7 @@
 # Transfer paths: steps and traces
 
+> Reference copy only, to be deleted before this branch merges. `docs/how-fidant-works.md` ("Every path and its traces") is the source of truth, and the checks below now run against it.
+
 This is the audit baseline for every way a file or a shared secret moves through Fidant. For each path it lists the steps and the traces each one leaves: what is kept, where, for how long, and whether it can reveal content, names or keys. It describes the code on `main`. `docs/how-fidant-works.md` explains why the design is safe. This document lists what to check, path by path.
 
 ## How this document is checked

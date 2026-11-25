@@ -1142,6 +1142,182 @@ export const sv: Messages = {
         ],
       ],
     },
+    explorer: {
+      heading: "Se vad din överföring lämnar efter sig",
+      body: [
+        "Välj hur du skickar och se varje plats där ett spår av det sparas: vad och hur länge. Platser som inte ingår i den vägen säger det.",
+      ],
+      questions: {
+        what: { legend: "Vad skickar du?", options: { file: "En fil", secret: "En hemlighet" } },
+        link: {
+          legend: "Hur når länken mottagaren?",
+          options: { self: "Jag skickar den själv", email: "Fidant mejlar den" },
+        },
+        route: {
+          legend: "Vilken väg tar den krypterade trafiken?",
+          options: {
+            direct: "Direkt, med vårt relä tillåtet",
+            relay: "Via vårt relä",
+            norelay: "Direkt, med vårt relä avböjt",
+          },
+        },
+      },
+      kept: "Sparas",
+      never: "Aldrig",
+      notUsed: "Ingår inte i den här vägen.",
+      places: {
+        sender: {
+          name: "Din webbläsare",
+          kept: "Mest tills du stänger fliken; se varje rad",
+          never: "Fidant sparar ingen fil, hemlighet, länk eller nyckel på din enhet.",
+          lines: [
+            [
+              "",
+              "Länken och dess nyckel, i den här flikens minne tills du stänger den. Om du kopierar en länk ligger den också kvar i ditt urklipp tills du ersätter den, eller längre med urklippshistorik, synkade urklipp och andra appar.",
+            ],
+            [
+              "file",
+              "Din fil ligger kvar där den är. Sidan läser den för att kryptera den och kopierar den ingenstans.",
+            ],
+            [
+              "secret",
+              "Hemligheten i sin textruta, tills du stänger fliken. En webbläsare kan spara den med sin session.",
+            ],
+            ["", "Ditt val av tema och språk, i webbläsarens lokala lagring, tills du rensar den."],
+          ],
+        },
+        channel: {
+          name: "Där du klistrar in länken",
+          kept: "Så länge den tjänsten sparar meddelanden",
+          never: "Fidant ser aldrig det meddelandet.",
+          lines: [
+            [
+              "self",
+              "Hela länken, nyckeln också, i den chatt-, mejl- eller meddelandetjänst du skickar den med. Dess länkförhandsvisning kan öppna adressen men får aldrig nyckeln, som står efter #.",
+            ],
+          ],
+        },
+        server: {
+          name: "Vår server, i minnet",
+          kept: "Medan sidorna är öppna, och borta inom en minut efter. På en mejlad länk finns räknare i upp till en timme.",
+          never:
+            "Din fil, dess namn, storlek eller typ, eller hemligheten, utom på en mejlad länk enligt nedan.",
+          lines: [
+            [
+              "",
+              "Båda IP-adresserna, länkens ID och vilken sida som är ihopkopplad med vilken länk.",
+            ],
+            [
+              "",
+              "Krypterade uppkopplingsmeddelanden passerar och sparas inte. På en länk du skickar själv kan den inte läsa dem.",
+            ],
+            [
+              "direct,relay",
+              "Skapar reläuppgifter för det här paret, giltiga i 5 minuter, och skickar dem till båda sidorna utan att spara dem.",
+            ],
+            [
+              "email",
+              "Mottagarens mejladress, ett slumpvärde och koden, medan din sida är öppen. Länkens nyckel och namnet du skrev bara tills mejlet har skickats eller misslyckats.",
+            ],
+            [
+              "email",
+              "Eftersom den hade nyckeln kunde den läsa länkens uppkopplingsmeddelanden, och så filen eller hemligheten. Kontrollord är planerade för att täppa till det.",
+            ],
+            [
+              "email",
+              "Sändningstider, i upp till en timme, under nyckelstyrda hashar (HMAC) av mottagarens adress och din IP-adress, för att upprätthålla gränser. Token som en rätt kod ger, medan din sida är öppen.",
+            ],
+          ],
+        },
+        proxy: {
+          name: "Vår frontproxy",
+          kept: "Medan någon anslutning från den är öppen, och upp till 2 minuter efter att den sista stängts",
+          never:
+            "Något av det den bär: den för trafiken vidare utan att dekryptera den. Den loggar ingenting.",
+          lines: [
+            [
+              "",
+              "Varje käll-IP-adress (en IPv6-adress per sin /64) och dess antal anslutningar, i minnet.",
+            ],
+          ],
+        },
+        log: {
+          name: "Vår serverlogg",
+          kept: "29 dagar",
+          never: "Namn, mejladresser, koder, nycklar, IP-adresser eller filinnehåll.",
+          lines: [
+            [
+              "",
+              "Korta rader: att en avsändare registrerade sig och hur många länkar, att en mottagare anslöt, storleken på varje uppkopplingsmeddelande och vilken väg anslutningen tog. En länk syns bara med sina 6 första tecken.",
+            ],
+            [
+              "email",
+              "Om mejlet skickades, varje kod som skickades eller nekades, och en rätt kod.",
+            ],
+            [
+              "",
+              "Att en mottagare lämnade, och att din sida stängdes, med hur många länkar den hade.",
+            ],
+            [
+              "norelay",
+              "Om en anslutning via relä ändå kommer till stånd, att din sida avslutade den.",
+            ],
+          ],
+        },
+        relay: {
+          name: "Vårt relä",
+          kept: "Inget när trafiken har passerat. Ingen logg som standard; bara för att åtgärda ett fel eller stoppa missbruk slår vi på en, med anslutningstider, IP-adresser och datamängder, i högst 7 dagar.",
+          never: "Nyckeln, filen eller hemligheten. Det kan inte låsa upp det det bär.",
+          lines: [
+            ["", "Varje webbläsares publika IP-adress, när webbläsaren frågar efter den."],
+            [
+              "direct",
+              "Båda IP-adresserna, eftersom varje webbläsare reserverar en reläadress även när en direkt väg vinner.",
+            ],
+            [
+              "relay",
+              "Båda IP-adresserna, och den krypterade trafiken, som det skickar vidare och inte sparar.",
+            ],
+          ],
+        },
+        mail: {
+          name: "Vår mejltjänst och mottagarens inkorg",
+          kept: "Tills mejltjänsten och mottagarens mejlleverantör raderar mejlen, enligt egna regler",
+          never: "Filens namn, storlek eller typ, eller om det är en fil eller en hemlighet.",
+          lines: [
+            [
+              "email",
+              "Ett mejl med hela länken, nyckeln också, och namnet du skrev, markerat som okontrollerat. Ett andra mejl med koden. Den som läser mejlet på vägen, eller en länkskanner som hämtar länken, kan få hela länken med nyckeln. En skanner kan inte ansluta utan koden.",
+            ],
+          ],
+        },
+        recipient: {
+          name: "Mottagarens webbläsare",
+          kept: "Historiken och sparade filer finns kvar tills mottagaren raderar dem",
+          never:
+            "Fidant sparar ingen nyckel på deras enhet, utöver det webbläsarens historik sparar.",
+          lines: [
+            ["", "Länken, nyckeln också, i webbläsarens historik."],
+            ["file", "Filen, där de sparar den."],
+            [
+              "secret",
+              "Hemligheten, bara i sidans minne tills de kopierar den. Då ligger den i deras urklipp också.",
+            ],
+            ["email", "En token för den rätta koden, i flikens sessionslagring."],
+          ],
+        },
+        networks: {
+          name: "Näten på vägen",
+          kept: "Okänt",
+          never: "Något läsbart: all trafik är krypterad.",
+          lines: [
+            ["", "Båda IP-adresserna och tidpunkterna."],
+            ["file", "Filens storlek, bara ungefär."],
+            ["secret", "Inte hemlighetens längd: varje hemlighet är lika stor på nätet."],
+          ],
+        },
+      },
+    },
     data: {
       heading: "Steg för steg",
       body: [

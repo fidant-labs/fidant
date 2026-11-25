@@ -2,7 +2,11 @@
 // Plain strings, or functions for text with numbers or names in it.
 
 import type { LogFields } from "@sigill/protocol";
+import type { Line } from "../how/traces.ts";
 import type { Kind, Tie } from "../lib/server-facts.ts";
+
+/** A place on the /how/traces explorer and the traces it keeps. */
+export type Place = { name: string; kept: string; never: string; lines: readonly Line[] };
 
 // Every field a server log line can carry (plus `event`, which names the log line), with what it is
 // and why we keep it. Keyed by LogFields, so a new field fails the typecheck until it is described
@@ -1184,6 +1188,173 @@ export const en = {
           "Untick the relay for that send. Our server then gives no relay credentials, and the sender's browser ends a relayed connection.",
         ],
       ],
+    },
+    explorer: {
+      heading: "See what your transfer leaves behind",
+      body: [
+        "Pick how you send, and see every place a trace of it is kept: what, and for how long. Places that aren't part of that path say so.",
+      ],
+      questions: {
+        what: { legend: "What do you send?", options: { file: "A file", secret: "A secret" } },
+        link: {
+          legend: "How does the link reach the recipient?",
+          options: { self: "I pass it on myself", email: "Fidant emails it" },
+        },
+        route: {
+          legend: "Which way does the encrypted traffic go?",
+          options: {
+            direct: "Directly, with our relay allowed",
+            relay: "Through our relay",
+            norelay: "Directly, with our relay refused",
+          },
+        },
+      },
+      kept: "Kept",
+      never: "Never",
+      notUsed: "Not part of this path.",
+      places: {
+        sender: {
+          name: "Your browser",
+          kept: "Mostly until you close the tab; see each line",
+          never: "Fidant saves no file, secret, link or key on your device.",
+          lines: [
+            [
+              "",
+              "The link and its key, in this tab's memory until you close it. If you copy a link, it also stays on your clipboard until you replace it, or longer with clipboard history, clipboard sync and other apps.",
+            ],
+            [
+              "file",
+              "Your file stays where it is. The page reads it to encrypt it and copies it nowhere.",
+            ],
+            [
+              "secret",
+              "The secret in its text box, until you close the tab. A browser can save it with its session.",
+            ],
+            [
+              "",
+              "Your theme and language choice, in the browser's local storage, until you clear it.",
+            ],
+          ],
+        },
+        channel: {
+          name: "Where you paste the link",
+          kept: "As long as that service keeps messages",
+          never: "Fidant never sees this message.",
+          lines: [
+            [
+              "self",
+              "The full link, key included, in the chat, mail or messaging service you send it with. Its link preview may open the address, but never gets the key, which is after the #.",
+            ],
+          ],
+        },
+        server: {
+          name: "Our server, in memory",
+          kept: "While the pages are open, and gone within a minute after. On an emailed link, counters for up to an hour.",
+          never:
+            "Your file, its name, size or type, or the secret, except on an emailed link as below.",
+          lines: [
+            ["", "Both IP addresses, the link ID and which page is paired with which link."],
+            [
+              "",
+              "Encrypted setup messages pass through it and aren't kept. On a link you pass on, it can't read them.",
+            ],
+            [
+              "direct,relay",
+              "Makes relay credentials for this pair, valid for 5 minutes, and sends them to both pages without keeping them.",
+            ],
+            [
+              "email",
+              "The recipient's email address, a random value and the code, while your page is open. The link's key and the name you typed only until the email is sent or fails.",
+            ],
+            [
+              "email",
+              "Because it had the key, it could read this link's setup messages, and so the file or secret. Check words are planned to close that gap.",
+            ],
+            [
+              "email",
+              "Send times, for up to an hour, under keyed hashes (HMAC) of the recipient's address and of your IP address, to enforce limits. The token a right code gets, while your page is open.",
+            ],
+          ],
+        },
+        proxy: {
+          name: "Our front proxy",
+          kept: "While any connection from it is open, and up to 2 minutes after the last one closes",
+          never:
+            "Anything it carries: it passes the traffic on without decrypting it. It logs nothing.",
+          lines: [
+            [
+              "",
+              "Each source IP address (an IPv6 address by its /64) and its connection count, in memory.",
+            ],
+          ],
+        },
+        log: {
+          name: "Our server log",
+          kept: "29 days",
+          never: "Names, email addresses, codes, keys, IP addresses or file data.",
+          lines: [
+            [
+              "",
+              "Short lines: that a sender registered and how many links, that a recipient joined, the size of each setup message, and the route taken. A link shows only by its first 6 characters.",
+            ],
+            ["email", "Whether the email was sent, each code sent or refused, and a right code."],
+            ["", "That a recipient left, and that your page closed, with how many links it had."],
+            ["norelay", "If a relayed connection comes up anyway, that your page ended it."],
+          ],
+        },
+        relay: {
+          name: "Our relay",
+          kept: "Nothing once the traffic has passed. No log by default; only to fix a fault or stop abuse do we turn one on, with connection times, IP addresses and data volumes, for at most 7 days.",
+          never: "The key, the file or the secret. It can't decrypt what it carries.",
+          lines: [
+            ["", "Each browser's public IP address, when the browser asks for it."],
+            [
+              "direct",
+              "Both IP addresses, because each browser reserves a relay address even when a direct route wins.",
+            ],
+            [
+              "relay",
+              "Both IP addresses, and the encrypted traffic, which it forwards and doesn't store.",
+            ],
+          ],
+        },
+        mail: {
+          name: "Our mail service and the recipient's mailbox",
+          kept: "Until the mail service and the recipient's mail provider delete the emails, by their own policies",
+          never: "The file's name, size or type, or whether it's a file or a secret.",
+          lines: [
+            [
+              "email",
+              "An email with the full link, key included, and the name you typed, marked as not checked. A second email with the code. Anyone who reads the mail on the way, or a link scanner that fetches the link, can get the full link with its key. A scanner can't connect without the code.",
+            ],
+          ],
+        },
+        recipient: {
+          name: "The recipient's browser",
+          kept: "History and saved files stay until the recipient deletes them",
+          never:
+            "Fidant saves no key on their device, apart from what the browser's history keeps.",
+          lines: [
+            ["", "The link, key included, in the browser's history."],
+            ["file", "The file, where they save it."],
+            [
+              "secret",
+              "The secret, only in the page's memory, until they copy it. Then it's on their clipboard too.",
+            ],
+            ["email", "A token for the right code, in that tab's session storage."],
+          ],
+        },
+        networks: {
+          name: "The networks on the way",
+          kept: "Not known",
+          never: "Anything readable: all traffic is encrypted.",
+          lines: [
+            ["", "Both IP addresses and the timing."],
+            ["file", "The file's size, only roughly."],
+            ["secret", "Not the secret's length: every secret is the same size on the wire."],
+          ],
+        },
+      } satisfies Record<string, Place>,
     },
     data: {
       heading: "Step by step",

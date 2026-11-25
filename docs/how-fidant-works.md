@@ -341,6 +341,99 @@ From SIG-153 on, it also:
 - The WebSocket accepts upgrades only on `/signal`, and refuses one whose `Origin` is another site.
 - Limits: HAProxy closes a source's 129th concurrent connection on 443 (a source is an IPv4 address or an IPv6 /64) and an idle connection after 2 minutes, or after 1 hour on the relay path. The server allows 1,000 sockets, 32 per client address (an IPv6 address counts by its /64), 1,000 messages per socket per 30-second window, 256 links per sender, 16,384 characters per relayed setup message, 256 KiB queued to a socket that isn't reading, and the email and code limits under "Emailed links".
 
+## Every path and its traces
+
+The three choices under "Modes" give twelve paths: a file or a shared secret, a link the sender passes on or one Fidant emails, and a direct route with the relay allowed, the relay route, or a direct route with the relay refused. This section lists, for every path, each place that keeps a trace, what it keeps and for how long. The `/how/traces` explorer shows the same to readers (`apps/web/src/how/TraceExplorer.tsx`, its text in `technical.explorer` in `apps/web/src/i18n/en.ts` and `sv.ts`).
+
+Every pull request is checked against this section. The `Claude review` workflow walks every path against the diff, and `packages/protocol/src/transfer-paths.test.ts` fails when a signaling message, log event or log field has no entry below, or when a file this document names no longer exists.
+
+### Where traces are kept
+
+| Place                                     | What it keeps                                                                                                                                                                                    | On which paths | Kept for                                                                                  |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------- | ----------------------------------------------------------------------------------------- |
+| Sender's browser                          | The link and its key in the tab's memory; the file stays where it is; a shared secret in its text box, which session restore can save                                                            | all            | until the tab closes                                                                      |
+| Both browsers                             | Theme and language in `localStorage`                                                                                                                                                             | all            | until cleared                                                                             |
+| The channel the sender pastes the link in | The full link, key included; its link previewer requests `/r/<link ID>` but never gets the fragment                                                                                              | link passed on | that service's policy                                                                     |
+| Our server, in memory                     | Both IP addresses, link IDs and pairings; setup messages pass through (sealed, except on an emailed path while check words, planned in SIG-109, don't exist: the server could sit in the middle) | all            | while the sockets are open, ≤ 1 min after                                                 |
+| Our server                                | Makes the TURN credentials for the pair (valid 5 minutes) and sends them in `joined`; keeps none                                                                                                 | relay allowed  | not kept                                                                                  |
+| Both browsers                             | The TURN credentials, valid 5 minutes to start a relay (coturn stores none: it recomputes the HMAC from its secret)                                                                              | relay allowed  | while the page is open                                                                    |
+| Our server, in memory                     | The address, value, code and tokens; the link's secret and typed name only during the send attempt; HMAC counters                                                                                | emailed        | while hosted; counters up to 1 h                                                          |
+| Server journal                            | The lines under "Every server log line"                                                                                                                                                          | all            | 29 days                                                                                   |
+| HAProxy                                   | Each source address (an IPv6 address by its /64) and its connection count, in memory; no log                                                                                                     | all            | while any connection from it is open, and up to 2 minutes after the last one closes       |
+| coturn                                    | Each browser's public address for STUN                                                                                                                                                           | all            | no log by default; a temporary log, only to fix a fault or stop abuse, for at most 7 days |
+| coturn                                    | Both IP addresses, from each browser's allocation, even when a direct route wins                                                                                                                 | relay allowed  | while the allocation lasts; no log by default, a temporary log for at most 7 days         |
+| coturn                                    | The encrypted traffic, forwarded and not stored                                                                                                                                                  | relay route    | not stored                                                                                |
+| Mail service and the recipient's mailbox  | The notice with the full link, key included, and the typed name; the code email                                                                                                                  | emailed        | the mail service's own policy; the mailbox until deleted                                  |
+| Recipient's browser                       | The link with its secret in history; the saved file, or a shared secret in page memory and, once copied, the clipboard                                                                           | all            | history and files until deleted                                                           |
+| Recipient's browser                       | The token in that tab's `sessionStorage`                                                                                                                                                         | emailed        | until the tab closes                                                                      |
+| Networks on the route                     | Both IP addresses, timing, padded sizes; a shared secret's length doesn't show                                                                                                                   | all            | not known                                                                                 |
+
+### Retries and failures
+
+| Event                                                                                                    | What happens                                                                                                                                                             | Extra traces                                                                                                                                                      |
+| -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Decline                                                                                                  | The recipient's page closes its signaling socket. The sender marks the link declined and the link stays usable. A new attempt gets a new transfer ID and file key.       | `left`; no `refused`, because a decline sends no `refuse`                                                                                                         |
+| Setup timeout (sender's 20 s)                                                                            | The sender reports `path` with `failed`, refuses the recipient with `drop`, closes the connection and waits again. The recipient ends with a failure and doesn't rejoin. | `path` with `failed`, `refused` with `drop`                                                                                                                       |
+| Dropped channel before delivery                                                                          | The sender refuses the recipient with `drop`, as above. The recipient ends with a failure and doesn't rejoin.                                                            | `refused` with `drop` while the recipient is still joined; `path` with `failed` if ICE failed; `console.warn` of the reason                                       |
+| Recipient's own timeout (30 s)                                                                           | The recipient ends with a failure and closes its signaling socket. The sender waits again.                                                                               | `left`                                                                                                                                                            |
+| Recipient's signaling socket drops before the channel opens, or `refused` with `unknown` after a restart | The recipient rejoins with a new attempt ID, up to 4 times.                                                                                                              | Socket drop: `left`, then `joined` on a rejoin. After a restart: no `left`; `refused` with `unknown` for each rejoin before the sender hosts again, then `joined` |
+| Used, busy, unknown link                                                                                 | `used`: the sender's page answers `refuse` and the server forwards it. `busy` and `unknown`: the server refuses the join itself.                                         | `refused` with `used`, `busy` or `unknown`                                                                                                                        |
+| Sender's socket drops                                                                                    | The sender reconnects and hosts again, except emailed links, whose binding the server dropped. A recipient who had joined gets `host-gone`.                              | `host-closed`, `host-gone`                                                                                                                                        |
+| Server restart                                                                                           | All memory is gone, emailed bindings included. Open data channels keep running.                                                                                          | none beyond the journal                                                                                                                                           |
+| Tampered, replayed or reflected frame or signal                                                          | The reader stops for good; the sink discards what was written.                                                                                                           | none                                                                                                                                                              |
+
+Checked by `apps/e2e/tests/first-demo.spec.ts` ("refuses used, unknown and malformed links", "a sender whose connection setup fails logs why and lets the recipient try again", "a declined offer shows as declined, and the link can be reopened", "through a server restart", "a hostile path"), `apps/e2e/tests/secret.spec.ts`.
+
+### Every signaling message
+
+`packages/protocol/src/signaling.ts`. The server reads every field listed here. None carries file content, a file name, type or size, or a key, except `email`.
+
+| Message     | Direction            | Fields                                         | Path                  | Sensitive                                                  |
+| ----------- | -------------------- | ---------------------------------------------- | --------------------- | ---------------------------------------------------------- |
+| `hello`     | server → page        | `mail`                                         | all                   | no                                                         |
+| `host`      | sender → server      | `links` (IDs), `turn`                          | all                   | no                                                         |
+| `join`      | recipient → server   | `link`, `attempt`, `token` on an emailed link  | all                   | `token` is a bearer value, never logged                    |
+| `joined`    | server → both        | `link`, `attempt`, `iceServers`, `turn`        | all                   | TURN credential, never logged                              |
+| `relay`     | page → server → page | `link`, `data` sealed with the signal key      | all                   | sealed; server can't read it (except on emailed paths)     |
+| `refuse`    | sender → server      | `link`, `attempt`, `reason`                    | failures and refusals | no                                                         |
+| `refused`   | server → recipient   | `reason`                                       | failures and refusals | no                                                         |
+| `left`      | server → sender      | `link`                                         | all                   | no                                                         |
+| `host-gone` | server → recipient   | none                                           | failures and refusals | no                                                         |
+| `error`     | server → page        | `code`                                         | failures and refusals | no                                                         |
+| `path`      | sender → server      | `link`, `path`                                 | all                   | no; logged without the link                                |
+| `email`     | sender → server      | `link`, `to`, `secret`, `from`, `lang`         | emailed               | **yes: the link's secret, the address and the typed name** |
+| `email`     | server → sender      | `link`, `status`, `mark`                       | emailed               | `mark` is the value, never logged                          |
+| `gate`      | recipient ⇄ server   | `link`, `mark` / `link`, `to` (masked address) | emailed               | `mark`, never logged                                       |
+| `send-code` | recipient → server   | `link`, `mark`                                 | emailed               | `mark`, never logged                                       |
+| `code`      | recipient ⇄ server   | `link`, `code`, `mark` / `link`, `result`      | emailed               | `code`, never logged                                       |
+| `token`     | server → recipient   | `link`, `token`                                | emailed               | `token`, never logged                                      |
+
+### Every server log line
+
+Written as one JSON line, `{event, ...fields}`, to stdout and from there to the journal (29 days). `LogEvent` and `LogFields` in `packages/protocol/src/signaling.ts` are the only allowed shape; /privacy lists them from the same type.
+
+Fields: `link` (first 6 characters of a link ID), `links` (a count), `bytes` (a message size), `reason`, `code` (an error code), `port`, `path` (the route).
+
+| Event              | Fields           | Path                           |
+| ------------------ | ---------------- | ------------------------------ |
+| `listening`        | `port`           | start                          |
+| `upgrade-rejected` | `reason`         | failures and refusals          |
+| `bad-message`      | `bytes`          | failures and refusals          |
+| `rate-limited`     | none             | failures and refusals          |
+| `error`            | `code`           | failures and refusals          |
+| `host`             | `links`          | all                            |
+| `host-gone`        | `link`           | failures and refusals          |
+| `host-closed`      | `links`          | all                            |
+| `joined`           | `link`           | all                            |
+| `refused`          | `link`, `reason` | failures and refusals; emailed |
+| `relay`            | `link`, `bytes`  | all                            |
+| `relay-dropped`    | `link`, `bytes`  | failures and refusals          |
+| `path`             | `path`           | all                            |
+| `left`             | `link`           | all                            |
+| `email`            | `link`, `reason` | emailed                        |
+| `code`             | `link`, `reason` | emailed                        |
+| `verified`         | `link`           | emailed                        |
+
 ## What Fidant doesn't protect against
 
 - **The link is the key.** Anyone who gets a link can open the file or shared secret behind it until the link is used. A link Fidant emails also needs a code sent to the same address, so it opens for anyone who can read that mailbox. Send each link only to its recipient, over a channel you trust.
@@ -366,7 +459,7 @@ When it ships, this document and the pages below get the new mode.
 
 A pull request that changes security or data flow updates this document in the same pull request. That covers keys, encryption, the link format, frames, signaling messages, the connection paths and relay, what the server or relay sees, keeps or logs, limits, HTTP headers, and any new mode of transfer.
 
-The same pull request updates `docs/transfer-paths.md`, the per-path audit of steps and traces, wherever the change makes it untrue.
+That includes "Every path and its traces" and the `/how/traces` explorer's text (`technical.explorer`).
 
 The web pages explain the same things for readers, and change with it:
 

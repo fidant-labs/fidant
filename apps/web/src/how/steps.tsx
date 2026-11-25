@@ -6,6 +6,7 @@ import type { Messages, Section } from "../i18n/en.ts";
 import { useI18n } from "../i18n/I18n.tsx";
 import { SectionLink } from "../ui.tsx";
 import { type ArtId, Drawing, DrawnSection, Heading, Paragraphs, Terms } from "./Drawing.tsx";
+import { TraceExplorer } from "./TraceExplorer.tsx";
 
 type Technical = Messages["technical"];
 type Modes = Technical["modes"];
@@ -21,7 +22,8 @@ type Block =
       [G in keyof Modes]: { modes: G; cards: ReadonlyArray<keyof Modes[G]["items"] & ArtId> };
     }[keyof Modes]
   | { table: "protect" | "data" | "linkRisks" }
-  | { glossary: true };
+  | { glossary: true }
+  | { explorer: true };
 
 /** The /how steps in order: their text on /how, their URL, drawing and technical detail. */
 export const STEPS = [
@@ -74,6 +76,7 @@ export const STEPS = [
     slug: "traces",
     art: "never",
     detail: [
+      { explorer: true },
       { section: "seen" },
       { table: "data" },
       { section: "sender" },
@@ -208,6 +211,9 @@ export function Detail({ step }: { step: Step }) {
   return step.detail.map((block: Block) => {
     if ("modes" in block) {
       return <ModeCards key={`modes-${block.cards[0]}`} group={block.modes} cards={block.cards} />;
+    }
+    if ("explorer" in block) {
+      return <TraceExplorer key="explorer" />;
     }
     if ("glossary" in block) {
       return Object.entries(t.technical.glossary).map(([id, [term, body]]) => (
