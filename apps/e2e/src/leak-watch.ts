@@ -231,6 +231,21 @@ export class LeakWatch implements Leaks {
 }
 
 /**
+ * The leak teardown: runs `watch.check()`, then `cleanUp` (which needs the mail the check saved),
+ * then throws the report, if any.
+ */
+export async function failOnLeaks(
+  watch: Pick<LeakWatch, "check">,
+  cleanUp: () => Promise<void>,
+): Promise<void> {
+  const report = await watch.check();
+  await cleanUp();
+  if (report) {
+    throw new Error(report);
+  }
+}
+
+/**
  * A binary capture, such as coturn's packets, once its size has stopped changing, or undefined
  * when there is none (`pnpm e2e` runs no packet capture). tcpdump writes each packet as it arrives, but packets still on
  * their way through the routers, and the bind mount on Docker Desktop, can lag a little.
