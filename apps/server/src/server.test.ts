@@ -162,13 +162,19 @@ test("serves over https with a generated certificate", async () => {
   }
 });
 
-/** Opens a /signal socket on a TLS server and returns its raw text frames after the hello. */
+/**
+ * Opens a /signal socket on a TLS server and returns its raw text frames after the hello.
+ * Adds the socket to `opened` before connecting, so a caller's `finally` can close it even
+ * when this throws.
+ */
 async function rawSocket(
   port: number,
   ca: Buffer,
+  opened: WsClient[],
 ): Promise<{ socket: WsClient; next(): Promise<string> }> {
   // Trusts only the server's own certificate, so TLS checks stay on.
   const socket = new WsClient(`wss://localhost:${port}/signal`, { ca });
+  opened.push(socket);
   const frames: string[] = [];
   const waiting: ((frame: string) => void)[] = [];
   socket.on("message", (data) => {
@@ -212,11 +218,12 @@ for (const { turn, allow, name } of iceCases) {
       ice: turn ? { urls, secret } : undefined,
       log: (event, fields) => logs.push(JSON.stringify({ event, fields })),
     });
-    const { port } = server.address() as AddressInfo;
-    const ca = ensureCert(certDir, []).cert;
-    const host = await rawSocket(port, ca);
-    const guest = await rawSocket(port, ca);
+    const opened: WsClient[] = [];
     try {
+      const { port } = server.address() as AddressInfo;
+      const ca = ensureCert(certDir, []).cert;
+      const host = await rawSocket(port, ca, opened);
+      const guest = await rawSocket(port, ca, opened);
       const link = "AAAAAAAAAAAAAAAAAAAAAA";
       const attempt = "ZZZZZZZZZZZZZZZZZZZZZZ";
       host.socket.send(JSON.stringify({ t: "host", links: [link], turn: allow }));
@@ -251,8 +258,9 @@ for (const { turn, allow, name } of iceCases) {
         }
       }
     } finally {
-      host.socket.terminate();
-      guest.socket.terminate();
+      for (const socket of opened) {
+        socket.terminate();
+      }
       server.close();
     }
   });
@@ -438,11 +446,12 @@ test("hands the first relay up's ICE servers, with its own credentials, in joine
     relays,
     log: (event, fields) => logs.push(JSON.stringify({ event, fields })),
   });
-  const { port } = server.address() as AddressInfo;
-  const ca = ensureCert(join(dir, "certs"), []).cert;
-  const host = await rawSocket(port, ca);
-  const guest = await rawSocket(port, ca);
+  const opened: WsClient[] = [];
   try {
+    const { port } = server.address() as AddressInfo;
+    const ca = ensureCert(join(dir, "certs"), []).cert;
+    const host = await rawSocket(port, ca, opened);
+    const guest = await rawSocket(port, ca, opened);
     const link = "AAAAAAAAAAAAAAAAAAAAAA";
     const attempt = "ZZZZZZZZZZZZZZZZZZZZZZ";
     host.socket.send(JSON.stringify({ t: "host", links: [link], turn: true }));
@@ -467,8 +476,9 @@ test("hands the first relay up's ICE servers, with its own credentials, in joine
       );
     }
   } finally {
-    host.socket.terminate();
-    guest.socket.terminate();
+    for (const socket of opened) {
+      socket.terminate();
+    }
     server.close();
   }
 });
