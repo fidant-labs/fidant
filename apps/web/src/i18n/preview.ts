@@ -1,38 +1,71 @@
-import { type Lang, MESSAGES } from "./language.ts";
+import { ORIGIN } from "../site-files.ts";
+import { type Lang, localizedPath, MESSAGES } from "./language.ts";
 
-export type PreviewKind = "home" | "receive";
+export type PageHead = {
+  lang: Lang;
+  title: string;
+  description: string;
+  /** The link preview's title, when it differs from the tab title. */
+  ogTitle?: string;
+  image: "preview.png" | "preview-receive.png";
+  /** A public page's path without /sv: adds its canonical and hreflang links. */
+  path?: string;
+  /** The pre-paint script, and on an English page with a Swedish twin, that twin's path. */
+  script?: { src: string; sv?: string | undefined };
+  /** The page rendered at build time. */
+  markup?: string;
+};
 
-/** Link previews read only this static head, so each kind and language gets its own copy. */
-export function previewPage(html: string, lang: Lang, kind: PreviewKind): string {
-  const t = MESSAGES[lang];
-  const [title, description, image] =
-    kind === "receive"
-      ? [t.preview.receiveTitle, t.preview.receiveDescription, "preview-receive.png"]
-      : [t.preview.title, t.footer.tagline, "preview.png"];
+/** A copy of the built index.html with this page's head, text and markup; link previews and crawlers read only this. */
+export function pageHtml(html: string, page: PageHead): string {
+  const t = MESSAGES[page.lang];
+  const description = attribute(page.description);
   const tags = [
-    `<meta name="description" content="${attribute(description)}" />`,
+    `<meta name="description" content="${description}" />`,
     `<meta property="og:site_name" content="Fidant" />`,
     `<meta property="og:type" content="website" />`,
-    `<meta property="og:title" content="${attribute(title)}" />`,
-    `<meta property="og:description" content="${attribute(description)}" />`,
+    `<meta property="og:title" content="${attribute(page.ogTitle ?? page.title)}" />`,
+    `<meta property="og:description" content="${description}" />`,
     // Previews can't reach a local server, so the image always names the live site.
-    `<meta property="og:image" content="https://fidant.se/${image}" />`,
+    `<meta property="og:image" content="${ORIGIN}/${page.image}" />`,
     `<meta property="og:image:width" content="1200" />`,
     `<meta property="og:image:height" content="630" />`,
     `<meta name="twitter:card" content="summary_large_image" />`,
   ];
+  if (page.path !== undefined) {
+    const url = (lang: Lang) => ORIGIN + localizedPath(page.path ?? "/", lang);
+    tags.push(
+      `<meta property="og:url" content="${url(page.lang)}" />`,
+      `<link rel="canonical" href="${url(page.lang)}" />`,
+      `<link rel="alternate" hreflang="en" href="${url("en")}" />`,
+      `<link rel="alternate" hreflang="sv" href="${url("sv")}" />`,
+      `<link rel="alternate" hreflang="x-default" href="${url("en")}" />`,
+    );
+  }
   const english = `<meta name="description" content="${attribute(MESSAGES.en.footer.tagline)}" />`;
-  // Search results show this before the app sets the tab title, so it matches that tab title.
-  const tabTitle = kind === "receive" ? t.tabTitles.receive : t.tabTitles.landing;
-  let page = replaceOnce(html, `<html lang="en">`, `<html lang="${lang}">`);
-  page = replaceOnce(page, `<title>Fidant</title>`, `<title>${attribute(tabTitle)}</title>`);
-  return replaceOnce(page, english, tags.join("\n    "));
+  let out = replaceOnce(html, `<html lang="en">`, `<html lang="${page.lang}">`);
+  out = replaceOnce(out, `<title>Fidant</title>`, `<title>${attribute(page.title)}</title>`);
+  out = replaceOnce(out, english, tags.join("\n    "));
+  out = replaceOnce(out, `>${MESSAGES.en.noscript}<`, `>${attribute(t.noscript)}<`);
+  if (page.script) {
+    const sv = page.script.sv === undefined ? "" : ` data-sv="${attribute(page.script.sv)}"`;
+    const charset = `<meta charset="utf-8" />`;
+    out = replaceOnce(
+      out,
+      charset,
+      `${charset}\n    <script src="${page.script.src}"${sv}></script>`,
+    );
+  }
+  if (page.markup !== undefined) {
+    out = replaceOnce(out, `<div id="app"></div>`, `<div id="app">${page.markup}</div>`);
+  }
+  return out;
 }
 
 function replaceOnce(html: string, from: string, to: string): string {
   const parts = html.split(from);
   if (parts.length !== 2) {
-    throw new Error(`previewPage: expected ${from} once, found it ${parts.length - 1} times`);
+    throw new Error(`pageHtml: expected ${from} once, found it ${parts.length - 1} times`);
   }
   return parts.join(to);
 }

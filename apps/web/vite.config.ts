@@ -1,29 +1,91 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import tailwindcss from "@tailwindcss/vite";
-import { defineConfig } from "vite";
-import { previewPage } from "./src/i18n/preview.ts";
+import { createServer, defineConfig } from "vite";
+import { LANGUAGE_NAMES, localizedPath, MESSAGES } from "./src/i18n/language.ts";
+import { pageHtml } from "./src/i18n/preview.ts";
+import { llmsTxt, ORIGIN, sitemap } from "./src/site-files.ts";
 
 const latinGeist = /^assets\/geist-latin-wght-normal-[\w-]+\.woff2$/;
+const LANGS = ["en", "sv"] as const;
+
+let root = "";
 
 export default defineConfig({
   plugins: [
     tailwindcss(),
     {
-      name: "link-previews",
+      name: "pages",
       apply: "build",
       enforce: "post",
-      generateBundle(_options, bundle) {
+      configResolved(config) {
+        root = config.root;
+      },
+      async generateBundle(_options, bundle) {
         const index = bundle["index.html"];
         if (index?.type !== "asset" || typeof index.source !== "string") {
-          throw new Error("link-previews: expected index.html in the bundle");
+          throw new Error("pages: expected index.html in the bundle");
         }
-        for (const lang of ["en", "sv"] as const) {
-          for (const kind of ["home", "receive"] as const) {
-            this.emitFile({
-              type: "asset",
-              fileName: `index.${kind}.${lang}.html`,
-              source: previewPage(index.source, lang, kind),
-            });
+        const shell = index.source;
+        const emit = (fileName: string, source: string) =>
+          this.emitFile({ type: "asset", fileName, source });
+        const prepaint = this.emitFile({
+          type: "asset",
+          name: "prepaint.js",
+          source: readFileSync(join(root, "src/prepaint.js"), "utf8"),
+        });
+        const src = `/${this.getFileName(prepaint)}`;
+        // A short-lived dev server loads the app's .tsx modules with this config, aliases included.
+        const server = await createServer({
+          root,
+          server: { middlewareMode: true, hmr: false, ws: false },
+          appType: "custom",
+          logLevel: "warn",
+        });
+        try {
+          const { NOT_FOUND, PAGES, renderPage } = (await server.ssrLoadModule(
+            "/src/prerender.tsx",
+          )) as typeof import("./src/prerender.tsx");
+          const urls: string[] = [];
+          const sections = [];
+          for (const lang of LANGS) {
+            const pages = [];
+            for (const path of PAGES) {
+              const page = renderPage(path, lang);
+              if (page.markup.includes(' style="')) {
+                throw new Error(`pages: ${path} renders a style attribute, which the CSP blocks`);
+              }
+              const local = localizedPath(path, lang);
+              const sv = lang === "en" ? localizedPath(path, "sv") : undefined;
+              emit(
+                `pages${local === "/" ? "" : local}/index.html`,
+                pageHtml(shell, { lang, ...page, image: "preview.png", path, script: { src, sv } }),
+              );
+              urls.push(ORIGIN + local);
+              pages.push({ title: page.title, description: page.description, url: ORIGIN + local });
+            }
+            sections.push({ heading: LANGUAGE_NAMES[lang], pages });
+            const missing = renderPage(NOT_FOUND, lang);
+            emit(
+              lang === "en" ? "pages/404.html" : "pages/sv/404.html",
+              pageHtml(shell, { lang, ...missing, image: "preview.png", script: { src } }),
+            );
+            const t = MESSAGES[lang];
+            emit(
+              `index.receive.${lang}.html`,
+              pageHtml(shell, {
+                lang,
+                title: t.tabTitles.receive,
+                description: t.preview.receiveDescription,
+                ogTitle: t.preview.receiveTitle,
+                image: "preview-receive.png",
+              }),
+            );
           }
+          emit("sitemap.xml", sitemap(urls));
+          emit("llms.txt", llmsTxt(MESSAGES.en.footer.tagline, sections));
+        } finally {
+          await server.close();
         }
       },
     },
