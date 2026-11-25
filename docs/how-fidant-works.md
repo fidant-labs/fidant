@@ -366,7 +366,7 @@ On the relay box (see "The relay box"):
 
 ## The web app and the server
 
-`apps/server/src/server.ts`, `apps/server/src/relays.ts`, `apps/web/src/main.tsx`, `apps/web/src/i18n/preview.ts`, `apps/web/vite.config.ts`, `apps/infra/box/user-data.sh`
+`apps/server/src/server.ts`, `apps/server/src/relays.ts`, `apps/server/src/settings.ts`, `apps/web/src/lib/signaling-list.ts`, `apps/web/src/main.tsx`, `apps/web/src/i18n/preview.ts`, `apps/web/vite.config.ts`, `apps/infra/box/user-data.sh`
 
 - HTTPS only, with `Strict-Transport-Security` (Caddy, Let's Encrypt). Send and receive refuse to run outside a secure context.
 - HAProxy holds TCP 443 and passes every connection not for `turn.fidant.se` to Caddy on port 8444, without decrypting it. It adds a PROXY protocol header, which Caddy accepts only from 127.0.0.1, so Caddy and the server still see the real client address (`docs/decisions/0010-turn-tls-443.md`). HAProxy logs nothing and stores nothing on disk; it holds only addresses and connection counts in memory, for its per-source cap.
@@ -374,7 +374,10 @@ On the relay box (see "The relay box"):
 - No cookies, no third-party scripts, fonts or trackers.
 - Static files are served only from the build directory; path traversal is refused.
 - A path without a file extension gets one of four copies of `index.html` whose link preview (Open Graph tags) holds only fixed text: a receive link (`/r/<link ID>`) says something was sent to you, any other path says what Fidant is. The server picks the copy by path and by whether `Accept-Language` starts with `sv`, and sends `Vary: Accept-Language`. Like a browser, a preview fetcher sends us the path but never the part after `#`.
-- The WebSocket accepts upgrades only on `/signal`, and refuses one whose `Origin` is another site.
+- The WebSocket accepts upgrades only on `/signal`, and refuses one whose `Origin` is another site. Our site is the host the request names and, when `PUBLIC_ORIGIN` is set, that origin too, so the server can run on another name than the pages.
+- The per-address limits count a client by the address its connection comes from. When that is a proxy the server trusts, they count the rightmost `X-Forwarded-For` entry instead, the one that proxy wrote. A proxy on the same host is always trusted, which is how the server sees addresses behind Caddy. `TRUSTED_PROXIES` names address ranges that are trusted as well. fidant.se sets none.
+- With `SIGNALING_ONLY=1` the server serves no pages. It answers `/signal` and the two relay routes, and 404 for every other path. fidant.se does not set it.
+- The web app opens its WebSocket to the host it was loaded from. A build made with `SIGNALS_FILE` takes the address from the first entry of that list instead; `apps/web/signals.json` names `wss://sto.signal.fidant.se/signal`. The build that fidant.se serves is made without it.
 - Two routes serve the relays, with `Cache-Control: no-store` and the headers above. They take only GET and HEAD and need no authentication. `/relay-status` answers JSON with each relay's ID and whether it is up, such as `[{"id":"sto","up":true}]`, or `[]` without a relay list. `/relay-secret/<id>` answers a relay's sealed secret as one line of text (see "The relay box"). Any other path under them gets 404.
 - Limits: HAProxy closes a source's 129th concurrent connection on 443 (a source is an IPv4 address or an IPv6 /64) and an idle connection after 2 minutes, or after 1 hour on the path to the fallback relay. The server allows 1,000 sockets, 32 per client address (an IPv6 address counts by its /64), 1,000 messages per socket per 30-second window, 256 links per sender, 16,384 characters per relayed setup message, 256 KiB queued to a socket that isn't reading before relays to it are dropped, 512 KiB before the socket is ended, and the email and code limits under "Emailed links".
 
