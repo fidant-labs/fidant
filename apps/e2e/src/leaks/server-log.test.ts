@@ -4,7 +4,7 @@ import {
   CODE_RESULTS,
   CONNECTION_PATHS,
   ERROR_CODES,
-  REFUSE_REASONS,
+  REFUSED_REASONS,
   UPGRADE_REJECT_REASONS,
 } from "@sigill/protocol";
 import { canaryKey, SeededRandom } from "./canary.ts";
@@ -45,7 +45,7 @@ test("passes the lines the server writes", () => {
 
 test("passes every reason, code and path that @sigill/protocol defines", () => {
   const lines = [
-    ...[...REFUSE_REASONS, ...UPGRADE_REJECT_REASONS, ...CODE_RESULTS].map((reason) =>
+    ...[...REFUSED_REASONS, ...UPGRADE_REJECT_REASONS, ...CODE_RESULTS].map((reason) =>
       line({ event: "refused", reason }),
     ),
     ...ERROR_CODES.map((code) => line({ event: "error", code })),

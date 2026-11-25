@@ -67,6 +67,11 @@ test("parses valid client messages", () => {
     link,
     data: "a-b_C9",
   });
+  // Only the server sends `starting`.
+  assert.equal(
+    parseClientMessage(JSON.stringify({ t: "refuse", link, attempt, reason: "starting" })),
+    undefined,
+  );
   for (const reason of ["used", "busy", "unknown", "drop"] as const) {
     assert.deepEqual(parseClientMessage(JSON.stringify({ t: "refuse", link, attempt, reason })), {
       t: "refuse",
@@ -116,7 +121,7 @@ test("parses valid server messages", () => {
     link,
     data: "xyz",
   });
-  for (const reason of ["used", "busy", "unknown", "drop"] as const) {
+  for (const reason of ["used", "busy", "unknown", "drop", "starting"] as const) {
     assert.deepEqual(parseServerMessage(JSON.stringify({ t: "refused", reason })), {
       t: "refused",
       reason,

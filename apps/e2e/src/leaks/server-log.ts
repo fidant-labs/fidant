@@ -4,7 +4,7 @@ import {
   ERROR_CODES,
   LOG_EVENTS,
   type LogFields,
-  REFUSE_REASONS,
+  REFUSED_REASONS,
   UPGRADE_REJECT_REASONS,
 } from "@sigill/protocol";
 
@@ -54,7 +54,7 @@ export const serverLogAllowlist: LogAllowlist = {
   events: new Set<string>(LOG_EVENTS),
   // LogReason in @sigill/protocol.
   reasons: new Set<string>([
-    ...REFUSE_REASONS,
+    ...REFUSED_REASONS,
     ...UPGRADE_REJECT_REASONS,
     ...CODE_RESULTS,
     "unverified",
