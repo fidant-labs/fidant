@@ -238,6 +238,7 @@ The relay is its own service, so that relays can run on any Ubuntu server and in
 The send page has "Allow our relay if a direct connection isn't possible", on by default, for that send only.
 
 - When it is off, the server mints no TURN credential and `joined` carries only the `stun:` URLs. An unmodified browser can't use our relay.
+- The sender's page enforces its own choice as well: with the box unticked it keeps only the `stun:` URLs from `joined`, without credentials, and treats the attempt as refused, whatever `turn` the server sent.
 - Backstop: if the sender's selected candidate pair still reads `relay` on a refused attempt, the sender ends the attempt and reports `failed`. It runs after the channel opens, so INIT and META may have passed; file data only flows after ACCEPT.
 - Limit: a modified recipient can route its own side through our relay with credentials from another pairing, or through any public TURN server. That recipient holds the key anyway. The choice decides which infrastructure carries the encrypted traffic, not who can read the file.
 
