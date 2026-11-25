@@ -11,6 +11,8 @@
 //   sender → recipient   relay seal_s({kind:"offer", sdp, check})
 //   recipient → sender   relay seal_r({kind:"answer", sdp})   its fingerprint must match the commit
 //   both directions      relay seal({kind:"ice", candidate})   (trickle; null = end)
+//   sender → recipient   relay seal_s({kind:"restart-offer", sdp})   (TURN fallback, at most once)
+//   recipient → sender   relay seal_r({kind:"restart-answer", sdp})   both keep the first fingerprints
 //   sender ⇄ recipient   data channel "sigill" opens → onOpen(channel, info)
 //
 // Each side makes a fresh DTLS certificate for every connection. The recipient
@@ -32,7 +34,8 @@
 //
 // Outgoing signals are sealed and sent in order through one queue; incoming
 // relay data is handled in order through another. ICE candidates that arrive
-// before the remote description are held until it is set.
+// before the remote description are held until it is set, and candidates for
+// another ICE username fragment than the remote description's are dropped.
 //
 // No DOM or UI here, and nothing about files or names: the data channel
 // carries only encrypted frames (frames.ts), and its label is fixed.
@@ -53,6 +56,9 @@ export const DEFAULT_MAX_MESSAGE_SIZE = 65536;
 
 /** How long to wait before reading a "stun" path again (see readPath). */
 const PATH_RECHECK_MS = 1000;
+
+/** How long the sender lets ICE try without the relay, from applying the answer. */
+export const RELAY_FALLBACK_MS = 3000;
 
 export type PeerCloseReason =
   /** The data channel closed (the other side went away or closed it). */
@@ -131,7 +137,7 @@ export type SignalCandidate = {
 export type SignalPayload =
   | { kind: "commit"; hash: string }
   | { kind: "offer"; sdp: string; check: boolean }
-  | { kind: "answer"; sdp: string }
+  | { kind: "answer" | "restart-offer" | "restart-answer"; sdp: string }
   | { kind: "ice"; candidate: SignalCandidate | null };
 
 type Fields = Record<string, unknown>;
@@ -192,13 +198,15 @@ export function parseSignalPayload(value: unknown): SignalPayload | undefined {
       }
       return { kind: "offer", sdp: fields.sdp, check: fields.check };
     case "answer":
+    case "restart-offer":
+    case "restart-answer":
       if (!hasKeys(fields, ["kind", "sdp"]) || typeof fields.sdp !== "string") {
         return undefined;
       }
       if (fields.sdp.length === 0) {
         return undefined;
       }
-      return { kind: "answer", sdp: fields.sdp };
+      return { kind: fields.kind, sdp: fields.sdp };
     case "ice": {
       if (!hasKeys(fields, ["kind", "candidate"])) {
         return undefined;
@@ -288,9 +296,21 @@ function toCandidate(candidate: RTCIceCandidate): SignalCandidate {
   };
 }
 
+const urlsOf = (server: RTCIceServer) => [server.urls].flat();
+
+function isConnected(state: RTCIceConnectionState): boolean {
+  return state === "connected" || state === "completed";
+}
+
 function startPeer(options: PeerOptions, side: Direction): Peer {
   const { signaling, linkId, attempt, signalKey } = options;
   const other: Direction = side === "s" ? "r" : "s";
+  const stunOnly = options.iceServers
+    .map((server) => ({ urls: urlsOf(server).filter((url) => url.startsWith("stun:")) }))
+    .filter((server) => server.urls.length > 0);
+  const hasTurn = options.iceServers.some((server) =>
+    urlsOf(server).some((url) => url.startsWith("turn:") || url.startsWith("turns:")),
+  );
 
   let pc: RTCPeerConnection | undefined;
   let closed = false;
@@ -299,6 +319,8 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
   let gotAnswer = false;
   let commit: string | undefined;
   let offerFingerprint: string | undefined;
+  /** The other side's fingerprint in the check number; a restart must carry the same one. */
+  let theirFingerprint: string | undefined;
   let answered = false;
   let answerAccepted = false;
   let ownFingerprint: string | undefined;
@@ -307,12 +329,19 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
   const number = new Promise<string>((resolve) => {
     resolveNumber = resolve;
   });
+  /** Set when the sender starts its restart-offer, or the recipient takes one. */
+  let restarted = false;
+  let gotRestartAnswer = false;
+  /** Set when a restart signal arrived with the path already up; later ones are ignored too. */
+  let ignoredRestart = false;
+  let relayTimer: ReturnType<typeof setTimeout> | undefined;
   const pendingCandidates: Array<SignalCandidate | null> = [];
   let outgoing: Promise<void> = Promise.resolve();
   let incoming: Promise<void> = Promise.resolve();
 
   function teardown(): void {
     closed = true;
+    clearTimeout(relayTimer);
     if (channel) {
       channel.onopen = null;
       channel.onclose = null;
@@ -411,6 +440,15 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
   }
 
   async function addCandidate(candidate: SignalCandidate | null): Promise<void> {
+    const ufrag = /^a=ice-ufrag:(\S+)/m.exec(connection().remoteDescription?.sdp ?? "")?.[1];
+    // A candidate trickled before an ICE restart can arrive after it.
+    if (
+      candidate !== null &&
+      candidate.usernameFragment !== null &&
+      candidate.usernameFragment !== ufrag
+    ) {
+      return;
+    }
     if (candidate === null || candidate.candidate === "") {
       // End of candidates. Older browsers reject this; it only speeds up
       // ICE completing, so a failure is harmless.
@@ -480,6 +518,7 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
         }
         sendSignal({ kind: "answer", sdp: answer.sdp }, true);
         answered = true;
+        theirFingerprint = theirs;
         resolveNumber(await checkNumber(theirs, answer.fingerprint));
         return;
       }
@@ -494,7 +533,62 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
         }
         await setRemote("answer", payload.sdp, theirs);
         answerAccepted = true;
+        theirFingerprint = theirs;
+        if (hasTurn && !closed) {
+          relayTimer = setTimeout(fallBackToRelay, RELAY_FALLBACK_MS);
+        }
         resolveNumber(await checkNumber(offerFingerprint, theirs));
+        return;
+      }
+      case "restart-offer": {
+        if (side !== "r" || !answered || restarted) {
+          throw new PeerError("bad-signal", "unexpected restart-offer");
+        }
+        // An honest offer can cross the channel opening; an open path stays as it is.
+        if (ignoredRestart) {
+          return;
+        }
+        if (isConnected(connection().iceConnectionState) || channel?.readyState === "open") {
+          ignoredRestart = true;
+          return;
+        }
+        restarted = true;
+        const theirs = remoteFingerprint(payload.sdp);
+        if (theirs !== theirFingerprint) {
+          throw new PeerError("bad-signal", "the restart names another certificate");
+        }
+        if (hasTurn) {
+          try {
+            addRelay();
+          } catch {
+            // Without its own relay, the sender's relay candidates can still connect.
+          }
+        }
+        await setRemote("offer", payload.sdp, theirs);
+        const answer = await describe("answer");
+        if (answer.fingerprint !== ownFingerprint) {
+          throw new PeerError("setup-failed", "the answer names another certificate");
+        }
+        sendSignal({ kind: "restart-answer", sdp: answer.sdp }, true);
+        return;
+      }
+      case "restart-answer": {
+        if (side !== "s" || !restarted || gotRestartAnswer) {
+          throw new PeerError("bad-signal", "unexpected restart-answer");
+        }
+        if (ignoredRestart) {
+          return;
+        }
+        if (isConnected(connection().iceConnectionState) || channel?.readyState === "open") {
+          ignoredRestart = true;
+          return;
+        }
+        gotRestartAnswer = true;
+        const theirs = remoteFingerprint(payload.sdp);
+        if (theirs !== theirFingerprint) {
+          throw new PeerError("bad-signal", "the restart names another certificate");
+        }
+        await setRemote("answer", payload.sdp, theirs);
         return;
       }
       case "ice":
@@ -507,6 +601,39 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
     }
   }
 
+  function addRelay(): void {
+    const pc = connection();
+    pc.setConfiguration({ ...pc.getConfiguration(), iceServers: options.iceServers });
+  }
+
+  /** Adds TURN and restarts ICE, in order with the relayed signals, unless ICE connected or the channel opened. */
+  function fallBackToRelay(): void {
+    incoming = incoming
+      .then(async () => {
+        const pc = connection();
+        const state = pc.iceConnectionState;
+        if (closed || isConnected(state) || channel?.readyState === "open") {
+          return;
+        }
+        try {
+          addRelay();
+          pc.restartIce();
+        } catch {
+          // An old browser: the connection keeps trying without the relay.
+          return;
+        }
+        restarted = true;
+        const offer = await describe("offer");
+        if (offer.fingerprint !== offerFingerprint) {
+          throw new PeerError("setup-failed", "the restart offer names another certificate");
+        }
+        sendSignal({ kind: "restart-offer", sdp: offer.sdp }, true);
+      })
+      .catch((error: unknown) => {
+        failWith(error, "setup-failed");
+      });
+  }
+
   async function setup(): Promise<void> {
     const cert = await RTCPeerConnection.generateCertificate({
       name: "ECDSA",
@@ -515,10 +642,8 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
     if (closed) {
       return;
     }
-    // Host candidates are enough on one network. The app server may add a TURN
-    // relay for browsers that cannot reach each other; it sees only encrypted
-    // DTLS traffic. Without one (the local demo), iceServers is [].
-    const next = new RTCPeerConnection({ iceServers: options.iceServers, certificates: [cert] });
+    // STUN only, so a direct route wins whenever there is one; see fallBackToRelay.
+    const next = new RTCPeerConnection({ iceServers: stunOnly, certificates: [cert] });
     pc = next;
 
     next.onicecandidate = (event) => {
