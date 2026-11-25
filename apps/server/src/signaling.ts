@@ -193,7 +193,7 @@ export function clientAddress(
   return isIP(ip) === 6 ? prefix64(ip) : ip;
 }
 
-/** True if the request has no Origin header, one whose host matches the Host header, or exactly `siteOrigin`. */
+/** True with no Origin header, an Origin whose host matches Host, or one equal to `siteOrigin`. */
 function sameOrigin(req: IncomingMessage, siteOrigin: string | undefined): boolean {
   const origin = req.headers.origin;
   if (origin === undefined || origin === siteOrigin) {

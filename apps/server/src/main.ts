@@ -7,11 +7,11 @@ import { parseIceServers } from "@sigill/protocol";
 import { type Mailer, smtpMailer } from "./mail.ts";
 import { loadRelays, type Relays, readOrCreateMaster, startRelays } from "./relays.ts";
 import { startServer } from "./server.ts";
-import { siteSettings } from "./settings.ts";
+import { type SiteSettings, siteSettings } from "./settings.ts";
 import type { Logger } from "./signaling.ts";
 import type { IceConfig } from "./turn.ts";
 
-let site: ReturnType<typeof siteSettings>;
+let site: SiteSettings;
 try {
   site = siteSettings(process.env);
 } catch (error) {

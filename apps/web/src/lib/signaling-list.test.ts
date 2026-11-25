@@ -22,6 +22,8 @@ test("refuses a list that a page could not use", () => {
     entry("wss://sto.signal.fidant.se/"),
     entry("wss://sto.signal.fidant.se/signal?x=1"),
     entry("wss://user@sto.signal.fidant.se/signal"),
+    entry("wss://sto.signal.fidant.se:443/signal"),
+    entry("wss://STO.signal.fidant.se/signal"),
     entry("wss://sto.signal.fidant.se/signal", "STO"),
     '[{"id":"sto","url":"wss://a.example/signal"},{"id":"sto","url":"wss://b.example/signal"}]',
   ]) {
