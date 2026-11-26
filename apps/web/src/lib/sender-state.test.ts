@@ -12,6 +12,7 @@ import {
   emailBound,
   findRecipient,
   hostedLinks,
+  INTERRUPTED,
   initialSenderState,
   RECIPIENT_OUTDATED,
   type Recipient,
@@ -210,6 +211,7 @@ test("a drop before delivery returns the recipient to waiting and frees the link
       status: "waiting",
       bytesSent: 0,
       ...(reached === "connecting" && { noConnect: true }),
+      ...(reached === "receiving" && { error: INTERRUPTED }),
     });
     assert.deepEqual(
       dropped.effects,

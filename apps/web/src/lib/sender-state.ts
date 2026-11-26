@@ -273,7 +273,9 @@ export const CHECK_LIMIT = "The check failed too many times, so this link no lon
 export const CHECK_EXPIRED = "The safety number wasn't confirmed in time, so nothing was sent.";
 export const SENDER_OUTDATED = "This page runs an older version than the recipient's.";
 export const RECIPIENT_OUTDATED = "The recipient's page runs an older version than this one.";
+export const INTERRUPTED = "The connection ended while the file was on its way.";
 export type RecipientError =
+  | typeof INTERRUPTED
   | typeof CHECKSUM_MISMATCH
   | typeof TOO_SMALL_FOR_TEXT
   | typeof CHECK_DIFFERS
@@ -463,11 +465,11 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
       if (action.type === "dropped" ? !isActive(current) : current.status !== "connecting") {
         return { state, effects: [] };
       }
-      return end(
-        state,
-        current,
-        failedCheck(current, waiting(current, current.status === "connecting")),
-      );
+      return end(state, current, {
+        ...failedCheck(current, waiting(current, current.status === "connecting")),
+        // Says why the card is back at waiting; the next join clears it.
+        ...(current.status === "receiving" && { error: INTERRUPTED }),
+      });
     case "left": {
       if (current.status !== "connecting") {
         return { state, effects: [] };
