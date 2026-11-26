@@ -299,11 +299,11 @@ const said = args.join(" ");
 const input = tool === "docker" && args[0] === "login" ? fs.readFileSync(0, "utf8") : "";
 const state = JSON.parse(fs.readFileSync(process.env.STATE, "utf8"));
 const at = (flag) => args[args.indexOf(flag) + 1];
-const finish = (call, out, error) => {
+const finish = (call, out, error, detail = "test") => {
   state.calls.push(call);
   fs.writeFileSync(process.env.STATE, JSON.stringify(state));
   if (error) {
-    fs.writeSync(2, "An error occurred (" + error + ") when calling the operation: test\\n");
+    fs.writeSync(2, "An error occurred (" + error + ") when calling the operation: " + detail + "\\n");
     process.exit(254);
   }
   if (out !== undefined) fs.writeSync(1, typeof out === "string" ? out : JSON.stringify(out));
@@ -336,6 +336,9 @@ if (tool === "aws" && /^ecr batch-get-image --repository-name fidant-signal --im
 } else if (tool === "aws" && said === "ecs describe-services --cluster fidant --services fidant-signal --output json") {
   const answer = state.services.length > 1 ? state.services.shift() : state.services[0];
   finish("describe-services", ...ecs(answer));
+} else if (tool === "aws" && said === "cloudformation describe-stacks --stack-name FidantSignal --query Stacks[0].StackStatus --output text") {
+  if (state.stack === "!") finish("describe-stacks", undefined, "AccessDenied", "User: arn:aws:sts::210987654321:assumed-role/fidant-release/run is not authorized");
+  finish("describe-stacks", (state.stack ?? "CREATE_COMPLETE") + "\\n");
 } else if (tool === "aws" && said === "ecs update-service --cluster fidant --service fidant-signal --force-new-deployment --output json") {
   finish("update-service", ...ecs(state.update));
 } else if (tool === "aws" && args[0] === "s3" && args[1] === "cp") {
@@ -406,12 +409,14 @@ function release(start: {
   failUpload?: number;
   tip?: string;
   digest?: string;
+  stack?: string;
 }) {
   let result:
     | {
         status: number | null;
         signal: NodeJS.Signals | null;
         stdout: string;
+        stderr: string;
         calls: string[];
         tags: Record<string, string>;
       }
@@ -443,6 +448,7 @@ function release(start: {
     let status: number | null = 0;
     let signal: NodeJS.Signals | null = null;
     let stdout = "";
+    let stderr = "";
     for (const step of releaseSteps) {
       const script = run(step.name);
       const inputs = step.env.map((name) => {
@@ -462,12 +468,13 @@ function release(start: {
       );
       ({ status, signal } = ran);
       stdout += ran.stdout;
+      stderr += ran.stderr;
       if (status !== 0) {
         break;
       }
     }
     const end = JSON.parse(readFileSync(state, "utf8"));
-    result = { status, signal, stdout, calls: end.calls, tags: end.tags };
+    result = { status, signal, stdout, stderr, calls: end.calls, tags: end.tags };
   });
   assert.ok(result);
   return result;
@@ -612,6 +619,7 @@ const moved = [
   `batch-get-image imageTag=failed-${key}`,
   "describe-services",
   "describe-services",
+  "describe-stacks",
   "batch-get-image imageDigest=sha256:new",
   "put-image live sha256:new",
   "update-service",
@@ -643,6 +651,49 @@ test("a deployment that completes leaves live on the new image", () => {
   assert.equal(status, 0);
   assert.deepEqual(calls, [...moved, "describe-services", "describe-services", ...uploaded]);
   assert.deepEqual(tags, { ...before, live: "sha256:new" });
+});
+
+test("while FidantSignal's status ends in _IN_PROGRESS a release fails before live moves or a deployment starts, and UPDATE_COMPLETE goes on", () => {
+  const done = service(["ecs-svc/2", "PRIMARY", "COMPLETED"]);
+  const would = { tags: before, services: [steady, steady, rolling, done], update: started };
+  for (const stack of [
+    "UPDATE_IN_PROGRESS",
+    "REVIEW_IN_PROGRESS",
+    "UPDATE_ROLLBACK_COMPLETE_CLEANUP_IN_PROGRESS",
+  ]) {
+    const { status, stdout, calls, tags } = release({ ...would, stack });
+    assert.equal(status, 1, stack);
+    assert.deepEqual(calls, moved.slice(0, 6), stack);
+    assert.deepEqual(tags, before, stack);
+    assert.equal(
+      stdout,
+      `::error::FidantSignal is ${stack}, so live does not move; re-run the newest release run, the one for production's tip, once the stack has settled\n`,
+    );
+  }
+  const complete = release({ ...would, stack: "UPDATE_COMPLETE" });
+  assert.equal(complete.status, 0);
+  assert.deepEqual(complete.calls, [
+    ...moved,
+    "describe-services",
+    "describe-services",
+    ...uploaded,
+  ]);
+  assert.deepEqual(complete.tags, { ...before, live: "sha256:new" });
+});
+
+test("a release that cannot read FidantSignal's status fails before live moves, and prints nothing aws said", () => {
+  const done = service(["ecs-svc/2", "PRIMARY", "COMPLETED"]);
+  const { status, stdout, stderr, calls, tags } = release({
+    tags: before,
+    services: [steady, steady, rolling, done],
+    update: started,
+    stack: "!",
+  });
+  assert.equal(status, 1);
+  assert.deepEqual(calls, moved.slice(0, 6));
+  assert.deepEqual(tags, before);
+  assert.equal(stdout, "::error::could not read FidantSignal's status\n");
+  assert.equal(stderr, "");
 });
 
 const failed = service(["ecs-svc/3", "PRIMARY", "IN_PROGRESS"], ["ecs-svc/2", "ACTIVE", "FAILED"]);

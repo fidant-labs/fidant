@@ -492,8 +492,8 @@ export const sv: Messages = {
         body: "Varje länk fungerar en gång. Om du fortfarande behöver filen kan du be avsändaren om en ny länk.",
       },
       busy: {
-        title: "Länken är öppen någon annanstans",
-        body: "Varje länk kan bara vara öppen på ett ställe i taget. Stäng den andra fliken och ladda om den här sidan.",
+        title: "Länken är upptagen",
+        body: "Varje länk kan bara vara öppen på ett ställe i taget och tillåter bara några få anslutningsförsök på kort tid. Stäng andra flikar med länken, vänta en halv minut och ladda om den här sidan.",
       },
       offline: {
         title: "Avsändarens sida är stängd",
@@ -944,7 +944,7 @@ export const sv: Messages = {
         heading: "Flera mottagare och engångslänkar",
         body: [
           "En sändning kan gå till upp till 256 personer. Var och en har en egen länk, nyckel, anslutning och överföring.",
-          "En länk räknas som använd först när mottagarens RECEIPT stämmer. Därefter nekas den. En länk som redan är ansluten i en flik nekas i en annan.",
+          "En länk räknas som använd först när mottagarens RECEIPT stämmer. Därefter nekas den. En länk som redan är ansluten i en flik nekas i en annan, och så gör en länk som har haft 10 anslutningsförsök under den pågående perioden på 30 sekunder.",
           "Fram till dess kan länken öppnas igen: efter att mottagaren tackat nej, efter en bruten anslutning eller efter en misslyckad kontroll. Varje nytt försök har ett nytt överförings-ID och ett nytt försöks-ID, och därmed en ny filnyckel. En länk med kontrollnummer slutar fungera efter 5 försök som tog slut innan båda hade bekräftat numret. Ett försök som avsändarens sida stoppade för att de två sidorna kör olika versioner räknas inte.",
           "Ingenting sparas, så en länk fungerar bara medan avsändarens sida är öppen. När den stängs glömmer vår server dess länkar inom en minut.",
         ],
@@ -975,7 +975,7 @@ export const sv: Messages = {
         body: [
           "Webbplatsen levereras bara över HTTPS, och webbläsare får besked om att aldrig använda vanlig HTTP för den. Att skicka och ta emot går inte utan en säker anslutning.",
           "En Content Security Policy låter sidorna hämta kod, stilar, typsnitt och anslutningar bara från vår egen webbplats och hindrar andra webbplatser från att visa dem i en ram. Det finns inga cookies, inga skript från tredje part och ingen spårning.",
-          "WebSocketen för uppkopplingen nekar anslutningar som öppnas från andra webbplatser. Gränser skyddar servern mot överbelastning: antal anslutningar totalt och per adress, meddelanden per anslutning, länkar per avsändare, storleken på varje meddelande samt hur många mejl och koder den skickar.",
+          "WebSocketen för uppkopplingen nekar anslutningar som öppnas från andra webbplatser. Gränser skyddar servern mot överbelastning: antal anslutningar totalt och per adress, meddelanden per anslutning, kopplingar per länk, länkar per avsändare, storleken på varje meddelande samt hur många mejl och koder den skickar.",
         ],
       },
       limits: {
