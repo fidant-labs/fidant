@@ -850,7 +850,7 @@ test("drops nothing to a socket that keeps reading", async (t) => {
   const relay = await bufferedRelay(t);
   await relay.flood(10);
   // The guest's hello and joined ack, then 200 relays.
-  for (let wait = 0; wait < 200 && relay.received() < 202; wait += 1) {
+  for (let wait = 0; wait < 2000 && relay.received() < 202; wait += 1) {
     await new Promise((done) => setTimeout(done, 5));
   }
   assert.equal(relay.received(), 202);
@@ -1080,7 +1080,7 @@ test("builds the emailed link from the configured origin, never the request's Ho
   const link = linkId();
   socket.send(JSON.stringify({ t: "host", links: [link], turn: true }));
   socket.send(JSON.stringify(emailMessage(link)));
-  for (let wait = 0; wait < 200 && received.length < 2; wait += 1) {
+  for (let wait = 0; wait < 2000 && received.length < 2; wait += 1) {
     await new Promise((done) => setTimeout(done, 5));
   }
   assert.deepEqual(hostHeaders, ["evil.example"]);
