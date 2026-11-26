@@ -327,6 +327,9 @@ export const en = {
     sendingBar: (delivered: number, total: number) =>
       `Sending from this tab · ${delivered} of ${total} delivered · keep it open`,
     allDone: "Every link has delivered the file. You can close this tab.",
+    notifyMe: "Notify me",
+    notifyOn: "Notifications on",
+    notifyBlocked: "Notifications blocked",
     summary: (done: number, total: number) => `${done} of ${total} links have delivered the file`,
     delivered: "Delivered",
     doneTitle: "All delivered",
@@ -495,6 +498,7 @@ export const en = {
       differs: "They said it differs",
       waiting: "Waiting for the sender to say it matches too.",
       why: "The number comes from this connection. If someone sat between you and the sender, your screens would show different numbers.",
+      expires: "The safety number expires after 5 minutes.",
     },
     whatHappened: "What happened",
     encryptionLabel: "Encryption",
@@ -564,6 +568,10 @@ export const en = {
       connect: {
         title: "Couldn't connect to the sender's computer",
         body: "Your two computers couldn't reach each other.",
+      },
+      browser: {
+        title: "This browser can't connect to the sender",
+        body: "It may have WebRTC turned off, or be too old. Try another browser.",
       },
       noRelay: {
         title: "Couldn't connect directly to the sender",
@@ -1290,6 +1298,10 @@ export const en = {
             [
               "",
               "Your theme and language choice, in the browser's local storage, until you clear it.",
+            ],
+            [
+              "",
+              "If you allow notifications: a notification for each delivery, shown and kept by your device's notification list. It says only whether a file or a secret was sent and how many links have delivered, never a file name, a person's name, a link or a key.",
             ],
             [
               "direct,relay",

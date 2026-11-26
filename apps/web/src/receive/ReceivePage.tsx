@@ -509,7 +509,11 @@ export function ReceivePage({
               onOpen(channel, info);
             },
             onClose: (reason) =>
-              reason === "outdated" || reason === "peer-outdated" ? outdated(reason) : lost(),
+              reason === "unsupported"
+                ? finish({ s: "failed", problem: "browser" })
+                : reason === "outdated" || reason === "peer-outdated"
+                  ? outdated(reason)
+                  : lost(),
           });
           break;
         case "relay":
@@ -684,12 +688,7 @@ export function ReceivePage({
       firstView.current = false;
       return;
     }
-    const heading = document.querySelector<HTMLElement>("#receive h1");
-    if (!heading) {
-      return;
-    }
-    heading.tabIndex = -1;
-    heading.focus();
+    focusHeading();
   }, [view.s]);
 
   const onAccept = () => {
@@ -742,7 +741,7 @@ export function ReceivePage({
     attempt.confirm(matches);
     attempt.confirm = undefined;
     setView({ ...view, said: matches });
-    document.querySelector<HTMLElement>("#receive h1")?.focus();
+    focusHeading();
   };
 
   const onShow = () => {
@@ -876,6 +875,7 @@ export function ReceivePage({
             {view.said && check.waiting}
           </p>
           <p class={caption}>{check.why}</p>
+          <p class={caption}>{check.expires}</p>
         </>
       );
       break;
@@ -1022,9 +1022,12 @@ export function ReceivePage({
       body = (
         <>
           <Problem {...problem} />
-          <Button type="button" onClick={() => start()}>
-            {t.receive.tryAgain}
-          </Button>
+          {/* A retry in the same browser fails the same way, and on a link with the safety number on it would use up one of the sender's attempts. */}
+          {view.problem !== "browser" && (
+            <Button type="button" onClick={() => start()}>
+              {t.receive.tryAgain}
+            </Button>
+          )}
           {problem.detail && <TechDetails rows={[[t.receive.whatHappened, problem.detail]]} />}
         </>
       );
@@ -1038,6 +1041,16 @@ export function ReceivePage({
       {panel}
     </Page>
   );
+}
+
+/** Moves focus to the step's heading so a screen reader announces it. */
+function focusHeading(): void {
+  const heading = document.querySelector<HTMLElement>("#receive h1");
+  if (!heading) {
+    return;
+  }
+  heading.tabIndex = -1;
+  heading.focus();
 }
 
 /** This tab's token for an emailed link. Storage that is blocked acts as empty. */
