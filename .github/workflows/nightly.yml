@@ -136,9 +136,9 @@ jobs:
           sent=$(for ipt in iptables ip6tables; do sudo "$ipt" -nvxL sigill-egress; done |
             awk '$3 == "LOG" { n += $1 } END { print n + 0 }')
           [ "$sent" -eq 0 ] || { echo "::error::The test user sent $sent packets off loopback or to a resolver; the kernel log lines above name each"; exit 1; }
-      # The test user wrote the observations, so the upload, which runs as runner, gets read access first.
+      # The test user opens what it wrote to the upload, which runs as runner; root would follow a symlink it planted.
       - if: failure() || cancelled()
-        run: "[ ! -d apps/e2e/observations ] || sudo chmod -R a+rX apps/e2e/observations"
+        run: "[ ! -d apps/e2e/observations ] || sudo -u sigill-e2e chmod -R a+rX apps/e2e/observations"
       # Same rule as ci.yml's e2e job: only the observations are uploaded, never traces or reports.
       - if: failure() || cancelled()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
