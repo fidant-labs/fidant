@@ -18,6 +18,7 @@ jobs:
       contents: read
     outputs:
       key: ${{ steps.key.outputs.key }}
+      digest: ${{ steps.save.outputs.digest }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -51,6 +52,7 @@ jobs:
           key=$(git rev-parse "${inputs[@]/#/HEAD:}" | sha256sum | cut -c1-64)
           echo "key=$key" >>"$GITHUB_OUTPUT"
       - name: Build the image
+        id: save
         env:
           SHA: ${{ github.sha }}
         run: |
@@ -58,6 +60,8 @@ jobs:
           # Without attestations ECR stores one image manifest, which put-image can tag again.
           docker build -f apps/server/Dockerfile --build-arg REVISION="$SHA" --provenance=false --sbom=false -t fidant-signal:build .
           docker save fidant-signal:build -o "$RUNNER_TEMP/image.tar"
+          digest=$(sha256sum "$RUNNER_TEMP/image.tar" | cut -c1-64)
+          echo "digest=$digest" >>"$GITHUB_OUTPUT"
       # This repository's artifacts are public; the image holds only public code.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -135,11 +139,14 @@ jobs:
           ACCOUNT: ${{ secrets.FIDANT_POC_ACCOUNT }}
           SHA: ${{ github.sha }}
           KEY: ${{ needs.build.outputs.key }}
+          IMAGE_SHA256: ${{ needs.build.outputs.digest }}
         run: |
           set -euo pipefail
           trap 'exit 130' INT
           trap 'exit 143' TERM
-          [[ $SHA =~ ^[0-9a-f]{40}$ && $KEY =~ ^[0-9a-f]{64}$ && $ACCOUNT =~ ^[0-9]{12}$ ]] || { echo "::error::unexpected input"; exit 1; }
+          [[ $SHA =~ ^[0-9a-f]{40}$ && $KEY =~ ^[0-9a-f]{64}$ && $IMAGE_SHA256 =~ ^[0-9a-f]{64}$ && $ACCOUNT =~ ^[0-9]{12}$ ]] || { echo "::error::unexpected input"; exit 1; }
+          have=$(sha256sum "$RUNNER_TEMP/image/image.tar" | cut -c1-64)
+          [ "$have" = "$IMAGE_SHA256" ] || { echo "::error::the image artifact is not the one the build job saved"; exit 1; }
           repo=fidant-signal
           registry=$ACCOUNT.dkr.ecr.eu-north-1.amazonaws.com
           err=$RUNNER_TEMP/err

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -179,7 +180,10 @@ test("the release workflow pins its actions and keeps credentials away from repo
   for (const job of [build, web]) {
     assert.match(job, /\n {4}permissions:\n {6}contents: read\n {4}\S/);
     assert.doesNotMatch(job, /id-token|secrets\.|aws-actions/);
-    assert.match(job, /actions\/checkout@/);
+    assert.match(
+      job,
+      /actions\/checkout@[^\n]*\n {8}with:\n(?: {10}.*\n)* {10}persist-credentials: false\n/,
+    );
   }
   assert.doesNotMatch(build, /pnpm install|setup-node/);
   assert.match(web, /\n {4}needs: build\n/);
@@ -363,11 +367,17 @@ const releaseSteps = releaseJob
   .filter((step) => /\n {8}run: \|\n/.test(step))
   .map((step) => ({
     name: step.match(/^name: (.+)\n/)?.[1] ?? "",
-    env: [...step.slice(0, step.indexOf("run: |")).matchAll(/\n {10}([A-Z_]+): /g)].map(
+    env: [...step.slice(0, step.indexOf("run: |")).matchAll(/\n {10}([A-Z0-9_]+): /g)].map(
       ([, name]) => name ?? "",
     ),
   }));
-const stepInputs: Record<string, string> = { SHA: sha, KEY: key, ACCOUNT: "123456789012" };
+const emptyTar = createHash("sha256").update("").digest("hex");
+const stepInputs: Record<string, string> = {
+  SHA: sha,
+  KEY: key,
+  ACCOUNT: "123456789012",
+  IMAGE_SHA256: emptyTar,
+};
 
 function release(start: {
   tags: Record<string, string>;
@@ -379,6 +389,7 @@ function release(start: {
   failPut?: string;
   failUpload?: number;
   tip?: string;
+  digest?: string;
 }) {
   let result:
     | {
@@ -420,7 +431,7 @@ function release(start: {
       const script = run(step.name);
       const inputs = step.env.map((name) => {
         assert.ok(name in stepInputs, name);
-        return [name, stepInputs[name] ?? ""];
+        return [name, (name === "IMAGE_SHA256" && start.digest) || (stepInputs[name] ?? "")];
       });
       const ran = bash(
         start.expire ? script.replace(/\$\(\(SECONDS \+ [^)]+\)\)/g, "$SECONDS") : script,
@@ -487,14 +498,14 @@ test("the release job runs each step only after every step before it succeeded, 
 });
 
 test("the web job hands on the web client built for the signaling name, hidden files included", () => {
-  const build = workflow.slice(workflow.indexOf("\n  web:\n"), workflow.indexOf("\n  release:\n"));
+  const web = workflow.slice(workflow.indexOf("\n  web:\n"), workflow.indexOf("\n  release:\n"));
   assert.ok(
-    build.includes(
+    web.includes(
       "      - run: pnpm install --frozen-lockfile\n      - name: Build the web client\n        env:\n          SIGNALS_FILE: signals.json\n        run: pnpm --filter @sigill/web build\n",
     ),
   );
   assert.ok(
-    build.includes(
+    web.includes(
       "          name: web\n          path: apps/web/dist\n          retention-days: 1\n          if-no-files-found: error\n          include-hidden-files: true\n",
     ),
   );
@@ -889,6 +900,18 @@ test("a release that the tip check refuses calls nothing and uploads nothing", (
   assert.match(stdout, /^::error::refused a{40}: production is at c{40}/);
   assert.deepEqual(calls, []);
   assert.deepEqual(tags, before);
+});
+
+test("a release whose image is not the one the build job saved fails before docker load and calls no aws", () => {
+  const { status, stdout, calls } = release({ tags: before, digest: "0".repeat(64) });
+  assert.equal(status, 1);
+  assert.match(stdout, /^::error::the image artifact is not the one the build job saved/);
+  assert.deepEqual(calls, []);
+});
+
+test("the build job publishes the digest of the tar it saved", () => {
+  assert.match(workflow, /\n {6}digest: \$\{\{ steps\.save\.outputs\.digest \}\}\n/);
+  assert.match(workflow, /IMAGE_SHA256: \$\{\{ needs\.build\.outputs\.digest \}\}/);
 });
 
 test("a release whose image step fails uploads nothing", () => {
