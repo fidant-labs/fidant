@@ -478,12 +478,7 @@ export async function chooseFile(
   await expect(page.getByLabel("Your name")).toBeFocused();
 }
 
-/**
- * Runs in the page through addInitScript, so it may use nothing from this module. `cut()` closes the
- * page's peers; `stalled` drops what its data channels send, and is set once `stallAt` CHUNKs went
- * out; `held` queues it until `release()` sends it in order; `sent` counts what went out by kind
- * (header byte 1, see apps/web/src/lib/frames.ts), on a recipient's page too.
- */
+/** Runs in the page through addInitScript, so it may use nothing from this module: `cut()` closes its peers, `stalled` (set after `stallAt` CHUNKs) drops what its channels send, `held` queues it for `release()`, and `sent` counts frames by kind. */
 export function breakableSender() {
   const g = globalThis as {
     cut?: () => void;
