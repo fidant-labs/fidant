@@ -213,6 +213,13 @@ export function SendPage({
   const [more, setMore] = useState(false);
   const [typed, setTyped] = useState(false);
   const [canAskToNotify, setCanAskToNotify] = useState(false);
+  const [notifyAnswer, setNotifyAnswer] = useState<"on" | "blocked" | undefined>(undefined);
+  // Once, when the answer replaces the button that held focus.
+  useEffect(() => {
+    if (notifyAnswer && document.activeElement === document.body) {
+      document.getElementById(id("notify-answer"))?.focus();
+    }
+  }, [notifyAnswer]);
   const formRef = useRef<HTMLFormElement>(null);
 
   // Mutable state used from network callbacks, outside render.
@@ -1223,10 +1230,27 @@ export function SendPage({
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={async () => setCanAskToNotify((await askToNotify()) === "default")}
+                onClick={async () => {
+                  const answer = await askToNotify();
+                  if (answer !== "default") {
+                    setCanAskToNotify(false);
+                    setNotifyAnswer(answer === "granted" ? "on" : "blocked");
+                  }
+                }}
               >
                 {t.send.notifyMe}
               </Button>
+            )}
+            {notifyAnswer && (
+              // Takes the focus the button held, and tells the sender what the browser answered.
+              <p
+                id={id("notify-answer")}
+                tabIndex={-1}
+                role="status"
+                class="m-0 text-[0.8rem] text-muted-foreground"
+              >
+                {notifyAnswer === "on" ? t.send.notifyOn : t.send.notifyBlocked}
+              </p>
             )}
           </div>
         </div>

@@ -322,6 +322,8 @@ export const en = {
       `Sending from this tab · ${delivered} of ${total} delivered · keep it open`,
     allDone: "Every link has delivered the file. You can close this tab.",
     notifyMe: "Notify me",
+    notifyOn: "Notifications on",
+    notifyBlocked: "Notifications blocked",
     summary: (done: number, total: number) => `${done} of ${total} links have delivered the file`,
     delivered: "Delivered",
     doneTitle: "All delivered",
@@ -1287,7 +1289,7 @@ export const en = {
             ],
             [
               "",
-              "If you press Notify me: a notification for each delivery, shown and kept by your device's notification list. It says only how many links have delivered, never a file name, a person's name, a link or a key.",
+              "If you allow notifications: a notification for each delivery, shown and kept by your device's notification list. It says only whether a file or a secret was sent and how many links have delivered, never a file name, a person's name, a link or a key.",
             ],
             [
               "direct,relay",

@@ -44,8 +44,9 @@ test("notify shows the notification only when allowed and the page is out of foc
 
 test("notify does nothing without the API or when the constructor throws", () => {
   notify("a", "b");
-  browser("granted", false, true);
+  const shown = browser("granted", false, true);
   notify("a", "b");
+  assert.deepEqual(shown, []);
 });
 
 test("notifyPermission says unsupported where a page can't notify", async () => {
