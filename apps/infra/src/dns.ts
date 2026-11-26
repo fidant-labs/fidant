@@ -2,6 +2,7 @@ import { CfnOutput, Duration, Fn, RemovalPolicy, Stack, type StackProps } from "
 import * as route53 from "aws-cdk-lib/aws-route53";
 import type { Construct } from "constructs";
 import {
+  type DnsRecord,
   type Mail,
   mailDomain,
   mailRegion,
@@ -14,6 +15,7 @@ export type DnsStackProps = StackProps & {
   mail: Mail;
   boxAddress: string;
   relayAddresses: Record<string, string>;
+  certificateRecords: DnsRecord[];
 };
 
 function addMail(zone: route53.IHostedZone, mail: Mail): void {
@@ -97,6 +99,16 @@ export class DnsStack extends Stack {
           { flag: 0, tag: route53.CaaTag.ISSUEWILD, value: ";" },
         ],
       });
+
+      for (const record of props.certificateRecords) {
+        if (record.name.endsWith(`.${zoneName}.`)) {
+          new route53.CnameRecord(zone, record.name, {
+            zone,
+            recordName: record.name,
+            domainName: record.value,
+          });
+        }
+      }
 
       const target = route53.RecordTarget.fromIpAddresses(props.boxAddress);
       for (const recordName of [zoneName, `www.${zoneName}`]) {
