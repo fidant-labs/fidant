@@ -624,18 +624,13 @@ export function useCopyNote() {
 
 /** A section's [text, href] link, on its own line. */
 export function SectionLink({ link: [text, href] }: { link: readonly [string, string] }) {
+  // Same-site links navigate in place, so a send open in another page survives.
+  const Anchor = href.startsWith("/") ? Link : "a";
   return (
     <p>
-      {/* Same-site links navigate in place, so a send open in another page survives. */}
-      {href.startsWith("/") ? (
-        <Link href={href} class="font-medium underline underline-offset-4">
-          {text}
-        </Link>
-      ) : (
-        <a href={href} class="font-medium underline underline-offset-4">
-          {text}
-        </a>
-      )}
+      <Anchor href={href} class="font-medium underline underline-offset-4">
+        {text}
+      </Anchor>
     </p>
   );
 }
