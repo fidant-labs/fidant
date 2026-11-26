@@ -1571,7 +1571,7 @@ test.describe("through a server restart", () => {
     }
     await expect(delivered(sender, early)).toBeAttached();
     await expect(delivered(sender, late)).toBeAttached();
-    expect(await sender.evaluate(() => (globalThis as HostHold).closeCodes)).toContain(1012);
+    expect(await sender.evaluate(() => (globalThis as HostHold).closeCodes)).toContain(4012);
     await expect(lost(sender)).toHaveCount(0);
   });
 });

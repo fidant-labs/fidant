@@ -144,8 +144,8 @@ const { server, signaling } = await startServer({
 const { port } = server.address() as AddressInfo;
 log("listening", { port });
 
-// On a restart, close every socket with 1012 so browsers reconnect at once instead of counting a
-// failure. Exit within a second even if a socket never answers its close frame.
+// On a restart, close every socket with SERVICE_RESTART so browsers reconnect at once instead of
+// counting a failure. Exit within a second even if a socket never answers its close frame.
 process.once("SIGTERM", () => {
   signaling.close();
   server.close(() => process.exit(0));
