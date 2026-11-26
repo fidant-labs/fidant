@@ -1010,7 +1010,7 @@ export const en = {
         body: [
           "One send can go to up to 256 people. Each has their own link, key, connection and transfer.",
           "A link counts as used only once the recipient's RECEIPT matches. After that it is refused. A link that is already connected in one tab is refused in another, and so is a link that has had 10 connection attempts in the current 30-second window.",
-          "Until then the link can be opened again: after a decline, a dropped connection or a failed check. After a dropped connection, Try again in the same tab continues the download where it stopped. Every new attempt has a new transfer ID and attempt ID, and so a new file key. A link with the safety number on stops working after 5 attempts that ended before both people confirmed the number. An attempt the sender's page stopped because the two pages run different versions doesn't count.",
+          "Until then the link can be opened again: after a decline, a dropped connection or a failed check. After a dropped connection, Try again in the same tab continues a file's download where it stopped if it can. Every new attempt has a new transfer ID and attempt ID, and so a new file key. A link with the safety number on stops working after 5 attempts that ended before both people confirmed the number. An attempt the sender's page stopped because the two pages run different versions doesn't count.",
           "Nothing is stored, so a link works only while the sender's page is open. When it closes, our server forgets its links within a minute.",
         ],
       },
