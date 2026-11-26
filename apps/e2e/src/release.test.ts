@@ -849,7 +849,7 @@ test("a release whose restore fails says live still names the new image and does
   assert.equal(tags.live, "sha256:new");
   assert.match(
     stdout,
-    /::error::could not move live back to sha256:old: it still names sha256:new, so a release with these inputs ends without deploying until live moves/,
+    /^::error::could not move live back to sha256:old: it still names sha256:new, so a release with these inputs ends without deploying until live moves\. Move it back as Releasing in AGENTS\.md says, then re-run the newest release run, the one for production's tip\.$/m,
   );
   assert.doesNotMatch(stdout, /live names sha256:old again/);
 });

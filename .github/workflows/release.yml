@@ -172,7 +172,7 @@ jobs:
               if (tag "imageDigest=$previous" live); then
                 echo "live names $previous again"
               else
-                echo "::error::could not move live back to $previous: it still names $d, so a release with these inputs ends without deploying until live moves"
+                echo "::error::could not move live back to $previous: it still names $d, so a release with these inputs ends without deploying until live moves. Move it back as Releasing in AGENTS.md says, then re-run the newest release run, the one for production's tip."
               fi
             fi
           }
