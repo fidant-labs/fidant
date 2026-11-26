@@ -6,6 +6,7 @@ import type { Page } from "@playwright/test";
 import { relaySecret } from "../../server/src/relay-secret.ts";
 import {
   type Actor,
+  allowRelay,
   canaryFile,
   chooseFile,
   expect,
@@ -146,6 +147,7 @@ for (const transport of ["udp", "tcp"] as const) {
       mimeType: file.mime,
       buffer: file.bytes,
     });
+    await allowRelay(sender);
     await sender.getByLabel("Who is it for?").fill("Anna");
     await sender.getByRole("button", { name: "Create link", exact: true }).click();
     const link = (await sender.getByLabel("Link for Anna", { exact: true }).textContent()) ?? "";

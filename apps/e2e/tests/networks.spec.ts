@@ -16,6 +16,7 @@ import { LIMITS } from "../../server/src/signaling.ts";
 import { turnCredentials } from "../../server/src/turn.ts";
 import {
   type Actor,
+  allowRelay,
   canaryFile,
   canaryKey,
   chooseFile,
@@ -282,6 +283,7 @@ for (const row of scenarios) {
           mimeType: file.mime,
           buffer: file.bytes,
         });
+        await allowRelay(sender.page);
         await sender.page.getByLabel("Who is it for?").fill(name);
         await sender.page.getByRole("button", { name: "Create link", exact: true }).click();
         const link =
@@ -353,6 +355,7 @@ for (const row of scenarios) {
           buffer: file.bytes,
         });
       }
+      await allowRelay(sender.page);
       await sender.page.getByLabel("Who is it for?").fill(name);
       await sender.page.getByRole("button", { name: "Create link", exact: true }).click();
       const link =
@@ -454,6 +457,7 @@ test.describe("the box", () => {
       mimeType: file.mime,
       buffer: file.bytes,
     });
+    await allowRelay(sender.page);
     await sender.page.getByLabel("Who is it for?").fill(name);
     await sender.page.getByRole("button", { name: "Create link", exact: true }).click();
     const link =
