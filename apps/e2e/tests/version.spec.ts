@@ -174,7 +174,7 @@ test.describe("pages of different versions", () => {
     ).toBeVisible();
     await expect(
       recipientRow(sender, name).getByText(
-        `${name} opened their link on a newer version of Fidant. Reload this page, add ${name} again and send them the new link. Reloading clears every link on this page.`,
+        `${name}'s link was opened on a newer version of Fidant. To send through a new link, reload this page and add ${name} again. Reloading clears every link on this page.`,
       ),
     ).toBeVisible({ timeout: 15_000 });
     await expect(recipient.getByText(/couldn't read/)).toHaveCount(0);
@@ -212,7 +212,7 @@ test.describe("pages of different versions", () => {
     await expect(recipient.getByText("Reload the page to receive the file.")).toBeVisible();
     await expect(
       recipientRow(sender, name).getByText(
-        `${name} opened their link on an older version of Fidant. Nothing is wrong with the file. Ask them to reload the page.`,
+        `${name}'s link was opened on an older version of Fidant. Nothing is wrong with the file. Ask them to reload that page.`,
       ),
     ).toBeVisible({ timeout: 15_000 });
     await expect(recipient.getByText(/couldn't read/)).toHaveCount(0);
