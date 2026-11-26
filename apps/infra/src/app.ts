@@ -6,6 +6,7 @@ import {
   alertEmail,
   boxAddress,
   certificateIds,
+  certificateRecords,
   hostedZoneIds,
   mail,
   relayAddresses,
@@ -39,6 +40,7 @@ export function addStacks(app: App, env: Record<string, string | undefined>): vo
       mail,
       boxAddress,
       relayAddresses,
+      certificateRecords,
     });
     new CiStack(app, "FidantCi", { env: { account, region: "eu-north-1" } });
     new DnssecStack(app, "FidantDnssec", {
