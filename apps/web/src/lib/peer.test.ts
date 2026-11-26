@@ -498,7 +498,7 @@ test("the sender opens no number when the browser read another fingerprint", asy
     assert.deepEqual(h.closes, [
       { reason: "bad-signal", detail: "the browser read another fingerprint" },
     ]);
-    const pending = new Promise((resolve) => setTimeout(resolve, 10, "pending"));
+    const pending = new Promise((resolve) => realSetTimeout(resolve, 10, "pending"));
     assert.equal(await Promise.race([info.checkNumber, pending]), "pending");
   }
 });
