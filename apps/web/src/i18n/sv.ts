@@ -62,12 +62,18 @@ const logFields: Record<"event" | keyof LogFields, readonly [string, string]> = 
     "varför en länk, en anslutning, ett mejl eller en kod nekades",
     "För att se varför anslutningar misslyckas, så att vi kan åtgärda orsaken.",
   ],
-  code: ["felkoder", "För att hitta fel i webbappen eller servern."],
+  code: [
+    "vad som var fel med ett meddelande som servern avvisade",
+    "För att hitta fel i webbappen eller servern.",
+  ],
   path: [
     "om varje anslutning gick direkt, via vårt relä eller misslyckades",
     "För att veta hur ofta anslutningar behöver vårt relä, vilket visar hur stort det måste vara.",
   ],
-  port: ["porten servern lyssnar på", "För att bekräfta att servern startade där den ska."],
+  port: [
+    "var på sin dator servern kan nås (dess portnummer)",
+    "För att bekräfta att servern startade där den ska.",
+  ],
 };
 
 export const sv: Messages = {

@@ -29,12 +29,18 @@ const logFields: Record<"event" | keyof LogFields, readonly [string, string]> = 
     "why a link, connection, email or code was refused",
     "To see why connections fail, so we can fix the cause.",
   ],
-  code: ["error codes", "To find bugs in the browser app or the server."],
+  code: [
+    "what was wrong with a message the server rejected",
+    "To find bugs in the browser app or the server.",
+  ],
   path: [
     "whether each connection was direct, went through our relay or failed",
     "To know how often connections need our relay, which tells us how big it must be.",
   ],
-  port: ["the port the server listens on", "To confirm the server started where it should."],
+  port: [
+    "where on its machine the server can be reached (its port number)",
+    "To confirm the server started where it should.",
+  ],
 };
 
 export type Nouns = Record<
