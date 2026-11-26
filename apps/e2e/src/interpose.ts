@@ -183,10 +183,6 @@ function middleman() {
         return connect(leg);
       }
       const pc = peers.get(leg);
-      // The recipient's version marker comes before its commit.
-      if (!pc && payload.kind === "ice") {
-        return undefined;
-      }
       if (!pc) {
         throw new Error(`${payload.kind} before a connection to the ${leg}`);
       }
@@ -246,22 +242,27 @@ export async function interpose(middle: Page) {
       signals = signalsOf(link);
     },
     takeOver(page: Page, leg: Leg) {
+      let marked = false;
       return tamperSignal(page, (message, sent, toPage) => {
         pages.set(leg, toPage);
         attempt = message.attempt ?? attempt;
-        if (leg === "sender" && message.t === "joined") {
-          queue("from sender", async () =>
-            send("sender", { kind: "commit", hash: commitTo((await handle("sender")) ?? "") }),
-          );
-        }
         if (message.t !== "relay") {
           return message;
         }
         if (sent) {
-          const { data } = message;
-          queue(`from ${leg}`, async () =>
-            handle(leg, await keyed().open(attempt, leg === "sender" ? "s" : "r", data)),
-          );
+          const opened = keyed().open(attempt, leg === "sender" ? "s" : "r", message.data);
+          if (marked) {
+            queue(`from ${leg}`, async () => handle(leg, await opened));
+          } else {
+            // A page's first signal is its version marker: the middle sends it back as the other side's.
+            marked = true;
+            queue(`from ${leg}`, async () => {
+              send(leg, await opened);
+              if (leg === "sender") {
+                send("sender", { kind: "commit", hash: commitTo((await handle("sender")) ?? "") });
+              }
+            });
+          }
         }
         return undefined;
       });

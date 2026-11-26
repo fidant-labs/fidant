@@ -68,7 +68,9 @@
 //   bound joiner's, so a late drop of one attempt cannot turn away the next
 //   joiner.
 // - A drop before delivery returns the recipient to "waiting" with bytesSent
-//   0. There is no resume: the next join starts over.
+//   0. The reducer keeps nothing of it: the next join starts a new transfer,
+//   which a recipient that kept part of the file continues from ACCEPT's
+//   offset (see send-file.ts).
 // - A decline marks the recipient "declined", so the sender sees the link was
 //   opened and turned down. The link stays usable: the next join starts over,
 //   exactly like a join from "waiting".

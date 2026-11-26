@@ -307,12 +307,13 @@ class FakePeerConnection {
 // Taken before any test mocks the timers, so waiting for signals still works.
 const realSetTimeout = globalThis.setTimeout;
 
-/** `wait` false returns before the peer's own first signals went out. */
+/** `wait` false returns before the peer's own first signals went out; `marked` relays this version's marker, as the other page sends it first. */
 async function harness(
   side: "s" | "r",
   check?: boolean,
   iceServers: RTCIceServer[] = [],
   wait = true,
+  marked = wait,
 ) {
   const { linkId, secret } = createLink("https://localhost");
   const key = await deriveSignalKey(secret, linkId);
@@ -357,6 +358,9 @@ async function harness(
   if (wait) {
     // A peer that fails drops what it has not sealed yet, so wait for its own first signals.
     await signals(side === "r" ? 1 : 0);
+  }
+  if (marked) {
+    await relay(versionMarker(FRAME_VERSION));
   }
   return { peer, relay, relayFrom, signals, closes, opens };
 }
@@ -885,41 +889,53 @@ const recipientCommit = async () => ({
   hash: await commitFingerprint(RECIPIENT_FP),
 });
 
-test("a marker for this version, or none, still connects", async () => {
-  assert.equal(
-    FRAME_VERSION,
-    UNMARKED_VERSION,
-    "the no-marker case assumes FRAME_VERSION is UNMARKED_VERSION",
-  );
-  for (const marker of [versionMarker(FRAME_VERSION), undefined]) {
-    resetFake(SENDER_FP);
-    const sender = await harness("s");
-    if (marker) {
-      await sender.relay(marker);
-    }
-    await sender.relay(await recipientCommit());
-    await sender.relay({ kind: "answer", sdp: sdpWith(RECIPIENT_FP, "r1") });
-    assert.deepEqual(await kinds(sender, 1), ["offer"]);
-    assert.deepEqual(sender.closes, []);
-    assert.deepEqual(lastPc().added, []);
+test("a marker for this version still connects", async () => {
+  const marker = versionMarker(FRAME_VERSION);
+  resetFake(SENDER_FP);
+  const sender = await harness("s", undefined, [], true, false);
+  await sender.relay(marker);
+  await sender.relay(await recipientCommit());
+  await sender.relay({ kind: "answer", sdp: sdpWith(RECIPIENT_FP, "r1") });
+  assert.deepEqual(await kinds(sender, 1), ["offer"]);
+  assert.deepEqual(sender.closes, []);
+  assert.deepEqual(lastPc().added, []);
 
-    resetFake(RECIPIENT_FP);
-    const recipient = await harness("r");
-    if (marker) {
-      await recipient.relay(marker);
-    }
-    await recipient.relay({ kind: "offer", sdp: sdpWith(SENDER_FP, "s1"), check: false });
-    assert.deepEqual(await kinds(recipient, 2), ["commit", "answer"]);
-    assert.deepEqual(recipient.closes, []);
-    assert.deepEqual(lastPc().added, []);
-  }
+  resetFake(RECIPIENT_FP);
+  const recipient = await harness("r", undefined, [], true, false);
+  await recipient.relay(marker);
+  await recipient.relay({ kind: "offer", sdp: sdpWith(SENDER_FP, "s1"), check: false });
+  assert.deepEqual(await kinds(recipient, 2), ["commit", "answer"]);
+  assert.deepEqual(recipient.closes, []);
+  assert.deepEqual(lastPc().added, []);
+});
+
+test("a page without a marker counts as older, so neither side connects to it", async () => {
+  assert.ok(UNMARKED_VERSION < FRAME_VERSION);
+  resetFake(SENDER_FP);
+  const sender = await harness("s", undefined, [], true, false);
+  await sender.relay(await recipientCommit());
+  assert.deepEqual(
+    sender.closes.map((c) => c.reason),
+    ["peer-outdated"],
+  );
+  assert.deepEqual(await sender.signals(), []);
+  assert.equal(lastPc().localDescription, null);
+
+  resetFake(RECIPIENT_FP);
+  const recipient = await harness("r", undefined, [], true, false);
+  await recipient.relay({ kind: "offer", sdp: sdpWith(SENDER_FP, "s1"), check: false });
+  assert.deepEqual(
+    recipient.closes.map((c) => c.reason),
+    ["peer-outdated"],
+  );
+  assert.equal(recipient.peer.answered, false);
+  assert.equal(lastPc().remoteDescription, null);
 });
 
 test("a second marker, or one after the commit or the offer, reaches no addIceCandidate and closes nothing", async () => {
-  const here = versionMarker(FRAME_VERSION);
   for (const late of [newer, older]) {
     for (const sequence of [
-      [here, late, await recipientCommit(), late],
+      [late, await recipientCommit(), late],
       [await recipientCommit(), late],
     ]) {
       resetFake(SENDER_FP);
@@ -934,7 +950,7 @@ test("a second marker, or one after the commit or the offer, reaches no addIceCa
       assert.deepEqual(await kinds(sender, 1), ["offer"]);
     }
 
-    for (const before of [[here, late], []]) {
+    for (const before of [[late], []]) {
       resetFake(RECIPIENT_FP);
       const recipient = await harness("r");
       for (const payload of before) {
