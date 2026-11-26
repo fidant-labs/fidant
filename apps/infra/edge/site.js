@@ -1,7 +1,7 @@
 // cloudfront-js-2.0 has no ??, ?., spread, destructuring, default parameters, for...of, Set or Map.
 
 const SITE = "fidant.se";
-// CloudFront's undocumented regex limits stopped this file at 512 characters, so it uses none; at 256 its worst path took 52 % of the budget.
+// CloudFront's undocumented regex limits stopped this file at 512 characters, so it uses none; at 256 its costliest measured path took 52 % of the budget.
 const MAX_URI = 128;
 const LOWER = "abcdefghijklmnopqrstuvwxyz";
 const DIGITS = "0123456789";

@@ -207,6 +207,15 @@ test("a path past 128 characters gets 414 with the headers on every host, before
   const response = onResponse(viewer(escapes(2730)), 414, {});
   assert.equal(response.statusCode, 414);
   assert.deepEqual(response.headers, {});
+  const atCap = onResponse(viewer(`${escapes(42)}A`), 200, {});
+  assert.equal(atCap.statusCode, 404);
+  assert.deepEqual(values(atCap.headers), {
+    ...securityHeaders,
+    "content-type": "text/html; charset=utf-8",
+  });
+  const pastCap = onResponse(viewer(`${escapes(42)}AB`), 200, {});
+  assert.equal(pastCap.statusCode, 200);
+  assert.deepEqual(pastCap.headers, {});
 });
 
 test("the function names no regex method, and every test runs it with a RegExp whose exec throws", () => {
