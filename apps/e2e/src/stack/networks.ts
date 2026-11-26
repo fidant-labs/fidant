@@ -93,26 +93,21 @@ export async function sendToRelay(payload: Uint8Array): Promise<void> {
   await sending;
 }
 
-/** Runs a command in the box container and returns its stdout. */
-export async function inBox(...command: string[]): Promise<string> {
-  const { stdout } = await run("docker", [...compose, "exec", "-T", "box", ...command], {
+async function inService(service: "box" | "relay" | "signal", command: string[]): Promise<string> {
+  const { stdout } = await run("docker", [...compose, "exec", "-T", service, ...command], {
     maxBuffer: 64 * 1024 * 1024,
   });
   return stdout;
 }
+
+/** Runs a command in the box container and returns its stdout. */
+export const inBox = (...command: string[]) => inService("box", command);
 
 /** Runs a command in the relay box container and returns its stdout. */
-export async function inRelay(...command: string[]): Promise<string> {
-  const { stdout } = await run("docker", [...compose, "exec", "-T", "relay", ...command], {
-    maxBuffer: 64 * 1024 * 1024,
-  });
-  return stdout;
-}
+export const inRelay = (...command: string[]) => inService("relay", command);
 
-export async function inSignal(...command: string[]): Promise<string> {
-  const { stdout } = await run("docker", [...compose, "exec", "-T", "signal", ...command]);
-  return stdout;
-}
+/** Runs a command in the signaling container and returns its stdout. */
+export const inSignal = (...command: string[]) => inService("signal", command);
 
 export async function signalLogs(): Promise<string> {
   const { stdout } = await run("docker", [

@@ -22,6 +22,18 @@ export function turnCredentials(
   return { username, credential };
 }
 
+/** The ICE config the server hands out: none with a relay list, else TURN, else STUN alone. */
+export function chooseIce(
+  relays: object | undefined,
+  turn: IceConfig | undefined,
+  stun: string[],
+): IceConfig | undefined {
+  if (relays) {
+    return undefined;
+  }
+  return turn ?? (stun.length > 0 ? { urls: stun } : undefined);
+}
+
 /**
  * The ICE servers for one pairing: none without a config, TURN with fresh credentials if there is
  * a secret and the sender allows it, else only the STUN URLs, with no credential minted.

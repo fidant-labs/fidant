@@ -12,10 +12,15 @@ class FakeWebSocket extends EventTarget {
   static CLOSING = 2;
   static CLOSED = 3;
   static throws = 0;
+  static firefoxBlock = false;
   readyState = 0;
   sent: string[] = [];
   constructor(_url: string) {
     super();
+    if (FakeWebSocket.firefoxBlock) {
+      FakeWebSocket.firefoxBlock = false;
+      throw { name: "NS_ERROR_CONTENT_BLOCKED" };
+    }
     if (FakeWebSocket.throws > 0) {
       FakeWebSocket.throws--;
       throw new DOMException("blocked", "SecurityError");
@@ -36,6 +41,7 @@ const original = globalThis.WebSocket;
 beforeEach(() => {
   created = 0;
   FakeWebSocket.throws = 0;
+  FakeWebSocket.firefoxBlock = false;
   globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
 });
 afterEach(() => {
@@ -285,4 +291,17 @@ test("close() while a blocked socket's failure waits reports nothing and stops",
   t.mock.timers.tick(RETRY_MAX_MS);
   assert.deepEqual(closes, []);
   assert.equal(created, 0);
+});
+
+test("Firefox's CSP block, a thrown non-Error, fails once and retries", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  t.mock.method(Math, "random", () => 1);
+  FakeWebSocket.firefoxBlock = true;
+  const client = connectSignaling({ url: "wss://x/signal" });
+  const events: string[] = [];
+  client.onClose(({ code, byClient }) => events.push(`close ${code} ${byClient}`));
+  t.mock.timers.tick(0);
+  assert.deepEqual(events, ["close 1006 false"]);
+  t.mock.timers.tick(2000);
+  assert.equal(created, 1);
 });

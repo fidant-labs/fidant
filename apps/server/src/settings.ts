@@ -21,12 +21,24 @@ const badKeepAlive =
 const badStun =
   "STUN_URLS must be 1 to 4 stun: URLs like stun:example.com:3478, separated by commas.";
 
-const stunUrl = /^stun:(?:[a-z0-9.-]+|\[[0-9a-f:]+\])(?::(\d{1,5}))?$/i;
+const stunUrl = /^stun:(?:([a-z0-9.-]+)|\[([0-9a-f:]+)\])(?::(\d{1,5}))?$/i;
+const dnsLabel = /^(?!-)[a-z0-9-]{1,63}(?<!-)$/i;
 
 function isStunUrl(url: string): boolean {
   const match = stunUrl.exec(url);
-  const port = Number(match?.[1] ?? 1);
-  return match !== null && port >= 1 && port <= 65535;
+  if (match === null) {
+    return false;
+  }
+  const [, name, v6, portText] = match;
+  const port = Number(portText ?? 1);
+  if (port < 1 || port > 65535) {
+    return false;
+  }
+  if (v6 !== undefined) {
+    return isIP(v6) === 6;
+  }
+  const host = name as string;
+  return /^[\d.]+$/.test(host) ? isIP(host) === 4 : host.split(".").every((l) => dnsLabel.test(l));
 }
 
 function toNumber(address: string, family: number): bigint {

@@ -10,8 +10,9 @@ import { join } from "node:path";
 import { buffer } from "node:stream/consumers";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { Page } from "@playwright/test";
-// ponytail: relative imports, not a workspace dependency on the server, for two small functions.
+// ponytail: relative imports, not a workspace dependency on the server, for two small functions and a limit.
 import { relaySecret } from "../../server/src/relay-secret.ts";
+import { LIMITS } from "../../server/src/signaling.ts";
 import { turnCredentials } from "../../server/src/turn.ts";
 import {
   type Actor,
@@ -1276,14 +1277,17 @@ test.describe("the signaling image", () => {
   });
 
   test("counts each client by its own address, not a forged entry, and logs neither", async () => {
-    const forged = Array.from({ length: 33 }, (_, index) => `203.0.113.${index}`);
-    const a = await signalClients("a1", 33, {
+    const forged = Array.from(
+      { length: LIMITS.socketsPerAddress + 1 },
+      (_, index) => `203.0.113.${index}`,
+    );
+    const a = await signalClients("a1", LIMITS.socketsPerAddress + 1, {
       origin,
       agent,
       forwardedFor: (index) => forged[index] ?? "",
     });
     try {
-      expect(a.codes).toEqual([...Array<number>(32).fill(101), 429]);
+      expect(a.codes).toEqual([...Array<number>(LIMITS.socketsPerAddress).fill(101), 429]);
       // router-a's address, which is full, before alb appends router-b's.
       const b = await signalClients("b1", 1, { origin, agent, forwardedFor: () => "198.51.100.2" });
       await b.release();
