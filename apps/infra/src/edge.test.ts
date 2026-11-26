@@ -5,10 +5,14 @@ import { runInNewContext } from "node:vm";
 import { signalName, signals, siteNames } from "./config.ts";
 
 const code = readFileSync(new URL("../edge/site.js", import.meta.url), "utf8");
-// CloudFront runs functions in strict mode.
-const site = runInNewContext(`"use strict";\n${code}\n;({ handler, PAGES })`, Object.create(null));
+// CloudFront runs functions in strict mode; every regex method calls exec, so any regex the function runs throws.
+const site = runInNewContext(
+  `"use strict";\nRegExp.prototype.exec = () => { throw new Error("site.js ran a regular expression"); };\n${code}\n;({ handler, PAGES, MOVED })`,
+  Object.create(null),
+);
 const handler = site.handler as (event: unknown) => unknown;
 const pages = [...(site.PAGES as string[])];
+const moved = { ...(site.MOVED as Record<string, string>) };
 
 type Fields = Record<string, { value: string; multiValue?: { value: string }[] }>;
 type Request = { method: string; uri: string; headers: Fields; querystring: Fields };
@@ -187,14 +191,14 @@ test("every other path gets the 404 page, the Swedish one under /sv", () => {
   }
 });
 
-test("a URI past 512 characters gets 414 with the headers on every host, before any other rule", () => {
+test("a path past 256 characters gets 414 with the headers on every host, before any other rule", () => {
   const escapes = (count: number) => `/${"%41".repeat(count)}`;
-  assert.equal(onRequest(`${escapes(170)}A`).uri, "/pages/404.html");
+  assert.equal(onRequest(escapes(85)).uri, "/pages/404.html");
   for (const [target, host] of [
-    [`${escapes(170)}AB`, "fidant.se"],
+    [`${escapes(85)}A`, "fidant.se"],
     [escapes(2730), "fidant.se"],
     [escapes(2730), "www.fidant.se"],
-    [`/relay-secret/sto${"/".repeat(500)}`, "fidant.se"],
+    [`/relay-secret/sto${"/".repeat(240)}`, "fidant.se"],
   ] as const) {
     const answer = onRequest(target, { host });
     assert.equal(answer.statusCode, 414, `${target.length} ${host}`);
@@ -203,6 +207,20 @@ test("a URI past 512 characters gets 414 with the headers on every host, before 
   const response = onResponse(viewer(escapes(2730)), 414, {});
   assert.equal(response.statusCode, 414);
   assert.deepEqual(response.headers, {});
+});
+
+test("the function names no regex method, and every test runs it with a RegExp whose exec throws", () => {
+  assert.doesNotMatch(
+    code,
+    /\.(?:test|exec|match|matchAll|replace|replaceAll|search)\(|RegExp|split\(\//,
+  );
+});
+
+test("every page and moved path has serveStatic's page shape, which the function no longer checks", () => {
+  assert.ok(Object.keys(moved).length > 0);
+  for (const path of [...pages, ...Object.keys(moved), ...Object.values(moved)]) {
+    assert.match(path, /^(?:\/[a-z]+(?:-[a-z]+)*)*\/?$/, path);
+  }
 });
 
 test("a malformed path gets 400 and one above the root 404, both with the headers", () => {
@@ -332,6 +350,10 @@ test("/relay-secret/ passes only a relay id, unchanged, and anything else is a 4
     "/relay-secret/abcdefghijklmnopq",
     "/relay-secret/1sto",
     "/relay-secret/-sto",
+    "/relay-secret/sTo",
+    "/relay-secret/s-o",
+    "/relay-secret%5csto",
+    "/relay-secret%5Csto",
     "//relay-secret/sto",
     "/./relay-secret/sto",
     "/a/../relay-secret/sto",
