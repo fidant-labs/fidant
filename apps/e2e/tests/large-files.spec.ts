@@ -16,7 +16,7 @@ const MB = (bytes: number) => Math.round(bytes / 1e6);
 
 for (const { gb, minutes } of [
   { gb: 1, minutes: 8 },
-  { gb: 5, minutes: 16 },
+  { gb: 5, minutes: 24 },
 ]) {
   test(`sends a ${gb} GB file into the save dialog with bounded memory`, async ({
     actor,

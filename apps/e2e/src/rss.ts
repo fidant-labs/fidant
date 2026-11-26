@@ -73,6 +73,7 @@ export async function sampleRss(): Promise<{ end(): Promise<RssWindow> }> {
         sampling = undefined;
       });
   }, 1_000);
+  timer.unref();
   return {
     async end() {
       clearInterval(timer);
