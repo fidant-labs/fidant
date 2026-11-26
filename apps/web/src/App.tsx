@@ -8,8 +8,8 @@ import { InfoPage } from "./info/InfoPage.tsx";
 import { LandingPage } from "./landing/LandingPage.tsx";
 import { faviconHref, overallStatus, type TransferStatus } from "./lib/favicon.ts";
 import { PrivacyPage } from "./privacy/PrivacyPage.tsx";
-import { ReceivePage } from "./receive/ReceivePage.tsx";
-import { SendPage } from "./send/SendPage.tsx";
+import { ReceivePage, type ReceivePreview } from "./receive/ReceivePage.tsx";
+import { SendPage, type SendPreview } from "./send/SendPage.tsx";
 import { pageUrl } from "./site-files.ts";
 import { applyTheme, type Theme } from "./theme.ts";
 import {
@@ -101,12 +101,15 @@ export function App({
   secure,
   theme: startTheme,
   prerender,
+  preview,
 }: {
   /** Web Crypto is available, so the send and receive pages can run. */
   secure: boolean;
   theme: Theme;
   /** Rendered at build time for this path: the send forms stay inert until the app takes over. */
   prerender?: string;
+  /** The state each transfer page is put in. Only the dev panel (src/dev) passes it. */
+  preview?: { send?: SendPreview; secret?: SendPreview; receive?: ReceivePreview };
 }) {
   const { t, lang } = useI18n();
   // The path, not just the route, so moving between /how steps renders the new step. On /how pages
@@ -231,17 +234,17 @@ export function App({
         {!secure && holdsTransfer && <InsecurePage />}
         {secure && kept.current.has("receive") && (
           <div id="receive" hidden={route !== "receive"}>
-            <ReceivePage onStatus={setReceiveStatus} />
+            <ReceivePage onStatus={setReceiveStatus} preview={preview?.receive} />
           </div>
         )}
         {secure && kept.current.has("send") && (
           <div hidden={route !== "send"} inert={prerender !== undefined}>
-            <SendPage kind="file" onStatus={setSendStatus} />
+            <SendPage kind="file" onStatus={setSendStatus} preview={preview?.send} />
           </div>
         )}
         {secure && kept.current.has("secret") && (
           <div hidden={route !== "secret"} inert={prerender !== undefined}>
-            <SendPage kind="text" onStatus={setSecretStatus} />
+            <SendPage kind="text" onStatus={setSecretStatus} preview={preview?.secret} />
           </div>
         )}
       </div>

@@ -180,13 +180,39 @@ function glideTo(el: HTMLElement) {
   requestAnimationFrame(step);
 }
 
+/**
+ * A state the dev panel (src/dev) puts the page in. While one is set the page connects to nothing,
+ * and each new one replaces the page's state in place, so the change shows as it would live.
+ */
+export type SendPreview = {
+  file?: File | undefined;
+  /** The text in the box. */
+  text?: string;
+  hash?: Hash;
+  sender?: SenderState;
+  checks?: Readonly<Record<string, CheckView>>;
+  lostServer?: boolean;
+  /** The server sends mail, so the form offers the email choice. */
+  mail?: boolean;
+  useEmail?: boolean;
+  mailed?: boolean;
+  viaRelay?: boolean;
+  from?: string;
+  fileError?: ErrorOf<"fileError">;
+  nameError?: ErrorOf<"nameError">;
+  fromError?: ErrorOf<"fromError">;
+  emailError?: boolean;
+};
+
 export function SendPage({
   kind,
   onStatus,
+  preview,
 }: {
   kind: "file" | "text";
   /** Told "active" while any recipient is unfinished, the same test that guards closing the tab, and "done" once all have the file or text. */
   onStatus(status: TransferStatus): void;
+  preview?: SendPreview | undefined;
 }) {
   const { t, lang } = useI18n();
   const text = kind === "text";
@@ -478,8 +504,13 @@ export function SendPage({
     });
   };
 
-  // Runs once on mount: everything it uses is read through refs.
+  // Runs on mount, and again when a dev preview starts or ends. The cleanup
+  // closes the connection when a preview starts. Production never passes a
+  // preview. Everything it uses is read through refs.
   useEffect(() => {
+    if (preview) {
+      return;
+    }
     const signaling = connectSignaling({ onRelay: countRelay });
     signalingRef.current = signaling;
     let disposed = false;
@@ -608,7 +639,37 @@ export function SendPage({
       }
       signaling.close();
     };
-  }, []);
+  }, [preview === undefined]);
+
+  useEffect(() => {
+    if (!preview) {
+      return;
+    }
+    const state = preview.sender ?? initialSenderState;
+    senderRef.current = state;
+    setSender(state);
+    setFile(preview.file);
+    setHash(preview.hash ?? { status: "none" });
+    setChecks(preview.checks ?? {});
+    setLostServer(preview.lostServer ?? false);
+    setViaRelay(preview.viaRelay ?? false);
+    setMail(preview.mail ?? false);
+    setUseEmail(preview.useEmail ?? false);
+    setMailed(preview.mailed ?? false);
+    setFrom(preview.from ?? "");
+    setFileError(preview.fileError ?? "");
+    setNameError(preview.nameError ?? "");
+    setFromError(preview.fromError ?? "");
+    setEmailError(preview.emailError ?? false);
+    setTextLength(preview.text?.length ?? 0);
+    setMore(false);
+    setTyped(false);
+    // The box is not a controlled field, so its text is set here.
+    const box = document.getElementById("secret-text");
+    if (text && box instanceof HTMLTextAreaElement) {
+      box.value = preview.text ?? "";
+    }
+  }, [preview]);
 
   const prepare = (chosen: File | undefined) => {
     hashAbortRef.current?.abort(new Error("a different file was chosen"));

@@ -161,7 +161,7 @@ type ProblemText = { title: string; body: string; detail?: string };
 
 type Offer = FileOffer & { text: boolean };
 
-type View =
+export type View =
   | { s: "connecting" }
   | { s: "verify"; to: string; asked: boolean; sending: boolean; result: CodeResult | undefined }
   | { s: "check"; number: string | undefined; said?: boolean }
@@ -212,11 +212,25 @@ const MAX_REJOINS = 4;
 /** How long to wait before asking again after the server refuses with `starting`. */
 const STARTING_RETRY_MS = 1000;
 
+/**
+ * A state the dev panel (src/dev) puts the page in. While one is set the page connects to nothing,
+ * and each new one replaces the page's state in place, so the change shows as it would live.
+ */
+export type ReceivePreview = {
+  /** Left out, the page shows what a malformed link gets. */
+  view?: View;
+  emailed?: boolean;
+  path?: OpenPath;
+  tie?: Tie;
+};
+
 export function ReceivePage({
   onStatus,
+  preview,
 }: {
   /** Told "active" while a file or text is offered or arriving, which leaving the tab would lose, and "done" once it has arrived. */
   onStatus(status: TransferStatus): void;
+  preview?: ReceivePreview | undefined;
 }) {
   const { t, lang } = useI18n();
   const problemFor = (view: { problem: ProblemKey; text?: boolean }): ProblemText => {
@@ -225,12 +239,18 @@ export function ReceivePage({
       : t.receive.problems;
     return problems[view.problem];
   };
-  const link = useMemo(() => parseRecipientLocation(location), []);
+  const link = useMemo(
+    () =>
+      preview
+        ? preview.view && { linkId: "", secret: "", ...(preview.emailed && { mark: "" }) }
+        : parseRecipientLocation(location),
+    [preview],
+  );
   const [view, setView] = useState<View>({ s: "connecting" });
   const status: TransferStatus =
     view.s === "offer" || view.s === "receiving" ? "active" : view.s === "done" ? "done" : "idle";
   useEffect(() => onStatus(status), [onStatus, status]);
-  const downloading = view.s === "receiving";
+  const downloading = view.s === "receiving" && !preview;
   useEffect(() => {
     if (!downloading) {
       return;
@@ -265,7 +285,7 @@ export function ReceivePage({
   };
 
   const start = (rejoins = 0) => {
-    if (!link) {
+    if (!link || preview) {
       return;
     }
     const { linkId, secret, mark } = link;
@@ -659,8 +679,13 @@ export function ReceivePage({
     };
   };
 
-  // Runs once on mount; "Try again" calls start() again.
+  // Runs on mount, and again when a dev preview starts or ends. The cleanup
+  // closes the connection when a preview starts. Production never passes a
+  // preview. "Try again" calls start() again.
   useEffect(() => {
+    if (preview) {
+      return;
+    }
     start();
     // Once the page is really going, close the peer so the sender hears it now, not when ICE
     // consent runs out about 15 s later.
@@ -681,7 +706,19 @@ export function ReceivePage({
         }
       }
     };
-  }, []);
+  }, [preview === undefined]);
+
+  useEffect(() => {
+    if (!preview) {
+      return;
+    }
+    setView(preview.view ?? { s: "connecting" });
+    setPicking(false);
+    setReachedServer(true);
+    setTie(preview.tie ?? "closed");
+    setPath(preview.path);
+    setViaRelay(preview.path === "relay");
+  }, [preview]);
 
   // Each step replaces the button that had focus, so focus moves to the new step's heading.
   const firstView = useRef(true);
