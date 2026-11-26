@@ -1,0 +1,55 @@
+name: Nightly
+
+on:
+  schedule:
+    - cron: "23 2 * * *"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/nightly.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # One engine per job: the suite runs one engine per invocation (apps/e2e/README.md). Chromium runs on every pull request in ci.yml.
+  # Record 0001's iptables egress block and large-file runs are still to come here, under SIG-47.
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [firefox, webkit]
+    env:
+      SIGILL_E2E_BROWSER: ${{ matrix.browser }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # No cache: Playwright's WebKit build differs per Ubuntu release, which a cache key on runner.os misses.
+      - run: pnpm --filter @sigill/e2e exec playwright install --with-deps "$SIGILL_E2E_BROWSER"
+      # The stack runs its own coturn on a free port, so the system service the package starts does not get in the way.
+      - run: sudo apt-get update && sudo apt-get install -y coturn
+      # Mailpit catches the server's mail. It is not in apt: a pinned release, checked against its hash.
+      - run: |
+          curl -fsSLo "$RUNNER_TEMP/mailpit.tar.gz" https://github.com/axllent/mailpit/releases/download/v1.33.1/mailpit-linux-amd64.tar.gz
+          echo "84d7fe375ebef25df26758984dc0d5d5e17d8c0734cb2e77be7873b14ab51716  $RUNNER_TEMP/mailpit.tar.gz" | sha256sum -c -
+          sudo tar -xzf "$RUNNER_TEMP/mailpit.tar.gz" -C /usr/local/bin mailpit
+      # --project fails the run if the variable were ever ignored, instead of running Chromium under this job's name.
+      - run: pnpm e2e --project="$SIGILL_E2E_BROWSER"
+      # Same rule as ci.yml's e2e job: only the observations are uploaded, never traces or reports.
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-observations-${{ matrix.browser }}
+          path: apps/e2e/observations
+          retention-days: 7

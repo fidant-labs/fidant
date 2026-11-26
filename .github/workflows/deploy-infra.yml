@@ -13,9 +13,11 @@ on:
 
 permissions: {}
 
+# Shared with release.yml, so a release and an infra deploy never run at once.
 concurrency:
-  group: deploy-infra
+  group: fidant-deploy
   cancel-in-progress: false
+  queue: max
 
 jobs:
   deploy:
