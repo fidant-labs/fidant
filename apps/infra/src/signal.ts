@@ -28,7 +28,7 @@ export type SignalStackProps = StackProps & {
 };
 
 export class SignalStack extends Stack {
-  // Without this, CDK looks the zones up in the account at deploy time.
+  // Without this, CDK looks the zones up in the account at synth time.
   override get availabilityZones(): string[] {
     return [`${this.region}a`, `${this.region}b`];
   }
@@ -57,7 +57,6 @@ export class SignalStack extends Stack {
 
     const targets = new elbv2.ApplicationTargetGroup(this, "Targets", {
       vpc,
-      targetGroupName: "fidant-signal",
       targetType: elbv2.TargetType.IP,
       protocol: elbv2.ApplicationProtocol.HTTPS,
       port: 8443,
@@ -117,6 +116,7 @@ export class SignalStack extends Stack {
       ),
       versionConsistency: ecs.VersionConsistency.ENABLED,
       user: "node",
+      stopTimeout: Duration.seconds(5),
       readonlyRootFilesystem: true,
       portMappings: [{ containerPort: 8443 }],
       environment: {
@@ -169,6 +169,6 @@ export class SignalStack extends Stack {
     });
     targets.addTarget(service);
 
-    new CfnOutput(this, "LoadBalancerName", { value: balancer.loadBalancerDnsName });
+    new CfnOutput(this, "LoadBalancerDnsName", { value: balancer.loadBalancerDnsName });
   }
 }

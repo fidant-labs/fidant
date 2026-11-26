@@ -147,6 +147,12 @@ function onlyOf(template: Template, type: string) {
 test("signaling runs in one VPC with two public subnets in two zones, no NAT, no flow logs and no IPv6", () => {
   const { app, signal } = signalApp();
   assert.equal(app.synth().manifest.missing, undefined);
+  const dependencies = app.synth().getStackByName("FidantSignal").dependencies;
+  assert.deepEqual(
+    dependencies.filter((dependency) => dependency.manifest.type !== "cdk:asset-manifest"),
+    [],
+  );
+  assert.doesNotMatch(JSON.stringify(signal.toJSON()), /Fn::ImportValue/);
   for (const [type, count] of [
     ["AWS::EC2::VPC", 1],
     ["AWS::EC2::Subnet", 2],
@@ -242,7 +248,7 @@ test("the signaling load balancer keeps no logs and appends the client's address
   }
 });
 
-test("the signaling targets are checked over HTTPS on /relay-status, and a stopped one is let go after 5 seconds", () => {
+test("the signaling targets are checked over HTTPS on /relay-status, and a deregistered one is let go after 5 seconds", () => {
   const { signal } = signalApp();
   const { VpcId, ...targets } = onlyOf(
     signal,
@@ -250,7 +256,6 @@ test("the signaling targets are checked over HTTPS on /relay-status, and a stopp
   ).properties;
   assert.deepEqual(VpcId, { Ref: onlyOf(signal, "AWS::EC2::VPC").id });
   assert.deepEqual(targets, {
-    Name: "fidant-signal",
     TargetType: "ip",
     Protocol: "HTTPS",
     Port: 8443,
@@ -268,10 +273,10 @@ test("the signaling targets are checked over HTTPS on /relay-status, and a stopp
   });
 });
 
-test("FidantSignal outputs only the load balancer's name", () => {
+test("FidantSignal outputs only the load balancer's DNS name", () => {
   const { signal } = signalApp();
   assert.deepEqual(signal.toJSON().Outputs, {
-    LoadBalancerName: {
+    LoadBalancerDnsName: {
       Value: {
         "Fn::GetAtt": [onlyOf(signal, "AWS::ElasticLoadBalancingV2::LoadBalancer").id, "DNSName"],
       },
@@ -368,6 +373,7 @@ test("the task runs the live image as node on a read-only root, with one writabl
     },
     VersionConsistency: "enabled",
     User: "node",
+    StopTimeout: 5,
     ReadonlyRootFilesystem: true,
     LinuxParameters: {
       Tmpfs: [
