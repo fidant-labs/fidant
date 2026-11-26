@@ -928,7 +928,7 @@ export const sv: Messages = {
           "När ingen direkt väg fungerar, vilket är vanligt på mobildata och kontorsnätverk, går trafiken via vårt TURN-relä i Stockholm. Webbläsarna lägger till reläet bara om avsändaren tillåter det, om reläet är tillgängligt och om ingen anslutning har kommit till stånd 3 sekunder efter att mottagaren har svarat. En sida som öppnades innan vi började lägga till reläet på det här sättet reserverar fortfarande reläadresser från början, tills den laddas om.",
           "För att lägga till reläet börjar webbläsarna koppla upp på nytt, med ett nytt erbjudande och svar, krypterade precis som de första. En direkt väg kan fortfarande vinna efter det. En anslutning som behöver reläet kommer alltså i gång ungefär 3 sekunder senare. En direkt väg som ännu inte är uppkopplad 3 sekunder efter att mottagaren har svarat, till exempel på ett nätverk som tappar många paket, kan hamna på reläet.",
           "Reläet för vidare krypterade paket. Det kan inte dekryptera dem och sparar dem inte.",
-          "För att använda reläet behöver en webbläsare inloggningsuppgifter, som vår server skapar för varje ihopkoppling och bara ger till de två ihopkopplade sidorna. Inloggningsuppgifterna slutar gälla efter 5 minuter. Vår server kontrollerar varje minut att reläet kan föra vidare trafik och erbjuder det när en kontroll lyckas. Servern slutar erbjuda det efter två misslyckade kontroller i rad. Reläet får hemligheten bakom inloggningsuppgifterna från vår server, förseglad så att bara reläet kan öppna den.",
+          "För att använda reläet behöver en webbläsare inloggningsuppgifter, som vår server skapar för varje ihopkoppling och bara ger till de två ihopkopplade sidorna. Med dem kan en reläanslutning starta i 5 minuter, och den kan sedan pågå längre. Vår server kontrollerar varje minut att reläet kan föra vidare trafik och erbjuder det när en kontroll lyckas. Servern slutar erbjuda det efter två misslyckade kontroller i rad. Reläet får hemligheten bakom inloggningsuppgifterna från vår server, förseglad så att bara reläet kan öppna den.",
           "Webbläsare når reläet över UDP, eller över TLS på port 443 där ett nätverk bara släpper igenom webbtrafik. Reläet skickar bara vidare över UDP, och bara från sin egen adress. Det vägrar skicka till andra datorer på privata eller interna nätverk, med ett godtaget undantag: reläets egen server (se beslut 0007). Det begränsar också hur många anslutningar som går via det samtidigt.",
           "När den uppskattade kostnaden för vår trafik under månaden når vår budget stängs reläet och vår STUN-tjänst av. De förblir avstängda till månadens slut, om vi inte slår på dem igen tidigare, till exempel genom att höja budgeten. Till dess kan en ny överföring bara ansluta där den klarar sig utan dem, till exempel på samma lokala nätverk, och misslyckas ofta annars.",
         ],
@@ -936,7 +936,7 @@ export const sv: Messages = {
       norelay: {
         heading: "Att neka reläet",
         body: [
-          'Avsändaren kan bocka ur "Använd vårt relä vid behov". Vår server ger då inga inloggningsuppgifter till reläet för den sändningen, bara STUN-adressen, så en omodifierad webbläsare kan inte använda reläet. Avsändarens webbläsare upprätthåller också själv valet: den startar anslutningen utan inloggningsuppgifter till reläet, vad vår server än skickar. Som extra skydd avslutar avsändarens webbläsare anslutningen om den ändå ser att den går via reläet. Fildata skickas först när mottagaren har tackat ja, så i praktiken avslutar webbläsaren en sådan anslutning innan några fildata har passerat.',
+          'Avsändaren kan bocka ur "Använd vårt relä vid behov". Vår server ger då inga inloggningsuppgifter till reläet för den sändningen, bara STUN-adressen, så en omodifierad webbläsare kan inte använda reläet. Avsändarens webbläsare upprätthåller också själv valet: den startar anslutningen utan inloggningsuppgifter till reläet, vad vår server än skickar. Som extra skydd avslutar avsändarens webbläsare anslutningen om den ändå ser att den går via reläet. Det extra skyddet är inte heltäckande: en modifierad mottagare kan dölja att dess sida går via ett relä.',
           "Gränsen: en modifierad mottagare kan ändå skicka sin del via vårt relä med uppgifter från en annan ihopkoppling, eller via vilket offentligt relä som helst. Den mottagaren har ju nyckeln ändå. Valet avgör vilken infrastruktur som bär den krypterade trafiken, inte vem som kan läsa filen.",
         ],
       },
@@ -1270,7 +1270,7 @@ export const sv: Messages = {
             ],
             [
               "direct,relay",
-              "Så länge vårt relä är tillgängligt skapar den inloggningsuppgifter till reläet för det här paret av webbläsare, giltiga i 5 minuter, och skickar dem till båda sidorna utan att spara dem.",
+              "Så länge vårt relä är tillgängligt skapar den inloggningsuppgifter till reläet för det här paret av webbläsare, som en reläanslutning kan starta med i 5 minuter, och skickar dem till båda sidorna utan att spara dem.",
             ],
             [
               "email",
@@ -1503,7 +1503,7 @@ export const sv: Messages = {
           "Länk-ID:t, ett slumpmässigt försöks-ID och mottagarens IP-adress och webbläsaruppgifter.",
           "Vilken mottagarsida som är ihopkopplad med vilken länk, i minnet.",
           "Att en mottagare anslöt eller nekades och varför, med de 6 första tecknen i länk-ID:t.",
-          "Ingenting än. Om du tillåter reläet och det är tillgängligt ger vår server de två sidorna inloggningsuppgifter till det som slutar gälla efter 5 minuter.",
+          "Ingenting än. Om du tillåter reläet och det är tillgängligt ger vår server de två sidorna inloggningsuppgifter till det, som en reläanslutning kan starta med i 5 minuter.",
         ],
         [
           "Webbläsarna kopplar upp sig",

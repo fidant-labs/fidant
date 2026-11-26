@@ -972,7 +972,7 @@ export const en = {
           "When no direct route works, which is common on mobile data and office networks, the traffic goes through our TURN relay in Stockholm. The browsers add the relay only if the sender allows it, the relay is available and nothing has connected 3 seconds after the recipient answers. A page opened before we began adding the relay this way still reserves relay addresses from the start, until it is reloaded.",
           "To add the relay, the browsers start the connection setup again, with a new offer and answer, encrypted just like the first. A direct route can still win after that. So a connection that needs the relay starts about 3 seconds later. A direct route that is still connecting 3 seconds after the recipient answers, for example on a network that loses many packets, may end up on the relay.",
           "The relay forwards encrypted packets. It can't decrypt them and doesn't store them.",
-          "To use the relay a browser needs credentials, which our server creates for each pairing and gives only to the two paired pages. The credentials expire after 5 minutes. Our server checks every minute that the relay can carry traffic, and offers it once a check passes. The server stops offering it after two failed checks in a row. The relay gets the secret behind the credentials from our server, sealed so that only the relay can open it.",
+          "To use the relay a browser needs credentials, which our server creates for each pairing and gives only to the two paired pages. A relayed connection can start with them for 5 minutes, and can then run longer. Our server checks every minute that the relay can carry traffic, and offers it once a check passes. The server stops offering it after two failed checks in a row. The relay gets the secret behind the credentials from our server, sealed so that only the relay can open it.",
           "Browsers reach the relay over UDP, or over TLS on port 443 where a network allows only web traffic. The relay forwards only over UDP, and only from its own address. It refuses to forward to other machines on private or internal networks, with one accepted exception: the relay's own box (see decision 0007). It also limits how many relayed connections run at once.",
           "Once the estimated cost of our traffic for the month reaches our budget, the relay and our STUN service switch off. They stay off until the month ends, unless we switch them on again sooner, for example by raising the budget. Until then, a new transfer connects only where it can without them, for example on the same local network, and often fails elsewhere.",
         ],
@@ -980,7 +980,7 @@ export const en = {
       norelay: {
         heading: "Refusing the relay",
         body: [
-          "The sender can untick \"Use our relay if needed\". Our server then gives that send no relay credentials, only the STUN address, so an unmodified browser can't use the relay. The sender's browser also enforces the choice itself: it starts the connection without relay credentials, whatever our server sends. As a backstop, if the sender's browser still sees a relayed connection, it ends it. File data only flows after the recipient accepts, so in practice the browser ends such a connection before any file data has passed.",
+          "The sender can untick \"Use our relay if needed\". Our server then gives that send no relay credentials, only the STUN address, so an unmodified browser can't use the relay. The sender's browser also enforces the choice itself: it starts the connection without relay credentials, whatever our server sends. As a backstop, if the sender's browser still sees a relayed connection, it ends it. The backstop is best effort: a modified recipient can hide that its side goes through a relay.",
           "The limit: a modified recipient can still send its side through our relay with credentials from another pairing, or through any public relay. That recipient has the key anyway. The choice decides which infrastructure carries the encrypted traffic, not who can read the file.",
         ],
       },
@@ -1314,7 +1314,7 @@ export const en = {
             ],
             [
               "direct,relay",
-              "While our relay is available, it makes relay credentials for this pair of browsers, valid for 5 minutes, and sends them to both pages without keeping them.",
+              "While our relay is available, it makes relay credentials for this pair of browsers, with which a relay connection can start for 5 minutes, and sends them to both pages without keeping them.",
             ],
             [
               "email",
@@ -1537,7 +1537,7 @@ export const en = {
           "The link ID, a random attempt ID, and the recipient's IP address and browser details.",
           "Which recipient page is paired with which link, in memory.",
           "That a recipient joined or was refused and why, with the first 6 characters of the link ID.",
-          "Nothing yet. If you allow the relay and it is available, our server gives the two pages credentials for it that expire after 5 minutes.",
+          "Nothing yet. If you allow the relay and it is available, our server gives the two pages credentials for it, with which a relay connection can start for 5 minutes.",
         ],
         [
           "The browsers set up the connection",
