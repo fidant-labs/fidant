@@ -34,7 +34,7 @@ export class Recorder {
   /** Attaches the listeners and routes. Call it before the context opens any page. */
   async attach(context: BrowserContext): Promise<void> {
     this.context = context;
-    context.on("request", (request) => this.#add(requestRecord(request)));
+    context.on("request", (request) => this.#add(requestRecord(request, context)));
     context.on("response", (response) => this.#add(responseRecord(response)));
     context.on("requestfailed", (request) =>
       this.#add({
@@ -114,11 +114,15 @@ export class Recorder {
   }
 }
 
-async function requestRecord(request: Request): Promise<ObservationRecord> {
+async function requestRecord(
+  request: Request,
+  context: BrowserContext,
+): Promise<ObservationRecord> {
   const time = now();
   const body = request.postDataBuffer();
   const method = request.method();
-  const headers = await headersOf(request.allHeaders(), request.headers());
+  const jar = context.cookies(request.url()).catch(() => []);
+  const headers = withCookies(await headersOf(request.allHeaders(), request.headers()), await jar);
   return {
     type: "request",
     time,
@@ -130,24 +134,31 @@ async function requestRecord(request: Request): Promise<ObservationRecord> {
 }
 
 /** Methods whose requests carry no body. */
-const bodiless = new Set(["GET", "HEAD", "OPTIONS"]);
+const bodiless = new Set(["GET", "HEAD"]);
 
-/**
- * The body fields of a request record: the body as base64 when Playwright exposed one.
- * Otherwise `bodyMissing` marks a request that may have had a body the scan cannot see.
- *
- * Chromium exposes string, buffer, Blob, File and FormData bodies, but not streamed ones, and a
- * request without an exposed body may have been empty or hidden. So any request whose method
- * allows a body, with none exposed, is marked unless its headers say `content-length: 0`.
- */
+/** Body fields: base64 when exposed; bodyMissing when a body may be hidden from the scan (see README "What is scanned"). */
 export function requestBody(method: string, headers: Headers, body: Buffer | null): RequestBody {
   if (body && body.length > 0) {
-    return { body: body.toString("base64") };
+    const text = body.toString("base64");
+    const multipart =
+      headers["content-type"]?.toLowerCase().startsWith("multipart/form-data") ||
+      body.toString("latin1").toLowerCase().includes("content-disposition: form-data");
+    return multipart ? { body: text, bodyMissing: true } : { body: text };
   }
-  if (bodiless.has(method.toUpperCase()) || headers["content-length"] === "0") {
+  const upper = method.toUpperCase();
+  const preflight = upper === "OPTIONS" && "access-control-request-method" in headers;
+  if (bodiless.has(upper) || preflight || headers["content-length"] === "0") {
     return {};
   }
   return { bodyMissing: true };
+}
+
+/** WebKit's `allHeaders()` omits the Cookie header, so the context's jar for the URL fills it in. */
+export function withCookies(headers: Headers, cookies: { name: string; value: string }[]): Headers {
+  if (headers.cookie || cookies.length === 0) {
+    return headers;
+  }
+  return { ...headers, cookie: cookies.map(({ name, value }) => `${name}=${value}`).join("; ") };
 }
 
 async function responseRecord(response: Response): Promise<ObservationRecord> {
