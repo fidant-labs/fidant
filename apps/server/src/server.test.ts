@@ -78,7 +78,11 @@ test("serves the front page with security headers", async () => {
   assert.equal(res.status, 200);
   assert.equal(res.headers.get("content-type"), "text/html; charset=utf-8");
   assert.equal(res.headers.get("referrer-policy"), "no-referrer");
-  assert.match(res.headers.get("content-security-policy") ?? "", /default-src 'self'/);
+  // data: images only for the tab's status icon, which must not ask the server for anything.
+  assert.match(
+    res.headers.get("content-security-policy") ?? "",
+    /default-src 'self'; img-src 'self' data:;/,
+  );
 });
 
 test("serves assets with their content type", async () => {
