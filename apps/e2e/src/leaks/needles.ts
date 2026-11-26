@@ -94,12 +94,16 @@ export function fileSecrets(
     "bytes" in file
       ? contentSecrets(label, file.bytes)
       : [
-          ...file.samples.map(({ offset, bytes }) => ({
-            class: "C" as const,
-            label: `${label} at ${offset}`,
-            bytes,
-          })),
-          { class: "C", label: `${label} sha256`, bytes: file.sha256 },
+          ...file.samples
+            .filter(({ bytes }) => bytes.length >= minWindow)
+            .map(({ offset, bytes }) => ({
+              class: "C" as const,
+              label: `${label} at ${offset}`,
+              bytes,
+            })),
+          ...(file.size > 0
+            ? [{ class: "C" as const, label: `${label} sha256`, bytes: file.sha256 }]
+            : []),
         ];
   secrets.push(
     tokenSecret("M", `${label} name`, file.token),

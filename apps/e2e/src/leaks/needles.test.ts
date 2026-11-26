@@ -16,6 +16,7 @@ import {
   buildNeedles,
   fileSecrets,
   keySecrets,
+  minWindow,
   type Secret,
   textSecrets,
   type WindowMatch,
@@ -160,6 +161,24 @@ test("derives the secrets of a large canary file from its samples and digest", a
     matches(secrets, Buffer.concat([junk, sha256(bytes), junk])).map((m) => m.secret.label),
     ["file#1 sha256"],
   );
+});
+
+test("leaves out what an empty or tiny large canary cannot check", async () => {
+  const empty = fileSecrets(
+    "empty",
+    await writeLargeCanary(random.fork("empty"), dir, { size: 0 }),
+  );
+  assert.deepEqual(
+    empty.map((s) => s.label),
+    ["empty name", "empty type", "empty name sha256", "empty name sha256"],
+  );
+  const tiny = await writeLargeCanary(random.fork("tiny"), dir, { size: minWindow - 1 });
+  const secrets = fileSecrets("tiny", tiny);
+  assert.deepEqual(
+    secrets.map((s) => s.label),
+    ["tiny sha256", "tiny name", "tiny type", "tiny name sha256", "tiny name sha256"],
+  );
+  assert.doesNotThrow(() => buildNeedles(secrets));
 });
 
 test("leaves out what an empty or one-chunk file cannot check", () => {
