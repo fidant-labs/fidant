@@ -127,7 +127,7 @@ export const sv: Messages = {
     ] as ReadonlyArray<readonly [string, string]>,
     serverHeading: "Vad vår server vet",
     neverHeading: "Vår server får aldrig",
-    seesHeading: "Vår server ser bara",
+    seesHeading: "Vår server ser",
     relayNote:
       "Om de två webbläsarna inte kan ansluta direkt och vårt relä är tillgängligt går filen i stället via reläet, fortfarande krypterad. Reläet ser då båda IP-adresserna och ungefär hur stor filen är, men kan inte låsa upp den.",
     caveat: "Haken: eftersom inget sparas måste fliken vara öppen tills filen har kommit fram.",
@@ -1559,7 +1559,7 @@ export const sv: Messages = {
         "Inte namnen du ger dem du skickar till. Ditt eget namn når oss bara om du ber oss mejla en länk: det står då i mejlet, och vi sparar det inte.",
       ],
     ],
-    seesHeading: "Det här ser vår server, och bara för att koppla ihop er eller mejla en länk",
+    seesHeading: "Det här ser vår server",
     sees: [
       [
         "Din IP-adress och uppgifter om din webbläsare",
@@ -1576,6 +1576,18 @@ export const sv: Messages = {
       [
         "Avsändarens val om reläet",
         "Om avsändaren tillåter vårt relä, så att vi bara ger mottagare tillgång till det när avsändaren gör det. Vi glömmer det inom en minut efter att avsändarens sida har stängts, och skriver aldrig in det i våra loggar.",
+      ],
+      [
+        "Hur varje anslutning gick",
+        "Avsändarens sida berättar för oss om varje anslutning gick direkt, via vårt relä eller misslyckades. Vi skriver in det i våra loggar, för att veta hur ofta anslutningar behöver vårt relä.",
+      ],
+      [
+        "Varför en mottagare nekades",
+        "När avsändarens sida nekar en mottagare berättar den för oss varför: länken har redan använts, en annan sida är ansluten till den, sidan har inte länken eller så avbröt den försöket. Därför kan vi se när en länk har levererats. Vi skriver in orsaken i våra loggar.",
+      ],
+      [
+        "När varje sida ansluter och lämnar",
+        "Vi ser när varje sida ansluter till vår server och när den lämnar, så vi kan se när någon öppnar en länk. Våra loggrader noterar när en mottagare ansluter eller lämnar, och när en avsändares sida stängs.",
       ],
       [
         "Om vi mejlar en länk: adressen, länkens nyckel och ditt namn",

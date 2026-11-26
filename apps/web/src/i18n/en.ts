@@ -146,7 +146,7 @@ export const en = {
     ] as ReadonlyArray<readonly [string, string]>,
     serverHeading: "What our server knows",
     neverHeading: "Our server never gets",
-    seesHeading: "Our server only sees",
+    seesHeading: "Our server sees",
     relayNote:
       "If the two browsers can't connect directly and our relay is available, the file passes through the relay instead, still encrypted. The relay then sees both IP addresses and roughly how big the file is, and can't unlock it.",
     caveat: "The catch: since nothing is stored, keep your tab open until the file has arrived.",
@@ -1596,7 +1596,7 @@ export const en = {
         "Not the names you give the people you send to. Your own name reaches us only if you ask us to email a link: it goes in that email, and we don't keep it.",
       ],
     ] as ReadonlyArray<readonly [string, string]>,
-    seesHeading: "What our server sees, and only to connect you or email a link",
+    seesHeading: "What our server sees",
     sees: [
       [
         "Your IP address and browser details",
@@ -1613,6 +1613,18 @@ export const en = {
       [
         "The sender's relay choice",
         "Whether the sender allows our relay, so we only give recipients access to it when the sender does. We forget it within a minute after the sender's page closes, and never write it to our logs.",
+      ],
+      [
+        "How each connection went",
+        "The sender's page tells us whether each connection was direct, went through our relay or failed. We write it to our logs, to know how often connections need our relay.",
+      ],
+      [
+        "Why a recipient was turned away",
+        "When the sender's page turns a recipient away, it tells us why: the link was already used, another page is connected to it, the page doesn't have that link, or it ended the attempt. So we can tell when a link has been delivered. We write the reason to our logs.",
+      ],
+      [
+        "When each page connects and leaves",
+        "We see when each page connects to our server and when it leaves, so we can tell when someone opens a link. Our log lines note when a recipient joins or leaves, and when a sender's page closes.",
       ],
       [
         "If we email a link: the address, the link's key and your name",
