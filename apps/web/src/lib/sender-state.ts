@@ -26,12 +26,19 @@
 // | connecting                     | outdated       | failed     | close              |
 // | connecting                     | left           | waiting    | close              |
 // | connecting                     | server-lost    | waiting    | close              |
+// | connecting (3)                 | turn-up        | (same)     |                    |
+// | connecting (4)                 | stalled        | waiting, asking, or (same) |    |
+// | waiting, asking                | allow          | waiting    | host, refuse turn  |
+// | waiting, asking                | left, server-lost | waiting |                    |
 // | connecting ... receiving (2)   | path relay (1) | waiting    | refuse drop, close |
 // | (its attempt matches)          | path           | (same)     |                    |
 // | (not on the list)              | joined         | -          | refuse unknown     |
 //
 // (1) For the current attempt, when its `joined` said the sender refused the relay.
 // (2) connecting, checking, offered or receiving: the active statuses.
+// (3) For the current attempt.
+// (4) Under `turn` false. With `turn-up` the attempt ends and the sender is asked (effect: close);
+//     without it the attempt only notes the stall.
 //
 // Rules:
 // - A link is used only once the recipient's RECEIPT matches (delivered).
@@ -102,15 +109,32 @@
 //   choice at that moment (`allowRelay`), so a server that ignores the
 //   choice can't override it. Under `turn` false the start effect gets only
 //   the `stun:` URLs, with no credential. An attempt that ends while
-//   still connecting (dropped, timeout, left) under `turn` false returns to
-//   "waiting" with `noRelay`, because a refused relay is the likely reason it
-//   never connected. The next join clears it. Under `turn` true it returns
-//   with `noConnect` instead, so the sender sees that someone tried and
-//   couldn't connect; the next join clears that too.
+//   still connecting (dropped, timeout, left) under `turn` false after it
+//   `stalled` returns to "waiting" with `noRelay`, because a refused relay is
+//   the likely reason it never connected. The next join clears it. Otherwise
+//   it returns with `noConnect` instead, so the sender sees that someone tried
+//   and couldn't connect; the next join clears that too.
 // - A `relay` path for an active attempt under `turn` false ends that attempt
-//   like a timeout and sets `noRelay`. This is a backstop for a recipient that
+//   like a timeout, with `noRelay` if it stalled. This is a backstop for a recipient that
 //   uses a relay on its own side: the sender's peer has no TURN server then,
 //   and an honest server gives the recipient none either.
+// - The ask (decision 0027). `turn-up` records that the server said a relay is
+//   up for the current attempt. `stalled` means the sender's peer, which has no
+//   relay, had nothing connected RELAY_FALLBACK_MS after the answer. With
+//   `turn-up`, the attempt ends: the recipient returns to "waiting" with `ask`,
+//   the attempt's ID, and the connection is closed. No refusal is sent, so the
+//   server keeps the recipient bound while the sender is asked. It counts as a
+//   failed check like any other end while connecting, and one that locks the
+//   link refuses and closes it with no ask. Without `turn-up` the attempt runs
+//   on and only notes `stalled`.
+// - `allow` answers the ask: the recipient gets `relay`, the grant, which
+//   lasts for the link and which no reset clears, and the effects are `host`
+//   (send `host` again, now with the link in `turnLinks`) and then a refusal of
+//   the waiting attempt with "turn", which makes the recipient's page join
+//   again. The order matters: the server must hold the grant before that join.
+//   `allow` without a link ID answers every open ask, for when the sender ticks
+//   the relay checkbox. `left`, `server-lost` and the next join take an ask
+//   away without a grant.
 // - Removing a recipient is always allowed. If it was mid-transfer, the
 //   result includes a close effect.
 // - A recipient added with an email address starts at mail "sending"; `email`
@@ -192,7 +216,15 @@ export type Recipient = {
   readonly path?: OpenPath;
   /** Whether our relay was allowed for the current attempt: the server's `turn` and the sender's own choice when it joined. */
   readonly turn?: boolean;
-  /** The last attempt couldn't connect directly while the sender refused our relay. */
+  /** The server said a relay is up for the current attempt. */
+  readonly turnUp?: true;
+  /** The current attempt had nothing connected RELAY_FALLBACK_MS after the answer. */
+  readonly stalled?: true;
+  /** The sender is asked to allow our relay: the attempt ID of the recipient waiting for the answer. */
+  readonly ask?: string;
+  /** The sender allowed our relay for this link. */
+  readonly relay?: true;
+  /** The last attempt stalled while the sender refused our relay. */
   readonly noRelay?: true;
   /** The last attempt ended before it connected, with our relay allowed. */
   readonly noConnect?: true;
@@ -238,6 +270,10 @@ export type SenderAction =
   | { type: "timeout"; linkId: string }
   | { type: "left"; linkId: string }
   | { type: "server-lost" }
+  | { type: "turn-up"; linkId: string; attempt: string }
+  | { type: "stalled"; linkId: string }
+  /** The sender allows our relay for the asking link, or without `linkId` for every asking link. */
+  | { type: "allow"; linkId?: string }
   | { type: "declined"; linkId: string }
   | { type: "unsendable"; linkId: string }
   /** The two pages run different frame versions; `older` is the one that must reload. */
@@ -255,7 +291,9 @@ export type SenderAction =
 export type SenderEffect =
   | { type: "start"; linkId: string; attempt: string; iceServers: IceServer[] }
   | { type: "refuse"; linkId: string; attempt: string; reason: RefuseReason }
-  | { type: "close"; linkId: string };
+  | { type: "close"; linkId: string }
+  /** Send `host` again, before the effects that follow. */
+  | { type: "host" };
 
 export type SenderUpdate = { state: SenderState; effects: SenderEffect[] };
 
@@ -332,6 +370,14 @@ export function hostedLinks(state: SenderState): string[] {
   return state.recipients.filter((r) => !r.unbound && !r.locked).map((r) => r.linkId);
 }
 
+/** Every hosted link the sender allowed our relay for, until it is delivered. */
+export function turnLinks(state: SenderState): string[] {
+  const hosted = new Set(hostedLinks(state));
+  return state.recipients
+    .filter((r) => r.relay && r.status !== "delivered" && hosted.has(r.linkId))
+    .map((r) => r.linkId);
+}
+
 export function update(state: SenderState, action: SenderAction): SenderUpdate {
   if (action.type === "add") {
     if (state.recipients.length >= MAX_LINKS || findRecipient(state, action.link.linkId)) {
@@ -364,10 +410,26 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
         effects.push({ type: "close", linkId: r.linkId });
         next = failedCheck(r, waiting(next, false));
       }
+      if (next.ask !== undefined) {
+        const { ask: _ask, ...rest } = next;
+        next = rest;
+      }
       changed ||= next !== r;
       return next;
     });
     return { state: changed ? { recipients } : state, effects };
+  }
+  if (action.type === "allow") {
+    const effects: SenderEffect[] = [{ type: "host" }];
+    const recipients = state.recipients.map((r) => {
+      if (r.ask === undefined || (action.linkId !== undefined && r.linkId !== action.linkId)) {
+        return r;
+      }
+      const { ask, ...rest } = r;
+      effects.push({ type: "refuse", linkId: r.linkId, attempt: ask, reason: "turn" });
+      return { ...rest, relay: true as const };
+    });
+    return effects.length > 1 ? { state: { recipients }, effects } : { state, effects: [] };
   }
 
   const { linkId } = action;
@@ -388,7 +450,7 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
     }
     case "joined": {
       const { attempt, iceServers } = action;
-      const turn = action.turn && action.allowRelay;
+      const turn = action.turn && (action.allowRelay || current.relay === true);
       if (current.status === "delivered" || current.locked) {
         return { state, effects: [{ type: "refuse", linkId, attempt, reason: "used" }] };
       }
@@ -469,10 +531,33 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
         failedCheck(current, waiting(current, current.status === "connecting")),
       );
     case "left": {
+      if (current.ask !== undefined) {
+        const { ask: _ask, ...rest } = current;
+        return { state: replace(state, rest), effects: [] };
+      }
       if (current.status !== "connecting") {
         return { state, effects: [] };
       }
       const next = failedCheck(current, waiting(current, true));
+      if (next.locked) {
+        return end(state, current, next);
+      }
+      return { state: replace(state, next), effects: [{ type: "close", linkId }] };
+    }
+    case "turn-up":
+      if (current.status !== "connecting" || current.attempt !== action.attempt) {
+        return { state, effects: [] };
+      }
+      return { state: replace(state, { ...current, turnUp: true }), effects: [] };
+    case "stalled": {
+      const { attempt } = current;
+      if (current.status !== "connecting" || current.turn !== false || attempt === undefined) {
+        return { state, effects: [] };
+      }
+      if (!current.turnUp) {
+        return { state: replace(state, { ...current, stalled: true }), effects: [] };
+      }
+      const next = failedCheck(current, { ...reset(current, "waiting"), ask: attempt });
       if (next.locked) {
         return end(state, current, next);
       }
@@ -555,8 +640,10 @@ function swap(
   mail: EmailStatus,
 ): SenderUpdate {
   const { linkId, attempt } = current;
+  // The grant was for the old link, so the fresh one starts without it.
+  const { relay: _relay, ...kept } = reset(current, "waiting");
   const next: Recipient = {
-    ...reset(current, "waiting"),
+    ...kept,
     linkId: fresh.linkId,
     secret: fresh.secret,
     url: fresh.url,
@@ -606,22 +693,30 @@ function failedCheck(current: Recipient, next: Recipient): Recipient {
   return { ...reset(next, "failed"), checkFailures, error: CHECK_LIMIT, locked: true };
 }
 
-/** Back to waiting, with `noRelay` (relay refused) or `noConnect` if the attempt was `blocked`. */
+/** Back to waiting, with `noRelay` (stalled with the relay refused) or `noConnect` if the attempt was `blocked`. */
 function waiting(recipient: Recipient, blocked: boolean): Recipient {
   const next = reset(recipient, "waiting");
   if (!blocked) {
     return next;
   }
-  return recipient.turn === false ? { ...next, noRelay: true } : { ...next, noConnect: true };
+  return recipient.turn === false && recipient.stalled
+    ? { ...next, noRelay: true }
+    : { ...next, noConnect: true };
 }
 
-/** The recipient with a new status, no progress, error, attempt, path, relay choice, noRelay or noConnect. */
+/**
+ * The recipient with a new status, no progress, error, attempt, path, relay choice, `turnUp`,
+ * `stalled`, ask, noRelay or noConnect. The grant (`relay`) stays.
+ */
 function reset(recipient: Recipient, status: RecipientStatus): Recipient {
   const {
     error: _error,
     attempt: _attempt,
     path: _path,
     turn: _turn,
+    turnUp: _turnUp,
+    stalled: _stalled,
+    ask: _ask,
     noRelay: _noRelay,
     noConnect: _noConnect,
     ...rest

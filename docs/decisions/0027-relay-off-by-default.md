@@ -116,7 +116,7 @@ The relay is off unless the sender allows it. The checkbox stays, unticked by de
   - With `turn-up` for that attempt: it ends the attempt, puts the link back to waiting and shows the ask. It closes its peer and sends no `refuse`, so the recipient stays bound to the link on the server. It reports `path: failed`, as 0008 says of a connection that can't be made without the relay.
   - Without `turn-up`: nothing changes on screen. The attempt runs on to the 20 s timeout and then shows 0008's message.
 - The recipient's page, on a stall with `turn-up` and no open channel: it stops its 30 s connect timeout, keeps its peer and its socket, and shows "Couldn't connect directly. Waiting for the sender to allow our relay." There is no "Try again" and no deadline on that view.
-- The wait ends when the sender allows the relay, when the sender is gone (`host-gone`), when the sender removes the recipient (`refused` with `drop`), or when the recipient's socket drops. The last three end it as they end an attempt today.
+- The wait ends when the sender allows the relay, when the sender is gone or removes the recipient (`host-gone`: removing re-sends `host` without the link), or when the recipient's socket drops. The last three end it as they end an attempt today.
 
 ### The ask
 
@@ -128,6 +128,7 @@ The relay is off unless the sender allows it. The checkbox stays, unticked by de
 - The grant lasts until the link is delivered or removed, or the page closes. There is no control to take it back.
 - If the recipient leaves while the ask shows, or the sender's socket drops, the ask goes away. No grant is set.
 - There is no "Not now" button. A sender who doesn't want the relay leaves the ask alone.
+- Ticking the checkbox while asks show answers every one of them as the button does: each asking link gets the grant, and each waiting recipient's page joins again. No waiting recipient is left on a view with no "Try again". The grants stay if the checkbox is then unticked.
 
 ### Alerts
 

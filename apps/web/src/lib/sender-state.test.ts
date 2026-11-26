@@ -22,6 +22,7 @@ import {
   type SenderEffect,
   type SenderState,
   TOO_SMALL_FOR_TEXT,
+  turnLinks,
   unmarked,
   update,
 } from "./sender-state.ts";
@@ -114,7 +115,7 @@ test("a relay refused by the sender or the server starts without TURN servers", 
     ]);
     // The backstop keys on the same choice: a relay path still ends the attempt.
     const relayed = update(joined.state, { type: "path", linkId, attempt: A, path: "relay" });
-    assert.equal(findRecipient(relayed.state, linkId)?.noRelay, true, `turn ${turn}`);
+    assert.equal(statusOf(relayed.state, linkId), "waiting", `turn ${turn}`);
   }
 });
 
@@ -515,10 +516,10 @@ test("a drop, a decline or a failed receipt clears the path, so the next join st
   }
 });
 
-test("an attempt that ends while connecting under a refused relay marks the recipient noRelay", () => {
+test("an attempt that stalled and ends while connecting under a refused relay marks the recipient noRelay", () => {
   for (const end of ["dropped", "timeout", "left"] as const) {
     const { state: s0, linkId } = withRecipient();
-    const connecting = run(s0, joined(linkId, A, false)).state;
+    const connecting = run(s0, joined(linkId, A, false), { type: "stalled", linkId }).state;
     assert.equal(findRecipient(connecting, linkId)?.turn, false, end);
 
     const ended = update(connecting, { type: end, linkId });
@@ -553,11 +554,12 @@ test("an attempt that ends while connecting under a refused relay marks the reci
   }
 });
 
-test("noRelay is not set under an allowed relay, or once the channel opened", () => {
-  const cases: Array<{ turn: boolean; steps: Array<"channel-open" | "accepted"> }> = [
-    { turn: true, steps: [] },
-    { turn: false, steps: ["channel-open"] },
-    { turn: false, steps: ["channel-open", "accepted"] },
+test("noRelay is not set under an allowed relay, without a stall, or once the channel opened", () => {
+  const cases: Array<{ turn: boolean; steps: Array<"stalled" | "channel-open" | "accepted"> }> = [
+    { turn: true, steps: ["stalled"] },
+    { turn: false, steps: [] },
+    { turn: false, steps: ["stalled", "channel-open"] },
+    { turn: false, steps: ["stalled", "channel-open", "accepted"] },
   ];
   for (const { turn, steps } of cases) {
     const { state: s0, linkId } = withRecipient();
@@ -606,10 +608,8 @@ test("a busy join keeps the relay choice of the attempt in progress", () => {
   });
   assert.deepEqual(effects.at(-1), { type: "refuse", linkId, attempt: B, reason: "busy" });
   assert.equal(findRecipient(state, linkId)?.turn, false);
-  assert.equal(
-    findRecipient(update(state, { type: "timeout", linkId }).state, linkId)?.noRelay,
-    true,
-  );
+  const ended = run(state, { type: "stalled", linkId }, { type: "timeout", linkId }).state;
+  assert.equal(findRecipient(ended, linkId)?.noRelay, true);
 });
 
 test("a relay path under a refused relay ends the attempt like a timeout", () => {
@@ -619,7 +619,7 @@ test("a relay path under a refused relay ends the attempt like a timeout", () =>
     const result = update(state, { type: "path", linkId, attempt: A, path: "relay" });
     assert.deepEqual(
       findRecipient(result.state, linkId),
-      { ...findRecipient(s0, linkId), noRelay: true },
+      { ...findRecipient(s0, linkId), noConnect: true },
       `after ${steps}`,
     );
     assert.deepEqual(result.effects, [
@@ -627,6 +627,16 @@ test("a relay path under a refused relay ends the attempt like a timeout", () =>
       { type: "close", linkId },
     ]);
   }
+  // It blames the refused relay only if the attempt stalled first.
+  const { state: s0, linkId } = withRecipient();
+  const { state } = run(
+    s0,
+    joined(linkId, A, false),
+    { type: "stalled", linkId },
+    { type: "channel-open", linkId },
+    { type: "path", linkId, attempt: A, path: "relay" },
+  );
+  assert.deepEqual(findRecipient(state, linkId), { ...findRecipient(s0, linkId), noRelay: true });
 });
 
 test("a relay path only records the path when the relay was allowed or the file delivered", () => {
@@ -746,6 +756,10 @@ test("effects never contain a recipient name or secret", () => {
     { type: "channel-open", linkId },
     { type: "accepted", linkId },
     { type: "dropped", linkId },
+    joined(linkId, A, false),
+    { type: "turn-up", linkId, attempt: A },
+    { type: "stalled", linkId },
+    { type: "allow", linkId },
     joined(linkId, A),
     { type: "unsendable", linkId },
     joined(linkId, A),
@@ -760,6 +774,7 @@ test("effects never contain a recipient name or secret", () => {
     { type: "remove", linkId },
   );
   assert.ok(effects.length >= 10);
+  assert.ok(effects.some((effect) => effect.type === "host"));
   for (const effect of effects) {
     const text = JSON.stringify(effect);
     assert.ok(!text.includes(name), text);
@@ -770,6 +785,7 @@ test("effects never contain a recipient name or secret", () => {
       {
         refuse: ["attempt", "linkId", "reason", "type"],
         start: ["attempt", "iceServers", "linkId", "type"],
+        host: ["type"],
       }[effect.type as string] ?? ["linkId", "type"],
     );
   }
@@ -1015,10 +1031,11 @@ test("server-lost drops noConnect and noRelay from a recipient it unbinds", () =
       initialSenderState,
       { type: "add", link, name: "Anna", email: "anna@example.se" },
       joined(link.linkId, A, turn),
+      { type: "stalled", linkId: link.linkId },
       { type: "dropped", linkId: link.linkId },
     );
     const before = findRecipient(state, link.linkId);
-    assert.ok(before && ("noConnect" in before || "noRelay" in before));
+    assert.ok(before && (turn ? "noConnect" : "noRelay") in before);
     const after = findRecipient(update(state, { type: "server-lost" }).state, link.linkId);
     assert.equal(after?.unbound, true);
     assert.equal(after && "noConnect" in after, false);
@@ -1058,6 +1075,193 @@ test("server-lost unbinds every link the server emailed or may have emailed, and
   assert.equal(late.state, lost.state);
   const removed = run(lost.state, { type: "remove", linkId: sent.linkId }).state;
   assert.deepEqual(hostedLinks(removed), [plain.linkId, limited.linkId]);
+});
+
+/** A recipient whose attempt A stalled with a relay up, so the sender is asked. */
+function withAsk(name = "Anna") {
+  const { state: s0, linkId, link } = withRecipient(name);
+  const { state } = run(
+    s0,
+    joined(linkId, A, false),
+    { type: "turn-up", linkId, attempt: A },
+    { type: "stalled", linkId },
+  );
+  return { state, s0, linkId, link };
+}
+
+test("turn-up is kept only for the current attempt while it is connecting", () => {
+  const { state: s0, linkId } = withRecipient();
+  const up: SenderAction = { type: "turn-up", linkId, attempt: A };
+  assert.equal(update(s0, up).state, s0, "waiting");
+
+  const connecting = run(s0, joined(linkId, A, false)).state;
+  const result = update(connecting, up);
+  assert.equal(findRecipient(result.state, linkId)?.turnUp, true);
+  assert.deepEqual(result.effects, []);
+  assert.equal(update(connecting, { ...up, attempt: B }).state, connecting, "another attempt");
+
+  const open = run(connecting, { type: "channel-open", linkId }).state;
+  assert.equal(update(open, up).state, open, "offered");
+
+  // The next attempt starts without it.
+  const next = run(result.state, { type: "dropped", linkId }, joined(linkId, B, false)).state;
+  assert.equal(Object.hasOwn(findRecipient(next, linkId) ?? {}, "turnUp"), false);
+});
+
+test("a stall with no relay up only notes it, and the attempt runs on to its timeout", () => {
+  const { state: s0, linkId } = withRecipient();
+  const connecting = run(s0, joined(linkId, A, false)).state;
+  const stalled = update(connecting, { type: "stalled", linkId });
+  assert.deepEqual(findRecipient(stalled.state, linkId), {
+    ...findRecipient(connecting, linkId),
+    stalled: true,
+  });
+  assert.deepEqual(stalled.effects, []);
+
+  const ended = update(stalled.state, { type: "timeout", linkId });
+  assert.deepEqual(findRecipient(ended.state, linkId), {
+    ...findRecipient(s0, linkId),
+    noRelay: true,
+  });
+});
+
+test("a stall is ignored under an allowed relay and outside connecting", () => {
+  const { state: s0, linkId } = withRecipient();
+  assert.equal(update(s0, { type: "stalled", linkId }).state, s0, "waiting");
+  const up: SenderAction = { type: "turn-up", linkId, attempt: A };
+  const allowed = run(s0, joined(linkId, A, true), up).state;
+  assert.equal(update(allowed, { type: "stalled", linkId }).state, allowed, "relay allowed");
+  const open = run(s0, joined(linkId, A, false), up, { type: "channel-open", linkId }).state;
+  assert.equal(update(open, { type: "stalled", linkId }).state, open, "offered");
+});
+
+test("a stall with a relay up ends the attempt and asks, without refusing the recipient", () => {
+  const { state: s0, linkId } = withRecipient();
+  const connecting = run(s0, joined(linkId, A, false), {
+    type: "turn-up",
+    linkId,
+    attempt: A,
+  }).state;
+  const result = update(connecting, { type: "stalled", linkId });
+  assert.deepEqual(findRecipient(result.state, linkId), { ...findRecipient(s0, linkId), ask: A });
+  assert.deepEqual(result.effects, [{ type: "close", linkId }]);
+  assert.deepEqual(turnLinks(result.state), []);
+
+  // The page's own timer and the closed peer change nothing while the ask is open.
+  for (const late of ["timeout", "dropped", "stalled"] as const) {
+    assert.equal(update(result.state, { type: late, linkId }).state, result.state, late);
+  }
+});
+
+test("allow sets the grant, hosts again and only then refuses the waiting attempt with turn", () => {
+  const { state: asking, s0, linkId } = withAsk();
+  const result = update(asking, { type: "allow", linkId });
+  assert.deepEqual(findRecipient(result.state, linkId), {
+    ...findRecipient(s0, linkId),
+    relay: true,
+  });
+  assert.deepEqual(result.effects, [
+    { type: "host" },
+    { type: "refuse", linkId, attempt: A, reason: "turn" },
+  ]);
+  assert.deepEqual(turnLinks(result.state), [linkId]);
+
+  // Nothing to allow without an ask, also once it is answered.
+  assert.deepEqual(update(s0, { type: "allow", linkId }), { state: s0, effects: [] });
+  assert.deepEqual(update(result.state, { type: "allow", linkId }), {
+    state: result.state,
+    effects: [],
+  });
+});
+
+test("the grant allows the relay for later joins with the checkbox unticked, but not against the server", () => {
+  const { state: asking, linkId } = withAsk();
+  const granted = update(asking, { type: "allow", linkId }).state;
+  const join = (state: SenderState, turn: boolean) =>
+    update(state, {
+      type: "joined",
+      linkId,
+      attempt: B,
+      iceServers: TURN,
+      turn,
+      allowRelay: false,
+    });
+
+  const allowed = join(granted, true);
+  assert.equal(findRecipient(allowed.state, linkId)?.turn, true);
+  assert.deepEqual(allowed.effects, [{ type: "start", linkId, attempt: B, iceServers: TURN }]);
+  assert.deepEqual(join(granted, false).effects, [
+    { type: "start", linkId, attempt: B, iceServers: [] },
+  ]);
+  assert.equal(findRecipient(join(asking, true).state, linkId)?.turn, false, "no grant");
+
+  // It survives a failed attempt, and ends with the delivery.
+  const dropped = run(allowed.state, { type: "dropped", linkId }).state;
+  assert.equal(findRecipient(dropped, linkId)?.relay, true);
+  assert.deepEqual(turnLinks(dropped), [linkId]);
+  const delivered = run(
+    allowed.state,
+    { type: "channel-open", linkId },
+    { type: "accepted", linkId },
+    { type: "receipt", linkId, match: true },
+  ).state;
+  assert.deepEqual(turnLinks(delivered), []);
+  assert.deepEqual(turnLinks(run(dropped, { type: "remove", linkId }).state), []);
+});
+
+test("allow without a link allows every asking link, with one host before the refusals", () => {
+  const a = withAsk("Anna");
+  const b = withAsk("Erik");
+  const c = withRecipient("Mia");
+  const state: SenderState = {
+    recipients: [...a.state.recipients, ...b.state.recipients, ...c.state.recipients],
+  };
+  const result = update(state, { type: "allow" });
+  assert.deepEqual(result.effects, [
+    { type: "host" },
+    { type: "refuse", linkId: a.linkId, attempt: A, reason: "turn" },
+    { type: "refuse", linkId: b.linkId, attempt: A, reason: "turn" },
+  ]);
+  assert.deepEqual(turnLinks(result.state), [a.linkId, b.linkId]);
+  assert.equal(
+    result.state.recipients.some((r) => "ask" in r),
+    false,
+  );
+  assert.equal(findRecipient(result.state, c.linkId), findRecipient(state, c.linkId));
+  assert.deepEqual(update(c.state, { type: "allow" }), { state: c.state, effects: [] });
+});
+
+test("the recipient leaving, our server dropping or a new join takes the ask away with no grant", () => {
+  const { state: asking, s0, linkId } = withAsk();
+  const ends: SenderAction[] = [{ type: "left", linkId }, { type: "server-lost" }];
+  for (const end of ends) {
+    const result = update(asking, end);
+    assert.deepEqual(findRecipient(result.state, linkId), findRecipient(s0, linkId), end.type);
+    assert.deepEqual(result.effects, [], end.type);
+    assert.deepEqual(update(result.state, { type: "allow", linkId }).effects, [], end.type);
+  }
+  const rejoined = findRecipient(update(asking, joined(linkId, B, false)).state, linkId);
+  assert.equal(rejoined?.status, "connecting");
+  assert.equal(rejoined && "ask" in rejoined, false);
+});
+
+test("a link that replaces one whose email was refused doesn't inherit the grant", () => {
+  const link = createLink(ORIGIN);
+  const fresh = createLink(ORIGIN);
+  const { linkId } = link;
+  const { state } = run(
+    initialSenderState,
+    { type: "add", link, name: "Anna", email: "anna@example.se" },
+    joined(linkId, A, false),
+    { type: "turn-up", linkId, attempt: A },
+    { type: "stalled", linkId },
+    { type: "allow", linkId },
+    { type: "email", linkId, status: "limit", fresh },
+  );
+  const replaced = findRecipient(state, fresh.linkId);
+  assert.ok(replaced);
+  assert.equal("relay" in replaced, false);
+  assert.deepEqual(turnLinks(state), []);
 });
 
 function withChecked(name = "Anna") {
@@ -1178,6 +1382,44 @@ test("every way a checked attempt ends unconfirmed counts", () => {
     const { state } = run(s0, joined(linkId, A, false), ...actions(linkId));
     assert.equal(findRecipient(state, linkId)?.checkFailures, 1, label);
   }
+});
+
+test("a stalled, asked attempt counts as a failed check, and the fifth locks the link with no ask", () => {
+  const { state: s0, linkId } = withChecked();
+  const stall = (state: SenderState, attempt: string) =>
+    run(
+      state,
+      joined(linkId, attempt, false),
+      { type: "turn-up", linkId, attempt },
+      { type: "stalled", linkId },
+    );
+  let state = s0;
+  for (let i = 1; i < CHECK_ATTEMPTS; i++) {
+    const asked = stall(state, A);
+    assert.equal(findRecipient(asked.state, linkId)?.checkFailures, i);
+    assert.equal(findRecipient(asked.state, linkId)?.ask, A);
+    // The grant and the restart it causes lower nothing.
+    state = run(asked.state, { type: "allow", linkId }).state;
+    assert.equal(findRecipient(state, linkId)?.checkFailures, i);
+  }
+  // Without the grant's credentials (the server says no relay), the fifth stall locks.
+  const fifth = stall(state, B);
+  const locked = findRecipient(fifth.state, linkId);
+  assert.equal(locked?.status, "failed");
+  assert.equal(locked?.locked, true);
+  assert.equal(locked?.error, CHECK_LIMIT);
+  assert.equal(locked?.checkFailures, CHECK_ATTEMPTS);
+  assert.equal(locked && "ask" in locked, false);
+  assert.deepEqual(fifth.effects.slice(-2), [
+    { type: "refuse", linkId, attempt: B, reason: "drop" },
+    { type: "close", linkId },
+  ]);
+  assert.deepEqual(hostedLinks(fifth.state), []);
+  assert.deepEqual(turnLinks(fifth.state), [], "a locked link is not hosted, so not granted");
+  assert.deepEqual(update(fifth.state, { type: "allow", linkId }).effects, []);
+  assert.deepEqual(update(fifth.state, joined(linkId, A)).effects, [
+    { type: "refuse", linkId, attempt: A, reason: "used" },
+  ]);
 });
 
 test("a left, timeout or drop that locks the link refuses and closes it", () => {
