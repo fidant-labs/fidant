@@ -523,7 +523,11 @@ export const sv: Messages = {
       },
       lostReceiving: {
         title: "Anslutningen till avsändaren bröts",
-        body: "Filen kanske inte sparades. Försök igen för att vara säker på att du får den.",
+        body: "Försök igen så fortsätter nedladdningen där den avbröts.",
+      },
+      senderBusy: {
+        title: "Avsändarens sida håller fortfarande i den förra anslutningen",
+        body: "Försök igen om en stund. Nedladdningen fortsätter där den avbröts.",
       },
       checksum: {
         title: "Filen kom inte fram oskadd",

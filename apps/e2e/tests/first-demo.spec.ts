@@ -644,7 +644,9 @@ test("a lost sender says whether the file may have been saved", async ({ demo, l
   const erik = await join("Erik", true);
   await cut();
   await expect(erik.getByText("The connection to the sender was lost")).toBeVisible();
-  await expect(erik.getByText("The file may not have been saved.")).toBeVisible();
+  await expect(
+    erik.getByText("Try again to continue the download where it stopped."),
+  ).toBeVisible();
 
   // Mid-download, the sender's page closes. Its pagehide closes the peers, so the drop arrives
   // at once instead of when ICE consent expires (about 15 s).

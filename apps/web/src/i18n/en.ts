@@ -545,7 +545,11 @@ export const en = {
       },
       lostReceiving: {
         title: "The connection to the sender was lost",
-        body: "The file may not have been saved. Try again to make sure you get it.",
+        body: "Try again to continue the download where it stopped.",
+      },
+      senderBusy: {
+        title: "The sender's page is still on the last connection",
+        body: "Try again in a moment. The download continues where it stopped.",
       },
       checksum: {
         title: "The file didn't arrive intact",

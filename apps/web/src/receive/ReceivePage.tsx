@@ -61,7 +61,8 @@
 // get "in use" instead of the sender's answer. After DECLINE or RECEIPT the
 // peer stays up for a moment so that frame reaches the sender, which closes
 // the channel itself. "Try again" starts a fresh attempt with a new socket and
-// a new peer.
+// a new peer, and hands it the part a lost connection kept (see
+// lib/receive-file.ts). Only an attempt that ends on the failed view keeps it.
 //
 // The secret stays in this tab (it is never stripped from the address bar in
 // this demo). The file name and size, or the text, are shown, never logged or
@@ -90,9 +91,9 @@ import {
 import { deriveSignalKey } from "../lib/keys.ts";
 import { LINK_ID_BYTES, parseRecipientLocation } from "../lib/link.ts";
 import { createRecipientPeer, type OpenPath, type Peer, type PeerOpenInfo } from "../lib/peer.ts";
-import type { FileOffer } from "../lib/receive-file.ts";
+import type { FileOffer, Resumable } from "../lib/receive-file.ts";
 import { ReceiveError, receiveFile } from "../lib/receive-file.ts";
-import { peerLostProblem } from "../lib/receive-problem.ts";
+import { peerLostProblem, refusedProblem } from "../lib/receive-problem.ts";
 import { addRelay, type Kind, NO_RELAYS, type Tie } from "../lib/server-facts.ts";
 import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
 import {
@@ -190,6 +191,8 @@ type Attempt = {
   relayRefused: boolean;
   /** Set once the attempt reached its final view. Later events are ignored. */
   ended: boolean;
+  /** Set when that view offers Try again, which continues a kept part. */
+  retry?: boolean;
   /** Resolves the offer: a Sink to accept, undefined to decline. */
   decide?: ((sink: Sink | undefined) => void) | undefined;
   /** With the safety number on: resolves the recipient's own verdict. */
@@ -247,6 +250,12 @@ export function ReceivePage({
   const [path, setPath] = useState<OpenPath | undefined>(undefined);
   const attemptRef = useRef<Attempt | undefined>(undefined);
   const codeAsked = useRef<string | undefined>(undefined);
+  const keptRef = useRef<Resumable | undefined>(undefined);
+  const discardKept = () => {
+    const kept = keptRef.current;
+    keptRef.current = undefined;
+    void kept?.sink.abort();
+  };
 
   /** Closes everything an attempt holds. `linger` keeps the peer up for a moment. */
   const release = (attempt: Attempt, linger = false) => {
@@ -302,6 +311,10 @@ export function ReceivePage({
         return;
       }
       release(attempt, linger);
+      attempt.retry = next.s === "failed" && next.problem !== "browser";
+      if (!attempt.retry) {
+        discardKept();
+      }
       setView(
         attempt.text && (next.s === "refused" || next.s === "failed")
           ? { ...next, text: true }
@@ -543,7 +556,7 @@ export function ReceivePage({
             finish(
               message.reason === "drop"
                 ? { s: "failed", problem: lostMessage() }
-                : { s: "refused", problem: message.reason },
+                : refusedProblem(message.reason, keptRef.current !== undefined),
             );
           }
           break;
@@ -575,9 +588,22 @@ export function ReceivePage({
       if (!current()) {
         return;
       }
+      // SIG-194: onOpen can run twice for one channel, and only one run may get the kept part.
+      const resumable = keptRef.current;
+      keptRef.current = undefined;
       attempt.channelOpen = true;
       let offered: Offer | undefined;
       let timeLeft: ReturnType<typeof etaTracker> | undefined;
+      const offerOf = (received: FileOffer): Offer => {
+        offered = { ...received, from: displayName(received.from), text: isTextOffer(received) };
+        attempt.text = offered.text;
+        return offered;
+      };
+      const startReceiving = (offer: Offer, bytes: number) => {
+        attempt.receiving = true;
+        timeLeft = etaTracker(offer.size);
+        setView({ s: "receiving", offer, bytes });
+      };
       const confirm = info.check
         ? new Promise<boolean>((resolve) => {
             attempt.confirm = resolve;
@@ -598,29 +624,27 @@ export function ReceivePage({
         attempt: attemptId,
         signal: attempt.abort.signal,
         ...(confirm && { confirm }),
+        ...(resumable && { resumable }),
         onOffer(received) {
           return new Promise((resolve) => {
             if (!current()) {
               return;
             }
-            const offer: Offer = {
-              ...received,
-              from: displayName(received.from),
-              text: isTextOffer(received),
-            };
-            offered = offer;
-            attempt.text = offer.text;
+            const offer = offerOf(received);
             attempt.decide = (sink) => {
               attempt.decide = undefined;
               if (sink) {
-                attempt.receiving = true;
-                timeLeft = etaTracker(offer.size);
-                setView({ s: "receiving", offer, bytes: 0 });
+                startReceiving(offer, 0);
               }
               resolve(sink);
             };
             setView({ s: "offer", offer });
           });
+        },
+        onResume(received, bytes) {
+          if (current()) {
+            startReceiving(offerOf(received), bytes);
+          }
         },
         onProgress(bytes) {
           if (!current()) {
@@ -641,6 +665,19 @@ export function ReceivePage({
           }
         },
         (error: unknown) => {
+          const kept = error instanceof ReceiveError ? error.resumable : undefined;
+          // Not current(): a refusal or the grace timer can end the attempt as failed before this lands.
+          if (
+            kept &&
+            attemptRef.current === attempt &&
+            !attempt.text &&
+            (!attempt.ended || attempt.retry)
+          ) {
+            discardKept();
+            keptRef.current = kept;
+          } else {
+            void kept?.sink.abort();
+          }
           const reason = error instanceof ReceiveError ? error.reason : "connection";
           // RECEIPT went out for a mismatch: linger so it reaches the sender.
           if (reason === "checksum") {
@@ -680,6 +717,7 @@ export function ReceivePage({
           attempt.peer?.close();
         }
       }
+      discardKept();
     };
   }, []);
 
