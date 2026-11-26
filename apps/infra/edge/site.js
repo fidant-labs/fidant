@@ -1,6 +1,8 @@
 // cloudfront-js-2.0 has no ??, ?., spread, destructuring, default parameters, for...of, Set or Map.
 
 const SITE = "fidant.se";
+// CloudFront stops the function when its regexes run too long, as an 8 KB URI of escapes made them.
+const MAX_URI = 512;
 const PAGE_PATH = /^(?:\/[a-z]+(?:-[a-z]+)*)*\/?$/;
 const MOVED = { "/technical": "/how" };
 const PAGES = [
@@ -165,6 +167,9 @@ function underRelaySecret(uri) {
 }
 
 function viewerRequest(request) {
+  if (request.uri.length > MAX_URI) {
+    return generated(414);
+  }
   const host = request.headers.host ? request.headers.host.value.toLowerCase() : "";
   if (host !== SITE) {
     return generated(301, `https://${SITE}${request.uri}${query(request, true)}`);
@@ -194,6 +199,9 @@ function viewerRequest(request) {
 
 // AWS doesn't say whether this event carries the viewer's request or the rewritten one.
 function viewerResponse(request, response) {
+  if (request.uri.length > MAX_URI) {
+    return response;
+  }
   const decision = decide(request.uri);
   const sent = request.headers["x-fidant-page"];
   const kind =
