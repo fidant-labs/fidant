@@ -330,7 +330,7 @@ test("/relay-secret/ passes only a relay id, unchanged, and anything else is a 4
     "/relay-secret%2Fsto",
     "/relay-secret\\sto",
     "\\relay-secret/sto",
-    "/%2e%2e%2frelay-secret/sto",
+    "/x/%2e%2e%2frelay-secret/sto",
     "/how/relay-secret/x",
   ]) {
     const answer = onRequest(target);
