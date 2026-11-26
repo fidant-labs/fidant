@@ -68,7 +68,7 @@ import { Sha256 } from "./sha256.ts";
 
 export { hasForbiddenCharacters, MAX_FROM_LENGTH };
 
-/** Raise it for any change that breaks frames or sealed signals: peer.ts's version marker carries it. */
+/** Raise it for any change that breaks frames or signal payloads: peer.ts's version marker carries it. */
 export const FRAME_VERSION = 3;
 export const HEADER_BYTES = 10;
 export const TAG_BYTES = 16;

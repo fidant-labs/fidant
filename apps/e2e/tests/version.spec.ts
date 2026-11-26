@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import type { Page } from "@playwright/test";
 import {
@@ -129,6 +130,43 @@ async function blobActor(actor: (name: string) => Promise<Actor>, name: string):
   return page;
 }
 
+/** Opens a bare signaling socket in `page` that joins `link` as `attempt`, resolving once the server paired it. */
+async function joinBare(page: Page, name: string, linkId: string, attempt: string): Promise<void> {
+  await page.evaluate(
+    ({ name, linkId, attempt }) =>
+      new Promise<void>((resolve) => {
+        const url = new URL("/signal", location.href);
+        url.protocol = "wss:";
+        const ws = new WebSocket(url);
+        const seen: string[] = [];
+        Object.assign(globalThis, { [name]: { ws, seen } });
+        ws.onopen = () => ws.send(JSON.stringify({ t: "join", link: linkId, attempt }));
+        ws.onmessage = (event) => {
+          const message = JSON.parse(event.data) as { t: string; reason?: string };
+          seen.push(message.reason ? `${message.t}:${message.reason}` : message.t);
+          if (message.t === "joined") {
+            resolve();
+          }
+        };
+      }),
+    { name, linkId, attempt },
+  );
+}
+
+const sendBare = (page: Page, name: string, linkId: string, data: string) =>
+  page.evaluate(
+    ({ name, linkId, data }) => {
+      const { ws } = (globalThis as never)[name] as { ws: WebSocket };
+      ws.send(JSON.stringify({ t: "relay", link: linkId, data }));
+    },
+    { name, linkId, data },
+  );
+
+const seenBare = (page: Page, name: string) =>
+  page.evaluate((name) => ((globalThis as never)[name] as { seen: string[] }).seen, name);
+
+const bareAttempt = () => randomBytes(16).toString("base64url");
+
 /** Loads the send page with `file` chosen. */
 async function openSend(page: Page, file: CanaryFile): Promise<void> {
   await page.goto("/send");
@@ -226,6 +264,67 @@ test.describe("pages of different versions", () => {
     expect(recipientSide.sent, "the recipient's signals").toContain("commit");
     expect(recipientSide.sent, "the recipient's signals").not.toContain("answer");
     expect([...senderSide.failures, ...recipientSide.failures]).toEqual([]);
+  });
+
+  test("a joiner that forges a version marker is unbound at the join deadline", async ({
+    actor,
+    leaks,
+    canary,
+  }) => {
+    const file = leaks.watch(canaryFile(canary.fork("file"), { size: 1000 }));
+    const sender = await blobActor(actor, "sender");
+    await openSend(sender, file);
+    const name = makeName(leaks, canary, "Anna");
+    const link = await addRecipient(leaks, sender, name);
+    const { linkId, seal } = signalsOf(link);
+    const { page } = await actor("forger");
+    await page.goto("/");
+    const attempt = bareAttempt();
+    await joinBare(page, "forger", linkId, attempt);
+    await page.evaluate(({ linkId }) => Object.assign(globalThis, { forgerLink: linkId }), {
+      linkId,
+    });
+    await sendBare(page, "forger", linkId, await seal(attempt, "r", marker(4)));
+
+    await expect(recipientRow(sender, name).getByText(/newer version of Fidant/)).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect
+      .poll(() => seenBare(page, "forger"), { timeout: 30_000 })
+      .toContain("refused:drop");
+  });
+
+  test("a join right after a left that waits on a signal is not refused as busy", async ({
+    actor,
+    leaks,
+    canary,
+  }) => {
+    const file = leaks.watch(canaryFile(canary.fork("file"), { size: 1000 }));
+    const sender = await blobActor(actor, "sender");
+    await sender.addInitScript(slowDecrypt);
+    await openSend(sender, file);
+    const name = makeName(leaks, canary, "Anna");
+    const link = await addRecipient(leaks, sender, name);
+    const { linkId, seal } = signalsOf(link);
+    const { page } = await actor("forger");
+    await page.goto("/");
+    const first = bareAttempt();
+    await joinBare(page, "first", linkId, first);
+    await page.evaluate(({ linkId }) => Object.assign(globalThis, { firstLink: linkId }), {
+      linkId,
+    });
+    await sendBare(page, "first", linkId, await seal(first, "r", marker(3)));
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          const { ws } = (globalThis as unknown as { first: { ws: WebSocket } }).first;
+          ws.onclose = () => resolve();
+          ws.close();
+        }),
+    );
+    await joinBare(page, "second", linkId, bareAttempt());
+    await page.waitForTimeout(1500);
+    expect(await seenBare(page, "second")).not.toContain("refused:busy");
   });
 
   test("a page from before the version check still sends", async ({ actor, leaks, canary }) => {

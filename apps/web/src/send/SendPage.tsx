@@ -23,7 +23,8 @@
 // - On /secret, a connection whose max message size can't carry every text in
 //   one chunk (textFitsOneChunk) gets nothing: reducer `unsendable` fails the
 //   recipient's card and refuses the joiner.
-// - A peer that closes on another frame version → `outdated`, with no refusal.
+// - A peer that closes on another frame version → `outdated`, which refuses the joiner only
+//   at the join deadline, so a joiner that is still bound then is unbound as a silent one is.
 // - A peer that closes or fails before delivery → `dropped`; a data channel
 //   that has not opened SETUP_TIMEOUT_MS after the join, or a safety number
 //   not confirmed CHECK_TIMEOUT_MS after it opened → `timeout`. Both refuse
@@ -123,6 +124,8 @@ type Connection = {
   deadline?: ReturnType<typeof setTimeout>;
   /** Set once the connection's path went to the server. */
   pathSent?: boolean;
+  /** Applies a `left` that waits for the last relayed signal to be handled. */
+  pendingLeft?: () => void;
 };
 
 // Errors are kept as keys and turned into text in render, so they follow a language switch.
@@ -220,6 +223,7 @@ export function SendPage({
   const signalingRef = useRef<SignalingClient | undefined>(undefined);
   const connectionsRef = useRef(new Map<string, Connection>());
   const dispatchRef = useRef<(action: SenderAction) => void>(() => {});
+  const refusalsRef = useRef(new Set<ReturnType<typeof setTimeout>>());
 
   const host = () => {
     signalingRef.current?.send({
@@ -255,6 +259,7 @@ export function SendPage({
       return;
     }
     closeConnection(linkId);
+    const joinedAt = Date.now();
     const connection: Connection = { abort: new AbortController(), early: [] };
     connectionsRef.current.set(linkId, connection);
     const dispatch = (action: SenderAction) => dispatchRef.current(action);
@@ -373,6 +378,15 @@ export function SendPage({
         if (reason === "outdated" || reason === "peer-outdated") {
           const older = reason === "outdated" ? "sender" : "recipient";
           dispatch({ type: "outdated", linkId, older });
+          // Outlives closeConnection: an honest page has left by then, a joiner that forged the marker is unbound.
+          const refusal = setTimeout(
+            () => {
+              refusalsRef.current.delete(refusal);
+              signalingRef.current?.send({ t: "refuse", link: linkId, attempt, reason: "drop" });
+            },
+            Math.max(0, joinedAt + SETUP_TIMEOUT_MS - Date.now()),
+          );
+          refusalsRef.current.add(refusal);
           return;
         }
         // After "It differs" the recipient closes the channel as it should.
@@ -439,6 +453,12 @@ export function SendPage({
     signalingRef.current = signaling;
     let disposed = false;
     const dispatch = (action: SenderAction) => dispatchRef.current(action);
+    const clearRefusals = () => {
+      for (const refusal of refusalsRef.current) {
+        clearTimeout(refusal);
+      }
+      refusalsRef.current.clear();
+    };
 
     let lost: ReturnType<typeof setTimeout> | undefined;
     let rehost: ReturnType<typeof setTimeout> | undefined;
@@ -461,6 +481,8 @@ export function SendPage({
     signaling.subscribe((message) => {
       switch (message.t) {
         case "joined":
+          // Keeps socket order: a `left` still waiting on a signal is applied before this join.
+          connectionsRef.current.get(message.link)?.pendingLeft?.();
           dispatch({
             type: "joined",
             linkId: message.link,
@@ -478,11 +500,14 @@ export function SendPage({
             break;
           }
           // A signal relayed before `left` may close the peer with the reason the recipient left.
-          void connection.relayed.then(() => {
+          const apply = () => {
+            delete connection.pendingLeft;
             if (connectionsRef.current.get(linkId) === connection) {
               dispatch({ type: "left", linkId });
             }
-          });
+          };
+          connection.pendingLeft = apply;
+          void connection.relayed.then(() => connection.pendingLeft === apply && apply());
           break;
         }
         case "hello":
@@ -532,6 +557,7 @@ export function SendPage({
     // Once the page is really going, close the peers so recipients hear it now, not when ICE
     // consent runs out about 15 s later.
     const onPageHide = () => {
+      clearRefusals();
       for (const linkId of [...connectionsRef.current.keys()]) {
         closeConnection(linkId);
       }
@@ -542,6 +568,7 @@ export function SendPage({
       disposed = true;
       clearTimeout(lost);
       clearTimeout(rehost);
+      clearRefusals();
       window.removeEventListener("beforeunload", onBeforeUnload);
       window.removeEventListener("pagehide", onPageHide);
       hashAbortRef.current?.abort();

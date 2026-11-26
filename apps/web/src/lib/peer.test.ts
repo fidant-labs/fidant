@@ -15,6 +15,7 @@ import {
   type PeerOpenInfo,
   parseSignalPayload,
   RELAY_FALLBACK_MS,
+  UNMARKED_VERSION,
   versionMarker,
 } from "./peer.ts";
 
@@ -834,6 +835,11 @@ const recipientCommit = async () => ({
 });
 
 test("a marker for this version, or none, still connects", async () => {
+  assert.equal(
+    FRAME_VERSION,
+    UNMARKED_VERSION,
+    "the no-marker case assumes FRAME_VERSION is UNMARKED_VERSION",
+  );
   for (const marker of [versionMarker(FRAME_VERSION), undefined]) {
     resetFake(SENDER_FP);
     const sender = await harness("s");
