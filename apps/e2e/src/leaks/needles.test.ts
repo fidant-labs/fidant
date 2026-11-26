@@ -1,12 +1,22 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { test } from "node:test";
-import { canaryFile, canaryKey, defaultChunkSize, SeededRandom } from "./canary.ts";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { after, test } from "node:test";
+import {
+  canaryFile,
+  canaryKey,
+  defaultChunkSize,
+  SeededRandom,
+  writeLargeCanary,
+} from "./canary.ts";
 import {
   type ByteSecret,
   buildNeedles,
   fileSecrets,
   keySecrets,
+  minWindow,
   type Secret,
   textSecrets,
   type WindowMatch,
@@ -115,6 +125,60 @@ test("derives the secrets of a canary file", () => {
     sha256(file.name.normalize("NFD")),
   ]);
   assert.deepEqual(bytesOf("file#1 name"), [Buffer.from(file.token)]);
+});
+
+const dir = await mkdtemp(join(tmpdir(), "needles-test-"));
+after(() => rm(dir, { recursive: true, force: true }));
+const rule = { piece: 4096, every: 100_000 };
+
+test("derives the secrets of a large canary file from its samples and digest", async () => {
+  const file = await writeLargeCanary(random.fork("large"), dir, { size: 300_001, rule });
+  const secrets = fileSecrets("file#1", file);
+  assert.deepEqual(
+    secrets.map((s) => `${s.class} ${s.label}`),
+    [
+      "C file#1 at 0",
+      "C file#1 at 100000",
+      "C file#1 at 200000",
+      "C file#1 at 295905",
+      "C file#1 sha256",
+      "M file#1 name",
+      "M file#1 type",
+      "M file#1 name sha256",
+      "M file#1 name sha256",
+      "M file#1 size",
+    ],
+  );
+  const bytes = await readFile(file.path);
+  const found = (at: number, length = 16) =>
+    matches(secrets, Buffer.concat([junk, bytes.subarray(at, at + length), junk])).map(
+      (match) => match.secret.label,
+    );
+  assert.deepEqual(found(100_050), ["file#1 at 100000"]);
+  assert.deepEqual(found(295_905 + 4080), ["file#1 at 295905"]);
+  assert.deepEqual(found(50_000), []);
+  assert.deepEqual(
+    matches(secrets, Buffer.concat([junk, sha256(bytes), junk])).map((m) => m.secret.label),
+    ["file#1 sha256"],
+  );
+});
+
+test("leaves out what an empty or tiny large canary cannot check", async () => {
+  const empty = fileSecrets(
+    "empty",
+    await writeLargeCanary(random.fork("empty"), dir, { size: 0 }),
+  );
+  assert.deepEqual(
+    empty.map((s) => s.label),
+    ["empty name", "empty type", "empty name sha256", "empty name sha256"],
+  );
+  const tiny = await writeLargeCanary(random.fork("tiny"), dir, { size: minWindow - 1 });
+  const secrets = fileSecrets("tiny", tiny);
+  assert.deepEqual(
+    secrets.map((s) => s.label),
+    ["tiny sha256", "tiny name", "tiny type", "tiny name sha256", "tiny name sha256"],
+  );
+  assert.doesNotThrow(() => buildNeedles(secrets));
 });
 
 test("leaves out what an empty or one-chunk file cannot check", () => {
