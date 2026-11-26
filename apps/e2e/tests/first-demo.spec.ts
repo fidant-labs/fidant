@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import type { Page } from "@playwright/test";
+import type { Download, Page } from "@playwright/test";
 import { maskAddress } from "@sigill/protocol";
 import {
   breakableSender,
@@ -40,7 +40,7 @@ interface Demo {
 }
 
 const test = harness.extend<{ demo: Demo }>({
-  demo: async ({ actor, observed }, use) => {
+  demo: async ({ actor, observed }, use, testInfo) => {
     const names: string[] = [];
     const pageErrors: string[] = [];
     await use({
@@ -55,6 +55,9 @@ const test = harness.extend<{ demo: Demo }>({
         return page;
       },
     });
+    if (testInfo.status === "skipped") {
+      return;
+    }
 
     const frames: { type: string; text: string }[] = [];
     for (const name of names) {
@@ -174,8 +177,14 @@ async function receive(
   }
   const again = page.waitForEvent("download", { timeout: 60_000 });
   await page.getByRole("link", { name: "Save file" }).click();
-  expect((await again).suggestedFilename()).toBe(file.name);
+  expect(downloadName(page, await again)).toBe(file.name);
   return { page, bytes };
+}
+
+/** The download's name; WebKit on macOS decomposes its accents, so only WebKit's is normalized. */
+function downloadName(page: Page, saved: Download): string {
+  const name = saved.suggestedFilename();
+  return page.context().browser()?.browserType().name() === "webkit" ? name.normalize() : name;
 }
 
 /** Clicks Download on the offer screen, waits for the verified file and returns its bytes. */
@@ -186,7 +195,7 @@ async function download(page: Page, file: CanaryFile): Promise<Buffer> {
     timeout: 60_000,
   });
   const saved = await downloading;
-  expect(saved.suggestedFilename()).toBe(file.name);
+  expect(downloadName(page, saved)).toBe(file.name);
   await expect(page.getByRole("heading", { name: "Download complete" })).toBeFocused();
   return readFile(await saved.path());
 }
@@ -917,7 +926,7 @@ test.describe("a hostile path", () => {
     const failed = expectNoConnection(recipient);
     await recipient.goto(link);
     await failed(sender, name);
-    expect(changed, "changed the sender's offer").toBe(true);
+    expect(changed, "changed the sender's first signal").toBe(true);
   });
 
   test("a sender refuses its own offer reflected as the answer", async ({
@@ -927,6 +936,7 @@ test.describe("a hostile path", () => {
     canary,
   }) => {
     let offer: string | undefined;
+    let sentRelays = 0;
     let reflected = false;
     const sender = await openSender(demo, makeFile(leaks, canary, 10), "", (page) =>
       tamperSignal(page, (message, sent) => {
@@ -934,7 +944,10 @@ test.describe("a hostile path", () => {
           return message;
         }
         if (sent) {
-          offer ??= message.data;
+          // The first is the sender's version marker.
+          if (++sentRelays === 2) {
+            offer = message.data;
+          }
           return message;
         }
         if (reflected || offer === undefined) {
@@ -967,6 +980,7 @@ test.describe("a hostile path", () => {
     let signals: ReturnType<typeof signalsOf> | undefined;
     let attempt = "";
     let swapped = false;
+    let received = 0;
     const kinds: string[] = [];
     const sender = await openSender(demo, makeFile(leaks, canary, 10), "", (page) =>
       tamperSignal(page, (message, sent, toPage) => {
@@ -978,7 +992,8 @@ test.describe("a hostile path", () => {
           void signals.open(attempt, "s", message.data).then(({ kind }) => kinds.push(kind));
           return message;
         }
-        if (swapped) {
+        // The recipient's version marker comes first.
+        if (swapped || ++received < 2) {
           return message;
         }
         // The recipient's commit, swapped for one to a certificate nobody has.
@@ -1288,8 +1303,8 @@ test.describe("safety number", () => {
         const message = JSON.parse(text.toString()) as Signal;
         joins += message.t === "join" ? 1 : 0;
         server.send(text);
-        // The commit, then the answer: drop the socket as soon as the answer went out.
-        if (message.t === "relay" && ++relays === 2) {
+        // The version marker, the commit, then the answer: drop the socket as soon as the answer went out.
+        if (message.t === "relay" && ++relays === 3) {
           ws.close();
           server.close();
         }
@@ -1504,7 +1519,12 @@ test.describe("through a server restart", () => {
     observed,
     leaks,
     canary,
+    browserName,
   }) => {
+    test.fixme(
+      browserName === "webkit",
+      "SIG-287: WebKit reports the restart's close code 1012 as 1005 or 1006",
+    );
     const file = makeFile(leaks, canary, 100_001);
     const sender = await openSender(demo, file, "", (page) => page.addInitScript(holdHosts));
     const early = makeName(leaks, canary, "Anna");
@@ -1945,9 +1965,10 @@ test.describe("emailed links", () => {
       recipient.getByRole("heading", { name: "You've been sent a secret" }),
     ).toBeVisible();
     await recipient.getByRole("button", { name: "Show", exact: true }).click();
-    await expect(
-      recipient.getByRole("region", { name: "The secret", exact: true }),
-    ).toHaveJSProperty("textContent", text);
+    const shown = recipient.getByRole("region", { name: "The secret", exact: true });
+    await expect(shown).toBeVisible();
+    // Playwright's Firefox crashes the page on toHaveJSProperty after a role or label query.
+    await expect.poll(() => shown.evaluate((el) => el.textContent)).toBe(text);
     await expect(delivered(sender, name)).toBeAttached();
   });
 });

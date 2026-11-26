@@ -1,0 +1,11 @@
+*
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!apps/server/package.json
+!apps/server/relays.json
+!apps/server/entrypoint.sh
+!apps/server/src
+!packages/protocol/package.json
+!packages/protocol/src
+**/*.test.ts

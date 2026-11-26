@@ -456,6 +456,16 @@ export function breakableSender() {
   } as RTCDataChannel["send"];
 }
 
+/** Lets `context`'s pages at `origin` read and write the clipboard, with the permissions each engine has. Playwright's Firefox needs none. */
+export async function allowClipboard(context: BrowserContext, origin: string): Promise<void> {
+  const permissions: Record<string, string[]> = {
+    chromium: ["clipboard-read", "clipboard-write"],
+    webkit: ["clipboard-read"],
+  };
+  const engine = context.browser()?.browserType().name() ?? "";
+  await context.grantPermissions(permissions[engine] ?? [], { origin });
+}
+
 /** Opens a footer menu by its button name, picks one of its radio options and waits for the menu to close. */
 export async function choose(page: Page, menu: string, option: string): Promise<void> {
   await page.locator("footer").getByRole("button", { name: menu }).click();

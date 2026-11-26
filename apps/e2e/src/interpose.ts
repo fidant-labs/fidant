@@ -183,6 +183,10 @@ function middleman() {
         return connect(leg);
       }
       const pc = peers.get(leg);
+      // The recipient's version marker comes before its commit.
+      if (!pc && payload.kind === "ice") {
+        return undefined;
+      }
       if (!pc) {
         throw new Error(`${payload.kind} before a connection to the ${leg}`);
       }
