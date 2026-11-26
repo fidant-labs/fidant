@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { test } from "node:test";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { after, test } from "node:test";
 import {
   base32Token,
   canaryFile,
@@ -10,7 +13,9 @@ import {
   pickCanarySize,
   runSeed,
   SeededRandom,
+  sampledRanges,
   sizeIsCheckable,
+  writeLargeCanary,
 } from "./canary.ts";
 
 const seed = createHash("sha256").update("canary test").digest();
@@ -124,4 +129,88 @@ test("makes keys shaped like a fragment secret", () => {
   assert.equal(key.bytes.length, 32);
   assert.match(key.text, /^[A-Za-z0-9_-]{43}$/);
   assert.deepEqual(Buffer.from(key.text, "base64url"), key.bytes);
+});
+
+const MiB = 1024 * 1024;
+const ranges = (size: number) =>
+  sampledRanges(size).map(({ offset, length }) => [offset / MiB, length / MiB]);
+
+test("samples the first and last MiB of a large file and a MiB at every 64 MiB", () => {
+  const size = 200 * MiB + 123;
+  assert.deepEqual(ranges(size), [
+    [0, 1],
+    [64, 1],
+    [128, 1],
+    [192, 1],
+    [(size - MiB) / MiB, 1],
+  ]);
+  assert.deepEqual(ranges(128 * MiB), [
+    [0, 1],
+    [64, 1],
+    [127, 1],
+  ]);
+});
+
+test("joins a sample at 64 MiB with the last MiB when they overlap or touch", () => {
+  assert.deepEqual(ranges(129.5 * MiB), [
+    [0, 1],
+    [64, 1],
+    [128, 1.5],
+  ]);
+  assert.deepEqual(ranges(130 * MiB), [
+    [0, 1],
+    [64, 1],
+    [128, 2],
+  ]);
+  assert.deepEqual(ranges(64 * MiB + 1), [
+    [0, 1],
+    [(63 * MiB + 1) / MiB, 1],
+  ]);
+});
+
+test("samples all of a file of up to 2 MiB", () => {
+  assert.deepEqual(ranges(1.5 * MiB), [[0, 1.5]]);
+  assert.deepEqual(ranges(2 * MiB), [[0, 2]]);
+  assert.deepEqual(sampledRanges(1000), [{ offset: 0, length: 1000 }]);
+  assert.deepEqual(sampledRanges(0), []);
+});
+
+test("samples 76 MiB of a 5 GB file", () => {
+  const samples = sampledRanges(5e9);
+  assert.equal(samples.length, 76);
+  assert.equal(
+    samples.reduce((sum, { length }) => sum + length, 0),
+    76 * MiB,
+  );
+});
+
+const dir = await mkdtemp(join(tmpdir(), "canary-test-"));
+after(() => rm(dir, { recursive: true, force: true }));
+
+test("writes the bytes canaryFile makes and keeps the sampled ones", async () => {
+  const size = 3 * MiB + 5;
+  const rule = { piece: 300_000, every: 1_000_000 };
+  const large = await writeLargeCanary(new SeededRandom(seed).fork("large"), dir, { size, rule });
+  const { bytes, ...head } = canaryFile(new SeededRandom(seed).fork("large"), { size });
+  assert.deepEqual(await readFile(large.path), bytes);
+  assert.equal(large.path, join(dir, head.name));
+  assert.deepEqual(large.sha256, createHash("sha256").update(bytes).digest());
+  for (const key of Object.keys(head) as (keyof typeof head)[]) {
+    assert.equal(large[key], head[key], key);
+  }
+  assert.deepEqual(
+    large.samples.map(({ offset, bytes }) => ({ offset, length: bytes.length })),
+    sampledRanges(size, rule),
+  );
+  for (const sample of large.samples) {
+    assert.deepEqual(
+      sample.bytes,
+      bytes.subarray(sample.offset, sample.offset + sample.bytes.length),
+    );
+  }
+  const picked = await writeLargeCanary(new SeededRandom(seed), dir, { max: 200_000 });
+  assert.deepEqual(
+    await readFile(picked.path),
+    canaryFile(new SeededRandom(seed), { max: 200_000 }).bytes,
+  );
 });
