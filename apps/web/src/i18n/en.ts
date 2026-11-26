@@ -954,17 +954,18 @@ export const en = {
           "INIT: the sender sends the transfer ID. It is the only frame not encrypted. Changing it changes the file key, so the next frame fails to decrypt. Replaying it in a later attempt doesn't work either, because the recipient's new attempt ID changes the key.",
           "CHECK: with the safety number on, each side's answer, encrypted, once the person on that side has compared the numbers: matches or differs. META waits for both answers.",
           "META: the file name, size and type and the sender's typed name, encrypted. The recipient sees them and chooses.",
-          "ACCEPT or DECLINE: the recipient's answer, encrypted. ACCEPT also proves that the recipient has the key. No file data is sent before it.",
+          "ACCEPT or DECLINE: the recipient's answer, encrypted. ACCEPT also says where to start: at the beginning, or after the part of the file a dropped connection left with the recipient. It proves that the recipient has the key. No file data is sent before it.",
           "CREDIT: how many chunks the sender may send, encrypted. The recipient grants 128 at a time and more as it writes them, so a slow recipient never has more than about 6 MiB waiting. A sender that gets further ahead than that is stopped.",
-          "CHUNK: the file in frames of equal size, up to 48 KiB each.",
-          "END: the file's exact size and the checksum computed when it was chosen.",
-          "RECEIPT: the checksum the recipient computed from what arrived. The sender counts the file as delivered only when it matches.",
+          "CHUNK: the file in frames of equal size, up to 48 KiB each, from where ACCEPT says.",
+          "END: the whole file's exact size and the checksum computed when it was chosen.",
+          "RECEIPT: the checksum the recipient computed from what arrived. The sender counts the file as delivered only when it matches. It isn't proof that the file arrived: END already carries the checksum, so a modified recipient's page, which has the key anyway, can skip every chunk and send the checksum back.",
         ],
       },
       check: {
         heading: "Checking the file",
         body: [
-          "The recipient's browser hashes the file as it arrives, and checks the size, the number of chunks, the padding and the checksum against END. Only when everything matches is the file kept. Any other ending, such as a frame that fails to decrypt or a connection that closes early, throws away what was written.",
+          "The recipient's browser hashes the file as it arrives, and checks the size, the number of chunks, the padding and the checksum against END. Only when everything matches is the file finished. A frame that fails to decrypt, a checksum that doesn't match or any other failed check throws away what was written.",
+          "A lost connection is different. If every frame so far checked out, the recipient's page keeps what arrived, in memory or in the file they chose to save to, and Try again continues from there. Try again makes a new connection with a new key. If the sender offers the same file again, with the same name, size, type, chunk size and sender's name, the page doesn't show the offer or a save dialog again. It tells the sender how much it already has, so only the rest is sent. With the safety number on, the number is still compared first. The checksum covers the whole file, so if the rest doesn't belong with what already arrived, the check fails. A different offer starts from the beginning, and so does a shared secret. What arrived stays only in that tab: it is gone when the tab closes or reloads, or when the transfer ends some other way.",
           "Desktop Chromium browsers such as Chrome and Edge can write the file straight to a place on the disk the recipient chooses. Other browsers collect it in memory and start the download at the end, and for a file over 256 MiB the recipient is warned first. The download is always marked as plain binary data, whatever type the sender claims, so a file can't run as a web page on Fidant's site.",
           "Names are refused if they contain control characters, line separators, Unicode direction controls, blank filler characters or long runs of spaces. So a name ending in .exe can't be made to look like one ending in .pdf.",
         ],
@@ -972,7 +973,7 @@ export const en = {
       padding: {
         heading: "Hiding the exact size",
         body: [
-          "Anyone who can see the encrypted traffic, such as the networks on the way or our relay, sees how big the frames are. So the size is rounded up with the Padmé scheme, which adds at most 12 %, and then to whole chunks. Every chunk frame has the same size, and the padding is zeros that the recipient checks.",
+          "Anyone who can see the encrypted traffic, such as the networks on the way or our relay, sees how big the frames are. So the size is rounded up with the Padmé scheme, which adds at most 12 %, and then to whole chunks. Every chunk frame has the same size, and the padding is zeros that the recipient checks. A download that continues after a dropped connection sends only the rest, in frames of the same sizes, so someone who sees both attempts can add them up to the same rounded size as one whole transfer.",
           "The exact size travels only inside the encrypted META and END. META always has the same size, so the length of the file name doesn't show either.",
           "A shared secret is at most 32 KiB, and every shared secret is padded to exactly one chunk. The app enforces this: if a connection only allows messages too small for a 32 KiB chunk, nothing is sent over it, and the sender sees that the secret wasn't sent. With every browser we tested in November 2026 (Chromium, Firefox and WebKit), the chunk is 48 KiB. So every shared secret looks the same on the wire, whatever its length, and the same as any file of up to 48 KiB.",
         ],
@@ -1008,7 +1009,7 @@ export const en = {
         body: [
           "One send can go to up to 256 people. Each has their own link, key, connection and transfer.",
           "A link counts as used only once the recipient's RECEIPT matches. After that it is refused. A link that is already connected in one tab is refused in another, and so is a link that has had 10 connection attempts in the current 30-second window.",
-          "Until then the link can be opened again: after a decline, a dropped connection or a failed check. Every new attempt has a new transfer ID and attempt ID, and so a new file key. A link with the safety number on stops working after 5 attempts that ended before both people confirmed the number. An attempt the sender's page stopped because the two pages run different versions doesn't count.",
+          "Until then the link can be opened again: after a decline, a dropped connection or a failed check. After a dropped connection, Try again in the same tab continues the download where it stopped. Every new attempt has a new transfer ID and attempt ID, and so a new file key. A link with the safety number on stops working after 5 attempts that ended before both people confirmed the number. An attempt the sender's page stopped because the two pages run different versions doesn't count.",
           "Nothing is stored, so a link works only while the sender's page is open. When it closes, our server forgets its links within a minute.",
         ],
       },
@@ -1221,7 +1222,7 @@ export const en = {
         ],
         [
           "A piece of the file is changed, dropped, repeated or reordered",
-          "Every frame is authenticated and numbered, and the recipient checks the size and the SHA-256 checksum. Anything else stops the transfer and throws away what was written.",
+          "Every frame is authenticated and numbered, and the recipient checks the size and the SHA-256 checksum. A frame or a checksum that doesn't check out stops the transfer and throws away what was written.",
         ],
         [
           "A link is opened twice, or by someone else after delivery",
@@ -1485,6 +1486,10 @@ export const en = {
             [
               "file",
               "The file, where they save it: desktop Chromium browsers such as Chrome and Edge write it where the recipient chooses, other browsers to their downloads.",
+            ],
+            [
+              "file",
+              "If the connection drops while the file arrives: the part that arrived, in the page's memory or in the file they chose to save to, so that Try again can continue it. It stays until Try again continues it, the transfer ends some other way, or the tab closes or reloads.",
             ],
             [
               "secret",
