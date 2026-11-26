@@ -906,7 +906,7 @@ export const en = {
         body: [
           "Two keys are derived from the secret with HKDF-SHA-256. Both are AES-256-GCM keys that the browser marks as non-extractable: the page can use them, but can't read them out.",
           "The signal key encrypts the setup messages. Its salt is the link ID.",
-          "The file key encrypts every frame between the browsers except the first, INIT, which carries only the random transfer ID. The file key's salt is made of two random values: a transfer ID that the sender picks for every attempt, and an attempt ID that the recipient's page picks every time it connects. So neither a retried transfer nor a replayed first frame ever reuses a key and nonce pair.",
+          "The file key encrypts every frame between the browsers except the first, INIT, which carries only the random transfer ID. The file key's salt is made of two random values: that transfer ID, which the sender picks for every attempt, and an attempt ID that the recipient's page picks every time it connects. So neither a retried transfer nor a replayed first frame ever reuses a key and nonce pair.",
         ],
       },
       signal: {
@@ -946,8 +946,8 @@ export const en = {
         heading: "Checking the file",
         body: [
           "The recipient's browser hashes the file as it arrives, and checks the size, the number of chunks, the padding and the checksum against END. Only when everything matches is the file kept. Any other ending, such as a frame that fails to decrypt or a connection that closes early, throws away what was written.",
-          "Chrome and Edge can write the file straight to a place on the disk the recipient chooses. Other browsers collect it in memory and start the download at the end, and for a file over 256 MiB the recipient is warned first. The download is always marked as plain binary data, whatever type the sender claims, so a file can't run as a web page on Fidant's site.",
-          "Names are refused if they contain control characters, line separators, the Unicode characters that override or isolate text direction, blank filler characters or long runs of spaces. So a name ending in .exe can't be made to look like one ending in .pdf.",
+          "Desktop Chromium browsers such as Chrome and Edge can write the file straight to a place on the disk the recipient chooses. Other browsers collect it in memory and start the download at the end, and for a file over 256 MiB the recipient is warned first. The download is always marked as plain binary data, whatever type the sender claims, so a file can't run as a web page on Fidant's site.",
+          "Names are refused if they contain control characters, line separators, Unicode direction controls, blank filler characters or long runs of spaces. So a name ending in .exe can't be made to look like one ending in .pdf.",
         ],
       },
       padding: {
@@ -988,7 +988,7 @@ export const en = {
         heading: "Several recipients and one-time links",
         body: [
           "One send can go to up to 256 people. Each has their own link, key, connection and transfer.",
-          "A link counts as used only once the recipient's RECEIPT matches. After that it is refused. A link that is already open in one tab is refused in another.",
+          "A link counts as used only once the recipient's RECEIPT matches. After that it is refused. A link that is already connected in one tab is refused in another.",
           "Until then the link can be opened again: after a decline, a dropped connection or a failed check. Every new attempt has a new transfer ID and attempt ID, and so a new file key. A link with the safety number on stops working after 5 attempts that ended before both people confirmed the number. An attempt the sender's page stopped because the two pages run different versions doesn't count.",
           "Nothing is stored, so a link works only while the sender's page is open. When it closes, our server forgets its links within a minute.",
         ],
@@ -1038,7 +1038,7 @@ export const en = {
       planned: {
         heading: "Planned: verified transfers",
         body: [
-          "Not built yet. The plan: the recipient signs a receipt with BankID before they can open the file, and the receipt names the file. The file key is split, and our server releases its half only after the receipt is signed. Events go into an audit log that makes tampering visible, anchored with trusted timestamps.",
+          "Not built yet. The plan: the recipient signs a receipt with BankID before they can open the file, and the receipt names the file. The key is split, and our server releases its half only after the receipt is signed. Events go into an audit log that makes tampering visible, anchored with trusted timestamps.",
           "When it ships, this page will describe it as a new mode.",
         ],
         link: [
@@ -1206,7 +1206,7 @@ export const en = {
         ],
         [
           "A link is opened twice, or by someone else after delivery",
-          "A link is refused once its file is delivered, and in a second tab while it is open in one.",
+          "A link is refused once its file is delivered, and in a second tab while one is connected to it.",
         ],
         [
           "An emailed link is forwarded or fetched by a mail scanner",
@@ -1461,7 +1461,7 @@ export const en = {
             ],
             [
               "file",
-              "The file, where they save it: Chrome and Edge write it where the recipient chooses, other browsers to their downloads.",
+              "The file, where they save it: desktop Chromium browsers such as Chrome and Edge write it where the recipient chooses, other browsers to their downloads.",
             ],
             [
               "secret",

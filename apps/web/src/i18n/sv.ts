@@ -862,7 +862,7 @@ export const sv: Messages = {
         body: [
           "Två nycklar tas fram ur hemligheten med HKDF-SHA-256. Båda är AES-256-GCM-nycklar som webbläsaren markerar som icke-exporterbara: sidan kan använda dem men inte läsa ut dem.",
           "Signalnyckeln krypterar meddelandena för uppkopplingen. Dess salt är länk-ID:t.",
-          "Filnyckeln krypterar varje ram mellan webbläsarna utom den första, INIT, som bara innehåller det slumpmässiga överförings-ID:t. Filnyckelns salt består av två slumpmässiga värden: ett överförings-ID som avsändaren väljer för varje försök och ett försöks-ID som mottagarens sida väljer varje gång den ansluter. Därför använder varken en omstartad överföring eller en återuppspelad första ram samma nyckel och nonce två gånger.",
+          "Filnyckeln krypterar varje ram mellan webbläsarna utom den första, INIT, som bara innehåller det slumpmässiga överförings-ID:t. Filnyckelns salt består av två slumpmässiga värden: det överförings-ID:t, som avsändaren väljer för varje försök, och ett försöks-ID som mottagarens sida väljer varje gång den ansluter. Därför använder varken en omstartad överföring eller en återuppspelad första ram samma nyckel och nonce två gånger.",
         ],
       },
       signal: {
@@ -902,8 +902,8 @@ export const sv: Messages = {
         heading: "Kontrollen av filen",
         body: [
           "Mottagarens webbläsare räknar kontrollsumman medan filen kommer fram och kontrollerar storleken, antalet delar, utfyllnaden och kontrollsumman mot END. Filen sparas bara om allt stämmer. Varje annat slut, till exempel en ram som inte går att dekryptera eller en anslutning som stängs för tidigt, kastar det som har skrivits.",
-          "Chrome och Edge kan skriva filen direkt till en plats på disken som mottagaren väljer. Andra webbläsare samlar den i minnet och startar nedladdningen i slutet, och för en fil över 256 MiB varnas mottagaren först. Nedladdningen märks alltid som rena binärdata, vilken typ avsändaren än anger, så en fil kan inte köras som en webbsida på Fidants webbplats.",
-          "Namn nekas om de innehåller styrtecken, radavgränsare, Unicode-tecken som åsidosätter eller isolerar textriktning, tomma utfyllnadstecken eller långa följder av mellanslag. Därför kan ett namn som slutar på .exe inte se ut att sluta på .pdf.",
+          "Chromium-webbläsare på datorn, som Chrome och Edge, kan skriva filen direkt till en plats på disken som mottagaren väljer. Andra webbläsare samlar den i minnet och startar nedladdningen i slutet, och för en fil över 256 MiB varnas mottagaren först. Nedladdningen märks alltid som rena binärdata, vilken typ avsändaren än anger, så en fil kan inte köras som en webbsida på Fidants webbplats.",
+          "Namn nekas om de innehåller styrtecken, radavgränsare, Unicodes styrtecken för textriktning, tomma utfyllnadstecken eller långa följder av mellanslag. Därför kan ett namn som slutar på .exe inte se ut att sluta på .pdf.",
         ],
       },
       padding: {
@@ -944,7 +944,7 @@ export const sv: Messages = {
         heading: "Flera mottagare och engångslänkar",
         body: [
           "En sändning kan gå till upp till 256 personer. Var och en har en egen länk, nyckel, anslutning och överföring.",
-          "En länk räknas som använd först när mottagarens RECEIPT stämmer. Därefter nekas den. En länk som redan är öppen i en flik nekas i en annan.",
+          "En länk räknas som använd först när mottagarens RECEIPT stämmer. Därefter nekas den. En länk som redan är ansluten i en flik nekas i en annan.",
           "Fram till dess kan länken öppnas igen: efter att mottagaren tackat nej, efter en bruten anslutning eller efter en misslyckad kontroll. Varje nytt försök har ett nytt överförings-ID och ett nytt försöks-ID, och därmed en ny filnyckel. En länk med kontrollnummer slutar fungera efter 5 försök som tog slut innan båda hade bekräftat numret. Ett försök som avsändarens sida stoppade för att de två sidorna kör olika versioner räknas inte.",
           "Ingenting sparas, så en länk fungerar bara medan avsändarens sida är öppen. När den stängs glömmer vår server dess länkar inom en minut.",
         ],
@@ -994,7 +994,7 @@ export const sv: Messages = {
       planned: {
         heading: "Planerat: verifierade överföringar",
         body: [
-          "Inte byggt ännu. Planen: mottagaren skriver under ett kvitto med BankID innan filen går att öppna, och kvittot namnger filen. Filnyckeln delas, och vår server lämnar ut sin halva först när kvittot är underskrivet. Händelser hamnar i en granskningslogg där manipulation syns, förankrad med betrodda tidsstämplar.",
+          "Inte byggt ännu. Planen: mottagaren skriver under ett kvitto med BankID innan filen går att öppna, och kvittot namnger filen. Nyckeln delas, och vår server lämnar ut sin halva först när kvittot är underskrivet. Händelser hamnar i en granskningslogg där manipulation syns, förankrad med betrodda tidsstämplar.",
           "När det finns beskriver den här sidan det som ett nytt läge.",
         ],
         link: [
@@ -1162,7 +1162,7 @@ export const sv: Messages = {
         ],
         [
           "En länk öppnas två gånger, eller av någon annan efter leveransen",
-          "En länk nekas när dess fil har levererats, och i en andra flik medan den är öppen i en.",
+          "En länk nekas när dess fil har levererats, och i en andra flik medan en flik är ansluten till den.",
         ],
         [
           "En mejlad länk vidarebefordras eller hämtas av en mejlskanner",
@@ -1430,7 +1430,7 @@ export const sv: Messages = {
             ],
             [
               "file",
-              "Filen, där de sparar den: Chrome och Edge skriver den dit mottagaren väljer, andra webbläsare till sina nedladdningar.",
+              "Filen, där de sparar den: Chromium-webbläsare på datorn, som Chrome och Edge, skriver den dit mottagaren väljer, andra webbläsare till sina nedladdningar.",
             ],
             [
               "secret",

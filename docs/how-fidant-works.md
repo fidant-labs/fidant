@@ -164,7 +164,7 @@ iv     = direction(1: 0 sender, 1 recipient) ‖ 00 00 00 ‖ seq(8)
 
 META's `chunkSize` must be at least 986 bytes (`MIN_CHUNK_BYTES`): the META frame (1,050 bytes) must fit the channel, so no honest sender's chunk is smaller, and a sender that claims tiny chunks can't make an in-memory recipient hold millions of separate parts. A recipient holds at most 129 incoming frames that it hasn't handled yet (the window and END), and a sender at most 8. One more ends the transfer as a broken format (`createInbox` in `inbox.ts`), so a sender that ignores its credit can't fill the recipient's memory: what waits for a slow sink stays at about 128 × `chunkSize`, 6 MiB at 48 KiB, whatever the file's size.
 
-`apps/web/src/lib/sink.ts`: where the browser has `showSaveFilePicker` (Chromium), the file streams to a place the recipient chose. Elsewhere it is collected in memory as a Blob and downloaded at the end, and an offer of a file over 256 MiB warns the recipient of that (`BLOB_WARN_BYTES`). A shared secret is always collected in memory and never downloaded (see "Sharing a secret"). The Blob is always `application/octet-stream`, whatever type the sender claims, so a file can't run as a page in Fidant's origin.
+`apps/web/src/lib/sink.ts`: where the browser has `showSaveFilePicker` (desktop Chromium browsers), the file streams to a place the recipient chose. Elsewhere it is collected in memory as a Blob and downloaded at the end, and an offer of a file over 256 MiB warns the recipient of that (`BLOB_WARN_BYTES`). A shared secret is always collected in memory and never downloaded (see "Sharing a secret"). The Blob is always `application/octet-stream`, whatever type the sender claims, so a file can't run as a page in Fidant's origin.
 
 ### Names
 
