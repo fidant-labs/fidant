@@ -187,14 +187,14 @@ test("every other path gets the 404 page, the Swedish one under /sv", () => {
   }
 });
 
-test("a URI past 512 characters gets 414 with the headers on every host, before any other rule", () => {
+test("a path past 256 characters gets 414 with the headers on every host, before any other rule", () => {
   const escapes = (count: number) => `/${"%41".repeat(count)}`;
-  assert.equal(onRequest(`${escapes(170)}A`).uri, "/pages/404.html");
+  assert.equal(onRequest(escapes(85)).uri, "/pages/404.html");
   for (const [target, host] of [
-    [`${escapes(170)}AB`, "fidant.se"],
+    [`${escapes(85)}A`, "fidant.se"],
     [escapes(2730), "fidant.se"],
     [escapes(2730), "www.fidant.se"],
-    [`/relay-secret/sto${"/".repeat(500)}`, "fidant.se"],
+    [`/relay-secret/sto${"/".repeat(240)}`, "fidant.se"],
   ] as const) {
     const answer = onRequest(target, { host });
     assert.equal(answer.statusCode, 414, `${target.length} ${host}`);
@@ -203,6 +203,19 @@ test("a URI past 512 characters gets 414 with the headers on every host, before 
   const response = onResponse(viewer(escapes(2730)), 414, {});
   assert.equal(response.statusCode, 414);
   assert.deepEqual(response.headers, {});
+});
+
+test("the function uses no regular expression, whose limits CloudFront hits within 512 characters", () => {
+  assert.doesNotMatch(
+    code,
+    /\.(?:test|exec|match|matchAll|replace|replaceAll|search)\(|RegExp|split\(\//,
+  );
+});
+
+test("every page and moved path has serveStatic's page shape, which the function no longer checks", () => {
+  for (const path of [...pages, "/technical"]) {
+    assert.match(path, /^(?:\/[a-z]+(?:-[a-z]+)*)*\/?$/, path);
+  }
 });
 
 test("a malformed path gets 400 and one above the root 404, both with the headers", () => {

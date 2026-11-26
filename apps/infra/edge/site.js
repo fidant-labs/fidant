@@ -1,9 +1,12 @@
 // cloudfront-js-2.0 has no ??, ?., spread, destructuring, default parameters, for...of, Set or Map.
 
 const SITE = "fidant.se";
-// CloudFront stops the function when its regexes run too long, as an 8 KB URI of escapes made them.
-const MAX_URI = 512;
-const PAGE_PATH = /^(?:\/[a-z]+(?:-[a-z]+)*)*\/?$/;
+// CloudFront's regex limits stop a function on 512 characters, so this file uses none.
+const MAX_URI = 256;
+const LOWER = "abcdefghijklmnopqrstuvwxyz";
+const DIGITS = "0123456789";
+const HEX = `${DIGITS}abcdefABCDEF`;
+const WORD = `${LOWER}${LOWER.toUpperCase()}${DIGITS}_`;
 const MOVED = { "/technical": "/how" };
 const PAGES = [
   "/",
@@ -47,7 +50,7 @@ const PAGES = [
   "/sv/sakerhet",
   "/sv/villkor",
 ];
-const RELAY_SECRET = /^\/relay-secret\/[a-z][a-z0-9]{1,15}$/;
+const RELAY_SECRET = "/relay-secret/";
 const KINDS = ["receive", "page"];
 const TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -69,12 +72,25 @@ const HEADERS = {
   "strict-transport-security": "max-age=31536000; includeSubDomains",
 };
 
+function only(text, allowed) {
+  for (let i = 0; i < text.length; i++) {
+    if (allowed.indexOf(text.charAt(i)) < 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function slashes(text) {
+  return text.split("\\").join("/");
+}
+
 // serveStatic reads the path through the URL parser, which resolves dot segments before decoding.
 function urlPath(uri) {
-  const parts = uri.replace(/\\/g, "/").split("/").slice(1);
+  const parts = slashes(uri).split("/").slice(1);
   const out = [];
   parts.forEach((part, i) => {
-    const dots = part.toLowerCase().replace(/%2e/g, ".");
+    const dots = part.toLowerCase().split("%2e").join(".");
     if (dots === "." || dots === "..") {
       if (dots === "..") {
         out.pop();
@@ -119,22 +135,22 @@ function decide(uri) {
   if (ext !== "" && ext.toLowerCase() !== ".html") {
     return { kind: "file", uri: `/${file.map(encodeURIComponent).join("/")}`, ext: ext };
   }
-  if (PAGE_PATH.test(pathname)) {
-    const bare = pathname.length > 1 ? pathname.replace(/\/$/, "") : pathname;
-    const target = MOVED[bare] || bare;
-    if (PAGES.includes(target)) {
-      if (target !== pathname) {
-        return { kind: "moved", location: target };
-      }
-      return {
-        kind: "page",
-        uri: target === "/" ? "/pages/index.html" : `/pages${target}/index.html`,
-      };
+  // Every page and moved path is lowercase words joined by hyphens, so the list alone is serveStatic's rule.
+  const bare = pathname.length > 1 && pathname.slice(-1) === "/" ? pathname.slice(0, -1) : pathname;
+  const target = MOVED[bare] || bare;
+  if (PAGES.includes(target) && (bare !== "/" || pathname === "/")) {
+    if (target !== pathname) {
+      return { kind: "moved", location: target };
     }
+    return {
+      kind: "page",
+      uri: target === "/" ? "/pages/index.html" : `/pages${target}/index.html`,
+    };
   }
   return {
     kind: "404",
-    uri: /^\/sv(?:\/|$)/.test(pathname) ? "/pages/sv/404.html" : "/pages/404.html",
+    uri:
+      pathname === "/sv" || pathname.startsWith("/sv/") ? "/pages/sv/404.html" : "/pages/404.html",
   };
 }
 
@@ -160,10 +176,27 @@ function generated(statusCode, location) {
 
 // CloudFront picks the behaviour from a normalised path and AWS gives no order for its steps.
 function underRelaySecret(uri) {
-  const plain = uri
-    .replace(/%([0-9a-f]{2})/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
-    .replace(/\\/g, "/");
-  return plain.includes("/relay-secret/");
+  const parts = uri.split("%");
+  let plain = parts[0];
+  for (let i = 1; i < parts.length; i++) {
+    const hex = parts[i].slice(0, 2);
+    plain +=
+      hex.length === 2 && only(hex, HEX)
+        ? String.fromCharCode(parseInt(hex, 16)) + parts[i].slice(2)
+        : `%${parts[i]}`;
+  }
+  return slashes(plain).includes(RELAY_SECRET);
+}
+
+function relayId(uri) {
+  const id = uri.slice(RELAY_SECRET.length);
+  return (
+    uri.startsWith(RELAY_SECRET) &&
+    id.length >= 2 &&
+    id.length <= 16 &&
+    only(id.charAt(0), LOWER) &&
+    only(id, LOWER + DIGITS)
+  );
 }
 
 function viewerRequest(request) {
@@ -175,7 +208,7 @@ function viewerRequest(request) {
     return generated(301, `https://${SITE}${request.uri}${query(request, true)}`);
   }
   if (underRelaySecret(request.uri)) {
-    return RELAY_SECRET.test(request.uri) ? request : generated(404);
+    return relayId(request.uri) ? request : generated(404);
   }
   const decision = decide(request.uri);
   if (decision.kind === "400") {
@@ -189,7 +222,11 @@ function viewerRequest(request) {
   }
   if (decision.kind === "receive") {
     const lang = request.headers["accept-language"];
-    const sv = lang ? /^sv\b/i.test(lang.value) : false;
+    const next = lang ? lang.value.charAt(2) : "";
+    const sv =
+      lang !== undefined &&
+      lang.value.slice(0, 2).toLowerCase() === "sv" &&
+      (next === "" || WORD.indexOf(next) < 0);
     decision.uri = sv ? "/index.receive.sv.html" : "/index.receive.en.html";
   }
   request.headers["x-fidant-page"] = { value: decision.kind };
