@@ -7,6 +7,7 @@ import {
   encodeInit,
   encodeMeta,
   FRAME_OVERHEAD_BYTES,
+  FRAME_VERSION,
   FrameReader,
   FrameWriter,
   HEADER_BYTES,
@@ -357,6 +358,27 @@ test("rejects a link with the wrong secret before offering anything", async () =
   assert.equal(r.offers.length, 0);
   r.pair.close();
   await assert.rejects(r.sending);
+});
+
+test("an INIT of another frame version says which page must reload, and offers nothing", async () => {
+  for (const [version, reason] of [
+    [FRAME_VERSION - 1, "peer-outdated"],
+    [FRAME_VERSION + 1, "outdated"],
+  ] as const) {
+    const pair = channelPair({
+      toRecipient(frame) {
+        if (frame[1] === SenderKind.INIT) {
+          frame[0] = version;
+        }
+        return frame;
+      },
+    });
+    const r = run({ bytes: new Uint8Array(1000), pair });
+    await assert.rejects(r.receiving, failedWith(reason));
+    assert.deepEqual(r.offers, []);
+    pair.close();
+    await assert.rejects(r.sending);
+  }
 });
 
 test("a checksum mismatch discards the file and tells the sender", async () => {

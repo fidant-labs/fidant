@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { type TestContext, test } from "node:test";
 import { checkNumber, commitFingerprint } from "./check.ts";
+import { FRAME_VERSION } from "./frames.ts";
 import { deriveSignalKey, openSignal, sealSignal } from "./keys.ts";
 import { createLink } from "./link.ts";
 import {
@@ -9,10 +10,13 @@ import {
   createRecipientPeer,
   createSenderPeer,
   errorName,
+  markedVersion,
   type PeerCloseReason,
   type PeerOpenInfo,
   parseSignalPayload,
   RELAY_FALLBACK_MS,
+  UNMARKED_VERSION,
+  versionMarker,
 } from "./peer.ts";
 
 const candidate = {
@@ -93,6 +97,51 @@ test("parseSignalPayload rejects anything else", () => {
   ]) {
     assert.equal(parseSignalPayload(value), undefined, JSON.stringify(value));
   }
+});
+
+test("the version marker is an ICE signal with a fragment no ICE agent makes", () => {
+  const marker = versionMarker(FRAME_VERSION);
+  assert.deepEqual(parseSignalPayload(marker), marker);
+  assert.equal(markedVersion(marker), FRAME_VERSION);
+  const fragment = marker.kind === "ice" ? marker.candidate?.usernameFragment : undefined;
+  // RFC 8839: an ICE username fragment is ALPHA, DIGIT, "+" and "/" only.
+  assert.doesNotMatch(fragment ?? "", /^[A-Za-z0-9+/]*$/);
+});
+
+test("markedVersion reads only the exact marker", () => {
+  const marker = (fields: object) => ({
+    kind: "ice" as const,
+    candidate: {
+      candidate: "",
+      sdpMid: null,
+      sdpMLineIndex: null,
+      usernameFragment: "fidant-v3",
+      ...fields,
+    },
+  });
+  assert.equal(markedVersion(marker({ usernameFragment: "fidant-v1" })), 1);
+  assert.equal(markedVersion(marker({ usernameFragment: "fidant-v999" })), 999);
+  for (const fields of [
+    { usernameFragment: "fidant-v0" },
+    { usernameFragment: "fidant-v03" },
+    { usernameFragment: "fidant-v1000" },
+    { usernameFragment: "fidant-v3 " },
+    { usernameFragment: " fidant-v3" },
+    { usernameFragment: "fidant-v3\n" },
+    { usernameFragment: "fidant-v" },
+    { usernameFragment: "fidant-v-3" },
+    { usernameFragment: "Fidant-v3" },
+    { usernameFragment: null },
+    { candidate: candidate.candidate },
+    { candidate: " " },
+    { sdpMid: "0" },
+    { sdpMid: "" },
+    { sdpMLineIndex: 0 },
+  ]) {
+    assert.equal(markedVersion(marker(fields)), undefined, JSON.stringify(fields));
+  }
+  assert.equal(markedVersion({ kind: "ice", candidate: null }), undefined);
+  assert.equal(markedVersion({ kind: "commit", hash: HASH }), undefined);
 });
 
 test("assertFrameFits throws only for frames over the limit", () => {
@@ -253,7 +302,13 @@ class FakePeerConnection {
 // Taken before any test mocks the timers, so waiting for signals still works.
 const realSetTimeout = globalThis.setTimeout;
 
-async function harness(side: "s" | "r", check?: boolean, iceServers: RTCIceServer[] = []) {
+/** `wait` false returns before the peer's own first signals went out. */
+async function harness(
+  side: "s" | "r",
+  check?: boolean,
+  iceServers: RTCIceServer[] = [],
+  wait = true,
+) {
   const { linkId, secret } = createLink("https://localhost");
   const key = await deriveSignalKey(secret, linkId);
   const attempt = "A".repeat(22);
@@ -284,18 +339,19 @@ async function harness(side: "s" | "r", check?: boolean, iceServers: RTCIceServe
   const settle = () => new Promise((resolve) => realSetTimeout(resolve, 10));
   const relayFrom = async (direction: "s" | "r", otherAttempt: string, payload: unknown) =>
     peer.handleRelay(await sealSignal(key, linkId, otherAttempt, direction, payload));
-  /** Every signal sent so far, once at least `count` went out. */
+  /** Every signal sent after the version marker so far, once at least `count` of them went out. */
   const signals = async (count = 0) => {
-    for (let i = 0; i < 500 && sent.length < count; i++) {
+    for (let i = 0; i < 500 && sent.length < count + 1; i++) {
       await settle();
     }
     await settle();
-    return Promise.all(sent);
+    const [marker, ...rest] = await Promise.all(sent);
+    assert.deepEqual(marker, versionMarker(FRAME_VERSION), "the first signal is the marker");
+    return rest;
   };
-  if (side === "r") {
-    // The recipient seals its commit in the background, and a peer that fails
-    // drops what it has not sent yet, so a test that fails it early waits first.
-    await signals(1);
+  if (wait) {
+    // A peer that fails drops what it has not sealed yet, so wait for its own first signals.
+    await signals(side === "r" ? 1 : 0);
   }
   return { peer, relay, relayFrom, signals, closes, opens };
 }
@@ -352,7 +408,7 @@ test("the sender refuses a second commitment", async () => {
   assert.equal(h.closes[0]?.reason, "bad-signal");
 });
 
-test("the recipient commits to its certificate before anything else", async () => {
+test("the recipient sends its version marker, then commits to its certificate", async () => {
   FakePeerConnection.fingerprints = [RECIPIENT_FP];
   const h = await harness("r");
   assert.deepEqual(await h.signals(1), [
@@ -769,4 +825,135 @@ test("drops candidates for another ICE username fragment, queued ones too", asyn
     ["s1", null, "s2"],
   );
   assert.deepEqual(recipient.closes, []);
+});
+
+const newer = versionMarker(FRAME_VERSION + 1);
+const older = versionMarker(FRAME_VERSION - 1);
+const recipientCommit = async () => ({
+  kind: "commit",
+  hash: await commitFingerprint(RECIPIENT_FP),
+});
+
+test("a marker for this version, or none, still connects", async () => {
+  assert.equal(
+    FRAME_VERSION,
+    UNMARKED_VERSION,
+    "the no-marker case assumes FRAME_VERSION is UNMARKED_VERSION",
+  );
+  for (const marker of [versionMarker(FRAME_VERSION), undefined]) {
+    resetFake(SENDER_FP);
+    const sender = await harness("s");
+    if (marker) {
+      await sender.relay(marker);
+    }
+    await sender.relay(await recipientCommit());
+    await sender.relay({ kind: "answer", sdp: sdpWith(RECIPIENT_FP, "r1") });
+    assert.deepEqual(await kinds(sender, 1), ["offer"]);
+    assert.deepEqual(sender.closes, []);
+    assert.deepEqual(lastPc().added, []);
+
+    resetFake(RECIPIENT_FP);
+    const recipient = await harness("r");
+    if (marker) {
+      await recipient.relay(marker);
+    }
+    await recipient.relay({ kind: "offer", sdp: sdpWith(SENDER_FP, "s1"), check: false });
+    assert.deepEqual(await kinds(recipient, 2), ["commit", "answer"]);
+    assert.deepEqual(recipient.closes, []);
+    assert.deepEqual(lastPc().added, []);
+  }
+});
+
+test("a second marker, or one after the commit or the offer, reaches no addIceCandidate and closes nothing", async () => {
+  const here = versionMarker(FRAME_VERSION);
+  for (const late of [newer, older]) {
+    for (const sequence of [
+      [here, late, await recipientCommit(), late],
+      [await recipientCommit(), late],
+    ]) {
+      resetFake(SENDER_FP);
+      const sender = await harness("s");
+      for (const payload of sequence) {
+        await sender.relay(payload);
+      }
+      await sender.relay({ kind: "answer", sdp: sdpWith(RECIPIENT_FP, "r1") });
+      await sender.relay(late);
+      assert.deepEqual(sender.closes, []);
+      assert.deepEqual(lastPc().added, []);
+      assert.deepEqual(await kinds(sender, 1), ["offer"]);
+    }
+
+    for (const before of [[here, late], []]) {
+      resetFake(RECIPIENT_FP);
+      const recipient = await harness("r");
+      for (const payload of before) {
+        await recipient.relay(payload);
+      }
+      await recipient.relay({ kind: "offer", sdp: sdpWith(SENDER_FP, "s1"), check: false });
+      await recipient.relay(late);
+      assert.deepEqual(recipient.closes, []);
+      assert.deepEqual(lastPc().added, []);
+      assert.deepEqual(await kinds(recipient, 2), ["commit", "answer"]);
+    }
+  }
+});
+
+/** Relays a mismatching marker while the peer's own first seals are held, then lets them finish. */
+async function mismatched(t: TestContext, side: "s" | "r", marker: unknown) {
+  const encrypt = crypto.subtle.encrypt.bind(crypto.subtle);
+  const released = Promise.withResolvers<void>();
+  let held = true;
+  const sealing = t.mock.method(
+    crypto.subtle,
+    "encrypt",
+    async (...args: Parameters<SubtleCrypto["encrypt"]>) => {
+      if (held) {
+        await released.promise;
+      }
+      return encrypt(...args);
+    },
+  );
+  const h = await harness(side, undefined, [], false);
+  held = false;
+  const handled = h.relay(marker);
+  await new Promise((resolve) => realSetTimeout(resolve, 100));
+  released.resolve();
+  await handled;
+  sealing.mock.restore();
+  return h;
+}
+
+test("a sender makes no offer for a recipient of another version, once its own marker went out", async (t) => {
+  for (const [marker, reason] of [
+    [newer, "outdated"],
+    [older, "peer-outdated"],
+  ] as const) {
+    resetFake(SENDER_FP);
+    const sender = await mismatched(t, "s", marker);
+    await sender.relay(await recipientCommit());
+    assert.deepEqual(
+      sender.closes.map((c) => c.reason),
+      [reason],
+    );
+    assert.deepEqual(await sender.signals(), []);
+    assert.equal(lastPc().localDescription, null);
+  }
+});
+
+test("a recipient makes no answer for a sender of another version, once its marker and commit went out", async (t) => {
+  for (const [marker, reason] of [
+    [newer, "outdated"],
+    [older, "peer-outdated"],
+  ] as const) {
+    resetFake(RECIPIENT_FP);
+    const recipient = await mismatched(t, "r", marker);
+    assert.deepEqual(
+      recipient.closes.map((c) => c.reason),
+      [reason],
+    );
+    await recipient.relay({ kind: "offer", sdp: sdpWith(SENDER_FP, "s1"), check: false });
+    assert.equal(recipient.peer.answered, false);
+    assert.equal(lastPc().remoteDescription, null);
+    assert.deepEqual(await recipient.signals(1), [await recipientCommit()]);
+  }
 });
