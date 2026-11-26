@@ -71,7 +71,7 @@ Option 2 for the sink, option 2 for memory, option 2 for lookups, option 2 for p
 
 ### A failed night
 
-- A job `report`, which runs when a job of the night failed and the run is not for a pull request, comments on the open issue titled "Nightly failed" that the Actions bot opened. If there is none, it opens one. The comment names the run's URL, its branch and each job that did not succeed. The job has `issues: write` and `actions: read`, which reading the run's jobs needs; the workflow keeps `contents: read`.
+- A job `report`, which runs when a job of the night failed or was cancelled and the run is not for a pull request, comments on the open issue titled "Nightly failed" that the Actions bot opened. If there is none, it opens one. A job past its `timeout-minutes` ends cancelled, not failed, so a night that runs out of time comments too, and so does a run cancelled by hand or by a later run on the same branch. The comment names the run's URL and its branch only; the run's page shows which jobs did not succeed. The job has `issues: write` and nothing else; the workflow keeps `contents: read`.
 - Whoever fixes the failure closes the issue. The next failed night then opens a new one.
 
 ### Replacements to 0001
@@ -92,14 +92,14 @@ Option 2 for the sink, option 2 for memory, option 2 for lookups, option 2 for p
 
 ### Dispatch the nightly by hand
 
-A run on a branch cancels a run in progress on the same branch, so this cancels a running scheduled night on `main`.
+A run on a branch cancels a run in progress on the same branch, so this cancels a running scheduled night on `main`, and that night comments on the "Nightly failed" issue.
 
 ```sh
 gh workflow run nightly.yml --ref main
 gh run list --workflow nightly.yml --event workflow_dispatch --limit 1 --json databaseId,headBranch,status,createdAt --jq '.[0] | [.databaseId, .headBranch, .status, .createdAt] | @tsv'
 ```
 
-The second command prints the run's ID, `main`, its status and when it was created, separated by tabs. If that time is before the first command ran, the new run isn't listed yet: run the second command again. Once the status is `completed`, `gh run view <ID> --json jobs --jq '.jobs[] | [.name, .conclusion] | @tsv'` must print `e2e (chromium)`, `e2e (firefox)` and `e2e (webkit)`, each with a tab and `success`, and `report` with a tab and `skipped`. Any other output means the night failed. A dispatched run that fails comments on the "Nightly failed" issue like a scheduled one.
+The second command prints the run's ID, `main`, its status and when it was created, separated by tabs. If that time is before the first command ran, the new run isn't listed yet: run the second command again. Once the status is `completed`, `gh run view <ID> --json jobs --jq '.jobs[] | [.name, .conclusion] | @tsv'` must print `e2e (chromium)`, `e2e (firefox)` and `e2e (webkit)`, each with a tab and `success`, and `report` with a tab and `skipped`. Any other output means the night failed. A dispatched run that fails or is cancelled comments on the "Nightly failed" issue like a scheduled one.
 
 ### Read the block's output
 

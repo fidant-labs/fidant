@@ -137,24 +137,23 @@ jobs:
             awk '$3 == "LOG" { n += $1 } END { print n + 0 }')
           [ "$sent" -eq 0 ] || { echo "::error::The test user sent $sent packets off loopback or to a resolver; the kernel log lines above name each"; exit 1; }
       # The test user wrote the observations, so the upload, which runs as runner, gets read access first.
-      - if: failure()
+      - if: failure() || cancelled()
         run: "[ ! -d apps/e2e/observations ] || sudo chmod -R a+rX apps/e2e/observations"
       # Same rule as ci.yml's e2e job: only the observations are uploaded, never traces or reports.
-      - if: failure()
+      - if: failure() || cancelled()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-observations-${{ matrix.browser }}
           path: apps/e2e/observations
           retention-days: 7
 
-  # One open issue collects every failed night, so a red run doesn't go unseen.
+  # One open issue collects every failed night; a leg past its timeout ends cancelled, not failed.
   report:
     needs: e2e
-    if: failure() && github.event_name != 'pull_request'
+    if: always() && github.event_name != 'pull_request' && (needs.e2e.result == 'failure' || needs.e2e.result == 'cancelled')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
-      actions: read
       issues: write
     defaults:
       run:
@@ -165,10 +164,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          legs=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs" \
-            --jq '.jobs[] | select(.conclusion != null and .conclusion != "success" and .conclusion != "skipped") | "- \(.name): \(.conclusion)"')
-          body=$(printf '%s/%s/actions/runs/%s on %s failed:\n\n%s\n' \
-            "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" "$GITHUB_REF_NAME" "$legs")
+          body="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID on $GITHUB_REF_NAME"
           # Anyone can open an issue with this title, so only one the Actions bot opened counts.
           issue=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues?state=open&per_page=100" \
             --jq '.[] | select(.pull_request == null and .title == "Nightly failed" and .user.login == "github-actions[bot]") | .number' | sed -n 1p)
