@@ -1,4 +1,4 @@
-// The check number: six digits both people compare before anything about the
+// The safety number: six digits both people compare before anything about the
 // file goes, derived only from the connection's two DTLS fingerprints. The
 // recipient first commits to its fingerprint (commitFingerprint), so someone in
 // the middle has to fix both certificates before it learns the number.

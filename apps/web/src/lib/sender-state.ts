@@ -23,6 +23,7 @@
 // | connecting ... receiving (2)   | dropped        | waiting    | refuse drop, close |
 // | connecting, checking           | timeout        | waiting    | refuse drop, close |
 // | connecting                     | unsendable     | failed     | refuse drop, close |
+// | connecting                     | outdated       | failed     | close              |
 // | connecting                     | left           | waiting    | close              |
 // | connecting                     | server-lost    | waiting    | close              |
 // | connecting ... receiving (2)   | path relay (1) | waiting    | refuse drop, close |
@@ -79,6 +80,16 @@
 //   nothing was sent. The recipient is marked "failed" with an error, the
 //   joiner is refused with "drop" and the connection closed, and the next join
 //   starts over, as after a mismatching RECEIPT.
+// - `outdated` means the two pages run different frame versions, so the
+//   sender's peer made no offer (see peer.ts). The recipient is marked "failed"
+//   with SENDER_OUTDATED when this page is the older one, else
+//   RECIPIENT_OUTDATED, and the connection closed. This reducer sends no
+//   refusal: a recipient page with the check ends the attempt itself, and a
+//   refusal could reach it before the sender's version marker that tells it
+//   why. SendPage refuses the joiner with "drop" at the join deadline, which
+//   ends a recipient page from before the check and which the server ignores
+//   once the joiner has left. The next join starts over, as after a
+//   mismatching RECEIPT.
 // - Events that do not fit the current status (for example a late progress
 //   after a drop) are ignored, as are events for link IDs not on the list.
 // - `path` records how the current attempt's connection runs. It applies only
@@ -122,7 +133,7 @@
 // - The server answers every `email` it refuses with `failed` or `limit`, naming
 //   the link and with no mark, so a refusal never needs guessing which card it was for.
 //
-// - A recipient added with `check` shows the check number once its channel
+// - A recipient added with `check` shows the safety number once its channel
 //   opens ("checking") and reaches "offered" only when both sides said the
 //   numbers match (`checked`). `check-differs` returns it to "waiting" with
 //   CHECK_DIFFERS, which the next join clears; the link still works, because a
@@ -135,7 +146,8 @@
 //   (dropped, timeout, left, server-lost, unsendable, a refused relay,
 //   check-differs) adds one to `checkFailures`, and nothing lowers it: someone
 //   in the middle learns the sender's number from the offer, so it must not get
-//   unlimited tries at a matching one. At CHECK_ATTEMPTS the recipient is
+//   unlimited tries at a matching one. An attempt that ends with `outdated`
+//   doesn't count, because it ends before the offer. At CHECK_ATTEMPTS the recipient is
 //   "failed" with CHECK_LIMIT and `locked`, its attempt refused and closed,
 //   every later join refused with "used", and `hostedLinks` leaves it out.
 //
@@ -190,7 +202,7 @@ export type Recipient = {
   readonly mark?: string;
   /** The server dropped this link's email binding, so the link is dead and no longer hosted. */
   readonly unbound?: true;
-  /** Both people compare the check number before anything about the file goes. */
+  /** Both people compare the safety number before anything about the file goes. */
   readonly check?: true;
   /** Checked attempts that ended before both sides confirmed. Never lowered. */
   readonly checkFailures?: number;
@@ -226,6 +238,8 @@ export type SenderAction =
   | { type: "server-lost" }
   | { type: "declined"; linkId: string }
   | { type: "unsendable"; linkId: string }
+  /** The two pages run different frame versions; `older` is the one that must reload. */
+  | { type: "outdated"; linkId: string; older: "sender" | "recipient" }
   | { type: "path"; linkId: string; attempt: string; path: OpenPath }
   | {
       type: "email";
@@ -245,22 +259,26 @@ export type SenderUpdate = { state: SenderState; effects: SenderEffect[] };
 
 /** How long after a join the data channel may take to open before the attempt is dropped. */
 export const SETUP_TIMEOUT_MS = 20_000;
-/** How long both people have to compare the check number before the attempt ends as a failed check. */
+/** How long both people have to compare the safety number before the attempt ends as a failed check. */
 export const CHECK_TIMEOUT_MS = 5 * 60_000;
 /** Checked attempts per link that may end without both sides confirming. */
 export const CHECK_ATTEMPTS = 5;
 
 export const CHECKSUM_MISMATCH = "The recipient's checksum did not match.";
 export const TOO_SMALL_FOR_TEXT = "The connection can't carry a text in one chunk.";
-export const CHECK_DIFFERS = "The check numbers didn't match, so nothing was sent.";
+export const CHECK_DIFFERS = "The safety numbers didn't match, so nothing was sent.";
 export const CHECK_LIMIT = "The check failed too many times, so this link no longer works.";
-export const CHECK_EXPIRED = "The check number wasn't confirmed in time, so nothing was sent.";
+export const CHECK_EXPIRED = "The safety number wasn't confirmed in time, so nothing was sent.";
+export const SENDER_OUTDATED = "This page runs an older version than the recipient's.";
+export const RECIPIENT_OUTDATED = "The recipient's page runs an older version than this one.";
 export type RecipientError =
   | typeof CHECKSUM_MISMATCH
   | typeof TOO_SMALL_FOR_TEXT
   | typeof CHECK_DIFFERS
   | typeof CHECK_LIMIT
-  | typeof CHECK_EXPIRED;
+  | typeof CHECK_EXPIRED
+  | typeof SENDER_OUTDATED
+  | typeof RECIPIENT_OUTDATED;
 
 export const initialSenderState: SenderState = { recipients: [] };
 
@@ -475,6 +493,17 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
         current,
         failedCheck(current, { ...reset(current, "failed"), error: TOO_SMALL_FOR_TEXT }),
       );
+    case "outdated":
+      if (current.status !== "connecting") {
+        return { state, effects: [] };
+      }
+      return {
+        state: replace(state, {
+          ...reset(current, "failed"),
+          error: action.older === "sender" ? SENDER_OUTDATED : RECIPIENT_OUTDATED,
+        }),
+        effects: [{ type: "close", linkId }],
+      };
     case "path":
       if (current.attempt !== action.attempt) {
         return { state, effects: [] };

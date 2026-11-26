@@ -3,7 +3,7 @@
 // Frames on the channel (see frames.ts and send-file.ts):
 //
 //   sender → recipient   INIT(transferId)                     plaintext
-//   both directions      CHECK(matches)                       only with the check number on
+//   both directions      CHECK(matches)                       only with the safety number on
 //   sender → recipient   META{name, size, type, chunkSize, from}  → onOffer, user decides
 //   recipient → sender   ACCEPT  (or DECLINE: stop here)
 //   recipient → sender   CREDIT(granted)                      after ACCEPT, then as chunks are written
@@ -41,12 +41,14 @@ import {
   decodeInit,
   decodeMeta,
   encodeCredit,
+  FRAME_VERSION,
   type Frame,
   FrameReader,
   FrameWriter,
   ReceiveVerifier,
   RecipientKind,
   SenderKind,
+  VersionError,
 } from "./frames.ts";
 import { createInbox } from "./inbox.ts";
 import { deriveFileKey } from "./keys.ts";
@@ -83,7 +85,7 @@ export type ReceiveFileOptions = {
   /** Aborting stops the transfer; receiveFile then rejects. */
   signal: AbortSignal;
   /**
-   * With the check number on: resolves with whether the recipient said the
+   * With the safety number on: resolves with whether the recipient said the
    * numbers match. Nothing about the file arrives before both sides said so.
    */
   confirm?: Promise<boolean>;
@@ -104,7 +106,11 @@ export type ReceiveFailure =
   /** The channel closed or the transfer was aborted. */
   | "connection"
   /** The sink failed to write or close the file. */
-  | "save";
+  | "save"
+  /** INIT named a newer frame version, so this page must reload. */
+  | "outdated"
+  /** INIT named an older frame version, so the sender's page must reload. */
+  | "peer-outdated";
 
 /** Why receiveFile rejected. The message is the underlying error's. */
 export class ReceiveError extends Error {
@@ -118,7 +124,7 @@ export class ReceiveError extends Error {
 }
 
 export type ReceiveResult =
-  /** Someone said the check numbers differ, so nothing about the file arrived. */
+  /** Someone said the safety numbers differ, so nothing about the file arrived. */
   | { type: "check-differs"; by: "sender" | "recipient" }
   /** The recipient declined; DECLINE was sent. */
   | { type: "declined" }
@@ -302,6 +308,10 @@ function classify(error: unknown, signal: AbortSignal): ReceiveError {
   }
   if (error instanceof ReceiveError) {
     return error;
+  }
+  if (error instanceof VersionError) {
+    const reason = error.version > FRAME_VERSION ? "outdated" : "peer-outdated";
+    return new ReceiveError(reason, error.message, { cause: error });
   }
   return new ReceiveError("invalid", messageOf(error), { cause: error });
 }

@@ -1,6 +1,6 @@
-// One card per recipient (status, email, connection path, check number, progress, link, copy and remove), and one compact row once its link has delivered.
+// One card per recipient (status, email, connection path, safety number, progress, link, copy and remove), and one compact row once its link has delivered.
 //
-// Only the status sentence, the email line, the check number and the check's
+// Only the status sentence, the email line, the safety number and the check's
 // confirmation sit in live regions, so screen readers hear "Sending through
 // Anna's link", "Email sent to a***@example.se" and so on, not every progress tick. Each status names the link or the masked
 // address, not the person, because whoever opens a link may not be the person
@@ -17,8 +17,10 @@ import {
   CHECK_DIFFERS,
   CHECK_EXPIRED,
   CHECK_LIMIT,
+  RECIPIENT_OUTDATED,
   type Recipient,
   type RecipientStatus,
+  SENDER_OUTDATED,
   TOO_SMALL_FOR_TEXT,
   unmarked,
 } from "../lib/sender-state.ts";
@@ -198,7 +200,11 @@ function RecipientRow({
                         ? t.send.check.expired
                         : error === CHECK_LIMIT
                           ? t.send.check.limit(CHECK_ATTEMPTS)
-                          : statusText[status](name)}
+                          : error === SENDER_OUTDATED
+                            ? statusText.senderOutdated(name)
+                            : error === RECIPIENT_OUTDATED
+                              ? statusText.recipientOutdated(name)
+                              : statusText[status](name)}
             </span>
           </p>
           {email && mail && (

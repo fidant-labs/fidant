@@ -7,13 +7,25 @@ import { parseIceServers } from "@sigill/protocol";
 import { type Mailer, smtpMailer } from "./mail.ts";
 import { loadRelays, type Relays, readOrCreateMaster, startRelays } from "./relays.ts";
 import { startServer } from "./server.ts";
+import { type SiteSettings, siteSettings } from "./settings.ts";
 import type { Logger } from "./signaling.ts";
-import type { IceConfig } from "./turn.ts";
+import { chooseIce, type IceConfig } from "./turn.ts";
 
-const root = fileURLToPath(new URL("../../web/dist/", import.meta.url));
-if (!existsSync(join(root, "index.html"))) {
-  console.error("The web client is not built. Run `pnpm start` from the repository root.");
+let site: SiteSettings;
+try {
+  site = siteSettings(process.env);
+} catch (error) {
+  console.error((error as Error).message);
   process.exit(1);
+}
+
+let root: string | undefined;
+if (site.pages) {
+  root = fileURLToPath(new URL("../../web/dist/", import.meta.url));
+  if (!existsSync(join(root, "index.html"))) {
+    console.error("The web client is not built. Run `pnpm start` from the repository root.");
+    process.exit(1);
+  }
 }
 
 // A relay list that isn't empty replaces TURN_URLS. The messages name no secret.
@@ -31,7 +43,7 @@ try {
 // the process environment, and it is never printed.
 const turnUrls = process.env.TURN_URLS;
 const turnSecretFile = process.env.TURN_SECRET_FILE;
-let ice: IceConfig | undefined;
+let turn: IceConfig | undefined;
 if (!relays && (turnUrls || turnSecretFile)) {
   if (!turnUrls || !turnSecretFile) {
     console.error("Set both TURN_URLS and TURN_SECRET_FILE, or neither.");
@@ -57,26 +69,22 @@ if (!relays && (turnUrls || turnSecretFile)) {
     console.error("TURN_URLS must be 1 to 4 turn:, turns: or stun: URLs.");
     process.exit(1);
   }
-  ice = { urls, secret };
+  turn = { urls, secret };
 }
+const ice = chooseIce(relays, turn, site.stun);
 
 // Mail is optional too, and the SMTP password comes from a file for the same reason.
 // Emailed links point at PUBLIC_ORIGIN, never at whatever Host a request names.
 const mailUrl = process.env.MAIL_SMTP_URL;
 const mailFrom = process.env.MAIL_FROM;
 const mailPasswordFile = process.env.MAIL_PASSWORD_FILE;
-const publicOrigin = process.env.PUBLIC_ORIGIN;
+const publicOrigin = site.origin;
 let mail: { send: Mailer; origin: string } | undefined;
-if (mailUrl || mailFrom || mailPasswordFile || publicOrigin) {
+if (mailUrl || mailFrom || mailPasswordFile) {
   if (!mailUrl || !mailFrom || !publicOrigin) {
     console.error(
-      "Set MAIL_SMTP_URL, MAIL_FROM and PUBLIC_ORIGIN together, or none of them and no MAIL_PASSWORD_FILE.",
+      "Set MAIL_SMTP_URL and MAIL_FROM together with PUBLIC_ORIGIN, or neither and no MAIL_PASSWORD_FILE.",
     );
-    process.exit(1);
-  }
-  const parsed = URL.parse(publicOrigin);
-  if (parsed?.protocol !== "https:" || parsed.origin !== publicOrigin) {
-    console.error("PUBLIC_ORIGIN must be an https:// origin with no path, like https://fidant.se.");
     process.exit(1);
   }
   let password: string | undefined;
@@ -121,6 +129,8 @@ const log: Logger = (event, fields) => console.log(JSON.stringify({ event, ...fi
 const { server, signaling } = await startServer({
   port: Number(process.env.PORT ?? 8443),
   root,
+  siteOrigin: site.origin,
+  proxies: site.proxies,
   certDir: process.env.CERT_DIR ?? fileURLToPath(new URL("../../../.certs/", import.meta.url)),
   hosts: ["localhost", "127.0.0.1", ...lanAddresses],
   ice,
@@ -128,6 +138,7 @@ const { server, signaling } = await startServer({
   log,
   mail,
   startingMs: startingEnv === undefined ? undefined : Number(startingEnv),
+  keepAliveMs: site.keepAliveMs,
 });
 
 const { port } = server.address() as AddressInfo;
@@ -142,7 +153,7 @@ process.once("SIGTERM", () => {
 });
 // Only for a person at a terminal. Under systemd stderr goes to the journal, which should hold
 // nothing but the allowlisted log lines, not the box's addresses.
-if (process.stderr.isTTY) {
+if (process.stderr.isTTY && site.pages) {
   console.error("Sigill is running. Open one of these and accept the certificate warning once:");
   for (const host of ["localhost", ...lanAddresses]) {
     console.error(`  https://${host}:${port}`);

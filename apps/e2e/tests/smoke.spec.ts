@@ -1,7 +1,8 @@
+import { createServer } from "node:net";
+import { networkInterfaces } from "node:os";
 import { canaryFile, canaryKey, expect, test } from "../src/fixtures.ts";
 
-// A host outside the stack. The route aborts requests to it before DNS, and the browser's
-// host-resolver-rules resolve it to nothing, so these tests never reach the internet.
+// Off the stack: the route aborts it before DNS, and each engine's network block backs that up.
 const outside = "https://example.com/";
 
 test("the app loads for a sender and a recipient", async ({
@@ -30,7 +31,7 @@ test("the app loads for a sender and a recipient", async ({
   }
 });
 
-test("request bodies are recorded", async ({ page, observed, baseURL, leaks }) => {
+test("request bodies are recorded", async ({ page, observed, baseURL, leaks, browserName }) => {
   // The empty POST has no visible body, which is a leak-check limit finding by design.
   leaks.expectLeaks();
   await page.goto("/");
@@ -45,17 +46,41 @@ test("request bodies are recorded", async ({ page, observed, baseURL, leaks }) =
   const at = (path: string) =>
     requests.find((record) => record.url === new URL(path, baseURL).href);
   expect(at("/text")?.body).toBe(Buffer.from("a text body").toString("base64"));
-  expect(at("/blob")?.body).toBe("AAH+/w==");
-  // Chromium does not say whether a POST without an exposed body was empty, so it is marked.
+  // WebKit hides Blob bodies, so the scan marks the request instead.
+  if (browserName === "webkit") {
+    expect(at("/blob")).toMatchObject({ bodyMissing: true });
+  } else {
+    expect(at("/blob")?.body).toBe("AAH+/w==");
+  }
+  // No engine says whether a POST without an exposed body was empty, so it is marked.
   expect(at("/empty")).toMatchObject({ bodyMissing: true });
   expect(at("/empty")?.body).toBeUndefined();
+});
+
+test("a request record carries the context's cookies", async ({ page, observed, baseURL }) => {
+  await page.context().addCookies([{ name: "k", value: "plain", url: baseURL as string }]);
+  await page.goto("/");
+  const requests = (await observed("default").records()).filter(
+    (record) => record.type === "request",
+  );
+  const root = requests.find((record) => record.url === new URL("/", baseURL).href);
+  expect(root?.headers.cookie).toContain("k=plain");
 });
 
 test.describe("the blocker", () => {
   test.use({ allowBlocked: true });
 
-  test("a navigation outside the stack is blocked and recorded", async ({ page, observed }) => {
-    await expect(page.goto(outside)).rejects.toThrow(/ERR_BLOCKED_BY_CLIENT/);
+  test("a navigation outside the stack is blocked and recorded", async ({
+    page,
+    observed,
+    browserName,
+  }) => {
+    const aborted = {
+      chromium: /ERR_BLOCKED_BY_CLIENT/,
+      firefox: /NS_ERROR_FAILURE/,
+      webkit: /Blocked by Web Inspector/,
+    }[browserName];
+    await expect(page.goto(outside)).rejects.toThrow(aborted);
     expect(observed("default").blocked).toEqual([
       expect.objectContaining({ url: outside, kind: "http" }),
     ]);
@@ -75,6 +100,55 @@ test.describe("the blocker", () => {
     expect(observed("default").blocked).toEqual([
       expect.objectContaining({ url: "wss://example.com/", kind: "websocket" }),
     ]);
+  });
+});
+
+test.describe("the network block", () => {
+  // The app's CSP would stop the socket before the network does.
+  test.use({ bypassCSP: true });
+
+  test("stops what the route lets through before it leaves this machine", async ({
+    page,
+    browserName,
+  }) => {
+    test.skip(
+      browserName === "webkit" && process.platform === "darwin",
+      "WebKit on macOS never proxies this machine's own addresses",
+    );
+    const ip = Object.values(networkInterfaces())
+      .flat()
+      .find((address) => address?.family === "IPv4" && !address.internal)?.address;
+    if (!ip && process.env.CI) {
+      throw new Error("the network block needs an IPv4 address besides loopback");
+    }
+    test.skip(!ip, "this machine has no IPv4 address but loopback");
+    let connections = 0;
+    const sentinel = createServer((socket) => {
+      connections++;
+      socket.destroy();
+    });
+    await new Promise<void>((resolve) => sentinel.listen(0, ip, resolve));
+    const address = sentinel.address();
+    const port = typeof address === "object" ? address?.port : undefined;
+    try {
+      // Page routes take precedence over the recorder's, which would abort these first.
+      await page.route(`https://${ip}:${port}/`, (route) => route.continue());
+      await page.routeWebSocket(`wss://${ip}:${port}/`, (ws) => {
+        ws.connectToServer();
+      });
+      await page.goto("/");
+      await page.evaluate(
+        (url) =>
+          new Promise((resolve) => {
+            new WebSocket(url).addEventListener("close", resolve);
+          }),
+        `wss://${ip}:${port}/`,
+      );
+      await page.goto(`https://${ip}:${port}/`).catch(() => {});
+      expect(connections, "connections that reached this machine's own address").toBe(0);
+    } finally {
+      sentinel.close();
+    }
   });
 });
 

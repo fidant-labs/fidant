@@ -14,7 +14,14 @@ import * as sns from "aws-cdk-lib/aws-sns";
 import { EmailSubscription } from "aws-cdk-lib/aws-sns-subscriptions";
 import * as cr from "aws-cdk-lib/custom-resources";
 import type { Construct } from "constructs";
-import { mailDomain, primaryDomain, relayCapBytes, relays, relayWarnBytes } from "./config.ts";
+import {
+  boxAllowanceBytes,
+  mailDomain,
+  overageUsdPerGb,
+  primaryDomain,
+  relayOverageBudgetUsd,
+  relays,
+} from "./config.ts";
 import { RelayBox, ports as relayBoxPorts } from "./relay.ts";
 import { renderUserData } from "./user-data.ts";
 
@@ -63,6 +70,16 @@ export class BoxStack extends Stack {
       (relay) => new RelayBox(this, `Relay-${relay.id}`, { relayId: relay.id }),
     );
 
+    const capBoxes = [
+      { instance: box, openPorts: [...otherPorts, ...relayPorts], cappedPorts: otherPorts },
+      ...relayBoxes.map((relay) => ({
+        instance: relay.instance,
+        openPorts: relayBoxPorts,
+        cappedPorts: relayBoxPorts.filter((port) => port.fromPort === 22 || port.fromPort === 80),
+      })),
+    ];
+    const poolBytes = boxAllowanceBytes * capBoxes.length;
+
     const fn = new lambda.Function(this, "RelayCap", {
       runtime: lambda.Runtime.NODEJS_24_X,
       handler: "index.handler",
@@ -76,17 +93,16 @@ export class BoxStack extends Stack {
         removalPolicy: RemovalPolicy.DESTROY,
       }),
       environment: {
-        BOXES: this.toJsonString([
-          { box: box.ref, openPorts: [...otherPorts, ...relayPorts], cappedPorts: otherPorts },
-          ...relayBoxes.map((relay) => ({
-            box: relay.instance.ref,
-            openPorts: relayBoxPorts,
-            cappedPorts: relayBoxPorts.filter(
-              (port) => port.fromPort === 22 || port.fromPort === 80,
-            ),
+        BOXES: this.toJsonString(
+          capBoxes.map(({ instance, openPorts, cappedPorts }) => ({
+            box: instance.ref,
+            openPorts,
+            cappedPorts,
           })),
-        ]),
-        LIMIT_BYTES: String(relayCapBytes),
+        ),
+        ALLOWANCE_BYTES: String(poolBytes),
+        BUDGET_USD: String(relayOverageBudgetUsd),
+        USD_PER_GB: String(overageUsdPerGb),
         RELAYS: JSON.stringify(relays.map((relay) => relay.id)),
         STATUS_URL: `https://${primaryDomain}/relay-status`,
       },
@@ -101,9 +117,7 @@ export class BoxStack extends Stack {
     fn.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ["lightsail:PutInstancePublicPorts"],
-        resources: [box, ...relayBoxes.map((relay) => relay.instance)].map(
-          (instance) => instance.attrInstanceArn,
-        ),
+        resources: capBoxes.map(({ instance }) => instance.attrInstanceArn),
       }),
     );
     fn.addToRolePolicy(
@@ -248,19 +262,26 @@ export class BoxStack extends Stack {
       statistic: cloudwatch.Stats.MAXIMUM,
       period: Duration.minutes(5),
     });
+    const monthOverage = new cloudwatch.Metric({
+      namespace: "Fidant",
+      metricName: "RelayMonthOverageUsd",
+      dimensionsMap: { Service: "relay" },
+      statistic: cloudwatch.Stats.MAXIMUM,
+      period: Duration.minutes(5),
+    });
     const alarms = [
       new cloudwatch.Alarm(this, "RelayWarn", {
-        alarmName: "Fidant relay traffic past 80 % of the monthly cap",
+        alarmName: "Fidant relay traffic past 80 % of the allowance",
         metric: monthBytes,
-        threshold: relayWarnBytes,
+        threshold: 0.8 * poolBytes,
         comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
         evaluationPeriods: 1,
         treatMissingData: cloudwatch.TreatMissingData.IGNORE,
       }),
       new cloudwatch.Alarm(this, "RelayCapped", {
-        alarmName: "Fidant relay stopped: monthly traffic cap reached",
-        metric: monthBytes,
-        threshold: relayCapBytes,
+        alarmName: "Fidant relay stopped: overage budget reached",
+        metric: monthOverage,
+        threshold: relayOverageBudgetUsd,
         comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
         evaluationPeriods: 1,
         treatMissingData: cloudwatch.TreatMissingData.IGNORE,

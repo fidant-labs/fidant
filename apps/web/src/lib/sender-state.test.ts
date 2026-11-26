@@ -13,8 +13,10 @@ import {
   findRecipient,
   hostedLinks,
   initialSenderState,
+  RECIPIENT_OUTDATED,
   type Recipient,
   refusesRelay,
+  SENDER_OUTDATED,
   SETUP_TIMEOUT_MS,
   type SenderAction,
   type SenderEffect,
@@ -419,6 +421,7 @@ test("events that do not fit the current status are ignored", () => {
     { type: "timeout", linkId },
     { type: "declined", linkId },
     { type: "unsendable", linkId },
+    { type: "outdated", linkId, older: "sender" },
   ];
   for (const action of outOfPlace) {
     const result = update(waiting, action);
@@ -1230,4 +1233,44 @@ test("a check that takes too long ends the attempt and counts", () => {
   const offered = run(state, { type: "checked", linkId }).state;
   assert.equal(update(offered, { type: "timeout", linkId }).state, offered);
   assert.equal(CHECK_TIMEOUT_MS, 5 * 60_000);
+});
+
+test("outdated fails a connecting recipient with the page that must reload, closes without a refusal, and the next join retries", () => {
+  for (const [older, error] of [
+    ["sender", SENDER_OUTDATED],
+    ["recipient", RECIPIENT_OUTDATED],
+  ] as const) {
+    const { state: s0, linkId } = withRecipient();
+    const original = findRecipient(s0, linkId);
+    const connecting = update(s0, joined(linkId, A, false)).state;
+    const failed = update(connecting, { type: "outdated", linkId, older });
+    assert.deepEqual(findRecipient(failed.state, linkId), {
+      ...original,
+      status: "failed",
+      bytesSent: 0,
+      error,
+    });
+    assert.deepEqual(failed.effects, [{ type: "close", linkId }]);
+
+    const offered = update(connecting, { type: "channel-open", linkId }).state;
+    const late = update(offered, { type: "outdated", linkId, older });
+    assert.equal(late.state, offered);
+    assert.deepEqual(late.effects, []);
+
+    const retry = update(failed.state, joined(linkId, B));
+    assert.equal(statusOf(retry.state, linkId), "connecting");
+    assert.equal(findRecipient(retry.state, linkId)?.error, undefined);
+  }
+});
+
+test("an attempt that ends on another frame version doesn't count as a failed check", () => {
+  const { state: s0, linkId } = withChecked();
+  let state = s0;
+  for (let i = 0; i < CHECK_ATTEMPTS + 1; i++) {
+    state = run(state, joined(linkId, A), { type: "outdated", linkId, older: "recipient" }).state;
+  }
+  const recipient = findRecipient(state, linkId);
+  assert.equal(recipient?.checkFailures, undefined);
+  assert.equal(recipient?.locked, undefined);
+  assert.deepEqual(hostedLinks(state), [linkId]);
 });

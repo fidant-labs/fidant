@@ -10,8 +10,9 @@ import { join } from "node:path";
 import { buffer } from "node:stream/consumers";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { Page } from "@playwright/test";
-// ponytail: relative imports, not a workspace dependency on the server, for two small functions.
+// ponytail: relative imports, not a workspace dependency on the server, for two small functions and a limit.
 import { relaySecret } from "../../server/src/relay-secret.ts";
+import { LIMITS } from "../../server/src/signaling.ts";
 import { turnCredentials } from "../../server/src/turn.ts";
 import {
   type Actor,
@@ -28,14 +29,16 @@ import {
 import { readPeerConnections, recordPeerConnections, selectedPair } from "../src/ice.ts";
 import { base32Token } from "../src/leaks/canary.ts";
 import { checkServerLog, serverLogAllowlist } from "../src/leaks/server-log.ts";
-import { boxJournal, boxSyslog, serverStdoutLog } from "../src/paths.ts";
+import { boxJournal, boxSyslog, serverStdoutLog, signalLog } from "../src/paths.ts";
 import { winningJournald } from "../src/stack/box.ts";
 import {
+  albIp,
   applyRelaySecret,
   boxOrigin,
   clientAddresses,
   inBox,
   inRelay,
+  inSignal,
   pauseRelay,
   type RouterMode,
   relayHost,
@@ -45,6 +48,8 @@ import {
   routerMode,
   sendToRelay,
   serverIp,
+  signalClients,
+  signalLogs,
 } from "../src/stack/networks.ts";
 
 // Transfers between browsers in Docker networks behind NAT routers (networks/compose.yaml).
@@ -1208,5 +1213,115 @@ test.describe("the relay box", () => {
         await applyRelaySecret(secret);
       }
     });
+  });
+});
+
+// The signaling image (apps/server/Dockerfile) behind the load balancer stand-in (networks/alb).
+test.describe("the signaling image", () => {
+  test.beforeAll(() => routerMode("router-b", "cone"));
+  const origin = "https://fidant.se";
+  const agent = `sigill-e2e-${randomBytes(8).toString("hex")}`;
+
+  test("runs read-only as node with the master only in its file", async ({ leaks }) => {
+    const master = (
+      await readFile(join(process.env.SIGILL_E2E_COTURN_DIR ?? "", "relay-master"), "utf8")
+    ).trim();
+    leaks.watchKey("relay master", master);
+    const file = "/run/sigill/relay-master";
+    expect(await inSignal("stat", "-c", "%a %U", file)).toBe("600 node\n");
+    const hash = createHash("sha256").update(`${master}\n`).digest("hex");
+    expect(await inSignal("sha256sum", file)).toBe(`${hash}  ${file}\n`);
+    expect(await inSignal("stat", "-c", "%U", "/proc/1")).toBe("node\n");
+    expect((await inSignal("cat", "/proc/1/cmdline")).split("\0")).toEqual([
+      "node",
+      "apps/server/src/main.ts",
+      "",
+    ]);
+    // Booleans only, so a failure doesn't print the master.
+    const environ = (await inSignal("cat", "/proc/1/environ")).split("\0");
+    expect(environ.some((entry) => entry.startsWith("RELAY_MASTER="))).toBe(false);
+    expect(environ.some((entry) => entry.includes(master))).toBe(false);
+    expect(environ.some((entry) => entry.startsWith("RELAY_MASTER_FILE="))).toBe(true);
+    // The entrypoint passes the master to both, so neither may show it in a process's arguments.
+    expect(await inSignal("sh", "-c", "type printf [")).toBe(
+      "printf is a shell builtin\n[ is a shell builtin\n",
+    );
+    expect(
+      await inSignal("sh", "-c", "touch /app/x 2>/dev/null && echo writable || echo read-only"),
+    ).toBe("read-only\n");
+    expect(await inSignal("ls", "/app/apps")).toBe("server\n");
+    expect(await inSignal("ls", "/app/packages")).toBe("protocol\n");
+  });
+
+  test("answers /relay-status with JSON and 404 elsewhere", async () => {
+    const get = (path: string, ...flags: string[]) =>
+      inRelay("curl", "-sk", "--max-time", "5", ...flags, `https://${albIp}${path}`);
+    expect(JSON.parse(await get("/relay-status"))).toEqual([
+      { id: "net", up: expect.any(Boolean) },
+    ]);
+    for (const path of ["/", "/send", "/r/x"]) {
+      expect(await get(path, "-o", "/dev/null", "-w", "%{http_code}"), path).toBe("404");
+    }
+  });
+
+  // From b1, so a1's count is still empty when the next test fills it.
+  test("accepts PUBLIC_ORIGIN and refuses another origin", async () => {
+    for (const [from, code] of [
+      [origin, 101],
+      ["https://elsewhere.test", 403],
+    ] as const) {
+      const clients = await signalClients("b1", 1, { origin: from, agent });
+      await clients.release();
+      expect(clients.codes, from).toEqual([code]);
+    }
+  });
+
+  test("counts each client by its own address, not a forged entry, and logs neither", async () => {
+    const forged = Array.from(
+      { length: LIMITS.socketsPerAddress + 1 },
+      (_, index) => `203.0.113.${index}`,
+    );
+    const a = await signalClients("a1", LIMITS.socketsPerAddress + 1, {
+      origin,
+      agent,
+      forwardedFor: (index) => forged[index] ?? "",
+    });
+    try {
+      expect(a.codes).toEqual([...Array<number>(LIMITS.socketsPerAddress).fill(101), 429]);
+      // router-a's address, which is full, before alb appends router-b's.
+      const b = await signalClients("b1", 1, { origin, agent, forwardedFor: () => "198.51.100.2" });
+      await b.release();
+      expect(b.codes).toEqual([101]);
+    } finally {
+      await a.release();
+    }
+
+    let lines: string[] = [];
+    await expect
+      .poll(async () => {
+        const logs = await signalLogs();
+        await writeFile(signalLog, logs);
+        lines = logs.split("\n").filter(Boolean);
+        return (
+          lines.some((line) => line.startsWith('{"event":"listening"')) &&
+          lines.includes('{"event":"upgrade-rejected","reason":"address"}')
+        );
+      })
+      .toBe(true);
+    expect(checkServerLog(lines, serverLogAllowlist)).toEqual([]);
+    const addresses = await clientAddresses();
+    expect(addresses.length).toBeGreaterThan(0);
+    for (const ip of [...addresses, ...forged, albIp, "10.89.3.2"]) {
+      expect(
+        lines.filter((line) => addressPattern(ip).test(line)),
+        ip,
+      ).toEqual([]);
+    }
+    for (const text of [agent, "Mozilla/"]) {
+      expect(
+        lines.filter((line) => line.includes(text)),
+        text,
+      ).toEqual([]);
+    }
   });
 });
