@@ -35,10 +35,12 @@ applyTheme(initialTheme());
 const root = document.getElementById("app");
 // The pre-paint script is opening the Swedish page, so this one stays unrendered.
 if (root && !document.documentElement.hidden) {
+  // The dev panel (src/dev) wraps the app in the dev server only: a build drops this import.
+  const Root = import.meta.env.DEV ? (await import("./dev/DevApp.tsx")).DevApp : App;
   // Over the page the server sent, render reuses its elements and corrects any that differ.
   render(
     <I18nProvider initial={startLanguage(location.pathname)}>
-      <App secure={hasSecureCrypto()} theme={initialTheme()} />
+      <Root secure={hasSecureCrypto()} theme={initialTheme()} />
     </I18nProvider>,
     root,
   );
