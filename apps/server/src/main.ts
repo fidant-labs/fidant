@@ -9,7 +9,7 @@ import { loadRelays, type Relays, readOrCreateMaster, startRelays } from "./rela
 import { startServer } from "./server.ts";
 import { type SiteSettings, siteSettings } from "./settings.ts";
 import type { Logger } from "./signaling.ts";
-import type { IceConfig } from "./turn.ts";
+import { chooseIce, type IceConfig } from "./turn.ts";
 
 let site: SiteSettings;
 try {
@@ -43,7 +43,7 @@ try {
 // the process environment, and it is never printed.
 const turnUrls = process.env.TURN_URLS;
 const turnSecretFile = process.env.TURN_SECRET_FILE;
-let ice: IceConfig | undefined;
+let turn: IceConfig | undefined;
 if (!relays && (turnUrls || turnSecretFile)) {
   if (!turnUrls || !turnSecretFile) {
     console.error("Set both TURN_URLS and TURN_SECRET_FILE, or neither.");
@@ -69,8 +69,9 @@ if (!relays && (turnUrls || turnSecretFile)) {
     console.error("TURN_URLS must be 1 to 4 turn:, turns: or stun: URLs.");
     process.exit(1);
   }
-  ice = { urls, secret };
+  turn = { urls, secret };
 }
+const ice = chooseIce(relays, turn, site.stun);
 
 // Mail is optional too, and the SMTP password comes from a file for the same reason.
 // Emailed links point at PUBLIC_ORIGIN, never at whatever Host a request names.
@@ -137,6 +138,7 @@ const { server, signaling } = await startServer({
   log,
   mail,
   startingMs: startingEnv === undefined ? undefined : Number(startingEnv),
+  keepAliveMs: site.keepAliveMs,
 });
 
 const { port } = server.address() as AddressInfo;
