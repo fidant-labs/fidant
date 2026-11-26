@@ -17,6 +17,7 @@ concurrency:
 
 jobs:
   # One engine per job: the suite runs one engine per invocation (apps/e2e/README.md). Chromium runs on every pull request in ci.yml.
+  # Record 0001's iptables egress block and large-file runs are still to come here, under SIG-47.
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -34,17 +35,8 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - id: pw
-        run: echo "version=$(pnpm --filter @sigill/e2e exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
-      - id: pw-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}-${{ matrix.browser }}
-      - if: steps.pw-cache.outputs.cache-hit != 'true'
-        run: pnpm --filter @sigill/e2e exec playwright install --with-deps "$SIGILL_E2E_BROWSER"
-      - if: steps.pw-cache.outputs.cache-hit == 'true'
-        run: pnpm --filter @sigill/e2e exec playwright install-deps "$SIGILL_E2E_BROWSER"
+      # No cache: Playwright's WebKit build differs per Ubuntu release, which a cache key on runner.os misses.
+      - run: pnpm --filter @sigill/e2e exec playwright install --with-deps "$SIGILL_E2E_BROWSER"
       # The stack runs its own coturn on a free port, so the system service the package starts does not get in the way.
       - run: sudo apt-get update && sudo apt-get install -y coturn
       # Mailpit catches the server's mail. It is not in apt: a pinned release, checked against its hash.
