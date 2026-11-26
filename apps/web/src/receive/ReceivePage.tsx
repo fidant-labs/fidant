@@ -27,7 +27,7 @@
 // - If the signaling socket drops before the data channel opens, a new
 //   attempt starts (new socket, new attempt ID), unless this page already
 //   answered the sender's offer: the answer gave anyone in the middle this
-//   connection's check number, so every new connection would be another guess, and only
+//   connection's safety number, so every new connection would be another guess, and only
 //   the recipient's "Try again" makes one. A `token` counts only as the
 //   answer to a code this page sent. A socket that never opened is
 //   left to the signaling client's own retries. A server that started less
@@ -42,10 +42,12 @@
 //   do not), and the code field survives a rejoin. A `failed` or `expired`
 //   code result asks the gate again, so a binding that is gone ends as "no
 //   longer works".
+// - A peer or an INIT that shows the two pages run different frame versions
+//   ends the attempt with which page must reload, and no Try again.
 // - If the data channel hasn't opened CONNECT_TIMEOUT_MS (30 s) after the
 //   attempt starts, the attempt fails with "connect" (a peer exists) or
 //   "server" (no `joined` yet), so "Connecting…" never stays up for good.
-// - When the data channel opens with the check number on, the page shows the
+// - When the data channel opens with the safety number on, the page shows the
 //   number before anything about the file, and receiveFile holds the offer
 //   until the recipient said it matches and the sender's page said so too.
 //   Either side saying it differs ends the attempt as "differed"; "Try again"
@@ -104,6 +106,8 @@ import { decodeText, isTextOffer } from "../lib/text-secret.ts";
 import {
   CheckNumber,
   Direct,
+  field,
+  formRows,
   Icon,
   Page,
   PathLine,
@@ -187,7 +191,7 @@ type Attempt = {
   ended: boolean;
   /** Resolves the offer: a Sink to accept, undefined to decline. */
   decide?: ((sink: Sink | undefined) => void) | undefined;
-  /** With the check number on: resolves the recipient's own verdict. */
+  /** With the safety number on: resolves the recipient's own verdict. */
   confirm?: ((matches: boolean) => void) | undefined;
   /** The recipient said the numbers differ, so whatever ends the attempt now ends it as "differed". */
   saidDiffers?: boolean;
@@ -322,6 +326,8 @@ export function ReceivePage({
         setTimeout(() => finish({ s: "failed", problem: lostMessage() }), HOST_GONE_GRACE_MS),
       );
     };
+    const outdated = (reason: "outdated" | "peer-outdated") =>
+      finish({ s: "refused", problem: reason === "outdated" ? "outdated" : "senderOutdated" });
     // Without it, a sender whose signals never arrive leaves "Connecting…" up for good.
     let connectTimer: ReturnType<typeof setTimeout> | undefined;
     const armConnectTimeout = () => {
@@ -394,7 +400,7 @@ export function ReceivePage({
         }
         return;
       }
-      // The answer gave anyone in the middle this connection's check number, so
+      // The answer gave anyone in the middle this connection's safety number, so
       // a new one would be another guess: only the recipient's Try again makes it.
       if (attempt.peer?.answered) {
         finish({ s: "failed", problem: lostMessage() });
@@ -502,7 +508,8 @@ export function ReceivePage({
               });
               onOpen(channel, info);
             },
-            onClose: () => lost(),
+            onClose: (reason) =>
+              reason === "outdated" || reason === "peer-outdated" ? outdated(reason) : lost(),
           });
           break;
         case "relay":
@@ -636,6 +643,8 @@ export function ReceivePage({
             finish({ s: "failed", problem: "invalid" });
           } else if (reason === "save") {
             finish({ s: "failed", problem: "save" });
+          } else if (reason === "outdated" || reason === "peer-outdated") {
+            outdated(reason);
           } else {
             lost();
           }
@@ -814,8 +823,8 @@ export function ReceivePage({
             {verify.send}
           </Button>
           {view.asked && (
-            <form class="mt-6 flex flex-wrap items-end gap-2" onSubmit={onCode} noValidate>
-              <div class="flex flex-col gap-1">
+            <form class={`mt-6 ${formRows}`} onSubmit={onCode} noValidate>
+              <div class={field}>
                 <Label htmlFor="code">{verify.codeLabel}</Label>
                 <Input
                   id="code"

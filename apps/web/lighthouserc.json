@@ -12,7 +12,7 @@
         "https://localhost:8444/terms",
         "https://localhost:8444/security",
         "https://localhost:8444/how/traces",
-        "https://localhost:8444/sv/security"
+        "https://localhost:8444/sv/sakerhet"
       ],
       "settings": {
         "chromeFlags": "--headless=new --no-sandbox --ignore-certificate-errors"

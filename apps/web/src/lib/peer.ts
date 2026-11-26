@@ -5,22 +5,34 @@
 //
 //   recipient → server   join {link, attempt}
 //   server → recipient   joined {link, attempt, iceServers, turn}   (recipient: createRecipientPeer)
+//   recipient → sender   relay seal_r(versionMarker(FRAME_VERSION))   each side's first signal
 //   recipient → sender   relay seal_r({kind:"commit", hash})   hash = commitFingerprint(its fingerprint)
 //   server → sender      joined {link, attempt, iceServers, turn}   (sender: createSenderPeer)
+//   sender → recipient   relay seal_s(versionMarker(FRAME_VERSION))
 //   sender               waits for the commit, then makes the offer
 //   sender → recipient   relay seal_s({kind:"offer", sdp, check})
 //   recipient → sender   relay seal_r({kind:"answer", sdp})   its fingerprint must match the commit
 //   both directions      relay seal({kind:"ice", candidate})   (trickle; null = end)
+//   sender → recipient   relay seal_s({kind:"restart-offer", sdp})   (TURN fallback, at most once)
+//   recipient → sender   relay seal_r({kind:"restart-answer", sdp})   both keep the first fingerprints
 //   sender ⇄ recipient   data channel "sigill" opens → onOpen(channel, info)
+//
+// The version marker is an `ice` signal whose empty candidate has the username
+// fragment "fidant-v<FRAME_VERSION>". The sender reads the recipient's before the
+// commit and the recipient the sender's before the offer; a page without a marker
+// counts as UNMARKED_VERSION. On another version the page makes no offer or
+// answer and closes with "outdated" (this page is older) or "peer-outdated".
+// Pages from before the check drop the marker like a candidate for another ICE
+// username fragment.
 //
 // Each side makes a fresh DTLS certificate for every connection. The recipient
 // commits to its certificate's fingerprint before the sender's offer exists, so
 // someone in the middle must fix both certificates before it can learn the
-// check number they give (check.ts). Every fingerprint line of an SDP, in any
+// safety number they give (check.ts). Every fingerprint line of an SDP, in any
 // spelling, must be the exact `a=fingerprint:sha-256 <value>` form and all must
 // name one certificate; after setRemoteDescription the page reads the
 // fingerprint back from the browser's own copy and refuses any difference.
-// `check` says whether the sender's page will ask for the check number; the
+// `check` says whether the sender's page will ask for the safety number; the
 // server can flip it only for an emailed link, and then the two pages disagree
 // and nothing about the file is shown (see frames.ts).
 //
@@ -32,7 +44,8 @@
 //
 // Outgoing signals are sealed and sent in order through one queue; incoming
 // relay data is handled in order through another. ICE candidates that arrive
-// before the remote description are held until it is set.
+// before the remote description are held until it is set, and candidates for
+// another ICE username fragment than the remote description's are dropped.
 //
 // No DOM or UI here, and nothing about files or names: the data channel
 // carries only encrypted frames (frames.ts), and its label is fixed.
@@ -40,6 +53,7 @@
 import type { ClientMessage, ConnectionPath } from "@sigill/protocol";
 import { decodeBase64url } from "./base64url.ts";
 import { certificateFingerprint, checkNumber, commitFingerprint, sdpFingerprint } from "./check.ts";
+import { FRAME_VERSION } from "./frames.ts";
 import { type Direction, openSignal, sealSignal } from "./keys.ts";
 
 /** The data channel label. Fixed and neutral: never a file or recipient name. */
@@ -54,6 +68,9 @@ export const DEFAULT_MAX_MESSAGE_SIZE = 65536;
 /** How long to wait before reading a "stun" path again (see readPath). */
 const PATH_RECHECK_MS = 1000;
 
+/** How long the sender lets ICE try without the relay, from applying the answer. */
+export const RELAY_FALLBACK_MS = 3000;
+
 export type PeerCloseReason =
   /** The data channel closed (the other side went away or closed it). */
   | "channel-closed"
@@ -66,7 +83,11 @@ export type PeerCloseReason =
   /** Could not seal or send our own offer or answer. */
   | "signal-failed"
   /** Setting up the connection threw (createOffer, setRemoteDescription, ...). */
-  | "setup-failed";
+  | "setup-failed"
+  /** The other page runs a newer frame version, so this page must reload. */
+  | "outdated"
+  /** The other page runs an older frame version, so that page must reload. */
+  | "peer-outdated";
 
 export type OpenPath = Exclude<ConnectionPath, "failed">;
 
@@ -78,9 +99,9 @@ export type PeerOpenInfo = {
    * Resolves shortly after the channel opens; never rejects.
    */
   path: Promise<OpenPath>;
-  /** Whether the check number is on: the sender's own setting, or the recipient's from the offer. */
+  /** Whether the safety number is on: the sender's own setting, or the recipient's from the offer. */
   check: boolean;
-  /** The check number from the two fingerprints, "ddd ddd". Show it; never send or log it. */
+  /** The safety number from the two fingerprints, "ddd ddd". Show it; never send or log it. */
   checkNumber: Promise<string>;
 };
 
@@ -94,7 +115,7 @@ export type PeerOptions = {
   signalKey: CryptoKey;
   /** From this pairing's `joined`, fresh for each peer: TURN credentials expire. */
   iceServers: RTCIceServer[];
-  /** Sender only: whether this recipient's check number is on. The recipient reads it from the offer. */
+  /** Sender only: whether this recipient's safety number is on. The recipient reads it from the offer. */
   check?: boolean;
   /** The channel is open, ordered, reliable, binaryType "arraybuffer". */
   onOpen(channel: RTCDataChannel, info: PeerOpenInfo): void;
@@ -113,7 +134,7 @@ export type Peer = {
    * the answer ignores a signal that does not open or parse. Calls are processed in order.
    */
   handleRelay(data: string): Promise<void>;
-  /** Recipient only: the answer went out, so this connection's check number is fixed. */
+  /** Recipient only: the answer went out, so this connection's safety number is fixed. */
   readonly answered: boolean;
   /** Closes the channel and the connection. Safe to call more than once. */
   close(): void;
@@ -131,7 +152,7 @@ export type SignalCandidate = {
 export type SignalPayload =
   | { kind: "commit"; hash: string }
   | { kind: "offer"; sdp: string; check: boolean }
-  | { kind: "answer"; sdp: string }
+  | { kind: "answer" | "restart-offer" | "restart-answer"; sdp: string }
   | { kind: "ice"; candidate: SignalCandidate | null };
 
 type Fields = Record<string, unknown>;
@@ -192,13 +213,15 @@ export function parseSignalPayload(value: unknown): SignalPayload | undefined {
       }
       return { kind: "offer", sdp: fields.sdp, check: fields.check };
     case "answer":
+    case "restart-offer":
+    case "restart-answer":
       if (!hasKeys(fields, ["kind", "sdp"]) || typeof fields.sdp !== "string") {
         return undefined;
       }
       if (fields.sdp.length === 0) {
         return undefined;
       }
-      return { kind: "answer", sdp: fields.sdp };
+      return { kind: fields.kind, sdp: fields.sdp };
     case "ice": {
       if (!hasKeys(fields, ["kind", "candidate"])) {
         return undefined;
@@ -212,6 +235,37 @@ export function parseSignalPayload(value: unknown): SignalPayload | undefined {
     default:
       return undefined;
   }
+}
+
+/** The frame version assumed for a page that sends no version marker, as no page from before the check does. */
+export const UNMARKED_VERSION = 3;
+
+const MARKER = /^fidant-v([1-9][0-9]{0,2})$/;
+
+/** Each side's first signal. Never change its form: pages from before the version check must keep dropping it. */
+export function versionMarker(version: number): SignalPayload {
+  return {
+    kind: "ice",
+    candidate: {
+      candidate: "",
+      sdpMid: null,
+      sdpMLineIndex: null,
+      usernameFragment: `fidant-v${version}`,
+    },
+  };
+}
+
+/** The version a signal names if it is exactly a version marker, else undefined. */
+export function markedVersion(payload: SignalPayload): number | undefined {
+  if (payload.kind !== "ice" || payload.candidate === null) {
+    return undefined;
+  }
+  const { candidate, sdpMid, sdpMLineIndex, usernameFragment } = payload.candidate;
+  if (candidate !== "" || sdpMid !== null || sdpMLineIndex !== null || usernameFragment === null) {
+    return undefined;
+  }
+  const digits = MARKER.exec(usernameFragment)?.[1];
+  return digits === undefined ? undefined : Number(digits);
 }
 
 /** Throws if a frame of `byteLength` bytes is larger than the channel accepts. */
@@ -288,9 +342,21 @@ function toCandidate(candidate: RTCIceCandidate): SignalCandidate {
   };
 }
 
+const urlsOf = (server: RTCIceServer) => [server.urls].flat();
+
+function isConnected(state: RTCIceConnectionState): boolean {
+  return state === "connected" || state === "completed";
+}
+
 function startPeer(options: PeerOptions, side: Direction): Peer {
   const { signaling, linkId, attempt, signalKey } = options;
   const other: Direction = side === "s" ? "r" : "s";
+  const stunOnly = options.iceServers
+    .map((server) => ({ urls: urlsOf(server).filter((url) => url.startsWith("stun:")) }))
+    .filter((server) => server.urls.length > 0);
+  const hasTurn = options.iceServers.some((server) =>
+    urlsOf(server).some((url) => url.startsWith("turn:") || url.startsWith("turns:")),
+  );
 
   let pc: RTCPeerConnection | undefined;
   let closed = false;
@@ -298,7 +364,11 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
   let gotOffer = false;
   let gotAnswer = false;
   let commit: string | undefined;
+  /** The other page's frame version, from its version marker. */
+  let theirVersion: number | undefined;
   let offerFingerprint: string | undefined;
+  /** The other side's fingerprint in the safety number; a restart must carry the same one. */
+  let theirFingerprint: string | undefined;
   let answered = false;
   let answerAccepted = false;
   let ownFingerprint: string | undefined;
@@ -307,12 +377,19 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
   const number = new Promise<string>((resolve) => {
     resolveNumber = resolve;
   });
+  /** Set when the sender starts its restart-offer, or the recipient takes one. */
+  let restarted = false;
+  let gotRestartAnswer = false;
+  /** Set when a restart signal arrived with the path already up; later ones are ignored too. */
+  let ignoredRestart = false;
+  let relayTimer: ReturnType<typeof setTimeout> | undefined;
   const pendingCandidates: Array<SignalCandidate | null> = [];
   let outgoing: Promise<void> = Promise.resolve();
   let incoming: Promise<void> = Promise.resolve();
 
   function teardown(): void {
     closed = true;
+    clearTimeout(relayTimer);
     if (channel) {
       channel.onopen = null;
       channel.onclose = null;
@@ -411,6 +488,15 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
   }
 
   async function addCandidate(candidate: SignalCandidate | null): Promise<void> {
+    const ufrag = /^a=ice-ufrag:(\S+)/m.exec(connection().remoteDescription?.sdp ?? "")?.[1];
+    // A candidate trickled before an ICE restart can arrive after it.
+    if (
+      candidate !== null &&
+      candidate.usernameFragment !== null &&
+      candidate.usernameFragment !== ufrag
+    ) {
+      return;
+    }
     if (candidate === null || candidate.candidate === "") {
       // End of candidates. Older browsers reject this; it only speeds up
       // ICE completing, so a failure is harmless.
@@ -454,12 +540,27 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
     return fingerprint;
   }
 
+  /** Once our own signals are out, throws if the other page runs another frame version. */
+  async function checkVersion(): Promise<void> {
+    const theirs = theirVersion ?? UNMARKED_VERSION;
+    if (theirs === FRAME_VERSION) {
+      return;
+    }
+    // Our marker must reach the other page first, so that it can say which page is older.
+    await outgoing;
+    throw new PeerError(
+      theirs > FRAME_VERSION ? "outdated" : "peer-outdated",
+      `the other page runs frame version ${theirs}`,
+    );
+  }
+
   async function handleSignal(payload: SignalPayload): Promise<void> {
     switch (payload.kind) {
       case "commit": {
         if (side !== "s" || commit !== undefined) {
           throw new PeerError("bad-signal", "unexpected commit");
         }
+        await checkVersion();
         commit = payload.hash;
         const offer = await describe("offer");
         offerFingerprint = offer.fingerprint;
@@ -470,6 +571,7 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
         if (side !== "r" || gotOffer) {
           throw new PeerError("bad-signal", "unexpected offer");
         }
+        await checkVersion();
         gotOffer = true;
         const theirs = remoteFingerprint(payload.sdp);
         check = payload.check;
@@ -480,6 +582,7 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
         }
         sendSignal({ kind: "answer", sdp: answer.sdp }, true);
         answered = true;
+        theirFingerprint = theirs;
         resolveNumber(await checkNumber(theirs, answer.fingerprint));
         return;
       }
@@ -494,17 +597,118 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
         }
         await setRemote("answer", payload.sdp, theirs);
         answerAccepted = true;
+        theirFingerprint = theirs;
+        if (hasTurn && !closed) {
+          relayTimer = setTimeout(fallBackToRelay, RELAY_FALLBACK_MS);
+        }
         resolveNumber(await checkNumber(offerFingerprint, theirs));
         return;
       }
-      case "ice":
+      case "restart-offer": {
+        if (side !== "r" || !answered || restarted) {
+          throw new PeerError("bad-signal", "unexpected restart-offer");
+        }
+        // An honest offer can cross the channel opening; an open path stays as it is.
+        if (ignoredRestart) {
+          return;
+        }
+        if (isConnected(connection().iceConnectionState) || channel?.readyState === "open") {
+          ignoredRestart = true;
+          return;
+        }
+        restarted = true;
+        const theirs = remoteFingerprint(payload.sdp);
+        if (theirs !== theirFingerprint) {
+          throw new PeerError("bad-signal", "the restart names another certificate");
+        }
+        if (hasTurn) {
+          try {
+            addRelay();
+          } catch {
+            // Without its own relay, the sender's relay candidates can still connect.
+          }
+        }
+        await setRemote("offer", payload.sdp, theirs);
+        const answer = await describe("answer");
+        if (answer.fingerprint !== ownFingerprint) {
+          throw new PeerError("setup-failed", "the answer names another certificate");
+        }
+        sendSignal({ kind: "restart-answer", sdp: answer.sdp }, true);
+        return;
+      }
+      case "restart-answer": {
+        if (side !== "s" || !restarted || gotRestartAnswer) {
+          throw new PeerError("bad-signal", "unexpected restart-answer");
+        }
+        if (ignoredRestart) {
+          return;
+        }
+        if (isConnected(connection().iceConnectionState) || channel?.readyState === "open") {
+          ignoredRestart = true;
+          return;
+        }
+        gotRestartAnswer = true;
+        const theirs = remoteFingerprint(payload.sdp);
+        if (theirs !== theirFingerprint) {
+          throw new PeerError("bad-signal", "the restart names another certificate");
+        }
+        await setRemote("answer", payload.sdp, theirs);
+        return;
+      }
+      case "ice": {
+        const version = markedVersion(payload);
+        // A marker counts only before the commit or offer; a later one is dropped by its fragment.
+        if (
+          version !== undefined &&
+          theirVersion === undefined &&
+          commit === undefined &&
+          !gotOffer
+        ) {
+          theirVersion = version;
+          await checkVersion();
+          return;
+        }
         if (connection().remoteDescription) {
           await addCandidate(payload.candidate);
         } else {
           pendingCandidates.push(payload.candidate);
         }
         return;
+      }
     }
+  }
+
+  function addRelay(): void {
+    const pc = connection();
+    pc.setConfiguration({ ...pc.getConfiguration(), iceServers: options.iceServers });
+  }
+
+  /** Adds TURN and restarts ICE, in order with the relayed signals, unless ICE connected or the channel opened. */
+  function fallBackToRelay(): void {
+    incoming = incoming
+      .then(async () => {
+        const pc = connection();
+        const state = pc.iceConnectionState;
+        if (closed || isConnected(state) || channel?.readyState === "open") {
+          return;
+        }
+        try {
+          addRelay();
+          pc.restartIce();
+        } catch {
+          // An old browser: the connection keeps trying without the relay.
+          return;
+        }
+        restarted = true;
+        const offer = await describe("offer");
+        if (offer.fingerprint !== offerFingerprint) {
+          throw new PeerError("setup-failed", "the restart offer names another certificate");
+        }
+        sendSignal({ kind: "restart-offer", sdp: offer.sdp }, true);
+      })
+      .catch((error: unknown) => {
+        failWith(error, "setup-failed");
+      });
   }
 
   async function setup(): Promise<void> {
@@ -515,10 +719,8 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
     if (closed) {
       return;
     }
-    // Host candidates are enough on one network. The app server may add a TURN
-    // relay for browsers that cannot reach each other; it sees only encrypted
-    // DTLS traffic. Without one (the local demo), iceServers is [].
-    const next = new RTCPeerConnection({ iceServers: options.iceServers, certificates: [cert] });
+    // STUN only, so a direct route wins whenever there is one; see fallBackToRelay.
+    const next = new RTCPeerConnection({ iceServers: stunOnly, certificates: [cert] });
     pc = next;
 
     next.onicecandidate = (event) => {
@@ -551,6 +753,7 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
     }
   }
 
+  sendSignal(versionMarker(FRAME_VERSION), true);
   // Relayed signals wait for the certificate and the connection.
   incoming = setup().catch((error: unknown) => {
     failWith(error, "setup-failed");

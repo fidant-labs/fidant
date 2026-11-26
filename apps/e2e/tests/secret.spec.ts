@@ -1,6 +1,7 @@
 import type { Download, Page } from "@playwright/test";
 import {
   type Actor,
+  allowClipboard,
   breakableSender,
   delivered,
   expect,
@@ -47,9 +48,7 @@ async function openRecipient(
   name = "recipient",
 ) {
   const { context, page } = await actor(name);
-  await context.grantPermissions(["clipboard-read", "clipboard-write"], {
-    origin: new URL(link).origin,
-  });
+  await allowClipboard(context, new URL(link).origin);
   await context.addInitScript(() => {
     const g = globalThis as {
       showSaveFilePicker?: (...args: unknown[]) => unknown;
@@ -74,11 +73,15 @@ test("a text goes from /secret to the recipient, who shows and copies it", async
   actor,
   leaks,
   canary,
+  browserName,
 }) => {
   const body = makeText(leaks, canary);
   // Starts with a byte order mark, which Blob.text() would drop on the recipient's side.
   const text = `\uFEFF${body}`;
   leaks.watchContent("text with its byte order mark", text);
+  // WebKit ends the box's selected text with a line break, and on macOS its clipboard drops the mark.
+  const selected = browserName === "webkit" ? `${text}\n` : text;
+  const copied = browserName === "webkit" && process.platform === "darwin" ? body : text;
   const from = makeName(leaks, canary, "David");
   const name = makeName(leaks, canary, "Anna");
 
@@ -91,8 +94,11 @@ test("a text goes from /secret to the recipient, who shows and copies it", async
   await expect(entry).toHaveAttribute("aria-current", "page");
   const field = sender.getByLabel("Your secret");
   await expect(field).toHaveId("secret-text");
-  await expect(field).toHaveJSProperty("spellcheck", false);
-  await expect(field).toHaveJSProperty("translate", false);
+  // Playwright's Firefox crashes the page on toHaveJSProperty after a role or label query.
+  await expect
+    .poll(() => field.evaluate((el) => (el as HTMLTextAreaElement).spellcheck))
+    .toBe(false);
+  await expect.poll(() => field.evaluate((el) => (el as HTMLElement).translate)).toBe(false);
   for (const [attribute, value] of [
     ["autocomplete", "off"],
     ["autocorrect", "off"],
@@ -101,7 +107,8 @@ test("a text goes from /secret to the recipient, who shows and copies it", async
     await expect(field).toHaveAttribute(attribute, value);
   }
   const link = await share(leaks, sender, text, from, name);
-  await expect(field).toHaveJSProperty("value", text);
+  await expect(field).toBeVisible();
+  await expect.poll(() => field.evaluate((el) => (el as HTMLTextAreaElement).value)).toBe(text);
   const senderPanel = sender.getByRole("region", { name: "What our server has right now" });
   await expect(senderPanel).toContainText("None. The secret goes directly between browsers.");
   await expect(senderPanel).toContainText("never the part that unlocks the secret");
@@ -120,8 +127,9 @@ test("a text goes from /secret to the recipient, who shows and copies it", async
   await show.click();
 
   const shown = page.getByRole("region", { name: "The secret", exact: true });
-  await expect(shown).toHaveJSProperty("textContent", text);
-  await expect(shown).toHaveJSProperty("translate", false);
+  await expect(shown).toBeVisible();
+  await expect.poll(() => shown.evaluate((el) => el.textContent)).toBe(text);
+  await expect.poll(() => shown.evaluate((el) => (el as HTMLElement).translate)).toBe(false);
   await expect(shown).toHaveAttribute("tabindex", "0");
   // Browsers save form controls' values with the session, so none may hold the text.
   const [firstLine = body] = body.split("\n");
@@ -133,7 +141,7 @@ test("a text goes from /secret to the recipient, who shows and copies it", async
   // Select-all inside the box takes only the text, not the page's headings and buttons.
   await shown.focus();
   await page.keyboard.press("ControlOrMeta+A");
-  expect(await page.evaluate(() => getSelection()?.toString())).toBe(text);
+  expect(await page.evaluate(() => getSelection()?.toString())).toBe(selected);
   // A Cyrillic layout gives "ф" for the A key. Shift or Alt with A, and Ctrl+Q on AZERTY
   // (the A key giving "q"), are other shortcuts.
   const keyDown = (init: {
@@ -151,7 +159,7 @@ test("a text goes from /secret to the recipient, who shows and copies it", async
     }, init);
   expect(await keyDown({ key: "ф", code: "KeyA", ctrlKey: true })).toEqual({
     prevented: true,
-    selected: text,
+    selected,
   });
   for (const extra of [{ shiftKey: true as const }, { altKey: true as const }]) {
     expect(await keyDown({ key: "A", code: "KeyA", ctrlKey: true, ...extra })).toEqual({
@@ -168,7 +176,7 @@ test("a text goes from /secret to the recipient, who shows and copies it", async
   await page.evaluate(() => navigator.clipboard.writeText("not the text"));
   await page.getByRole("button", { name: "Copy secret" }).click();
   await expect(page.getByRole("button", { name: "Copied" })).toBeVisible();
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(text);
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(copied);
 
   const details = page.locator("details").filter({ hasText: "Technical details" });
   await details.getByText("Technical details").click();
@@ -244,10 +252,9 @@ test("declining a text keeps the link working", async ({ actor, leaks, canary })
   await page.getByRole("button", { name: "Show the secret again" }).click();
   await expect(offer).toBeVisible();
   await page.getByRole("button", { name: "Show", exact: true }).click();
-  await expect(page.getByRole("region", { name: "The secret", exact: true })).toHaveJSProperty(
-    "textContent",
-    text,
-  );
+  const shown = page.getByRole("region", { name: "The secret", exact: true });
+  await expect(shown).toBeVisible();
+  await expect.poll(() => shown.evaluate((el) => el.textContent)).toBe(text);
   await expect(delivered(sender, name)).toBeAttached();
 });
 

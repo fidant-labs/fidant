@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { expect, test } from "../src/fixtures.ts";
+import { allowClipboard, expect, test } from "../src/fixtures.ts";
 
 const SECTIONS = [
   "stays",
@@ -181,9 +181,7 @@ test("the old /technical address opens /how", async ({ page }) => {
 
 test("a heading's button copies a link to its section", async ({ page, context }) => {
   await page.goto("/how/link");
-  await context.grantPermissions(["clipboard-read", "clipboard-write"], {
-    origin: new URL(page.url()).origin,
-  });
+  await allowClipboard(context, new URL(page.url()).origin);
   await page.locator("#linkRisks h2").hover();
   await page.locator("#linkRisks").getByRole("button", { name: "Copy link to this part" }).click();
   const origin = new URL(page.url()).origin;

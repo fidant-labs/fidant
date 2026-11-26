@@ -18,16 +18,16 @@
 // |    2 | CHUNK   |  s  | exactly chunkSize bytes: file bytes, then zeros  |
 // |      |         |     | after the end of the file (see Padding)          |
 // |    3 | END     |  s  | sha256(32) || size(8, u64 big-endian)            |
-// |    4 | CHECK   |  s  | 1 byte: 1 the check number matches, 0 it differs |
+// |    4 | CHECK   |  s  | 1 byte: 1 the safety number matches, 0 it differs |
 // |   16 | ACCEPT  |  r  | empty (proves the recipient holds the key)       |
 // |   17 | RECEIPT |  r  | sha256(32) the recipient computed                |
 // |   18 | DECLINE |  r  | empty                                            |
 // |   19 | CREDIT  |  r  | granted(8, u64 big-endian): cumulative count of  |
 // |      |         |     | CHUNKs the sender may send; it may send CHUNK i  |
 // |      |         |     | (0-based) only while i < granted                 |
-// |   20 | CHECK   |  r  | 1 byte: 1 the check number matches, 0 it differs |
+// |   20 | CHECK   |  r  | 1 byte: 1 the safety number matches, 0 it differs |
 //
-// CHECK: with the check number on, each side's first frame after INIT is its CHECK,
+// CHECK: with the safety number on, each side's first frame after INIT is its CHECK,
 // sent once its own person compared the numbers; META waits for both to say 1.
 //
 // Padding: anyone who can see frame sizes (the network, a TURN relay) learns
@@ -53,11 +53,11 @@
 //
 // Version 3 is the first whose file key includes the attempt ID. A sender and
 // recipient on different versions (one on a cached old page) would derive
-// different keys, so the version is checked first. A frame of another version
-// fails as "unknown frame version" at INIT, on the recipient's side,
-// before any key is derived; the sender sees only the channel close. The
-// recipient's page shows the same text as for unreadable data, so only a reload
-// of the older page fixes it, and neither page says which.
+// different keys, so the version is checked first: the two pages compare it
+// before they connect (the version marker in peer.ts), and a frame of another
+// version still fails at INIT, on the recipient's side, before any key is
+// derived, as a VersionError. The recipient's page then says which page must
+// reload; the sender sees only the channel close.
 //
 // Writers and readers keep state: await each encrypt or decrypt before
 // starting the next one. A reader stops accepting frames after any failure.
@@ -68,6 +68,7 @@ import { Sha256 } from "./sha256.ts";
 
 export { hasForbiddenCharacters, MAX_FROM_LENGTH };
 
+/** Raise it for any change that breaks frames or signal payloads: peer.ts's version marker carries it. */
 export const FRAME_VERSION = 3;
 export const HEADER_BYTES = 10;
 export const TAG_BYTES = 16;
@@ -183,11 +184,22 @@ export function encodeInit(transferId: Uint8Array): Uint8Array<ArrayBuffer> {
   return out;
 }
 
-/** Reads the transferId from an INIT frame. Throws if `frame` is not a well-formed INIT. */
+/** A frame of another version than FRAME_VERSION: the two pages run different releases. */
+export class VersionError extends Error {
+  readonly version: number;
+
+  constructor(version: number) {
+    super(`unknown frame version ${version}`);
+    this.name = "VersionError";
+    this.version = version;
+  }
+}
+
+/** Reads the transferId from an INIT frame. Throws if `frame` is not a well-formed INIT, a VersionError for another version. */
 export function decodeInit(frame: Uint8Array): Uint8Array<ArrayBuffer> {
   const header = decodeHeader(frame);
   if (header.version !== FRAME_VERSION) {
-    throw new Error("unknown frame version");
+    throw new VersionError(header.version);
   }
   if (header.kind !== SenderKind.INIT || header.seq !== 0 || frame.length !== HEADER_BYTES + 16) {
     throw new Error("malformed INIT frame");
@@ -470,7 +482,7 @@ export function decodeCredit(body: Uint8Array): number {
   return readU64(new DataView(body.buffer, body.byteOffset, 8), 0);
 }
 
-/** CHECK body: whether this side's user said the check numbers match. */
+/** CHECK body: whether this side's user said the safety numbers match. */
 export function encodeCheck(matches: boolean): Uint8Array<ArrayBuffer> {
   return new Uint8Array([matches ? 1 : 0]);
 }

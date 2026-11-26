@@ -30,6 +30,9 @@ test.beforeAll(async ({ playwright }) => {
 
 type Transport = "udp" | "tcp";
 
+const loopbackRelay =
+  "Firefox pairs the local coturn's 127.0.0.1 relay candidates with no LAN candidate and ends ICE at once, before the sender falls back to the relay";
+
 const sha256Hex = (data: Uint8Array) => createHash("sha256").update(data).digest("hex");
 const panel = (page: Page) => page.getByRole("region", { name: "What our server has right now" });
 const relayed =
@@ -66,7 +69,8 @@ const peerList = (page: Page, key: "iceUrls" | "peerStates" | "relayPaths") =>
 /**
  * Init script: keeps every peer connection's ICE URLs and states, and, once it connects, the type
  * and relay protocol of its selected local candidate (`relay/udp`, `host/` and so on). With a
- * `relay` transport it allows only relay candidates, from the TURN URLs for that transport.
+ * `relay` transport it allows only relay candidates, from the TURN URLs for that transport, also
+ * when the app adds the relay later through setConfiguration.
  */
 function watchPeers(relay: Transport | null) {
   delete (globalThis as { showSaveFilePicker?: unknown }).showSaveFilePicker;
@@ -75,18 +79,21 @@ function watchPeers(relay: Transport | null) {
   const states: string[] = [];
   const paths: string[] = [];
   Object.assign(globalThis, { iceUrls: urls, peerStates: states, relayPaths: paths });
+  const watched = (config: RTCConfiguration): RTCConfiguration => {
+    for (const server of config.iceServers ?? []) {
+      urls.push(...[server.urls].flat());
+    }
+    const iceServers = (config.iceServers ?? [])
+      .map((server) => ({
+        ...server,
+        urls: [server.urls].flat().filter((url) => url.endsWith(`?transport=${relay}`)),
+      }))
+      .filter((server) => server.urls.length > 0);
+    return relay ? { ...config, iceServers, iceTransportPolicy: "relay" } : config;
+  };
   globalThis.RTCPeerConnection = class extends Native {
     constructor(config: RTCConfiguration = {}) {
-      for (const server of config.iceServers ?? []) {
-        urls.push(...[server.urls].flat());
-      }
-      const iceServers = (config.iceServers ?? [])
-        .map((server) => ({
-          ...server,
-          urls: [server.urls].flat().filter((url) => url.endsWith(`?transport=${relay}`)),
-        }))
-        .filter((server) => server.urls.length > 0);
-      super(relay ? { ...config, iceServers, iceTransportPolicy: "relay" } : config);
+      super(watched(config));
       states.push(this.connectionState);
       this.addEventListener("connectionstatechange", async () => {
         states.push(this.connectionState);
@@ -99,6 +106,9 @@ function watchPeers(relay: Transport | null) {
         const local = reports.find((r) => r.id === pair?.localCandidateId);
         paths.push(`${local?.candidateType}/${local?.relayProtocol ?? ""}`);
       });
+    }
+    override setConfiguration(config: RTCConfiguration = {}) {
+      super.setConfiguration(watched(config));
     }
   };
 }
@@ -122,7 +132,9 @@ for (const transport of ["udp", "tcp"] as const) {
     actor,
     leaks,
     canary,
+    browserName,
   }) => {
+    test.skip(browserName === "firefox", loopbackRelay);
     const stdoutStart = await sizeOf(serverStdoutLog);
     const coturnStart = await sizeOf(coturnLog);
     const file = leaks.watch(canaryFile(canary.fork("file"), { size: 300_001 }));
@@ -170,8 +182,9 @@ for (const transport of ["udp", "tcp"] as const) {
       const urls = await peerList(page, "iceUrls");
       expect(urls?.length).toBeGreaterThan(0);
       expect(new Set(urls)).toEqual(new Set(process.env.SIGILL_E2E_TURN_URLS?.split(",")));
-      // Every connection went through a relay candidate reached over the transport under test.
-      await expect.poll(() => peerList(page, "relayPaths")).toEqual([`relay/${transport}`]);
+      // WebKit's stats name no protocol; watchPeers offers only this transport's TURN URLs.
+      const path = browserName === "webkit" ? "relay/" : `relay/${transport}`;
+      await expect.poll(() => peerList(page, "relayPaths")).toEqual([path]);
     }
 
     // The sender reports the path, so the server logs it, about a second after the channel opens.
@@ -241,7 +254,9 @@ test("a sender who refuses the relay: no credentials, no bytes, plain words on b
   observed,
   leaks,
   canary,
+  browserName,
 }) => {
+  test.skip(browserName === "firefox", loopbackRelay);
   const stdoutStart = await sizeOf(serverStdoutLog);
   const coturnStart = await sizeOf(coturnLog);
   const file = leaks.watch(canaryFile(canary.fork("file"), { size: 100_001 }));
@@ -255,8 +270,9 @@ test("a sender who refuses the relay: no credentials, no bytes, plain words on b
     mimeType: file.mime,
     buffer: file.bytes,
   });
-  await sender.getByText("Connection options", { exact: true }).click();
-  const allowRelay = sender.getByLabel("Allow our relay if a direct connection isn't possible");
+  // The page glides after a file is chosen, here on the faked clock, so a pointer click can miss.
+  await sender.getByText("Connection options", { exact: true }).press("Enter");
+  const allowRelay = sender.getByLabel("Use our relay if needed");
   await allowRelay.uncheck();
   await sender.getByLabel("Who is it for?").fill("Anna");
   await sender.getByRole("button", { name: "Create link", exact: true }).click();
@@ -342,8 +358,8 @@ test("a sender who refuses the relay and fails setup shows the refused relay", a
     mimeType: file.mime,
     buffer: file.bytes,
   });
-  await sender.getByText("Connection options", { exact: true }).click();
-  await sender.getByLabel("Allow our relay if a direct connection isn't possible").uncheck();
+  await sender.getByText("Connection options", { exact: true }).press("Enter");
+  await sender.getByLabel("Use our relay if needed").uncheck();
   await sender.getByLabel("Who is it for?").fill("Anna");
   await sender.getByRole("button", { name: "Create link", exact: true }).click();
   const link = (await sender.getByLabel("Link for Anna", { exact: true }).textContent()) ?? "";

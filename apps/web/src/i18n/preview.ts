@@ -8,7 +8,7 @@ export type PageHead = {
   /** The link preview's title, when it differs from the tab title. */
   ogTitle?: string;
   image: "preview.png" | "preview-receive.png";
-  /** A public page's path without /sv: adds its canonical and hreflang links. */
+  /** A public page's English path: adds its canonical and hreflang links. */
   path?: string;
   /** The pre-paint script, and on an English page with a Swedish twin, that twin's path. */
   script?: { src: string; sv?: string | undefined };

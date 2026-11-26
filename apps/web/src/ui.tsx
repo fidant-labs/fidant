@@ -128,6 +128,10 @@ export function Icon({ name, class: cls }: { name: IconName; class?: string }) {
 
 export const lede = "mt-2 mb-6 text-[1.05rem] text-muted-foreground";
 
+export const field = "flex flex-col gap-2";
+
+export const formRows = "flex flex-wrap items-end gap-x-2 gap-y-4";
+
 export const display = "font-display font-normal tracking-tight";
 
 export type Route =
@@ -620,23 +624,18 @@ export function useCopyNote() {
 
 /** A section's [text, href] link, on its own line. */
 export function SectionLink({ link: [text, href] }: { link: readonly [string, string] }) {
+  // Same-site links navigate in place, so a send open in another page survives.
+  const Anchor = href.startsWith("/") ? Link : "a";
   return (
     <p>
-      {/* Same-site links navigate in place, so a send open in another page survives. */}
-      {href.startsWith("/") ? (
-        <Link href={href} class="font-medium underline underline-offset-4">
-          {text}
-        </Link>
-      ) : (
-        <a href={href} class="font-medium underline underline-offset-4">
-          {text}
-        </a>
-      )}
+      <Anchor href={href} class="font-medium underline underline-offset-4">
+        {text}
+      </Anchor>
     </p>
   );
 }
 
-/** A check number shown as "482 913", heard digit by digit when it appears. */
+/** A safety number shown as "482 913", heard digit by digit when it appears. */
 export function CheckNumber({ label, number }: { label?: string; number: string | undefined }) {
   return (
     <p class="m-0" role="status">

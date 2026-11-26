@@ -16,14 +16,17 @@
 //   link's signal key and creates a sender peer with the ICE servers from
 //   `joined`, without TURN entries when the relay checkbox or the server
 //   refused it. `relay` goes to that peer.
-//   `left` → reducer `left`, which only matters before the channel opens.
+//   `left` → reducer `left`, which only matters before the channel opens, once
+//   the signals relayed before it were handled.
 // - When the data channel opens, sendFile runs the transfer and reports
 //   accepted, progress, declined and receipt back to the reducer.
 // - On /secret, a connection whose max message size can't carry every text in
 //   one chunk (textFitsOneChunk) gets nothing: reducer `unsendable` fails the
 //   recipient's card and refuses the joiner.
+// - A peer that closes on another frame version → `outdated`; onClose here, not the reducer,
+//   refuses the joiner at the join deadline, so a joiner still bound then is unbound as a silent one is.
 // - A peer that closes or fails before delivery → `dropped`; a data channel
-//   that has not opened SETUP_TIMEOUT_MS after the join, or a check number
+//   that has not opened SETUP_TIMEOUT_MS after the join, or a safety number
 //   not confirmed CHECK_TIMEOUT_MS after it opened → `timeout`. Both refuse
 //   the joiner so the server unbinds it (see sender-state.ts).
 // - Each connection reports its path to the server once: direct, stun or
@@ -87,7 +90,17 @@ import {
 import { addRelay, NO_RELAYS } from "../lib/server-facts.ts";
 import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
 import { MAX_TEXT_LENGTH, textFile, textFitsOneChunk } from "../lib/text-secret.ts";
-import { FileCard, Icon, Link, lede, Page, ServerPanel, TechDetails } from "../ui.tsx";
+import {
+  FileCard,
+  field,
+  formRows,
+  Icon,
+  Link,
+  lede,
+  Page,
+  ServerPanel,
+  TechDetails,
+} from "../ui.tsx";
 import { type CheckView, RecipientList } from "./RecipientList.tsx";
 
 type Hash =
@@ -101,14 +114,18 @@ type Connection = {
   peer?: Peer;
   /** Relayed signals that arrived before the peer existed, such as the recipient's commit. */
   early: string[];
-  /** With the check number on: the sender's own verdict, from the card's buttons. */
+  /** The handling of the last relayed signal, which a `left` waits for. */
+  relayed?: Promise<void>;
+  /** With the safety number on: the sender's own verdict, from the card's buttons. */
   confirm?: (matches: boolean) => void;
-  /** What the sender said about the check number, once they said it. */
+  /** What the sender said about the safety number, once they said it. */
   said?: boolean;
   /** Fires `timeout` if the data channel has not opened in time, and later the 5-minute check deadline. */
   deadline?: ReturnType<typeof setTimeout>;
   /** Set once the connection's path went to the server. */
   pathSent?: boolean;
+  /** Applies a `left` that waits for the last relayed signal to be handled. */
+  pendingLeft?: () => void;
 };
 
 // Errors are kept as keys and turned into text in render, so they follow a language switch.
@@ -120,8 +137,7 @@ const LOST_AFTER_MS = 10_000;
 /** How long to wait before hosting again when the server still holds a link for our old socket. */
 const REHOST_AFTER_MS = 5000;
 
-const field = "flex flex-1 flex-col gap-1";
-const fieldError = "mt-1 mb-0 text-destructive";
+const fieldError = "m-0 text-destructive";
 const hint = "text-[0.9rem] text-muted-foreground";
 const stepLabel = "m-0 mb-1 text-[0.85rem] font-medium text-muted-foreground";
 const GLIDE_MS = 450;
@@ -183,9 +199,6 @@ export function SendPage({
   const [mail, setMail] = useState(false);
   // Emailing a link is opt-in: until the sender ticks it, there is no email field.
   const [useEmail, setUseEmail] = useState(false);
-  // The check number follows the email choice until the sender sets it for this add.
-  const [checkChoice, setCheckChoice] = useState<boolean | undefined>(undefined);
-  const checkOn = checkChoice ?? useEmail;
   // Each open check's number, by link ID: on screen only, gone with its connection.
   const [checks, setChecks] = useState<Readonly<Record<string, CheckView>>>({});
   const [emailError, setEmailError] = useState(false);
@@ -210,6 +223,7 @@ export function SendPage({
   const signalingRef = useRef<SignalingClient | undefined>(undefined);
   const connectionsRef = useRef(new Map<string, Connection>());
   const dispatchRef = useRef<(action: SenderAction) => void>(() => {});
+  const refusalsRef = useRef(new Set<ReturnType<typeof setTimeout>>());
 
   const host = () => {
     signalingRef.current?.send({
@@ -245,6 +259,7 @@ export function SendPage({
       return;
     }
     closeConnection(linkId);
+    const joinedAt = performance.now();
     const connection: Connection = { abort: new AbortController(), early: [] };
     connectionsRef.current.set(linkId, connection);
     const dispatch = (action: SenderAction) => dispatchRef.current(action);
@@ -360,12 +375,28 @@ export function SendPage({
         if (reason === "connection-failed") {
           sendPath(linkId, connection, "failed");
         }
+        if (reason === "outdated" || reason === "peer-outdated") {
+          const older = reason === "outdated" ? "sender" : "recipient";
+          dispatch({ type: "outdated", linkId, older });
+          // Outlives closeConnection: a recipient page that saw the mismatch has left by then; any other joiner is unbound.
+          const refusal = setTimeout(
+            () => {
+              refusalsRef.current.delete(refusal);
+              if (hostedLinks(senderRef.current).includes(linkId)) {
+                signalingRef.current?.send({ t: "refuse", link: linkId, attempt, reason: "drop" });
+              }
+            },
+            Math.max(0, joinedAt + SETUP_TIMEOUT_MS - performance.now()),
+          );
+          refusalsRef.current.add(refusal);
+          return;
+        }
         // After "It differs" the recipient closes the channel as it should.
         dispatch({ type: connection.said === false ? "check-differs" : "dropped", linkId });
       },
     });
     for (const data of connection.early.splice(0)) {
-      void connection.peer.handleRelay(data);
+      connection.relayed = connection.peer.handleRelay(data);
     }
   };
 
@@ -424,6 +455,12 @@ export function SendPage({
     signalingRef.current = signaling;
     let disposed = false;
     const dispatch = (action: SenderAction) => dispatchRef.current(action);
+    const clearRefusals = () => {
+      for (const refusal of refusalsRef.current) {
+        clearTimeout(refusal);
+      }
+      refusalsRef.current.clear();
+    };
 
     let lost: ReturnType<typeof setTimeout> | undefined;
     let rehost: ReturnType<typeof setTimeout> | undefined;
@@ -446,6 +483,8 @@ export function SendPage({
     signaling.subscribe((message) => {
       switch (message.t) {
         case "joined":
+          // Keeps socket order: a `left` still waiting on a signal is applied before this join.
+          connectionsRef.current.get(message.link)?.pendingLeft?.();
           dispatch({
             type: "joined",
             linkId: message.link,
@@ -455,9 +494,24 @@ export function SendPage({
             allowRelay: allowRelayRef.current,
           });
           break;
-        case "left":
-          dispatch({ type: "left", linkId: message.link });
+        case "left": {
+          const linkId = message.link;
+          const connection = connectionsRef.current.get(linkId);
+          if (!connection?.relayed) {
+            dispatch({ type: "left", linkId });
+            break;
+          }
+          // A signal relayed before `left` may close the peer with the reason the recipient left.
+          const apply = () => {
+            delete connection.pendingLeft;
+            if (connectionsRef.current.get(linkId) === connection) {
+              dispatch({ type: "left", linkId });
+            }
+          };
+          connection.pendingLeft = apply;
+          void connection.relayed.then(() => connection.pendingLeft === apply && apply());
           break;
+        }
         case "hello":
           setMail(message.mail);
           break;
@@ -477,7 +531,7 @@ export function SendPage({
         case "relay": {
           const connection = connectionsRef.current.get(message.link);
           if (connection?.peer) {
-            void connection.peer.handleRelay(message.data);
+            connection.relayed = connection.peer.handleRelay(message.data);
           } else {
             connection?.early.push(message.data);
           }
@@ -505,6 +559,7 @@ export function SendPage({
     // Once the page is really going, close the peers so recipients hear it now, not when ICE
     // consent runs out about 15 s later.
     const onPageHide = () => {
+      clearRefusals();
       for (const linkId of [...connectionsRef.current.keys()]) {
         closeConnection(linkId);
       }
@@ -515,6 +570,7 @@ export function SendPage({
       disposed = true;
       clearTimeout(lost);
       clearTimeout(rehost);
+      clearRefusals();
       window.removeEventListener("beforeunload", onBeforeUnload);
       window.removeEventListener("pagehide", onPageHide);
       hashAbortRef.current?.abort();
@@ -610,7 +666,9 @@ export function SendPage({
       fromRef.current = typed;
     }
     const link = createLink(location.origin);
-    dispatchRef.current({ type: "add", link, name, check: checkOn, ...(email && { email }) });
+    const submitter = (event as SubmitEvent).submitter;
+    const check = submitter instanceof HTMLButtonElement ? submitter.value === "check" : !!email;
+    dispatchRef.current({ type: "add", link, name, check, ...(email && { email }) });
     // After `add`, so the server already hosts the link this names.
     if (email && findRecipient(senderRef.current, link.linkId)) {
       const sent = signalingRef.current?.send({
@@ -628,7 +686,6 @@ export function SendPage({
       }
     }
     form.reset();
-    setCheckChoice(undefined);
     setMore(false);
     setTyped(false);
     input.focus();
@@ -748,7 +805,7 @@ export function SendPage({
               {t.secret.hint(MAX_TEXT_LENGTH)}
             </p>
             {/* Always rendered so the status is announced; the count stays outside it so each key isn't read out. */}
-            <p id="secret-text-error" class={tooLong ? fieldError : "-mt-1 mb-0"}>
+            <p id="secret-text-error" class={tooLong ? fieldError : "-mt-2 mb-0"}>
               {tooLong && `${t.secret.count(textLength, MAX_TEXT_LENGTH)} `}
               <span role="status">{tooLong && t.secret.tooLong}</span>
             </p>
@@ -910,7 +967,7 @@ export function SendPage({
               </p>
             </div>
             <form
-              class="mt-6 flex flex-wrap items-end gap-2"
+              class={`mt-6 ${formRows}`}
               ref={formRef}
               onSubmit={onAdd}
               onInput={(event) =>
@@ -931,7 +988,7 @@ export function SendPage({
               }}
               noValidate
             >
-              <div class={field}>
+              <div class={`basis-full ${field}`}>
                 <Label htmlFor={id("recipient-name")}>{t.send.recipientLabel}</Label>
                 <Input
                   id={id("recipient-name")}
@@ -947,9 +1004,14 @@ export function SendPage({
                     nameError ? `${id("name-error")} ${id("recipient-hint")}` : id("recipient-hint")
                   }
                 />
+                {nameError && (
+                  <p id={id("name-error")} class={fieldError}>
+                    {t.send.nameError[nameError]}
+                  </p>
+                )}
               </div>
               {mail && (
-                <div class="flex basis-full flex-col gap-2">
+                <div class={`basis-full ${field}`}>
                   {/* Off by default: the safe way is to pass the link on yourself. */}
                   <Label className="items-start leading-snug font-normal">
                     <input
@@ -1006,24 +1068,42 @@ export function SendPage({
                   )}
                 </div>
               )}
-              <Label className="basis-full items-start leading-snug font-normal">
-                <input
-                  type="checkbox"
-                  name="check"
-                  class="mt-0.5 size-4 flex-none accent-primary"
-                  checked={checkOn}
-                  disabled={!file || full}
-                  onChange={(event) => setCheckChoice(event.currentTarget.checked)}
-                />
-                {text ? t.secret.checkChoice : t.send.check.choice}
-              </Label>
-              <Button type="submit" disabled={!file || full}>
-                {useEmail ? t.send.addEmail : t.send.add}
-              </Button>
+              <div class="flex basis-full flex-wrap gap-2">
+                {mail && useEmail ? (
+                  <>
+                    <Button
+                      type="submit"
+                      value="check"
+                      disabled={!file || full}
+                      aria-describedby={file && !full ? id("check-hint") : undefined}
+                    >
+                      {t.send.addEmailCheck}
+                    </Button>
+                    <Button type="submit" variant="outline" value="plain" disabled={!file || full}>
+                      {t.send.addEmail}
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button type="submit" value="plain" disabled={!file || full}>
+                      {t.send.add}
+                    </Button>
+                    <Button
+                      type="submit"
+                      variant="outline"
+                      value="check"
+                      disabled={!file || full}
+                      aria-describedby={file && !full ? id("check-hint") : undefined}
+                    >
+                      {t.send.addCheck}
+                    </Button>
+                  </>
+                )}
+              </div>
             </form>
-            {nameError && (
-              <p id={id("name-error")} class={fieldError}>
-                {t.send.nameError[nameError]}
+            {file && !full && (
+              <p id={id("check-hint")} class={`mb-0 ${hint}`}>
+                {t.send.check.hint(text ? "secret" : "file")}
               </p>
             )}
             <p id={id("recipient-hint")} class={hint}>
@@ -1049,19 +1129,29 @@ export function SendPage({
         )}
         <details class="mt-6 text-[0.9rem]">
           <summary class="cursor-pointer text-muted-foreground">{t.send.connectionOptions}</summary>
-          <Label className="mt-4 items-start leading-snug font-normal">
+          <div class="mt-4 flex items-start gap-2.5">
             <input
               type="checkbox"
+              id={id("allow-relay")}
               class="mt-0.5 size-4 flex-none accent-primary"
               checked={allowRelay}
+              aria-describedby={`${id("allow-relay")}-description`}
               onChange={(event) => {
-                allowRelayRef.current = event.currentTarget.checked;
-                setAllowRelay(allowRelayRef.current);
+                const checked = event.currentTarget.checked;
+                allowRelayRef.current = checked;
+                setAllowRelay(checked);
                 host();
               }}
             />
-            {t.send.allowRelay}
-          </Label>
+            <div class="flex flex-col gap-1">
+              <Label htmlFor={id("allow-relay")} className="leading-snug">
+                {t.send.allowRelay}
+              </Label>
+              <p id={`${id("allow-relay")}-description`} class={`m-0 leading-snug ${hint}`}>
+                {t.send.allowRelayHint(text ? "secret" : "file")}
+              </p>
+            </div>
+          </div>
         </details>
       </section>
 

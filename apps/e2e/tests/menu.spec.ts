@@ -86,7 +86,7 @@ test("the language menu switches language and the choice survives a reload", asy
   await choose(page, "Language", "Svenska");
   await expect(page.locator("main h1")).toHaveText("Integritet");
   await expect(page.locator("html")).toHaveAttribute("lang", "sv");
-  await expect(page).toHaveURL(/\/sv\/privacy$/);
+  await expect(page).toHaveURL(/\/sv\/integritet$/);
   await page.reload();
   await expect(page.locator("main h1")).toHaveText("Integritet");
 

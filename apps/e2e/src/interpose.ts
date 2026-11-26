@@ -116,7 +116,7 @@ export const commitTo = (fingerprint: string) =>
 /**
  * Runs in the middle page through evaluate, so it may use nothing from this module. Ends one
  * WebRTC connection at each real page, each with a fresh certificate: to the sender it is the
- * recipient, to the recipient the sender with the check number on. Passes every data channel frame
+ * recipient, to the recipient the sender with the safety number on. Passes every data channel frame
  * on to the other page unchanged. Sends its signals in order through the exposed `toPage`.
  */
 function middleman() {
@@ -183,6 +183,10 @@ function middleman() {
         return connect(leg);
       }
       const pc = peers.get(leg);
+      // The recipient's version marker comes before its commit.
+      if (!pc && payload.kind === "ice") {
+        return undefined;
+      }
       if (!pc) {
         throw new Error(`${payload.kind} before a connection to the ${leg}`);
       }
