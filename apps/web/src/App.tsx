@@ -6,6 +6,7 @@ import { useI18n } from "./i18n/I18n.tsx";
 import { barePath, type Lang, localizedPath } from "./i18n/language.ts";
 import { InfoPage } from "./info/InfoPage.tsx";
 import { LandingPage } from "./landing/LandingPage.tsx";
+import { faviconHref, overallStatus, type TransferStatus } from "./lib/favicon.ts";
 import { PrivacyPage } from "./privacy/PrivacyPage.tsx";
 import { ReceivePage } from "./receive/ReceivePage.tsx";
 import { SendPage } from "./send/SendPage.tsx";
@@ -118,9 +119,16 @@ export function App({
     setTheme(next);
   };
   const kept = useRef(new Set<Route>());
-  const [sendOpen, setSendOpen] = useState(false);
-  const [secretOpen, setSecretOpen] = useState(false);
-  const [receiveOpen, setReceiveOpen] = useState(false);
+  const [sendStatus, setSendStatus] = useState<TransferStatus>("idle");
+  const [secretStatus, setSecretStatus] = useState<TransferStatus>("idle");
+  const [receiveStatus, setReceiveStatus] = useState<TransferStatus>("idle");
+  const sendOpen = sendStatus === "active";
+  const secretOpen = secretStatus === "active";
+  const receiveOpen = receiveStatus === "active";
+  const status = overallStatus([sendStatus, secretStatus, receiveStatus]);
+  useEffect(() => {
+    document.querySelector('link[rel="icon"]')?.setAttribute("href", faviconHref(status));
+  }, [status]);
   // Holds the key, so it stays out of the DOM: the link back shows only the path.
   const receiveUrl = useRef("");
   const away =
@@ -204,17 +212,17 @@ export function App({
         {!secure && holdsTransfer && <InsecurePage />}
         {secure && kept.current.has("receive") && (
           <div id="receive" hidden={route !== "receive"}>
-            <ReceivePage onUnfinished={setReceiveOpen} />
+            <ReceivePage onStatus={setReceiveStatus} />
           </div>
         )}
         {secure && kept.current.has("send") && (
           <div hidden={route !== "send"} inert={prerender !== undefined}>
-            <SendPage kind="file" onUnfinished={setSendOpen} />
+            <SendPage kind="file" onStatus={setSendStatus} />
           </div>
         )}
         {secure && kept.current.has("secret") && (
           <div hidden={route !== "secret"} inert={prerender !== undefined}>
-            <SendPage kind="text" onUnfinished={setSecretOpen} />
+            <SendPage kind="text" onStatus={setSecretStatus} />
           </div>
         )}
       </div>

@@ -78,6 +78,7 @@ import { Label } from "#components/ui/label";
 import type { Messages } from "../i18n/en.ts";
 import { useI18n } from "../i18n/I18n.tsx";
 import { encodeBase64url } from "../lib/base64url.ts";
+import type { TransferStatus } from "../lib/favicon.ts";
 import {
   displayName,
   etaTracker,
@@ -212,10 +213,10 @@ const MAX_REJOINS = 4;
 const STARTING_RETRY_MS = 1000;
 
 export function ReceivePage({
-  onUnfinished,
+  onStatus,
 }: {
-  /** Told whether a file or text is offered or arriving, which leaving the tab would lose. */
-  onUnfinished(unfinished: boolean): void;
+  /** Told "active" while a file or text is offered or arriving, which leaving the tab would lose, and "done" once it has arrived. */
+  onStatus(status: TransferStatus): void;
 }) {
   const { t, lang } = useI18n();
   const problemFor = (view: { problem: ProblemKey; text?: boolean }): ProblemText => {
@@ -226,8 +227,9 @@ export function ReceivePage({
   };
   const link = useMemo(() => parseRecipientLocation(location), []);
   const [view, setView] = useState<View>({ s: "connecting" });
-  const unfinished = view.s === "offer" || view.s === "receiving";
-  useEffect(() => onUnfinished(unfinished), [onUnfinished, unfinished]);
+  const status: TransferStatus =
+    view.s === "offer" || view.s === "receiving" ? "active" : view.s === "done" ? "done" : "idle";
+  useEffect(() => onStatus(status), [onStatus, status]);
   const downloading = view.s === "receiving";
   useEffect(() => {
     if (!downloading) {
