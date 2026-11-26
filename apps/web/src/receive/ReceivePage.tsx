@@ -42,6 +42,8 @@
 //   do not), and the code field survives a rejoin. A `failed` or `expired`
 //   code result asks the gate again, so a binding that is gone ends as "no
 //   longer works".
+// - A peer or an INIT that shows the two pages run different frame versions
+//   ends the attempt with which page must reload, and no Try again.
 // - If the data channel hasn't opened CONNECT_TIMEOUT_MS (30 s) after the
 //   attempt starts, the attempt fails with "connect" (a peer exists) or
 //   "server" (no `joined` yet), so "Connecting…" never stays up for good.
@@ -324,6 +326,8 @@ export function ReceivePage({
         setTimeout(() => finish({ s: "failed", problem: lostMessage() }), HOST_GONE_GRACE_MS),
       );
     };
+    const outdated = (reason: "outdated" | "peer-outdated") =>
+      finish({ s: "refused", problem: reason === "outdated" ? "outdated" : "senderOutdated" });
     // Without it, a sender whose signals never arrive leaves "Connecting…" up for good.
     let connectTimer: ReturnType<typeof setTimeout> | undefined;
     const armConnectTimeout = () => {
@@ -504,7 +508,8 @@ export function ReceivePage({
               });
               onOpen(channel, info);
             },
-            onClose: () => lost(),
+            onClose: (reason) =>
+              reason === "outdated" || reason === "peer-outdated" ? outdated(reason) : lost(),
           });
           break;
         case "relay":
@@ -638,6 +643,8 @@ export function ReceivePage({
             finish({ s: "failed", problem: "invalid" });
           } else if (reason === "save") {
             finish({ s: "failed", problem: "save" });
+          } else if (reason === "outdated" || reason === "peer-outdated") {
+            outdated(reason);
           } else {
             lost();
           }

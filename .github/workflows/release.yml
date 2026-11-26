@@ -49,7 +49,6 @@ jobs:
           set -euo pipefail
           read -ra inputs <<<"$IMAGE_INPUTS"
           key=$(git rev-parse "${inputs[@]/#/HEAD:}" | sha256sum | cut -c1-64)
-          [[ $key =~ ^[0-9a-f]{64}$ ]] || { echo "::error::could not key the image inputs"; exit 1; }
           echo "key=$key" >>"$GITHUB_OUTPUT"
       - name: Build the image
         env:
@@ -67,12 +66,12 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-  # Holds AWS credentials, so it checks out nothing and runs only pinned actions, the aws CLI, docker and jq.
+  # Holds AWS credentials, so it checks out nothing and runs only pinned actions, git (ls-remote, before it signs in), the aws CLI, docker and jq.
   release:
     needs: build
     runs-on: ubuntu-latest
     environment: app
-    # Above the release step's three 30-minute waits, so the step reports its own timeout.
+    # Above the release step's waits (20, 30 and 30 minutes) and below the role's 2-hour session.
     timeout-minutes: 100
     permissions:
       id-token: write
@@ -81,9 +80,22 @@ jobs:
         with:
           name: image
           path: ${{ runner.temp }}/image
+      - name: Check the commit is production's tip
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          [[ $SHA =~ ^[0-9a-f]{40}$ ]] || { echo "::error::unexpected commit"; exit 1; }
+          tip=$(git ls-remote "https://github.com/$GITHUB_REPOSITORY" refs/heads/production | awk -F'\t' '$2 == "refs/heads/production" {print $1}') || tip=
+          [[ $tip =~ ^[0-9a-f]{40}$ ]] || { echo "::error::could not read production's tip"; exit 1; }
+          if [ "$tip" != "$SHA" ]; then
+            echo "::error::refused $SHA: production is at $tip, and only its newest release runs"
+            exit 1
+          fi
       - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
           role-to-assume: arn:aws:iam::${{ secrets.FIDANT_POC_ACCOUNT }}:role/fidant-release
+          role-duration-seconds: 7200
           aws-region: eu-north-1
           mask-aws-account-id: true
       - name: Push the image, move live and redeploy
@@ -93,6 +105,8 @@ jobs:
           KEY: ${{ needs.build.outputs.key }}
         run: |
           set -euo pipefail
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
           [[ $SHA =~ ^[0-9a-f]{40}$ && $KEY =~ ^[0-9a-f]{64}$ && $ACCOUNT =~ ^[0-9]{12}$ ]] || { echo "::error::unexpected input"; exit 1; }
           repo=fidant-signal
           registry=$ACCOUNT.dkr.ecr.eu-north-1.amazonaws.com
@@ -100,24 +114,47 @@ jobs:
           image() { aws ecr batch-get-image --repository-name "$repo" --image-ids "$1" --output json; }
           digest() { image "$1" | jq -r '.images[0].imageId.imageDigest // "none"'; }
           tag() {
+            local json manifest type want have
             json=$(image "$1")
             manifest=$(jq -er '.images[0].imageManifest' <<<"$json")
             type=$(jq -er '.images[0].imageManifestMediaType' <<<"$json")
             aws ecr put-image --repository-name "$repo" --image-tag "$2" --image-manifest "$manifest" \
-              --image-manifest-media-type "$type" >/dev/null 2>"$err" ||
-              grep -q '(ImageAlreadyExistsException)' "$err" || { cat "$err" >&2; exit 1; }
+              --image-manifest-media-type "$type" >/dev/null 2>"$err" && return
+            grep -q '(ImageAlreadyExistsException)' "$err" && return
+            if grep -q '(ImageTagAlreadyExistsException)' "$err"; then
+              want=$(jq -er '.images[0].imageId.imageDigest' <<<"$json")
+              have=$(digest "imageTag=$2")
+              [ "$have" = "$want" ] && return
+            fi
+            cat "$err" >&2
+            exit 1
           }
           services() { aws ecs describe-services --cluster fidant --services fidant-signal --output json; }
           # One deployment, COMPLETED, so no deployment starts while the service rolls back.
           settled() {
-            for _ in $(seq 120); do
+            local deadline=$((SECONDS + $1)) json s
+            while :; do
               json=$(services)
               s=$(jq -r '[(.services[0].deployments | length), .services[0].deployments[0].rolloutState] | @tsv' <<<"$json")
               if [ "$s" = $'1\tCOMPLETED' ]; then return 0; fi
-              sleep 15
+              if [ "$SECONDS" -ge "$deadline" ]; then
+                echo "::error::the service did not settle in time: $s"
+                exit 1
+              fi
+              sleep 15 & wait $!
             done
-            echo "::error::the service did not settle within 30 minutes: $s"
-            exit 1
+          }
+          safe=
+          restore() {
+            if [ -z "$safe" ]; then
+              echo "::error::the release stopped before the service was confirmed to run $d"
+              echo "moving live back to $previous"
+              if (tag "imageDigest=$previous" live); then
+                echo "live names $previous again"
+              else
+                echo "::error::could not move live back to $previous: it still names $d, so a release with these inputs ends without deploying until live moves"
+              fi
+            fi
           }
 
           d=$(digest "imageTag=inputs-$KEY")
@@ -135,6 +172,11 @@ jobs:
           previous=$(digest imageTag=live)
           if [ "$previous" = "$d" ]; then
             echo "live already names $d"
+            exit 0
+          fi
+          f=$(digest "imageTag=failed-$KEY")
+          if [ "$f" != none ]; then
+            echo "::warning::the server image for these inputs failed before and is not deployed: $f is tagged failed-$KEY. To try it again, delete that tag as Releasing in AGENTS.md says, then re-run the newest release run, the one for production's tip, or promote a later commit."
             exit 0
           fi
 
@@ -163,31 +205,41 @@ jobs:
             exit 1
           fi
 
-          settled
+          settled 1200
+          trap restore EXIT
           tag "imageDigest=$d" live
           if ! json=$(aws ecs update-service --cluster fidant --service fidant-signal --force-new-deployment --output json); then
-            tag "imageDigest=$previous" live
-            echo "::error::could not start a deployment; live names $previous again"
+            echo "::error::could not start a deployment"
             exit 1
           fi
           dep=$(jq -r '[.service.deployments[] | select(.status == "PRIMARY") | .id][0] // "None"' <<<"$json")
           [[ $dep =~ ^ecs-svc/[0-9]+$ ]] || { echo "::error::unexpected deployment: $dep"; exit 1; }
-          for _ in $(seq 120); do
+          deadline=$((SECONDS + 1800))
+          while :; do
             json=$(services)
             s=$(jq -r --arg id "$dep" '[([.services[0].deployments[] | select(.id == $id) | .rolloutState][0] // "None"), (.services[0].deployments | length)] | @tsv' <<<"$json")
             case "$s" in
             $'COMPLETED\t1')
+              safe=1
               echo "live names $d, and the service runs it"
               exit 0
               ;;
-            FAILED* | None*)
-              settled
+            FAILED*)
+              echo "::error::the new task failed its health check; the service is going back to $previous, live will name it again, and $d will be tagged failed-$KEY"
+              settled 1800
               tag "imageDigest=$previous" live
-              echo "::error::the new task failed its health check; the service went back to $previous and live names it again"
+              safe=1
+              tag "imageDigest=$d" "failed-$KEY"
+              exit 1
+              ;;
+            None*)
+              echo "::error::the deployment left the service's list before it finished; live goes back to $previous, and the next release with these inputs tries $d again"
               exit 1
               ;;
             esac
-            sleep 15
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "::error::the deployment did not finish in time: $s"
+              exit 1
+            fi
+            sleep 15 & wait $!
           done
-          echo "::error::the deployment did not finish within 30 minutes: $s; live names $d"
-          exit 1

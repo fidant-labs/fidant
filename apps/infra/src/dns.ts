@@ -110,8 +110,6 @@ export class DnsStack extends Stack {
       if (zoneName === primaryDomain) {
         const recordName = `turn.${zoneName}`;
         new route53.ARecord(zone, `${recordName} A`, { zone, recordName, target });
-      }
-      if (zoneName === primaryDomain) {
         for (const [id, address] of Object.entries(props.relayAddresses)) {
           const recordName = relayName(id);
           const target = route53.RecordTarget.fromIpAddresses(address);

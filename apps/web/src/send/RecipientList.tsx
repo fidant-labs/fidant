@@ -17,8 +17,10 @@ import {
   CHECK_DIFFERS,
   CHECK_EXPIRED,
   CHECK_LIMIT,
+  RECIPIENT_OUTDATED,
   type Recipient,
   type RecipientStatus,
+  SENDER_OUTDATED,
   TOO_SMALL_FOR_TEXT,
   unmarked,
 } from "../lib/sender-state.ts";
@@ -198,7 +200,11 @@ function RecipientRow({
                         ? t.send.check.expired
                         : error === CHECK_LIMIT
                           ? t.send.check.limit(CHECK_ATTEMPTS)
-                          : statusText[status](name)}
+                          : error === SENDER_OUTDATED
+                            ? statusText.senderOutdated(name)
+                            : error === RECIPIENT_OUTDATED
+                              ? statusText.recipientOutdated(name)
+                              : statusText[status](name)}
             </span>
           </p>
           {email && mail && (
