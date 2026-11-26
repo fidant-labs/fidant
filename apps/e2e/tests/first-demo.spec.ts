@@ -1512,7 +1512,7 @@ test.describe("through a server restart", () => {
   }) => {
     test.fixme(
       browserName === "webkit",
-      "SIG-TBD: WebKit reports the restart's close code 1012 as 1005 or 1006",
+      "SIG-287: WebKit reports the restart's close code 1012 as 1005 or 1006",
     );
     const file = makeFile(leaks, canary, 100_001);
     const sender = await openSender(demo, file, "", (page) => page.addInitScript(holdHosts));
