@@ -207,9 +207,14 @@ export function startServer(options: {
   siteOrigin?: string | undefined;
   proxies?: BlockList | undefined;
   startingMs?: number | undefined;
+  keepAliveMs?: number | undefined;
 }): Promise<{ server: Server; signaling: { close(): void } }> {
+  const ms = options.keepAliveMs;
   const server = createServer(
-    ensureCert(options.certDir, options.hosts),
+    {
+      ...ensureCert(options.certDir, options.hosts),
+      ...(ms === undefined ? {} : { keepAliveTimeout: ms, headersTimeout: ms + 1000 }),
+    },
     serveRelays(options.relays, options.root === undefined ? notFound : serveStatic(options.root)),
   );
   const signaling = attachSignaling(server, {

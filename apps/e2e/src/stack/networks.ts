@@ -1,9 +1,11 @@
-import { execFile, execFileSync } from "node:child_process";
+import { execFile, execFileSync, spawn } from "node:child_process";
 import { createHash, generateKeyPairSync, randomBytes, X509Certificate } from "node:crypto";
+import { once } from "node:events";
 import { readFileSync, rmSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { createInterface } from "node:readline";
 import { promisify } from "node:util";
 // ponytail: relative import, not a workspace dependency on the server, for two small functions.
 import { relaySecret, sealRelaySecret } from "../../../server/src/relay-secret.ts";
@@ -29,6 +31,7 @@ export const boxOrigin = "https://fidant.se";
 /** The relay box container, set up by apps/infra/relay/install.sh. */
 export const relayIp = "198.51.100.40";
 export const relayHost = "sto.relay.sigill.test";
+export const albIp = "198.51.100.50";
 /** The node stage of networks/box/Dockerfile, so Dependabot moves the server and the box together. */
 export const serverImage =
   /^FROM (\S+) AS node$/m.exec(
@@ -90,20 +93,83 @@ export async function sendToRelay(payload: Uint8Array): Promise<void> {
   await sending;
 }
 
-/** Runs a command in the box container and returns its stdout. */
-export async function inBox(...command: string[]): Promise<string> {
-  const { stdout } = await run("docker", [...compose, "exec", "-T", "box", ...command], {
+async function inService(service: "box" | "relay" | "signal", command: string[]): Promise<string> {
+  const { stdout } = await run("docker", [...compose, "exec", "-T", service, ...command], {
     maxBuffer: 64 * 1024 * 1024,
   });
   return stdout;
 }
 
+/** Runs a command in the box container and returns its stdout. */
+export const inBox = (...command: string[]) => inService("box", command);
+
 /** Runs a command in the relay box container and returns its stdout. */
-export async function inRelay(...command: string[]): Promise<string> {
-  const { stdout } = await run("docker", [...compose, "exec", "-T", "relay", ...command], {
-    maxBuffer: 64 * 1024 * 1024,
-  });
+export const inRelay = (...command: string[]) => inService("relay", command);
+
+/** Runs a command in the signaling container and returns its stdout. */
+export const inSignal = (...command: string[]) => inService("signal", command);
+
+export async function signalLogs(): Promise<string> {
+  const { stdout } = await run("docker", [
+    ...compose,
+    ...["logs", "--no-color", "--no-log-prefix", "signal"],
+  ]);
   return stdout;
+}
+
+const clientScript = `
+const WebSocket = require(process.argv[1]);
+const open = (options) => new Promise((done) => {
+  const ws = new WebSocket(process.argv[2], { ...options, rejectUnauthorized: false });
+  ws.on("open", () => done(101));
+  ws.on("unexpected-response", (req, res) => { done(res.statusCode); req.destroy(); });
+  ws.on("error", () => done(0));
+});
+(async () => {
+  const codes = [];
+  for (const options of JSON.parse(process.argv[3])) codes.push(await open(options));
+  console.log(JSON.stringify(codes));
+  process.stdin.on("end", () => process.exit(0)).resume();
+})();
+`;
+
+// Each code is 101, the status of the refused upgrade, or 0 when the socket failed.
+export async function signalClients(
+  site: "a1" | "b1",
+  count: number,
+  options: { origin: string; agent: string; forwardedFor?: (index: number) => string },
+): Promise<{ codes: number[]; release: () => Promise<void> }> {
+  const sockets = Array.from({ length: count }, (_, index) => ({
+    origin: options.origin,
+    headers: {
+      "user-agent": options.agent,
+      ...(options.forwardedFor && { "x-forwarded-for": options.forwardedFor(index) }),
+    },
+  }));
+  const child = spawn(
+    "docker",
+    [
+      ...compose,
+      ...["exec", "-T", `browser-${site}`, "node", "-e", clientScript],
+      join(repo, "apps", "server", "node_modules", "ws"),
+      `wss://${albIp}/signal`,
+      JSON.stringify(sockets),
+    ],
+    { stdio: ["pipe", "pipe", "inherit"] },
+  );
+  const exited = once(child, "exit");
+  const release = async () => {
+    child.stdin.end();
+    await exited;
+  };
+  const line = once(createInterface({ input: child.stdout }), "line");
+  const [first] = await Promise.race([
+    line,
+    exited.then(([code]) => {
+      throw new Error(`the signaling clients exited with ${code} before they answered`);
+    }),
+  ]);
+  return { codes: JSON.parse(first) as number[], release };
 }
 
 /** Seals `secretHex` to the relay box's key and applies it there, as the app's hand-out will. */
@@ -164,6 +230,22 @@ async function startNetworks(): Promise<RunningService> {
   const secret = relaySecret(master, "net");
   const secretFile = join(dir, "secret");
   await writeFile(secretFile, secret, { mode: 0o600 });
+  // net's key only lets the list parse: nothing fetches net's hand-out.
+  const netKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
+    .publicKey.export({ type: "spki", format: "pem" })
+    .toString();
+  // Before any compose command, which all load signal's env file and need its relay list mounted.
+  await writeFile(
+    join(dir, "signal-relays.json"),
+    JSON.stringify([
+      {
+        id: "net",
+        urls: [`stun:${turnIp}:3478`, `turn:${turnIp}:3478?transport=udp`],
+        publicKey: netKey,
+      },
+    ]),
+  );
+  await writeFile(join(dir, "signal.env"), `RELAY_MASTER=${master}\n`, { mode: 0o600 });
   // The config dir is mounted read-only, so coturn keeps its state in the container's /tmp.
   // Production's peer denials stay, 10/8 among them: the public network has no route to the private
   // sites, and without the denial coturn closed allocations right after Chrome checked a private
@@ -254,10 +336,8 @@ async function startNetworks(): Promise<RunningService> {
     down();
     await fetchImages();
     await run("docker", [...compose, "up", "-d", "--wait", "--wait-timeout", "120"]);
-    // net's key only lets the list parse: nothing fetches net's hand-out.
-    const netKey = generateKeyPairSync("rsa", { modulusLength: 2048 }).publicKey;
     const relays = [
-      { id: "net", urls: turnUrls, publicKey: netKey.export({ type: "spki", format: "pem" }) },
+      { id: "net", urls: turnUrls, publicKey: netKey },
       {
         id: "sto",
         // By address: the server resolves no test names, and its check needs a turn: UDP URL.

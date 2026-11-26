@@ -2,6 +2,7 @@
 
 import { useState } from "preact/hooks";
 import { useI18n } from "../i18n/I18n.tsx";
+import { SectionLink } from "../ui.tsx";
 import { DrawnSection, Paragraphs } from "./Drawing.tsx";
 import { CHOICES, type Choice, tracesFor } from "./traces.ts";
 
@@ -74,6 +75,9 @@ export function TraceExplorer() {
           );
         })}
       </ul>
+      <div class="mt-6">
+        <SectionLink link={text.link} />
+      </div>
     </DrawnSection>
   );
 }
