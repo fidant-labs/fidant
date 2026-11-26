@@ -5,16 +5,19 @@ import { CiStack } from "./ci.ts";
 import {
   alertEmail,
   boxAddress,
+  certificateIds,
   certificateRecords,
   hostedZoneIds,
   mail,
   relayAddresses,
+  relayMasterGeneration,
   signalName,
   signals,
   zoneNames,
 } from "./config.ts";
 import { DnsStack } from "./dns.ts";
 import { DnssecStack } from "./dnssec.ts";
+import { SignalStack } from "./signal.ts";
 
 export function addStacks(app: App, env: Record<string, string | undefined>): void {
   const account = env.CDK_DEFAULT_ACCOUNT;
@@ -56,6 +59,14 @@ export function addStacks(app: App, env: Record<string, string | undefined>): vo
       env: { account, region: "eu-north-1" },
       certificates: signals.map((signal) => [signalName(signal.id)]),
     });
+    const signalCertificate = certificateIds.signal.sto;
+    if (signalCertificate) {
+      new SignalStack(app, "FidantSignal", {
+        env: { account, region: "eu-north-1" },
+        certificateId: signalCertificate,
+        relayMasterGeneration,
+      });
+    }
   } else {
     throw new Error(`Account ${account} is neither FIDANT_DNS_ACCOUNT nor FIDANT_POC_ACCOUNT.`);
   }

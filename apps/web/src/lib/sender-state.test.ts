@@ -12,6 +12,7 @@ import {
   emailBound,
   findRecipient,
   hostedLinks,
+  INTERRUPTED,
   initialSenderState,
   RECIPIENT_OUTDATED,
   type Recipient,
@@ -211,6 +212,7 @@ test("a drop before delivery returns the recipient to waiting and frees the link
       status: "waiting",
       bytesSent: 0,
       ...(reached === "connecting" && { noConnect: true }),
+      ...(reached === "receiving" && { error: INTERRUPTED }),
     });
     assert.deepEqual(
       dropped.effects,
@@ -222,6 +224,7 @@ test("a drop before delivery returns the recipient to waiting and frees the link
     );
 
     const again = update(dropped.state, joined(linkId, A));
+    assert.equal(findRecipient(again.state, linkId)?.error, undefined);
     assert.equal(statusOf(again.state, linkId), "connecting", "the same link starts over");
     assert.deepEqual(again.effects, [{ type: "start", linkId, attempt: A, iceServers: [] }]);
   }

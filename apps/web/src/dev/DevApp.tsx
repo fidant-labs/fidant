@@ -66,7 +66,7 @@ export function DevApp(props: { secure: boolean; theme: Theme }) {
   // Built once per pick, so the page gets each state once.
   const preview = useMemo(() => {
     if (state) {
-      previews.current = { ...previews.current, [state.page]: state.preview() };
+      previews.current = { ...previews.current, [state.page]: state.preview(), page: state.page };
     }
     return previews.current;
   }, [state]);

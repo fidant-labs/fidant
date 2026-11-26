@@ -165,7 +165,6 @@ for (const transport of ["udp", "tcp"] as const) {
     const download = await downloading;
     expect(sha256Hex(await readFile(await download.path()))).toBe(sha256Hex(file.bytes));
 
-    await sender.getByText("Show details", { exact: true }).click();
     for (const page of [sender, recipient]) {
       await expect(panel(page)).toContainText(relayed);
       await expect(panel(page)).toContainText("Our relay sees");

@@ -75,8 +75,9 @@
 //   bound joiner's, so a late drop of one attempt cannot turn away the next
 //   joiner.
 // - A drop before delivery returns the recipient to "waiting" with bytesSent
-//   0. The reducer keeps nothing of it: the next join starts a new transfer,
-//   which a recipient that kept part of the file continues from ACCEPT's
+//   0. Only a drop while receiving also sets `error: INTERRUPTED`, which the
+//   next join clears. The reducer keeps nothing else of it: the next join
+//   starts a new transfer, which a recipient that kept part of the file continues from ACCEPT's
 //   offset (see send-file.ts).
 // - A decline marks the recipient "declined", so the sender sees the link was
 //   opened and turned down. The link stays usable: the next join starts over,
@@ -311,7 +312,9 @@ export const CHECK_LIMIT = "The check failed too many times, so this link no lon
 export const CHECK_EXPIRED = "The safety number wasn't confirmed in time, so nothing was sent.";
 export const SENDER_OUTDATED = "This page runs an older version than the recipient's.";
 export const RECIPIENT_OUTDATED = "The recipient's page runs an older version than this one.";
+export const INTERRUPTED = "The connection ended while the file was on its way.";
 export type RecipientError =
+  | typeof INTERRUPTED
   | typeof CHECKSUM_MISMATCH
   | typeof TOO_SMALL_FOR_TEXT
   | typeof CHECK_DIFFERS
@@ -525,11 +528,11 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
       if (action.type === "dropped" ? !isActive(current) : current.status !== "connecting") {
         return { state, effects: [] };
       }
-      return end(
-        state,
-        current,
-        failedCheck(current, waiting(current, current.status === "connecting")),
-      );
+      return end(state, current, {
+        ...failedCheck(current, waiting(current, current.status === "connecting")),
+        // Says why the card is back at waiting; the next join clears it.
+        ...(current.status === "receiving" && { error: INTERRUPTED }),
+      });
     case "left": {
       if (current.ask !== undefined) {
         const { ask: _ask, ...rest } = current;
