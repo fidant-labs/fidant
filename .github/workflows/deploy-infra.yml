@@ -13,9 +13,11 @@ on:
 
 permissions: {}
 
+# Shared with release.yml: their runs go one at a time. What this does not order: 0023.
 concurrency:
-  group: deploy-infra
+  group: fidant-deploy
   cancel-in-progress: false
+  queue: max
 
 jobs:
   deploy:

@@ -10,6 +10,32 @@ export function relayName(id: string): string {
   return `${id}.relay.${primaryDomain}`;
 }
 
+export const signals: readonly { id: string }[] = [{ id: "sto" }];
+
+export function signalName(id: string): string {
+  return `${id}.signal.${primaryDomain}`;
+}
+
+export const imageRepository = "fidant-signal";
+export const signalCluster = "fidant";
+export const signalService = "fidant-signal";
+export const releaseRoleName = "fidant-release";
+export const releaseSessionSeconds = 7200;
+
+export function pagesBucket(account: string): string {
+  return `fidant-pages-${account}`;
+}
+
+// Copied by hand from ACM's certificate ARNs.
+export const certificateIds: { pages: Record<string, string>; signal: Record<string, string> } = {
+  pages: {
+    "fidant.se": "11748fd1-b51a-4368-bdf7-27fd30a1d526",
+    "fidant.eu": "a0d54a8d-5907-494c-b89f-0181240252fa",
+    "fidant.org": "768aa32e-631e-4ae0-a65b-e960835ec45d",
+  },
+  signal: { sto: "ebce34f6-e758-4771-af75-7fd7be208c9b" },
+};
+
 export type DnsRecord = { name: string; value: string };
 
 export type Mail = {
@@ -74,6 +100,38 @@ export const hostedZoneIds: Record<string, string> = {
   "fidant.eu": "Z09323213U4PW8PVU0GWR",
   "fidant.org": "Z09257402SNQGKKFL536D",
 };
+
+// Copied by hand from `aws acm describe-certificate`, under DomainValidationOptions[].ResourceRecord.
+export const certificateRecords: DnsRecord[] = [
+  {
+    name: "_937db4927b3b55bae071f79808a4e888.fidant.se.",
+    value: "_d912ee8c3adf9e6a9550c2ffb8ede4c7.wzccmgtwzk.acm-validations.aws.",
+  },
+  {
+    name: "_6f08bf588a8e42f84be6d9a39f80b3c8.www.fidant.se.",
+    value: "_0296af4596dfb5955ca959f527f41ba7.wzccmgtwzk.acm-validations.aws.",
+  },
+  {
+    name: "_cf5a75a2f79bf19fc053d89d4d1d9bd9.fidant.eu.",
+    value: "_7acbd12d240f29bb664c1c9f90b1f38e.wzccmgtwzk.acm-validations.aws.",
+  },
+  {
+    name: "_a6c8c3b2e7c9f12d38890ef70aef6e27.www.fidant.eu.",
+    value: "_c41ea245bdf156bdd8df6cbbbad6abad.wzccmgtwzk.acm-validations.aws.",
+  },
+  {
+    name: "_062cc81580f28b524f642e66900610df.fidant.org.",
+    value: "_0f22f3345a5b685d958aa644726e57a3.wzccmgtwzk.acm-validations.aws.",
+  },
+  {
+    name: "_a568c88b528b8f7cf72a2beea55a36e2.www.fidant.org.",
+    value: "_8b294111155dcd659581ad2c02003c36.wzccmgtwzk.acm-validations.aws.",
+  },
+  {
+    name: "_3422cc2f70c992f75faae58aa426f45a.sto.signal.fidant.se.",
+    value: "_0473ccf35b4cb81b45ff8ac067ac3e74.wzccmgtwzk.acm-validations.aws.",
+  },
+];
 
 export const alertEmail = "budget-alert@fidant.se";
 

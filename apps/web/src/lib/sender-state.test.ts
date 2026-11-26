@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type EmailStatus, MAX_LINKS } from "@sigill/protocol";
-import { CHECK_ATTEMPTS } from "./check.ts";
 import { createLink, type Link } from "./link.ts";
 import {
+  CHECK_ATTEMPTS,
   CHECK_DIFFERS,
   CHECK_EXPIRED,
   CHECK_LIMIT,

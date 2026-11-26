@@ -1,0 +1,247 @@
+name: Release
+
+on:
+  push:
+    branches: [production]
+
+permissions: {}
+
+# Shared with deploy-infra.yml: their runs go one at a time. What this does not order: 0023.
+concurrency:
+  group: fidant-deploy
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      key: ${{ steps.key.outputs.key }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check the commit is on main
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          [[ $SHA =~ ^[0-9a-f]{40}$ ]] || { echo "::error::unexpected commit"; exit 1; }
+          list=$(git rev-list --first-parent refs/remotes/origin/main) || list=
+          if [ -z "$list" ]; then
+            echo "::error::could not check $SHA against main"
+            exit 1
+          fi
+          case "$list" in
+          *"$SHA"*) ;;
+          *)
+            echo "::error::refused $SHA: not on main"
+            exit 1
+            ;;
+          esac
+      - name: Key the image inputs
+        id: key
+        env:
+          IMAGE_INPUTS: apps/server packages/protocol package.json pnpm-lock.yaml pnpm-workspace.yaml
+        run: |
+          set -euo pipefail
+          read -ra inputs <<<"$IMAGE_INPUTS"
+          key=$(git rev-parse "${inputs[@]/#/HEAD:}" | sha256sum | cut -c1-64)
+          echo "key=$key" >>"$GITHUB_OUTPUT"
+      - name: Build the image
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # Without attestations ECR stores one image manifest, which put-image can tag again.
+          docker build -f apps/server/Dockerfile --build-arg REVISION="$SHA" --provenance=false --sbom=false -t fidant-signal:build .
+          docker save fidant-signal:build -o "$RUNNER_TEMP/image.tar"
+      # This repository's artifacts are public; the image holds only public code.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: image
+          path: ${{ runner.temp }}/image.tar
+          retention-days: 1
+          if-no-files-found: error
+
+  # Holds AWS credentials, so it checks out nothing and runs only pinned actions, git (ls-remote, before it signs in), the aws CLI, docker and jq.
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: app
+    # Above the release step's waits (20, 30 and 30 minutes) and below the role's 2-hour session.
+    timeout-minutes: 100
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: image
+          path: ${{ runner.temp }}/image
+      - name: Check the commit is production's tip
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          [[ $SHA =~ ^[0-9a-f]{40}$ ]] || { echo "::error::unexpected commit"; exit 1; }
+          tip=$(git ls-remote "https://github.com/$GITHUB_REPOSITORY" refs/heads/production | awk -F'\t' '$2 == "refs/heads/production" {print $1}') || tip=
+          [[ $tip =~ ^[0-9a-f]{40}$ ]] || { echo "::error::could not read production's tip"; exit 1; }
+          if [ "$tip" != "$SHA" ]; then
+            echo "::error::refused $SHA: production is at $tip, and only its newest release runs"
+            exit 1
+          fi
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.FIDANT_POC_ACCOUNT }}:role/fidant-release
+          role-duration-seconds: 7200
+          aws-region: eu-north-1
+          mask-aws-account-id: true
+      - name: Push the image, move live and redeploy
+        env:
+          ACCOUNT: ${{ secrets.FIDANT_POC_ACCOUNT }}
+          SHA: ${{ github.sha }}
+          KEY: ${{ needs.build.outputs.key }}
+        run: |
+          set -euo pipefail
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+          [[ $SHA =~ ^[0-9a-f]{40}$ && $KEY =~ ^[0-9a-f]{64}$ && $ACCOUNT =~ ^[0-9]{12}$ ]] || { echo "::error::unexpected input"; exit 1; }
+          repo=fidant-signal
+          registry=$ACCOUNT.dkr.ecr.eu-north-1.amazonaws.com
+          err=$RUNNER_TEMP/err
+          image() { aws ecr batch-get-image --repository-name "$repo" --image-ids "$1" --output json; }
+          digest() { image "$1" | jq -r '.images[0].imageId.imageDigest // "none"'; }
+          tag() {
+            local json manifest type want have
+            json=$(image "$1")
+            manifest=$(jq -er '.images[0].imageManifest' <<<"$json")
+            type=$(jq -er '.images[0].imageManifestMediaType' <<<"$json")
+            aws ecr put-image --repository-name "$repo" --image-tag "$2" --image-manifest "$manifest" \
+              --image-manifest-media-type "$type" >/dev/null 2>"$err" && return
+            grep -q '(ImageAlreadyExistsException)' "$err" && return
+            if grep -q '(ImageTagAlreadyExistsException)' "$err"; then
+              want=$(jq -er '.images[0].imageId.imageDigest' <<<"$json")
+              have=$(digest "imageTag=$2")
+              [ "$have" = "$want" ] && return
+            fi
+            cat "$err" >&2
+            exit 1
+          }
+          services() { aws ecs describe-services --cluster fidant --services fidant-signal --output json; }
+          # One deployment, COMPLETED, so no deployment starts while the service rolls back.
+          settled() {
+            local deadline=$((SECONDS + $1)) json s
+            while :; do
+              json=$(services)
+              s=$(jq -r '[(.services[0].deployments | length), .services[0].deployments[0].rolloutState] | @tsv' <<<"$json")
+              if [ "$s" = $'1\tCOMPLETED' ]; then return 0; fi
+              if [ "$SECONDS" -ge "$deadline" ]; then
+                echo "::error::the service did not settle in time: $s"
+                exit 1
+              fi
+              sleep 15 & wait $!
+            done
+          }
+          safe=
+          restore() {
+            if [ -z "$safe" ]; then
+              echo "::error::the release stopped before the service was confirmed to run $d"
+              echo "moving live back to $previous"
+              if (tag "imageDigest=$previous" live); then
+                echo "live names $previous again"
+              else
+                echo "::error::could not move live back to $previous: it still names $d, so a release with these inputs ends without deploying until live moves"
+              fi
+            fi
+          }
+
+          d=$(digest "imageTag=inputs-$KEY")
+          if [ "$d" = none ]; then
+            s=$(digest "imageTag=$SHA")
+            if [ "$s" = none ]; then
+              docker load -i "$RUNNER_TEMP/image/image.tar" >/dev/null
+              aws ecr get-login-password --region eu-north-1 | docker login --username AWS --password-stdin "$registry" >/dev/null
+              docker tag fidant-signal:build "$registry/$repo:$SHA"
+              docker push --quiet "$registry/$repo:$SHA" >/dev/null
+            fi
+            tag "imageTag=$SHA" "inputs-$KEY"
+            d=$(digest "imageTag=inputs-$KEY")
+          fi
+          previous=$(digest imageTag=live)
+          if [ "$previous" = "$d" ]; then
+            echo "live already names $d"
+            exit 0
+          fi
+          f=$(digest "imageTag=failed-$KEY")
+          if [ "$f" != none ]; then
+            echo "::warning::the server image for these inputs failed before and is not deployed: $f is tagged failed-$KEY. To try it again, delete that tag as Releasing in AGENTS.md says, then re-run the newest release run, the one for production's tip, or promote a later commit."
+            exit 0
+          fi
+
+          if json=$(services 2>"$err"); then
+            state=$(jq -r '[.services[0].status // "None", .failures[0].reason // "None"] | @tsv' <<<"$json")
+          elif grep -q '(ClusterNotFoundException)' "$err"; then
+            state=$'None\tMISSING'
+          else
+            cat "$err" >&2
+            exit 1
+          fi
+          case "$state" in
+          $'None\tMISSING')
+            tag "imageDigest=$d" live
+            echo "No signaling service yet; live names $d"
+            exit 0
+            ;;
+          $'ACTIVE\tNone') ;;
+          *)
+            echo "::error::unexpected service state: $state"
+            exit 1
+            ;;
+          esac
+          if [ "$previous" = none ]; then
+            echo "::error::the service runs, but live names no image"
+            exit 1
+          fi
+
+          settled 1200
+          trap restore EXIT
+          tag "imageDigest=$d" live
+          if ! json=$(aws ecs update-service --cluster fidant --service fidant-signal --force-new-deployment --output json); then
+            echo "::error::could not start a deployment"
+            exit 1
+          fi
+          dep=$(jq -r '[.service.deployments[] | select(.status == "PRIMARY") | .id][0] // "None"' <<<"$json")
+          [[ $dep =~ ^ecs-svc/[0-9]+$ ]] || { echo "::error::unexpected deployment: $dep"; exit 1; }
+          deadline=$((SECONDS + 1800))
+          while :; do
+            json=$(services)
+            s=$(jq -r --arg id "$dep" '[([.services[0].deployments[] | select(.id == $id) | .rolloutState][0] // "None"), (.services[0].deployments | length)] | @tsv' <<<"$json")
+            case "$s" in
+            $'COMPLETED\t1')
+              safe=1
+              echo "live names $d, and the service runs it"
+              exit 0
+              ;;
+            FAILED*)
+              echo "::error::the new task failed its health check; the service is going back to $previous, live will name it again, and $d will be tagged failed-$KEY"
+              settled 1800
+              tag "imageDigest=$previous" live
+              safe=1
+              tag "imageDigest=$d" "failed-$KEY"
+              exit 1
+              ;;
+            None*)
+              echo "::error::the deployment left the service's list before it finished; live goes back to $previous, and the next release with these inputs tries $d again"
+              exit 1
+              ;;
+            esac
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "::error::the deployment did not finish in time: $s"
+              exit 1
+            fi
+            sleep 15 & wait $!
+          done

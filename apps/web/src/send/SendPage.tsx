@@ -72,6 +72,7 @@ import { formatBytes, toHex } from "../lib/format.ts";
 import { hasForbiddenCharacters, MAX_FROM_LENGTH, metaFits } from "../lib/frames.ts";
 import { deriveSignalKey } from "../lib/keys.ts";
 import { createLink } from "../lib/link.ts";
+import { askToNotify, notify, notifyPermission } from "../lib/notify.ts";
 import { createSenderPeer, type Peer } from "../lib/peer.ts";
 import { hashFile, sendFile } from "../lib/send-file.ts";
 import {
@@ -212,6 +213,14 @@ export function SendPage({
   const [textLength, setTextLength] = useState(0);
   const [more, setMore] = useState(false);
   const [typed, setTyped] = useState(false);
+  const [canAskToNotify, setCanAskToNotify] = useState(false);
+  const [notifyAnswer, setNotifyAnswer] = useState<"on" | "blocked" | undefined>(undefined);
+  // Once, when the answer replaces the button that held focus.
+  useEffect(() => {
+    if (notifyAnswer && document.activeElement === document.body) {
+      document.getElementById(id("notify-answer"))?.focus();
+    }
+  }, [notifyAnswer]);
   const formRef = useRef<HTMLFormElement>(null);
 
   // Mutable state used from network callbacks, outside render.
@@ -240,7 +249,13 @@ export function SendPage({
       return;
     }
     connectionsRef.current.delete(linkId);
-    setChecks(({ [linkId]: _closed, ...rest }) => rest);
+    setChecks((all) => {
+      if (!Object.hasOwn(all, linkId)) {
+        return all;
+      }
+      const { [linkId]: _closed, ...rest } = all;
+      return rest;
+    });
     clearTimeout(connection.deadline);
     connection.abort.abort(new Error("connection closed"));
     connection.peer?.close();
@@ -424,9 +439,21 @@ export function SendPage({
   dispatchRef.current = (action: SenderAction) => {
     const hosted = hostedLinks(senderRef.current).join();
     const next = update(senderRef.current, action);
-    if (next.state !== senderRef.current) {
+    const changed = next.state !== senderRef.current;
+    if (changed) {
       senderRef.current = next.state;
       setSender(next.state);
+    }
+    // Only fixed text and counts: the system keeps a notification outside the page.
+    if (changed && action.type === "receipt" && action.match) {
+      const { recipients } = next.state;
+      const done = recipients.filter((r) => r.status === "delivered").length;
+      const all = done === recipients.length;
+      const words = text ? t.secret : t.send;
+      notify(
+        all ? t.send.doneTitle : t.send.delivered,
+        all ? words.allDone : words.summary(done, recipients.length),
+      );
     }
     for (const effect of next.effects) {
       runEffect(effect);
@@ -723,6 +750,12 @@ export function SendPage({
   const allDone = hasRecipients && !unfinished;
   const status: TransferStatus = unfinished ? "active" : allDone ? "done" : "idle";
   useEffect(() => onStatus(status), [onStatus, status]);
+  // Asked only once there is a link to wait for, and never during prerender.
+  useEffect(() => {
+    if (hasRecipients) {
+      setCanAskToNotify(notifyPermission() === "default");
+    }
+  }, [hasRecipients]);
   const finished = allDone && !more && !typed;
   // Read during render: once effects run, a remounted form or list no longer holds focus.
   const sectionHadFocus =
@@ -785,7 +818,7 @@ export function SendPage({
             <Label htmlFor="secret-text">{t.secret.label}</Label>
             <textarea
               id="secret-text"
-              class="w-full min-w-0 resize-y rounded-lg border border-input bg-transparent px-2.5 py-2 font-mono text-base transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30 dark:disabled:bg-input/80 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40"
+              class="w-full min-w-0 resize-y rounded-lg border border-input bg-transparent px-2.5 py-2 font-mono text-base transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30 dark:disabled:bg-transparent dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40"
               rows={6}
               spellcheck={false}
               translate={false}
@@ -1185,20 +1218,49 @@ export function SendPage({
           data-page-bar
           class="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-background/80 p-4 backdrop-blur-xl"
         >
-          <p
-            class="m-0 mx-auto flex max-w-xl items-center gap-2 text-[0.9rem] font-medium"
-            aria-hidden="true"
-          >
-            {unfinished ? (
-              <span
-                class="size-2 flex-none animate-pulse rounded-full bg-primary"
-                aria-hidden="true"
-              />
-            ) : (
-              <Icon name="check" class="size-4 flex-none" />
+          <div class="mx-auto flex max-w-xl items-center gap-3">
+            <p
+              class="m-0 flex flex-1 items-center gap-2 text-[0.9rem] font-medium"
+              aria-hidden="true"
+            >
+              {unfinished ? (
+                <span
+                  class="size-2 flex-none animate-pulse rounded-full bg-primary"
+                  aria-hidden="true"
+                />
+              ) : (
+                <Icon name="check" class="size-4 flex-none" />
+              )}
+              {barText}
+            </p>
+            {unfinished && canAskToNotify && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  const answer = await askToNotify();
+                  if (answer !== "default") {
+                    setCanAskToNotify(false);
+                    setNotifyAnswer(answer === "granted" ? "on" : "blocked");
+                  }
+                }}
+              >
+                {t.send.notifyMe}
+              </Button>
             )}
-            {barText}
-          </p>
+            {notifyAnswer && (
+              // Takes the focus the button held, and tells the sender what the browser answered.
+              <p
+                id={id("notify-answer")}
+                tabIndex={-1}
+                role="status"
+                class="m-0 text-[0.8rem] text-muted-foreground"
+              >
+                {notifyAnswer === "on" ? t.send.notifyOn : t.send.notifyBlocked}
+              </p>
+            )}
+          </div>
         </div>
       )}
     </Page>
