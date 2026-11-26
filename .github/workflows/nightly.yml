@@ -138,6 +138,10 @@ jobs:
             PLAYWRIGHT_BROWSERS_PATH="$PLAYWRIGHT_BROWSERS_PATH" \
             SIGILL_E2E_BROWSER="$SIGILL_E2E_BROWSER" SIGILL_E2E_LARGE="$SIGILL_E2E_LARGE" \
             "$PWD/node_modules/.bin/playwright" test --project="$SIGILL_E2E_BROWSER"
+      # A process the suite left running keeps the test user's uid, and could send or plant a symlink after the count and the check.
+      - name: Stop every process of the test user
+        if: always() && steps.egress.outcome == 'success'
+        run: sudo pkill -KILL -u sigill-e2e || true
       - name: Count what the test user sent off loopback
         if: always() && steps.egress.outcome == 'success'
         run: |
