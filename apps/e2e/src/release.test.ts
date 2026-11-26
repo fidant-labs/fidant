@@ -396,7 +396,7 @@ function release(start: {
     writeFileSync(
       join(dir, "bin", "sleep"),
       start.signal
-        ? `#!/bin/sh\nkill -${start.signal} $PPID\nexec /bin/sleep 2 >/dev/null 2>&1\n`
+        ? `#!/bin/sh\nkill -${start.signal} $PPID\nexec /bin/sleep 12 >/dev/null 2>&1\n`
         : "#!/bin/sh\n",
       {
         mode: 0o755,
@@ -786,6 +786,7 @@ test("a service that does not settle in time before live moves changes nothing",
   });
   assert.equal(status, 1);
   assert.match(stdout, /::error::the service did not settle in time/);
+  assert.ok(!calls.includes("put-image live sha256:new"));
   assert.ok(!calls.includes("update-service"));
   assert.deepEqual(tags, before);
 });
@@ -802,24 +803,29 @@ test("a release that is stopped by SIGTERM while it waits puts live back and exi
   assert.match(stdout, /::error::the release stopped before the service was confirmed to run/);
 });
 
-test("a release that gets SIGINT while it waits, which the shell alone gets first, puts live back and exits 130", () => {
+test("a release that gets SIGINT while it waits, which the shell alone gets first, puts live back and exits 130 before GitHub's SIGTERM", () => {
+  const start = performance.now();
   const { status, tags } = release({
     tags: before,
     services: [steady, steady, rolling],
     update: started,
     signal: "INT",
   });
+  assert.ok(performance.now() - start < 7500);
   assert.equal(status, 130);
   assert.deepEqual(tags, before);
 });
 
-test("a release that gets SIGINT while it waits to settle never moves live or starts a deployment", () => {
+test("a release that gets SIGINT while it waits to settle exits before GitHub's SIGTERM and never moves live or starts a deployment", () => {
+  const start = performance.now();
   const { status, calls, tags } = release({
     tags: before,
     services: [rolling],
     signal: "INT",
   });
+  assert.ok(performance.now() - start < 7500);
   assert.equal(status, 130);
+  assert.ok(!calls.includes("put-image live sha256:new"));
   assert.ok(!calls.includes("update-service"));
   assert.deepEqual(tags, before);
 });
