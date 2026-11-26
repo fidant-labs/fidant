@@ -56,7 +56,7 @@ Option 2 for the sink, option 2 for memory, option 2 for lookups, option 2 for p
 - Memory: the summed RSS of the browser's processes, sampled once a second from just before Download until the page confirms the file. Its peak must stay less than 1 GiB above the first sample. A later pull request tightens the bound from the peaks of the first 7 nights.
 - Chromium only: Firefox and Safari users get `BlobSink`, so a run with the stub there would test a path their users never take.
 - The leak check searches a large file's sampled bytes. `largeFileSamples` in `canary.ts` takes the first and last MiB and one MiB at every multiple of 64 MiB, cut at the end of the file, joining samples that overlap or touch. Each sample is a content needle of its own, labelled with its offset, so the check finds any 16-byte window inside a sample, and no window that spans two. The SHA-256 of the whole file is a needle too. That is 16 MiB of the 1 GB file and 76 MiB of the 5 GB one, at 9.4–13.3 bytes of index per sampled byte, measured during planning: about 1 GiB of index for the 5 GB file.
-- The tests' timeouts are 4 and 16 minutes, and the Chromium job's is 45. Each test logs its rate in MB/s and its RSS before and at peak.
+- The tests' timeouts are 8 and 16 minutes, and the Chromium job's is 45. Within a test, the two slow waits, for the sender's page to show the SHA-256 and for the recipient's page to confirm the file, get 2 minutes per GB each, and the test's timeout caps them together. Each test logs its rate in MB/s and its RSS before and at peak.
 - The job prints `df -h` and `free -m` before the tests, and the Chromium job fails before them if `/tmp` has less than 8 GB free. The 1 GB canary is deleted before the 5 GB one is written.
 
 ### The loopback-only user

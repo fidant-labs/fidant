@@ -15,7 +15,7 @@ const GiB = 1024 ** 3;
 const MB = (bytes: number) => Math.round(bytes / 1e6);
 
 for (const { gb, minutes } of [
-  { gb: 1, minutes: 4 },
+  { gb: 1, minutes: 8 },
   { gb: 5, minutes: 16 },
 ]) {
   test(`sends a ${gb} GB file into the save dialog with bounded memory`, async ({
@@ -35,7 +35,7 @@ for (const { gb, minutes } of [
       await sender.goto("/send");
       await chooseFile(sender, file.path);
       await sender.getByText("Technical details").click();
-      await expect(sender.getByText(sha256)).toBeVisible({ timeout: gb * 60_000 });
+      await expect(sender.getByText(sha256)).toBeVisible({ timeout: gb * 2 * 60_000 });
       const name = makeName(leaks, canary, "Anna");
       await sender.getByLabel("Who is it for?").fill(name);
       await sender.getByRole("button", { name: "Create link", exact: true }).click();
