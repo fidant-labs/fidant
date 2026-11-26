@@ -13,6 +13,7 @@ import {
   relayMasterGeneration,
   signalName,
   signals,
+  signalTargets,
   zoneNames,
 } from "./config.ts";
 import { DnsStack } from "./dns.ts";
@@ -40,6 +41,7 @@ export function addStacks(app: App, env: Record<string, string | undefined>): vo
       mail,
       boxAddress,
       relayAddresses,
+      signalTargets,
       certificateRecords,
     });
     new CiStack(app, "FidantCi", { env: { account, region: "eu-north-1" } });

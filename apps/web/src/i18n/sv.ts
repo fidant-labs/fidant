@@ -292,33 +292,37 @@ export const sv: Messages = {
     timeLeft: (duration: string) => `Ungefär ${duration} kvar`,
   },
   send: {
-    mode: { label: "Vad du vill skicka", file: "Fil", secret: "Hemlighet" },
+    mode: {
+      label: "Vad du vill skicka",
+      file: "Fil",
+      secret: "Hemlighet",
+      locked:
+        "En sändning i taget. Du kan byta när alla länkar här har levererat, eller när du tar bort dem.",
+    },
     continue: "Fortsätt",
     title: "Skicka en fil",
     lede: "Välj en fil och skapa sedan en länk till varje person. Din fil skickas från den här webbläsaren till dem. Den är krypterad hela vägen och laddas aldrig upp eller sparas.",
     step: (n: number) => `Steg ${n} av 2`,
     peopleHeading: "Skapa en länk till varje person",
     change: "Byt",
-    fromSummary: (name: string) => `från ${name}`,
     connectionOptions: "Anslutningsalternativ",
     addEmail: "Skapa och mejla länk",
     addEmailCheck: "Skapa och mejla länk med kontrollnummer",
     share: "Dela",
     shareFor: (name: string) => `Dela länken till ${name}`,
+    // No-break spaces keep the count on one line.
     sendingBar: (delivered: number, total: number) =>
-      `Skickar från den här fliken · ${delivered} av ${total} levererade · håll den öppen`,
-    allDone: "Alla länkar har levererat filen. Du kan stänga fliken.",
+      `${delivered}\u00a0av\u00a0${total}\u00a0levererade`,
+    keepOpen: "Håll fliken öppen",
+    // The bar shows these as two lines without full stops; a sentence built from them adds its own.
+    allDone: "Alla länkar har levererat filen",
+    closeTab: "Du kan stänga fliken",
     summary: (done: number, total: number) => `${done} av ${total} länkar har levererat filen`,
     delivered: "Levererad",
     doneTitle: "Allt levererat",
-    doneOne: (name: string) => `Filen kom fram oskadd via länken till ${name}.`,
-    doneMany: (n: number) => `Filen kom fram oskadd via alla ${n} länkar.`,
-    closeTab: "Du kan stänga fliken.",
     notifyMe: "Meddela mig",
     notifyOn: "Notiser på",
     notifyBlocked: "Notiser blockerade",
-    sendMore: "Skicka till någon mer",
-    showDetails: "Visa detaljer",
     localhost:
       "Sidan är öppnad på localhost, så länkarna fungerar inte på andra datorer. Öppna i stället nätverksadressen som servern skrev ut.",
     lostServer:
@@ -348,6 +352,7 @@ export const sv: Messages = {
     readFailed: "Det gick inte att läsa filen. Välj den igen.",
     hashPending: "Inte klar än",
     locked: "Ta bort alla mottagare för att ändra ditt namn eller din fil.",
+    lockedDelivered: "Ladda om sidan för att ändra ditt namn eller din fil.",
     recipientLabel: "Vem ska få den?",
     recipientPlaceholder: "Mottagarens namn",
     add: "Skapa länk",
@@ -365,12 +370,15 @@ export const sv: Messages = {
     check: {
       hint: (kind: Kind) =>
         `Med kontrollnummer jämför ni sex siffror i telefon eller på plats innan ${items[kind].the} skickas, så att du vet att ingen är emellan.`,
-      number: "Kontrollnummer",
       ask: (name: string) => `Be ${name} läsa upp numret på sin skärm. Stämmer det?`,
       matches: "Det stämmer",
       differs: "Det skiljer sig",
       matchesFor: (name: string) => `Det stämmer för ${name}`,
       differsFor: (name: string) => `Det skiljer sig för ${name}`,
+      titleFor: (name: string) => `Kontrollnummer för ${name}`,
+      later: "Inte nu",
+      compare: "Jämför nummer",
+      compareFor: (name: string) => `Jämför nummer för ${name}`,
       waiting: "Du sa att det stämmer. Det skickas när mottagaren också har bekräftat.",
       differed:
         "Numren stämde inte, så inget skickades. Någon kan ha varit emellan. Länken fungerar fortfarande om du vill försöka igen.",
@@ -383,6 +391,13 @@ export const sv: Messages = {
     full: (max: number) => `Du kan skicka till högst ${max} personer åt gången.`,
     oneLinkEach: "Varje person får en egen länk, som fungerar en gång.",
     recipients: "Mottagare",
+    steps: {
+      waiting: "Väntar",
+      checking: "Kontrollerar",
+      opened: "Öppnad",
+      receiving: "Tar emot",
+      delivered: "Klar",
+    },
     status: {
       waiting: (name: string) => `Väntar på att länken till ${name} ska öppnas`,
       connecting: (name: string) => `Ansluter via länken till ${name}…`,
@@ -392,6 +407,8 @@ export const sv: Messages = {
         `Länken till ${name} öppnades och filen avböjdes. Länken fungerar fortfarande.`,
       receiving: (name: string) => `Skickar via länken till ${name}`,
       delivered: (name: string) => `Levererad via länken till ${name}`,
+      interrupted: (name: string) =>
+        `Överföringen via länken till ${name} avbröts. Länken kan öppnas igen för att försöka på nytt.`,
       failed: (name: string) =>
         `Filen kom inte fram oskadd via länken till ${name}. Länken kan öppnas igen för att försöka på nytt.`,
       senderOutdated: (name: string) =>
@@ -619,11 +636,10 @@ export const sv: Messages = {
     },
     first: "Skriv eller klistra in hemligheten först.",
     locked: "Ta bort alla mottagare för att ändra ditt namn eller din hemlighet.",
-    allDone: "Alla länkar har levererat hemligheten. Du kan stänga fliken.",
+    lockedDelivered: "Ladda om sidan för att ändra ditt namn eller din hemlighet.",
+    allDone: "Alla länkar har levererat hemligheten",
     summary: (done: number, total: number) =>
       `${done} av ${total} länkar har levererat hemligheten`,
-    doneOne: (name: string) => `Hemligheten kom fram oskadd via länken till ${name}.`,
-    doneMany: (n: number) => `Hemligheten kom fram oskadd via alla ${n} länkar.`,
     emailNotice:
       "Vår server ser den här länkens nyckel en gång, för att skriva mejlet. Den sparar eller loggar inte nyckeln, men vår mejltjänst och den som läser mejlet på vägen kan också se nyckeln. Länken, med nyckeln, ligger kvar i mottagarens inkorg: den som kan läsa den inkorgen kan ta emot hemligheten. Vår server skulle också kunna ställa sig mellan er för den här länken. Skapa länken med kontrollnummer och jämför det med mottagaren, så ser du om servern gör det. Om du skickar länken själv slipper du allt detta.",
     status: {
