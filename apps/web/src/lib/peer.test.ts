@@ -564,6 +564,17 @@ test("after the answer the sender ignores signals sealed for another attempt or 
   assert.equal(h.opens.length, 1);
 });
 
+test("a channel that fires open twice opens the transfer once", async () => {
+  resetFake(SENDER_FP);
+  const h = await harness("s");
+  await h.relay({ kind: "commit", hash: await commitFingerprint(RECIPIENT_FP) });
+  await h.relay({ kind: "answer", sdp: fakeSdp(`a=fingerprint:sha-256 ${RECIPIENT_FP}`) });
+  FakePeerConnection.last?.channel?.onopen?.();
+  FakePeerConnection.last?.channel?.onopen?.();
+  assert.equal(h.opens.length, 1);
+  assert.deepEqual(h.closes, []);
+});
+
 test("before the answer the sender still closes on a signal that does not open", async () => {
   resetFake(SENDER_FP);
   const h = await harness("s");
