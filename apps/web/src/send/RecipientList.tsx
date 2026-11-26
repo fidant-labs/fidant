@@ -1,4 +1,5 @@
-// One card per recipient (status, email, connection path, safety number, progress, link, copy and remove), and one compact row once its link has delivered.
+// One card per recipient (status, email, connection path, progress, link, copy and remove), and one
+// dialog for the safety number, which names its recipient so the number is never read off the wrong card.
 //
 // Only the status sentence, the email line, the safety number and the check's
 // confirmation sit in live regions, so screen readers hear "Sending through
@@ -7,6 +8,7 @@
 // it was made for.
 
 import { maskAddress } from "@sigill/protocol";
+import { useEffect, useId, useRef } from "preact/hooks";
 import { Button } from "#components/ui/button";
 import { Card, CardContent } from "#components/ui/card";
 import type { Messages } from "../i18n/en.ts";
@@ -17,6 +19,8 @@ import {
   CHECK_DIFFERS,
   CHECK_EXPIRED,
   CHECK_LIMIT,
+  CHECKSUM_MISMATCH,
+  INTERRUPTED,
   RECIPIENT_OUTDATED,
   type Recipient,
   type RecipientStatus,
@@ -24,7 +28,7 @@ import {
   TOO_SMALL_FOR_TEXT,
   unmarked,
 } from "../lib/sender-state.ts";
-import { CheckNumber, Direct, Icon, PathLine, SwapLabel, useCopyNote } from "../ui.tsx";
+import { CheckNumber, Icon, PathLine, SwapLabel, useCopyNote } from "../ui.tsx";
 
 const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
 
@@ -33,10 +37,76 @@ const STATUS_COLOR: Partial<Record<RecipientStatus, string>> = {
   declined: "text-muted-foreground",
 };
 
+// ponytail: fixed heights, measured at 390 px and 360 px in both languages; a status longer than three lines outgrows them
+const MIN_HEIGHT = { plain: "min-h-55", email: "min-h-61" };
+
+const STEPS = ["waiting", "checking", "opened", "receiving", "delivered"] as const;
+type Step = (typeof STEPS)[number];
+
+/**
+ * Where a link is on its way to delivered: finished steps green, the current one dark, and the
+ * receiving step filling up as the file goes. Opened covers connecting and the offer, which follow
+ * each other within seconds; with a safety number the check comes first, so connecting counts as
+ * checking there. A link that stopped on the way is red up to where it stopped; any other failed
+ * link can be opened again, so it is back at waiting. Hidden from screen readers: the status sentence and the progress element
+ * under it say the same. On a phone only the current step's name fits.
+ */
+function Steps({
+  status,
+  check,
+  sent,
+  stopped,
+}: {
+  status: RecipientStatus;
+  check: boolean;
+  /** The step a declined, interrupted or damaged transfer stopped at. */
+  stopped: Step | undefined;
+  /** How much of the file has gone, from 0 to 1. */
+  sent: number;
+}) {
+  const { t } = useI18n();
+  const steps = STEPS.filter((step) => check || step !== "checking");
+  // Green as the bottom bar is once every link has delivered.
+  const green = "bg-emerald-600";
+  const done = status === "delivered";
+  const now: Step =
+    stopped ??
+    (status === "connecting"
+      ? check
+        ? "checking"
+        : "opened"
+      : status === "offered"
+        ? "opened"
+        : status === "declined" || status === "failed"
+          ? "waiting"
+          : status);
+  const at = steps.indexOf(now);
+  return (
+    <ol class="mt-2 mb-0 flex list-none gap-1 p-0 text-[0.75rem]" aria-hidden="true">
+      {steps.map((step, i) => (
+        <li key={step} class="min-w-0 flex-1">
+          <span
+            class={`block h-1 overflow-hidden rounded-full transition-colors ${stopped && i <= at ? "bg-destructive" : i < at || done ? green : i === at && step !== "receiving" ? "bg-primary" : "bg-border"}`}
+          >
+            {i === at && step === "receiving" && !stopped && (
+              <span class={`block h-full ${green}`} style={{ width: `${sent * 100}%` }} />
+            )}
+          </span>
+          <span
+            class={`mt-1 flex whitespace-nowrap ${i === 0 ? "" : i === steps.length - 1 ? "justify-end" : "justify-center"} ${i === at ? "font-medium" : "text-muted-foreground max-sm:invisible"}`}
+          >
+            {t.send.steps[step]}
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 type StatusText = Messages["send"]["status"];
 
-/** An open check: its number, and the sender's own answer once given. */
-export type CheckView = { number: string; said?: boolean };
+/** An open check: its number, the sender's own answer once given, and whether they put the dialog off with "Not now". */
+export type CheckView = { number: string; said?: boolean; later?: boolean };
 
 type Props = {
   recipients: readonly Recipient[];
@@ -48,8 +118,8 @@ type Props = {
   checks: Readonly<Record<string, CheckView>>;
   /** The sender said the numbers match, or differ. */
   onCheck(linkId: string, matches: boolean): void;
-  /** Delivered links as full cards too, for the details shown once every link has delivered. */
-  full?: boolean;
+  /** The sender put the check's dialog off, or asked for it again. */
+  onLater(linkId: string, later: boolean): void;
 };
 
 export function RecipientList({
@@ -60,9 +130,35 @@ export function RecipientList({
   onRemove,
   checks,
   onCheck,
-  full = false,
+  onLater,
 }: Props) {
   const { t } = useI18n();
+  const titleId = useId();
+  const dialog = useRef<HTMLDialogElement>(null);
+  const unanswered = (r: Recipient) =>
+    r.status === "checking" &&
+    checks[r.linkId] !== undefined &&
+    checks[r.linkId]?.said === undefined;
+  // One at a time, in list order.
+  const asking = recipients.find((r) => unanswered(r) && !checks[r.linkId]?.later);
+  // The card whose status line takes focus when the dialog closes on an answer.
+  const answered = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const el = dialog.current;
+    if (asking && el && !el.open) {
+      el.showModal();
+    } else if (!asking && el?.open) {
+      el.close();
+      if (answered.current) {
+        document.querySelector<HTMLElement>(`[data-status="${answered.current}"]`)?.focus();
+      }
+    }
+    answered.current = undefined;
+  }, [asking?.linkId]);
+  const answer = (linkId: string, matches: boolean) => {
+    answered.current = linkId;
+    onCheck(linkId, matches);
+  };
   if (recipients.length === 0) {
     return null;
   }
@@ -83,11 +179,66 @@ export function RecipientList({
             statusText={statusText}
             onRemove={onRemove}
             check={checks[recipient.linkId]}
-            onCheck={onCheck}
-            full={full}
+            onCompare={
+              unanswered(recipient) && checks[recipient.linkId]?.later
+                ? () => onLater(recipient.linkId, false)
+                : undefined
+            }
           />
         ))}
       </ul>
+      {/* A native dialog: it holds focus and dims the page without injecting a style, which the CSP blocks. */}
+      <dialog
+        ref={dialog}
+        aria-labelledby={titleId}
+        class="m-auto w-[min(24rem,calc(100vw-2rem))] rounded-2xl border border-border bg-popover p-6 text-popover-foreground shadow-xl backdrop:bg-black/50"
+        // Escape puts the check off; the card then offers it again.
+        onCancel={(event) => {
+          event.preventDefault();
+          if (asking) {
+            onLater(asking.linkId, true);
+          }
+        }}
+      >
+        {asking && (
+          <>
+            {/* Takes the focus, not a button: the dialog can open while the sender types a name, and
+                their Enter must not answer the check. */}
+            <h3
+              id={titleId}
+              tabIndex={-1}
+              autofocus
+              class="m-0 text-[1.25rem] font-bold wrap-anywhere outline-none"
+            >
+              {t.send.check.titleFor(asking.name)}
+            </h3>
+            <div class="mt-4">
+              <CheckNumber number={checks[asking.linkId]?.number} />
+            </div>
+            <p class="mt-3 mb-0 text-[0.9rem]">{t.send.check.ask(asking.name)}</p>
+            <div class="mt-6 flex flex-row-reverse flex-wrap items-center gap-x-3 gap-y-2">
+              <Button
+                type="button"
+                aria-label={t.send.check.matchesFor(asking.name)}
+                onClick={() => answer(asking.linkId, true)}
+              >
+                {t.send.check.matches}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                aria-label={t.send.check.differsFor(asking.name)}
+                onClick={() => answer(asking.linkId, false)}
+              >
+                {t.send.check.differs}
+              </Button>
+              <Button type="button" variant="link" onClick={() => onLater(asking.linkId, true)}>
+                {t.send.check.later}
+              </Button>
+            </div>
+          </>
+        )}
+      </dialog>
     </>
   );
 }
@@ -98,19 +249,11 @@ type RowProps = {
   statusText: StatusText;
   onRemove(linkId: string): void;
   check: CheckView | undefined;
-  onCheck(linkId: string, matches: boolean): void;
-  full: boolean;
+  /** Opens the safety number's dialog again, while the sender has put it off. */
+  onCompare: (() => void) | undefined;
 };
 
-function RecipientRow({
-  recipient,
-  fileSize,
-  statusText,
-  onRemove,
-  check,
-  onCheck,
-  full,
-}: RowProps) {
+function RecipientRow({ recipient, fileSize, statusText, onRemove, check, onCompare }: RowProps) {
   const {
     name,
     url,
@@ -138,7 +281,6 @@ function RecipientRow({
     <Button
       type="button"
       variant="link"
-      size={status === "delivered" && !full ? "sm" : "default"}
       aria-label={t.send.removeFor(name)}
       data-remove={linkId}
       // Focus moves to the next Remove button, so a held Enter would remove it too.
@@ -153,58 +295,66 @@ function RecipientRow({
     </Button>
   );
 
-  const answer = (matches: boolean) => {
-    document.querySelector<HTMLElement>(`[data-status="${linkId}"]`)?.focus();
-    onCheck(linkId, matches);
-  };
-
-  if (status === "delivered" && !full) {
-    return (
-      <li class="min-w-0">
-        <div class="flex items-center gap-2.5 rounded-xl border border-border px-4 py-1.5 text-[0.9rem] text-muted-foreground">
-          <Icon name="check" class="size-4 text-foreground" />
-          <span class="min-w-0 flex-1 truncate" aria-hidden="true">
-            <span class="font-medium text-foreground">{name}</span> · {t.send.delivered}
-            {path && ` · ${t.connection[path === "relay" ? "relay" : "direct"].label}`}
-          </span>
-          <span class="sr-only">{statusText.delivered(name)}</span>
-          {removeButton}
-        </div>
-      </li>
-    );
-  }
-
   return (
     <li class="min-w-0">
       <Card>
-        <CardContent>
+        {/* The least height fits every state a link passes through on its way to delivered, so the
+            cards below never move. Only a
+            long error or an opened "Why?" makes a card taller. */}
+        <CardContent className={`flex flex-col ${MIN_HEIGHT[email ? "email" : "plain"]}`}>
           <p class="m-0 text-[1.05rem] font-semibold wrap-anywhere">{name}</p>
+          {/* Always under the name, so the card keeps its shape. Not for a link that must not be
+              passed on: one the server may still email, one whose email binding died, a locked one. */}
+          {!unmarked(recipient) && !unbound && !recipient.locked && (
+            <output
+              class={`mt-0.5 block font-mono text-[0.7rem] text-muted-foreground ${shareable ? "select-all" : ""} ${note === "failed" ? "wrap-anywhere" : "truncate"}`}
+              aria-label={t.send.linkFor(name)}
+            >
+              {url}
+            </output>
+          )}
+          <Steps
+            status={status}
+            check={recipient.check === true}
+            sent={fileSize > 0 ? bytesSent / fileSize : 0}
+            stopped={
+              status === "declined"
+                ? "opened"
+                : error === INTERRUPTED || error === CHECKSUM_MISMATCH
+                  ? "receiving"
+                  : undefined
+            }
+          />
           <p
             data-status={linkId}
             tabIndex={-1}
-            class={`mt-1 mb-0 flex items-center gap-1.5 text-[0.9rem] wrap-anywhere outline-none ${blocked || checkFailed ? "text-destructive" : (STATUS_COLOR[status] ?? "")}`}
+            class={`mt-2 mb-0 flex items-center gap-1.5 text-[0.9rem] wrap-anywhere outline-none ${blocked || checkFailed || error === INTERRUPTED ? "text-destructive" : (STATUS_COLOR[status] ?? "")}`}
             aria-live="polite"
           >
-            {(status === "failed" || blocked || checkFailed) && <Icon name="alert" />}
+            {(status === "failed" || blocked || checkFailed || error === INTERRUPTED) && (
+              <Icon name="alert" />
+            )}
             {status === "declined" && !blocked && <Icon name="declined" />}
             <span>
               {noRelay
                 ? t.send.noRelay(name)
                 : noConnect
                   ? t.send.noConnect(name)
-                  : error === TOO_SMALL_FOR_TEXT
-                    ? t.secret.unsendable(name)
-                    : error === CHECK_DIFFERS
-                      ? t.send.check.differed
-                      : error === CHECK_EXPIRED
-                        ? t.send.check.expired
-                        : error === CHECK_LIMIT
-                          ? t.send.check.limit(CHECK_ATTEMPTS)
-                          : error === SENDER_OUTDATED
-                            ? statusText.senderOutdated(name)
-                            : error === RECIPIENT_OUTDATED
-                              ? statusText.recipientOutdated(name)
-                              : statusText[status](name)}
+                  : error === INTERRUPTED
+                    ? statusText.interrupted(name)
+                    : error === TOO_SMALL_FOR_TEXT
+                      ? t.secret.unsendable(name)
+                      : error === CHECK_DIFFERS
+                        ? t.send.check.differed
+                        : error === CHECK_EXPIRED
+                          ? t.send.check.expired
+                          : error === CHECK_LIMIT
+                            ? t.send.check.limit(CHECK_ATTEMPTS)
+                            : error === SENDER_OUTDATED
+                              ? statusText.senderOutdated(name)
+                              : error === RECIPIENT_OUTDATED
+                                ? statusText.recipientOutdated(name)
+                                : statusText[status](name)}
             </span>
           </p>
           {email && mail && (
@@ -217,54 +367,30 @@ function RecipientRow({
           )}
           {path && <PathLine path={path} />}
           {status === "checking" && (
-            <div class="mt-3 grid gap-2">
-              <CheckNumber label={t.send.check.number} number={check?.number} />
-              {check?.said === undefined
-                ? check && (
-                    <>
-                      <p class="m-0 text-[0.9rem]">{t.send.check.ask(name)}</p>
-                      <div class="flex flex-wrap gap-3">
-                        <Button
-                          type="button"
-                          aria-label={t.send.check.matchesFor(name)}
-                          onClick={() => answer(true)}
-                        >
-                          {t.send.check.matches}
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          aria-label={t.send.check.differsFor(name)}
-                          onClick={() => answer(false)}
-                        >
-                          {t.send.check.differs}
-                        </Button>
-                      </div>
-                    </>
-                  )
-                : null}
-              <p class="m-0 text-[0.9rem] text-muted-foreground empty:sr-only" role="status">
-                {check?.said && t.send.check.waiting}
-              </p>
-            </div>
+            <p class="mt-2 mb-0 text-[0.9rem] text-muted-foreground empty:sr-only" role="status">
+              {check?.said && t.send.check.waiting}
+            </p>
           )}
           {status === "receiving" && (
-            <>
-              <Direct from={t.common.you} to={name} state="active" class="mt-3" />
-              <div class="my-3 flex flex-wrap items-center gap-3">
-                <progress
-                  class="min-w-40 flex-1 accent-primary"
-                  aria-label={t.send.progressFor(name)}
-                  max={Math.max(fileSize, 1)}
-                  value={fileSize > 0 ? bytesSent : 0}
-                />
-                <span class="text-[0.85rem] text-muted-foreground tabular-nums">
-                  {formatProgress(bytesSent, fileSize, lang)}
-                </span>
-              </div>
-            </>
+            <p class="mt-3 mb-0 text-[0.85rem] text-muted-foreground tabular-nums">
+              {/* The receiving step above draws this; screen readers get it here. */}
+              <progress
+                class="sr-only"
+                aria-label={t.send.progressFor(name)}
+                max={Math.max(fileSize, 1)}
+                value={fileSize > 0 ? bytesSent : 0}
+              />
+              {formatProgress(bytesSent, fileSize, lang)}
+            </p>
           )}
-          <div class="mt-3 flex flex-wrap items-center gap-3">
+          {/* Every button in one row at the card's lower right. Reversed, so the main one
+              stays first for the keyboard and sits outermost for the thumb. */}
+          <div class="mt-auto flex flex-row-reverse flex-wrap items-center gap-x-3 gap-y-2 pt-3">
+            {onCompare && (
+              <Button type="button" aria-label={t.send.check.compareFor(name)} onClick={onCompare}>
+                {t.send.check.compare}
+              </Button>
+            )}
             {shareable && (
               <Button type="button" aria-label={t.send.copyFor(name)} onClick={() => copy(url)}>
                 <SwapLabel
@@ -284,7 +410,8 @@ function RecipientRow({
                 {t.send.share}
               </Button>
             )}
-            {removeButton}
+            {/* A delivered link is used up, so there is nothing left to take back. */}
+            {status !== "delivered" && removeButton}
             <span
               class={`text-[0.85rem] text-muted-foreground ${note === "copied" ? "sr-only" : ""}`}
               role="status"
@@ -292,14 +419,6 @@ function RecipientRow({
               {note && t.send.copyNote[note]}
             </span>
           </div>
-          {shareable && (
-            <output
-              class={`mt-2 block font-mono text-[0.8rem] text-muted-foreground select-all ${note === "failed" ? "wrap-anywhere" : "truncate"}`}
-              aria-label={t.send.linkFor(name)}
-            >
-              {url}
-            </output>
-          )}
         </CardContent>
       </Card>
     </li>

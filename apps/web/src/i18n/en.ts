@@ -325,7 +325,6 @@ export const en = {
     step: (n: number) => `Step ${n} of 2`,
     peopleHeading: "Create a link for each person",
     change: "Change",
-    fromSummary: (name: string) => `from ${name}`,
     connectionOptions: "Connection options",
     addEmail: "Create and email link",
     addEmailCheck: "Create and email link with safety number",
@@ -340,11 +339,6 @@ export const en = {
     summary: (done: number, total: number) => `${done} of ${total} links have delivered the file`,
     delivered: "Delivered",
     doneTitle: "All delivered",
-    doneOne: (name: string) => `The file arrived intact through ${name}'s link.`,
-    doneMany: (n: number) => `The file arrived intact through all ${n} links.`,
-    closeTab: "You can close this tab.",
-    sendMore: "Send to someone else",
-    showDetails: "Show details",
     localhost:
       "This page is open on localhost, so the links won't work on other computers. Open the network address the server printed instead.",
     lostServer:
@@ -397,6 +391,10 @@ export const en = {
       differs: "It differs",
       matchesFor: (name: string) => `It matches for ${name}`,
       differsFor: (name: string) => `It differs for ${name}`,
+      titleFor: (name: string) => `Safety number for ${name}`,
+      later: "Not now",
+      compare: "Compare number",
+      compareFor: (name: string) => `Compare the safety number for ${name}`,
       waiting: "You said it matches. It goes once they confirm too.",
       differed:
         "The numbers didn't match, so nothing was sent. Someone may have been in between. The link still works if you want to try again.",
@@ -409,6 +407,13 @@ export const en = {
     full: (max: number) => `You can send to up to ${max} people at a time.`,
     oneLinkEach: "Each person gets their own link, which works once.",
     recipients: "Recipients",
+    steps: {
+      waiting: "Waiting",
+      checking: "Checking",
+      opened: "Opened",
+      receiving: "Receiving",
+      delivered: "Done",
+    },
     status: {
       waiting: (name: string) => `Waiting for ${name}'s link to be opened`,
       connecting: (name: string) => `Connecting through ${name}'s link…`,
@@ -418,6 +423,8 @@ export const en = {
         `${name}'s link was opened and the file was declined. The link still works.`,
       receiving: (name: string) => `Sending through ${name}'s link`,
       delivered: (name: string) => `Delivered through ${name}'s link`,
+      interrupted: (name: string) =>
+        `The transfer through ${name}'s link was interrupted. The link can be opened again to retry.`,
       failed: (name: string) =>
         `The file didn't arrive intact through ${name}'s link. The link can be opened again to retry.`,
       senderOutdated: (name: string) =>
@@ -648,8 +655,6 @@ export const en = {
     locked: "Remove everyone to change your name or secret.",
     allDone: "Every link has delivered the secret. You can close this tab.",
     summary: (done: number, total: number) => `${done} of ${total} links have delivered the secret`,
-    doneOne: (name: string) => `The secret arrived intact through ${name}'s link.`,
-    doneMany: (n: number) => `The secret arrived intact through all ${n} links.`,
     emailNotice:
       "Our server will see this link's key once, to write the email. It doesn't store or log the key, but our mail service and anyone who reads the email on its way can see the key too. The link, key included, stays in the recipient's mailbox: anyone who can read that mailbox could receive the secret. For this link, our server could also put itself between you and the recipient. To see if it does, create the link with a safety number and compare it with the recipient. Sending the link yourself avoids all of this.",
     // Only the statuses whose file wording would be wrong; the rest come from send.status.

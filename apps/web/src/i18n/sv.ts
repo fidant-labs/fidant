@@ -305,7 +305,6 @@ export const sv: Messages = {
     step: (n: number) => `Steg ${n} av 2`,
     peopleHeading: "Skapa en länk till varje person",
     change: "Byt",
-    fromSummary: (name: string) => `från ${name}`,
     connectionOptions: "Anslutningsalternativ",
     addEmail: "Skapa och mejla länk",
     addEmailCheck: "Skapa och mejla länk med kontrollnummer",
@@ -317,14 +316,9 @@ export const sv: Messages = {
     summary: (done: number, total: number) => `${done} av ${total} länkar har levererat filen`,
     delivered: "Levererad",
     doneTitle: "Allt levererat",
-    doneOne: (name: string) => `Filen kom fram oskadd via länken till ${name}.`,
-    doneMany: (n: number) => `Filen kom fram oskadd via alla ${n} länkar.`,
-    closeTab: "Du kan stänga fliken.",
     notifyMe: "Meddela mig",
     notifyOn: "Notiser på",
     notifyBlocked: "Notiser blockerade",
-    sendMore: "Skicka till någon mer",
-    showDetails: "Visa detaljer",
     localhost:
       "Sidan är öppnad på localhost, så länkarna fungerar inte på andra datorer. Öppna i stället nätverksadressen som servern skrev ut.",
     lostServer:
@@ -377,6 +371,10 @@ export const sv: Messages = {
       differs: "Det skiljer sig",
       matchesFor: (name: string) => `Det stämmer för ${name}`,
       differsFor: (name: string) => `Det skiljer sig för ${name}`,
+      titleFor: (name: string) => `Kontrollnummer för ${name}`,
+      later: "Inte nu",
+      compare: "Jämför nummer",
+      compareFor: (name: string) => `Jämför kontrollnumret för ${name}`,
       waiting: "Du sa att det stämmer. Det skickas när mottagaren också har bekräftat.",
       differed:
         "Numren stämde inte, så inget skickades. Någon kan ha varit emellan. Länken fungerar fortfarande om du vill försöka igen.",
@@ -389,6 +387,13 @@ export const sv: Messages = {
     full: (max: number) => `Du kan skicka till högst ${max} personer åt gången.`,
     oneLinkEach: "Varje person får en egen länk, som fungerar en gång.",
     recipients: "Mottagare",
+    steps: {
+      waiting: "Väntar",
+      checking: "Kontrollerar",
+      opened: "Öppnad",
+      receiving: "Tar emot",
+      delivered: "Klar",
+    },
     status: {
       waiting: (name: string) => `Väntar på att länken till ${name} ska öppnas`,
       connecting: (name: string) => `Ansluter via länken till ${name}…`,
@@ -398,6 +403,8 @@ export const sv: Messages = {
         `Länken till ${name} öppnades och filen avböjdes. Länken fungerar fortfarande.`,
       receiving: (name: string) => `Skickar via länken till ${name}`,
       delivered: (name: string) => `Levererad via länken till ${name}`,
+      interrupted: (name: string) =>
+        `Överföringen via länken till ${name} avbröts. Länken kan öppnas igen för att försöka på nytt.`,
       failed: (name: string) =>
         `Filen kom inte fram oskadd via länken till ${name}. Länken kan öppnas igen för att försöka på nytt.`,
       senderOutdated: (name: string) =>
@@ -628,8 +635,6 @@ export const sv: Messages = {
     allDone: "Alla länkar har levererat hemligheten. Du kan stänga fliken.",
     summary: (done: number, total: number) =>
       `${done} av ${total} länkar har levererat hemligheten`,
-    doneOne: (name: string) => `Hemligheten kom fram oskadd via länken till ${name}.`,
-    doneMany: (n: number) => `Hemligheten kom fram oskadd via alla ${n} länkar.`,
     emailNotice:
       "Vår server ser den här länkens nyckel en gång, för att skriva mejlet. Den sparar eller loggar inte nyckeln, men vår mejltjänst och den som läser mejlet på vägen kan också se nyckeln. Länken, med nyckeln, ligger kvar i mottagarens inkorg: den som kan läsa den inkorgen kan ta emot hemligheten. Vår server skulle också kunna ställa sig mellan er för den här länken. Skapa länken med kontrollnummer och jämför det med mottagaren, så ser du om servern gör det. Om du skickar länken själv slipper du allt detta.",
     status: {

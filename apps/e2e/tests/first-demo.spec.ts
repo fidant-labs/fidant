@@ -232,7 +232,6 @@ test("delivers a file to two recipients with a verified checksum", async ({
       /^data:image\/svg.*M9%2016\.5l5/,
     );
   }
-  await sender.getByText("Show details", { exact: true }).click();
   const cards = names.map((name) => recipientRow(sender, name));
   for (const scope of [...cards, ...received.map(({ page }) => page)]) {
     await expect(scope.getByText("Direct connection", { exact: true })).toBeVisible();
@@ -1151,14 +1150,16 @@ test.describe("a hostile path", () => {
 
     const card = recipientRow(sender, name);
     await expect(
-      card.getByText(`Ask ${name} to read the number on their screen. Does it match?`),
+      checkDialog(sender, name).getByText(
+        `Ask ${name} to read the number on their screen. Does it match?`,
+      ),
     ).toBeVisible({ timeout: 30_000 });
     await expect(recipient.getByText("Read this number to the sender.")).toBeVisible();
     const ours = await senderNumber(sender, name);
     const theirs = await recipientNumber(recipient);
     expect(theirs, "the recipient's number").not.toBe(ours);
 
-    await card.getByRole("button", { name: "It differs" }).click();
+    await checkDialog(sender, name).getByRole("button", { name: "It differs" }).click();
     await expect(card.getByText("The numbers didn't match, so nothing was sent.")).toBeVisible();
     await expect(
       recipient.getByRole("heading", { name: "The numbers didn't match" }),
@@ -1176,9 +1177,13 @@ test.describe("a hostile path", () => {
 
 const NUMBER = /^\d{3} \d{3}$/;
 
-/** The safety number on the sender's card for `name`, once it shows. */
+/** The sender's dialog that asks about the safety number for `name`. */
+const checkDialog = (sender: Page, name: string) =>
+  sender.getByRole("dialog", { name: `Safety number for ${name}` });
+
+/** The safety number in the sender's dialog for `name`, once it shows. */
 async function senderNumber(sender: Page, name: string): Promise<string> {
-  const number = recipientRow(sender, name).getByText(NUMBER);
+  const number = checkDialog(sender, name).getByText(NUMBER);
   await expect(number).toBeVisible({ timeout: 30_000 });
   return (await number.textContent()) ?? "";
 }
@@ -1241,12 +1246,12 @@ test.describe("safety number", () => {
     await expect(recipient.getByRole("heading", { name: "Safety number" })).toBeFocused();
     await expect(recipient.getByText("Read this number to the sender.")).toBeVisible();
     await expect(
-      recipientRow(sender, name).getByText(
+      checkDialog(sender, name).getByText(
         `Ask ${name} to read the number on their screen. Does it match?`,
       ),
     ).toBeVisible();
 
-    await recipientRow(sender, name).getByRole("button", { name: "It matches" }).click();
+    await checkDialog(sender, name).getByRole("button", { name: "It matches" }).click();
     await expect(
       recipientRow(sender, name).getByText("You said it matches. It goes once they confirm too."),
     ).toBeVisible();
@@ -1304,7 +1309,7 @@ test.describe("safety number", () => {
     ).toBeVisible();
   });
 
-  test("the sender answers from the keyboard: the card names the recipient, focus stays and the wait is announced", async ({
+  test("the sender answers from the keyboard: the dialog names the recipient, focus goes to the card and the wait is announced", async ({
     demo,
     leaks,
     canary,
@@ -1318,8 +1323,9 @@ test.describe("safety number", () => {
     const card = recipientRow(sender, name);
     expect(await card.locator("[role=status]:empty").count()).toBeGreaterThan(0);
 
-    await expect(card.getByRole("button", { name: `It differs for ${name}` })).toBeVisible();
-    await tabTo(sender, card.getByRole("button", { name: `It matches for ${name}` }));
+    const dialog = checkDialog(sender, name);
+    await expect(dialog.getByRole("button", { name: `It differs for ${name}` })).toBeVisible();
+    await tabTo(sender, dialog.getByRole("button", { name: `It matches for ${name}` }));
     await sender.keyboard.press("Enter");
     await expect(card.locator("[data-status]")).toBeFocused();
     await expect(
@@ -1336,7 +1342,7 @@ test.describe("safety number", () => {
     const recipient = await demo.open("recipient");
     await recipient.goto(link);
     await sameNumber(sender, name, recipient);
-    await recipientRow(sender, name).getByRole("button", { name: "It differs" }).click();
+    await checkDialog(sender, name).getByRole("button", { name: "It differs" }).click();
     await expect(
       recipient.getByRole("heading", { name: "The numbers didn't match" }),
     ).toBeVisible();
@@ -1952,7 +1958,6 @@ test.describe("emailed links", () => {
     const bytes = await download(recipient, file);
     expect(sha256Hex(bytes)).toBe(sha256Hex(file.bytes));
     await expect(delivered(sender, name)).toBeAttached();
-    await sender.getByText("Show details", { exact: true }).click();
     await expect(verified).toBeVisible();
 
     // A reload joins with the tab's token, without a new code, and the sender refuses a used link.
