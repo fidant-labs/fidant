@@ -65,6 +65,22 @@ jobs:
           path: ${{ runner.temp }}/image.tar
           retention-days: 1
           if-no-files-found: error
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - run: pnpm install --frozen-lockfile
+      - name: Build the web client
+        env:
+          SIGNALS_FILE: signals.json
+        run: pnpm --filter @sigill/web build
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: web
+          path: apps/web/dist
+          retention-days: 1
+          if-no-files-found: error
+          include-hidden-files: true
 
   # Holds AWS credentials, so it checks out nothing and runs only pinned actions, git (ls-remote, before it signs in), the aws CLI, docker and jq.
   release:
@@ -80,6 +96,10 @@ jobs:
         with:
           name: image
           path: ${{ runner.temp }}/image
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: web
+          path: ${{ runner.temp }}/web
       - name: Check the commit is production's tip
         env:
           SHA: ${{ github.sha }}
@@ -243,3 +263,14 @@ jobs:
             fi
             sleep 15 & wait $!
           done
+      - name: Upload the web client
+        env:
+          ACCOUNT: ${{ secrets.FIDANT_POC_ACCOUNT }}
+        run: |
+          set -euo pipefail
+          [[ $ACCOUNT =~ ^[0-9]{12}$ ]] || { echo "::error::unexpected input"; exit 1; }
+          web=$RUNNER_TEMP/web
+          bucket=s3://fidant-pages-$ACCOUNT
+          aws s3 cp "$web/assets" "$bucket/assets" --recursive --cache-control "public, max-age=31536000, immutable" --region us-east-1 --only-show-errors
+          aws s3 cp "$web" "$bucket" --recursive --exclude "assets/*" --cache-control no-cache --region us-east-1 --only-show-errors
+          echo "uploaded the web client"
