@@ -32,6 +32,12 @@ export const boxOrigin = "https://fidant.se";
 export const relayIp = "198.51.100.40";
 export const relayHost = "sto.relay.sigill.test";
 export const albIp = "198.51.100.50";
+/** The pages CDN stand-in (networks/pages), which a test maps fidant.se to. */
+export const pagesIp = "198.51.100.60";
+/** The signaling image's name, from the web build's list. The browsers resolve it to albIp. */
+export const signalHost = new URL(
+  JSON.parse(readFileSync(join(repoRoot, "apps", "web", "signals.json"), "utf8"))[0].url,
+).hostname;
 /** The node stage of networks/box/Dockerfile, so Dependabot moves the server and the box together. */
 export const serverImage =
   /^FROM (\S+) AS node$/m.exec(
@@ -255,10 +261,10 @@ async function startNetworks(): Promise<RunningService> {
   await run("openssl", [
     ...["req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1", "-nodes"],
     ...["-days", "1", "-subj", `/CN=${turnHost}`],
-    // turn.fidant.se and the relay box too: they serve the same pair, so one public key covers all.
+    // turn.fidant.se, the relay box, pages and alb too: they serve the same pair, so one public key covers all.
     ...[
       "-addext",
-      `subjectAltName=DNS:${turnHost},DNS:turn.fidant.se,DNS:${relayHost},IP:${turnIp}`,
+      `subjectAltName=DNS:${turnHost},DNS:turn.fidant.se,DNS:${relayHost},DNS:fidant.se,DNS:${signalHost},IP:${turnIp}`,
     ],
     ...["-keyout", join(dir, "turn.key"), "-out", join(dir, "turn.crt")],
   ]);
@@ -293,6 +299,7 @@ async function startNetworks(): Promise<RunningService> {
   await writeFile(join(relayDir, "tls", "turn.crt"), turnCert.cert);
   await writeFile(join(relayDir, "tls", "turn.key"), turnCert.key, { mode: 0o600 });
 
+  const pagesDir = await mkdtemp(join(tmpdir(), "sigill-e2e-pages-"));
   const playwright = join(e2eDir, "node_modules", "@playwright", "test", "package.json");
   // Every compose command needs these, including `exec` from the test workers, which inherit them.
   Object.assign(process.env, {
@@ -302,6 +309,7 @@ async function startNetworks(): Promise<RunningService> {
     SIGILL_E2E_COTURN_DIR: dir,
     SIGILL_E2E_BOX_DIR: boxDir,
     SIGILL_E2E_RELAY_DIR: relayDir,
+    SIGILL_E2E_PAGES_DIR: pagesDir,
     SIGILL_E2E_UID: String(process.getuid?.() ?? 1000),
     SIGILL_E2E_GID: String(process.getgid?.() ?? 1000),
     // Workers start after global setup and inherit it, like SIGILL_E2E_BASE_URL.
@@ -315,6 +323,7 @@ async function startNetworks(): Promise<RunningService> {
       rmSync(dir, { recursive: true, force: true });
       rmSync(boxDir, { recursive: true, force: true });
       rmSync(relayDir, { recursive: true, force: true });
+      rmSync(pagesDir, { recursive: true, force: true });
     }
   };
   // Backstop for a run that ends without global teardown.
@@ -334,7 +343,7 @@ async function startNetworks(): Promise<RunningService> {
   try {
     // Left over from a run that was killed.
     down();
-    await fetchImages();
+    await Promise.all([fetchImages(), buildPages(pagesDir)]);
     await run("docker", [...compose, "up", "-d", "--wait", "--wait-timeout", "120"]);
     const relays = [
       { id: "net", urls: turnUrls, publicKey: netKey },
@@ -354,6 +363,7 @@ async function startNetworks(): Promise<RunningService> {
     name: "networks",
     // Not the stack's server, which is serverImage's container; only an origin the browser may reach.
     url: boxOrigin,
+    origins: [`https://${signalHost}`],
     // The server ignores TURN_* while the list has relays; they stay as its fallback without one.
     env: {
       TURN_URLS: turnUrls.join(","),
@@ -363,6 +373,20 @@ async function startNetworks(): Promise<RunningService> {
     },
     stop,
   };
+}
+
+/** The web build the release uploads, with the signaling address from apps/web/signals.json. */
+async function buildPages(outDir: string): Promise<void> {
+  const vite = join(repo, "apps", "web", "node_modules", "vite", "bin", "vite.js");
+  await run(
+    process.execPath,
+    [vite, "build", "--outDir", outDir, "--emptyOutDir", "--logLevel", "error"],
+    {
+      cwd: join(repo, "apps", "web"),
+      env: { ...process.env, SIGNALS_FILE: "signals.json" },
+      maxBuffer: 64 * 1024 * 1024,
+    },
+  );
 }
 
 /**

@@ -39,6 +39,7 @@ import {
   inBox,
   inRelay,
   inSignal,
+  pagesIp,
   pauseRelay,
   type RouterMode,
   relayHost,
@@ -49,6 +50,7 @@ import {
   sendToRelay,
   serverIp,
   signalClients,
+  signalHost,
   signalLogs,
 } from "../src/stack/networks.ts";
 
@@ -1323,5 +1325,97 @@ test.describe("the signaling image", () => {
         text,
       ).toEqual([]);
     }
+  });
+});
+
+// The pages CDN stand-in (networks/pages): the edge function over the web build the release uploads.
+test.describe("pages from the edge function", () => {
+  test.use({
+    baseURL: boxOrigin,
+    hostRules: `MAP fidant.se ${pagesIp}`,
+    remoteBrowsers: { sender: remoteBrowsers.a1, recipient: remoteBrowsers.b1 },
+  });
+
+  test("open signaling on the image's name, and a direct transfer completes", async ({
+    actor,
+    observed,
+    leaks,
+    canary,
+    baseURL,
+  }) => {
+    await routerMode("router-b", "cone");
+    const file = leaks.watch(canaryFile(canary.fork("file"), { size: 300_001 }));
+    const name = makeName(leaks, canary, "Anna");
+
+    const sender = await actor("sender");
+    await recordPeerConnections(sender.context);
+    const page = await sender.page.goto("/send");
+    expect(page?.headers()["content-security-policy"]).toContain(
+      `connect-src 'self' wss://${signalHost}`,
+    );
+    await chooseFile(sender.page, { name: file.name, mimeType: file.mime, buffer: file.bytes });
+    await sender.page.getByLabel("Who is it for?").fill(name);
+    await sender.page.getByRole("button", { name: "Create link", exact: true }).click();
+    const link =
+      (await sender.page.getByLabel(`Link for ${name}`, { exact: true }).textContent()) ?? "";
+    leaks.watchKey("link secret", new URL(link).hash.slice(1));
+    expect(new URL(link).origin).toBe(boxOrigin);
+
+    const recipient = await actor("recipient");
+    await recordPeerConnections(recipient.context);
+    await recipient.page.goto(link);
+    const downloading = recipient.page.waitForEvent("download", { timeout: 60_000 });
+    const downloadButton = recipient.page.getByRole("button", { name: "Download" });
+    await expect(downloadButton).toBeVisible({ timeout: 45_000 });
+    await downloadButton.click();
+    await expect(recipient.page.getByText(verifiedText)).toBeVisible({ timeout: 60_000 });
+    const download = await downloading;
+    expect(sha256Hex(await buffer(await download.createReadStream()))).toBe(sha256Hex(file.bytes));
+    await expect
+      .poll(async () => `${await pathOf(sender.page)} ${await pathOf(recipient.page)}`)
+      .toMatch(/^srflx\/(srflx|prflx) srflx\/(srflx|prflx)$/);
+    await watchIcePasswords(leaks, "sender", sender.page);
+    await watchIcePasswords(leaks, "recipient", recipient.page);
+    await expectSignaling(observed, baseURL);
+    for (const who of ["sender", "recipient"]) {
+      const sockets = (await observed(who).records()).filter((r) => r.type === "websocket-open");
+      expect([...new Set(sockets.map((r) => new URL(r.url).host))], who).toEqual([signalHost]);
+    }
+
+    expect(await sender.page.evaluate(() => fetch("/signal").then((r) => r.status))).toBe(404);
+    const answer = (format: string, path: string, ...curl: string[]) =>
+      inRelay(
+        "curl",
+        "-sk",
+        ...curl,
+        "--max-time",
+        "5",
+        "--resolve",
+        `${new URL(boxOrigin).host}:443:${pagesIp}`,
+        "-o",
+        "/dev/null",
+        "-w",
+        format,
+        `${boxOrigin}${path}`,
+      );
+    const status = (path: string, ...curl: string[]) => answer("%{http_code}", path, ...curl);
+    const guarded = (path: string) => answer("%{http_code} %{size_download}", path);
+    expect(await status("/relay-secret/net")).toBe("200");
+    expect(await status("/relay-secret/sto")).toBe("404");
+    expect(await guarded("/relay-secret/%2e%2e/relay-status")).toBe("404 0");
+    expect(await guarded("//relay-secret/net")).toBe("404 0");
+    expect(await status("/relay-secret/net", "-X", "POST")).toBe("403");
+
+    let lines: string[] = [];
+    await expect
+      .poll(async () => {
+        const logs = await signalLogs();
+        await writeFile(signalLog, logs);
+        lines = logs.split("\n").filter(Boolean);
+        return lines.some((line) => line.startsWith('{"event":"path"'));
+      })
+      .toBe(true);
+    expect(checkServerLog(lines, serverLogAllowlist)).toEqual([]);
+    expect(lines.some((line) => line.startsWith('{"event":"joined"'))).toBe(true);
   });
 });

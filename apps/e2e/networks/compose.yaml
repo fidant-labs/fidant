@@ -3,7 +3,7 @@
 #   site-a 10.89.1.0/24: router-a (.2), net-a1 (.11), net-a2 (.12)
 #   site-b 10.89.2.0/24: router-b (.2), net-b1 (.11)
 #   public 198.51.100.0/24 (TEST-NET-2): router-a (.2), router-b (.3), coturn (.20), box (.30),
-#     relay (.40), alb (.50)
+#     relay (.40), alb (.50), pages (.60)
 #   lb 10.89.3.0/24, internal: alb (.2), signal (.10)
 #
 # Each browser-xx shares the network namespace of net-xx, whose default route is its site's
@@ -14,6 +14,7 @@
 # and signal.env and signal-relays.json for signal),
 # SIGILL_E2E_BOX_DIR (the box's config files at their paths under /),
 # SIGILL_E2E_RELAY_DIR (the relay's install.sh inputs in env, and its TLS pair in tls/),
+# SIGILL_E2E_PAGES_DIR (the web build made with SIGNALS_FILE, as the release uploads it),
 # SIGILL_E2E_UID and SIGILL_E2E_GID (the host user, so files in the run dir stay theirs).
 name: sigill-e2e
 
@@ -249,3 +250,31 @@ services:
     networks:
       public: { ipv4_address: 198.51.100.50 }
       lb: { ipv4_address: 10.89.3.2 }
+
+  # The pages CDN stand-in: apps/infra/edge/site.js over the pages build, /relay-secret/* to alb.
+  pages:
+    image: sigill-e2e-node
+    build:
+      context: box
+      target: node
+    user: ${SIGILL_E2E_UID:?}:${SIGILL_E2E_GID:?}
+    init: true
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: 0
+    working_dir: ${SIGILL_E2E_REPO:?}
+    command: ["node", "apps/e2e/networks/pages/serve.ts"]
+    volumes:
+      - ${SIGILL_E2E_REPO:?}:${SIGILL_E2E_REPO:?}:ro
+      - ${SIGILL_E2E_PAGES_DIR:?}:/pages:ro
+      - ${SIGILL_E2E_COTURN_DIR:?}/turn.crt:/etc/pages/tls.crt:ro
+      - ${SIGILL_E2E_COTURN_DIR:?}/turn.key:/etc/pages/tls.key:ro
+    networks:
+      public: { ipv4_address: 198.51.100.60 }
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "require('net').connect(443, '127.0.0.1').on('connect', () => process.exit(0)).on('error', () => process.exit(1))"
+      interval: 1s
+      retries: 30

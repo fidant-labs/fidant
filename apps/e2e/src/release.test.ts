@@ -1,16 +1,19 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
   imageRepository,
+  pagesBucket,
   releaseRoleName,
   releaseSessionSeconds,
   signalCluster,
   signalService,
 } from "../../infra/src/config.ts";
+import { uploadCacheControl } from "./edge.ts";
 
 const workflow = readFileSync(
   new URL("../../../.github/workflows/release.yml", import.meta.url),
@@ -167,14 +170,25 @@ test("the release workflow pins its actions and keeps credentials away from repo
     assert.doesNotMatch(script ?? "", /\$\{\{/);
   }
   const buildAt = workflow.indexOf("\n  build:\n");
+  const webAt = workflow.indexOf("\n  web:\n");
   const releaseAt = workflow.indexOf("\n  release:\n");
-  assert.ok(buildAt > 0 && releaseAt > buildAt);
-  const build = workflow.slice(buildAt, releaseAt);
+  assert.ok(buildAt > 0 && webAt > buildAt && releaseAt > webAt);
+  const build = workflow.slice(buildAt, webAt);
+  const web = workflow.slice(webAt, releaseAt);
   const release = workflow.slice(releaseAt);
   assert.match(workflow.slice(0, buildAt), /\npermissions: \{\}\n/);
-  assert.match(build, /\n {4}permissions:\n {6}contents: read\n {4}\S/);
+  for (const job of [build, web]) {
+    assert.match(job, /\n {4}permissions:\n {6}contents: read\n {4}\S/);
+    assert.doesNotMatch(job, /id-token|secrets\.|aws-actions/);
+    assert.match(
+      job,
+      /actions\/checkout@[^\n]*\n {8}with:\n(?: {10}.*\n)* {10}persist-credentials: false\n/,
+    );
+  }
+  assert.doesNotMatch(build, /pnpm install|setup-node/);
+  assert.match(web, /\n {4}needs: build\n/);
+  assert.match(release, /\n {4}needs: \[build, web\]\n/);
   assert.match(release, /\n {4}permissions:\n {6}id-token: write\n {4}\S/);
-  assert.doesNotMatch(build, /id-token|secrets\./);
   assert.doesNotMatch(release, /checkout|pnpm|node /);
   assert.match(release, /\n {4}environment: app\n/);
 });
@@ -201,6 +215,7 @@ test("the release workflow names what the infra names", () => {
     `--cluster ${signalCluster} --services ${signalService}`,
     `--cluster ${signalCluster} --service ${signalService}`,
     `:role/${releaseRoleName}\n`,
+    `bucket=s3://${pagesBucket("$ACCOUNT")}\n`,
     "aws-region: eu-north-1",
   ]) {
     assert.ok(workflow.includes(text), text);
@@ -324,8 +339,14 @@ if (tool === "aws" && /^ecr batch-get-image --repository-name fidant-signal --im
 } else if (tool === "aws" && said === "cloudformation describe-stacks --stack-name FidantSignal --query Stacks[0].StackStatus --output text") {
   if (state.stack === "!") finish("describe-stacks", undefined, "AccessDenied", "User: arn:aws:sts::210987654321:assumed-role/fidant-release/run is not authorized");
   finish("describe-stacks", (state.stack ?? "CREATE_COMPLETE") + "\\n");
+} else if (tool === "aws" && said === "cloudformation describe-stacks --stack-name FidantPages --region us-east-1 --query Stacks[0].StackStatus --output text") {
+  if (state.pages === "!") finish("describe-stacks FidantPages", undefined, "AccessDenied", "User: arn:aws:sts::210987654321:assumed-role/fidant-release/run is not authorized");
+  finish("describe-stacks FidantPages", (state.pages ?? "CREATE_COMPLETE") + "\\n");
 } else if (tool === "aws" && said === "ecs update-service --cluster fidant --service fidant-signal --force-new-deployment --output json") {
   finish("update-service", ...ecs(state.update));
+} else if (tool === "aws" && args[0] === "s3" && args[1] === "cp") {
+  const call = "s3 cp " + JSON.stringify(args.slice(2).map((arg) => arg.replace(process.env.RUNNER_TEMP, "$RUNNER_TEMP")));
+  finish(call, undefined, state.failUpload === state.calls.filter((c) => c.startsWith("s3 ")).length ? "AccessDenied" : undefined);
 } else if (tool === "docker" && said === "load -i " + process.env.RUNNER_TEMP + "/image/image.tar") {
   finish("docker load");
 } else if (tool === "docker" && said === "login --username AWS --password-stdin " + registry) {
@@ -362,6 +383,24 @@ const rolling = service(
 );
 const started = { service: rolling.services[0] };
 
+const releaseJob = workflow.slice(workflow.indexOf("\n  release:\n"));
+const releaseSteps = releaseJob
+  .split(/\n {6}- /)
+  .filter((step) => /\n {8}run: \|\n/.test(step))
+  .map((step) => ({
+    name: step.match(/^name: (.+)\n/)?.[1] ?? "",
+    env: [...step.slice(0, step.indexOf("run: |")).matchAll(/\n {10}([A-Z0-9_]+): /g)].map(
+      ([, name]) => name ?? "",
+    ),
+  }));
+const emptyTar = createHash("sha256").update("").digest("hex");
+const stepInputs: Record<string, string> = {
+  SHA: sha,
+  KEY: key,
+  ACCOUNT: "123456789012",
+  IMAGE_SHA256: emptyTar,
+};
+
 function release(start: {
   tags: Record<string, string>;
   services?: unknown[];
@@ -370,7 +409,11 @@ function release(start: {
   expire?: boolean;
   signal?: "INT" | "TERM";
   failPut?: string;
+  failUpload?: number;
+  tip?: string;
+  digest?: string;
   stack?: string;
+  pages?: string;
 }) {
   let result:
     | {
@@ -390,9 +433,14 @@ function release(start: {
       writeFileSync(join(dir, "bin", tool), `#!${process.execPath}\n${fake}`, { mode: 0o755 });
     }
     writeFileSync(
+      join(dir, "bin", "git"),
+      `#!/bin/sh\n[ "$*" = "ls-remote https://github.com/o/r refs/heads/production" ] || exit 2\nprintf '${start.tip ?? sha}\\trefs/heads/production\\n'\n`,
+      { mode: 0o755 },
+    );
+    writeFileSync(
       join(dir, "bin", "sleep"),
       start.signal
-        ? `#!/bin/sh\nkill -${start.signal} $PPID\nexec /bin/sleep 2 >/dev/null 2>&1\n`
+        ? `#!/bin/sh\nkill -${start.signal} $PPID\nexec /bin/sleep 12 >/dev/null 2>&1\n`
         : "#!/bin/sh\n",
       {
         mode: 0o755,
@@ -401,19 +449,34 @@ function release(start: {
     const state = join(dir, "state.json");
     const images = [...new Set(Object.values(start.tags))];
     writeFileSync(state, JSON.stringify({ calls: [], images, services: [], ...start }));
-    const script = run("Push the image, move live and redeploy");
-    const { status, signal, stdout, stderr } = bash(
-      start.expire ? script.replace(/\$\(\(SECONDS \+ [^)]+\)\)/g, "$SECONDS") : script,
-      dir,
-      {
-        PATH: `${dir}/bin:${process.env.PATH}`,
-        STATE: state,
-        RUNNER_TEMP: dir,
-        SHA: sha,
-        KEY: key,
-        ACCOUNT: "123456789012",
-      },
-    );
+    let status: number | null = 0;
+    let signal: NodeJS.Signals | null = null;
+    let stdout = "";
+    let stderr = "";
+    for (const step of releaseSteps) {
+      const script = run(step.name);
+      const inputs = step.env.map((name) => {
+        assert.ok(name in stepInputs, name);
+        return [name, (name === "IMAGE_SHA256" && start.digest) || (stepInputs[name] ?? "")];
+      });
+      const ran = bash(
+        start.expire ? script.replace(/\$\(\(SECONDS \+ [^)]+\)\)/g, "$SECONDS") : script,
+        dir,
+        {
+          PATH: `${dir}/bin:${process.env.PATH}`,
+          STATE: state,
+          RUNNER_TEMP: dir,
+          GITHUB_REPOSITORY: "o/r",
+          ...Object.fromEntries(inputs),
+        },
+      );
+      ({ status, signal } = ran);
+      stdout += ran.stdout;
+      stderr += ran.stderr;
+      if (status !== 0) {
+        break;
+      }
+    }
     const end = JSON.parse(readFileSync(state, "utf8"));
     result = { status, signal, stdout, stderr, calls: end.calls, tags: end.tags };
   });
@@ -421,7 +484,126 @@ function release(start: {
   return result;
 }
 
-test("a release whose image inputs already have their image, which live names, changes nothing", () => {
+const bucket = `s3://${pagesBucket(stepInputs.ACCOUNT ?? "")}`;
+const uploaded = [
+  [
+    "$RUNNER_TEMP/web/assets",
+    `${bucket}/assets`,
+    "--recursive",
+    "--no-follow-symlinks",
+    "--cache-control",
+    uploadCacheControl("assets/index.js"),
+    "--region",
+    "us-east-1",
+    "--only-show-errors",
+  ],
+  [
+    "$RUNNER_TEMP/web",
+    bucket,
+    "--recursive",
+    "--no-follow-symlinks",
+    "--exclude",
+    "assets/*",
+    "--cache-control",
+    uploadCacheControl("pages/index.html"),
+    "--region",
+    "us-east-1",
+    "--only-show-errors",
+  ],
+].map((args) => `s3 cp ${JSON.stringify(args)}`);
+const uploading = ["describe-stacks FidantPages", ...uploaded];
+
+test("the release job runs each step only after every step before it succeeded, and uploads the web client last", () => {
+  assert.doesNotMatch(releaseJob, /\n +(if|continue-on-error):/);
+  assert.deepEqual(
+    releaseSteps.map(({ name }) => name),
+    [
+      "Check the commit is production's tip",
+      "Push the image, move live and redeploy",
+      "Upload the web client",
+    ],
+  );
+});
+
+test("the web job hands on the web client built for the signaling name, hidden files included", () => {
+  const web = workflow.slice(workflow.indexOf("\n  web:\n"), workflow.indexOf("\n  release:\n"));
+  assert.ok(
+    web.includes(
+      "      - run: pnpm install --frozen-lockfile\n      - name: Build the web client\n        env:\n          SIGNALS_FILE: signals.json\n        run: pnpm --filter @sigill/web build\n",
+    ),
+  );
+  assert.ok(
+    web.includes(
+      "          name: web\n          path: apps/web/dist\n          retention-days: 1\n          if-no-files-found: error\n          include-hidden-files: true\n",
+    ),
+  );
+  assert.match(releaseJob, /\n {10}name: web\n {10}path: \$\{\{ runner\.temp \}\}\/web\n/);
+});
+
+test("the upload puts the assets before the rest with the cache rules the edge test serves, and nothing more after a failed put", () => {
+  const skip = { tags: { [`inputs-${key}`]: "sha256:new", live: "sha256:new" } };
+  const upload = (calls: string[]) => calls.filter((call) => call.startsWith("s3 "));
+  assert.deepEqual(upload(release(skip).calls), uploaded);
+  const failedAssets = release({ ...skip, failUpload: 0 });
+  assert.notEqual(failedAssets.status, 0);
+  assert.deepEqual(upload(failedAssets.calls), uploaded.slice(0, 1));
+});
+
+const skipped = [`batch-get-image imageTag=inputs-${key}`, "batch-get-image imageTag=live"];
+
+test("while FidantPages's status ends in _IN_PROGRESS the upload fails before any put, and UPDATE_COMPLETE uploads", () => {
+  const skip = { tags: { [`inputs-${key}`]: "sha256:new", live: "sha256:new" } };
+  for (const pages of [
+    "CREATE_IN_PROGRESS",
+    "UPDATE_IN_PROGRESS",
+    "REVIEW_IN_PROGRESS",
+    "DELETE_IN_PROGRESS",
+    "UPDATE_COMPLETE_CLEANUP_IN_PROGRESS",
+  ]) {
+    const { status, stdout, calls } = release({ ...skip, pages });
+    assert.equal(status, 1, pages);
+    assert.deepEqual(calls, [...skipped, "describe-stacks FidantPages"], pages);
+    assert.equal(
+      stdout,
+      `live already names sha256:new\n::error::FidantPages is ${pages}, so nothing is uploaded; re-run the newest release run, the one for production's tip, once the stack has settled\n`,
+    );
+  }
+  const complete = release({ ...skip, pages: "UPDATE_COMPLETE" });
+  assert.equal(complete.status, 0);
+  assert.deepEqual(complete.calls, [...skipped, ...uploading]);
+});
+
+test("an upload that cannot read FidantPages's status fails before any put, and prints nothing aws said", () => {
+  const skip = { tags: { [`inputs-${key}`]: "sha256:new", live: "sha256:new" } };
+  const { status, stdout, stderr, calls } = release({ ...skip, pages: "!" });
+  assert.equal(status, 1);
+  assert.deepEqual(calls, [...skipped, "describe-stacks FidantPages"]);
+  assert.equal(
+    stdout,
+    "live already names sha256:new\n::error::could not read the status of FidantPages, so nothing is uploaded\n",
+  );
+  assert.equal(stderr, "");
+});
+
+test("the upload refuses an unexpected account before it calls aws", () => {
+  withDir((dir) => {
+    mkdirSync(join(dir, "bin"));
+    writeFileSync(join(dir, "bin", "aws"), "#!/bin/sh\nexit 3\n", { mode: 0o755 });
+    for (const account of ["", "1234567890123", "12345678901x"]) {
+      const { status, stdout } = bash(run("Upload the web client"), dir, {
+        PATH: `${dir}/bin:${process.env.PATH}`,
+        RUNNER_TEMP: dir,
+        ACCOUNT: account,
+      });
+      assert.deepEqual(
+        { status, said: stdout.trim() },
+        { status: 1, said: "::error::unexpected input" },
+      );
+    }
+  });
+});
+
+test("a release whose image inputs already have their image, which live names, moves nothing and uploads the web client", () => {
   const { status, calls, tags } = release({
     tags: { [`inputs-${key}`]: "sha256:new", live: "sha256:new" },
   });
@@ -429,6 +611,7 @@ test("a release whose image inputs already have their image, which live names, c
   assert.deepEqual(calls, [
     `batch-get-image imageTag=inputs-${key}`,
     "batch-get-image imageTag=live",
+    ...uploading,
   ]);
   assert.deepEqual(tags, { [`inputs-${key}`]: "sha256:new", live: "sha256:new" });
 });
@@ -461,6 +644,7 @@ test("a new image is pushed and tagged, and with no service live moves and nothi
     "describe-services",
     "batch-get-image imageDigest=sha256:new",
     "put-image live sha256:new",
+    ...uploading,
   ]);
   assert.deepEqual(tags, {
     [sha]: "sha256:new",
@@ -489,6 +673,7 @@ test("with no cluster live moves and nothing deploys, and a refused check moves 
     ...moved.slice(0, 4),
     "batch-get-image imageDigest=sha256:new",
     "put-image live sha256:new",
+    ...uploading,
   ]);
 
   const denied = release({ tags: before, services: ["!AccessDeniedException"] });
@@ -505,7 +690,7 @@ test("a deployment that completes leaves live on the new image", () => {
     update: started,
   });
   assert.equal(status, 0);
-  assert.deepEqual(calls, [...moved, "describe-services", "describe-services"]);
+  assert.deepEqual(calls, [...moved, "describe-services", "describe-services", ...uploading]);
   assert.deepEqual(tags, { ...before, live: "sha256:new" });
 });
 
@@ -529,7 +714,11 @@ test("while FidantSignal's status ends in _IN_PROGRESS a release fails before li
   for (const stack of ["UPDATE_COMPLETE", "UPDATE_ROLLBACK_FAILED"]) {
     const settled = release({ ...would, stack });
     assert.equal(settled.status, 0, stack);
-    assert.deepEqual(settled.calls, [...moved, "describe-services", "describe-services"], stack);
+    assert.deepEqual(
+      settled.calls,
+      [...moved, "describe-services", "describe-services", ...uploading],
+      stack,
+    );
     assert.deepEqual(settled.tags, { ...before, live: "sha256:new" }, stack);
   }
 });
@@ -571,7 +760,13 @@ test("a deployment that fails moves live back to the image the service went back
     ...markFailed,
   ]);
   assert.deepEqual(tags, marked);
-  assert.match(stdout, /::error::the new task failed its health check/);
+  assert.match(
+    stdout,
+    new RegExp(
+      `^::error::the new task failed its health check; the service is going back to sha256:old\nlive names sha256:old again\ntagged sha256:new failed-${key}\n$`,
+      "m",
+    ),
+  );
 });
 
 test("a deployment that cannot start moves live back, leaves the image untagged as failed, and fails", () => {
@@ -599,7 +794,7 @@ test("a later release with the same image inputs moves nothing, starts no deploy
   assert.equal(first.status, 1);
   const again = release({ tags: first.tags, services: [steady] });
   assert.equal(again.status, 0);
-  assert.deepEqual(again.calls, moved.slice(0, 3));
+  assert.deepEqual(again.calls, [...moved.slice(0, 3), ...uploading]);
   assert.deepEqual(again.tags, marked);
   assert.match(
     again.stdout,
@@ -626,7 +821,7 @@ test("a later release with the same image inputs moves nothing, starts no deploy
     update: started,
   });
   assert.equal(next.status, 0);
-  assert.deepEqual(next.calls, [...moved, "describe-services", "describe-services"]);
+  assert.deepEqual(next.calls, [...moved, "describe-services", "describe-services", ...uploading]);
   assert.deepEqual(next.tags, { ...earlier, live: "sha256:new" });
 });
 
@@ -640,7 +835,7 @@ test("a failed-<key> tag that is already there counts only when it names the ima
   assert.equal(same.status, 1);
   assert.deepEqual(same.calls.slice(-3), [...markFailed, `batch-get-image imageTag=failed-${key}`]);
   assert.deepEqual(same.tags, marked);
-  assert.match(same.stdout, /::error::the new task failed its health check/);
+  assert.match(same.stdout, new RegExp(`^tagged sha256:new failed-${key}$`, "m"));
 
   const another = release({ ...rolledBack, lost: { [`failed-${key}`]: "sha256:old" } });
   assert.equal(another.status, 1);
@@ -650,6 +845,7 @@ test("a failed-<key> tag that is already there counts only when it names the ima
   ]);
   assert.deepEqual(another.tags, { ...before, [`failed-${key}`]: "sha256:old" });
   assert.match(another.stdout, /::error::the new task failed its health check/);
+  assert.doesNotMatch(another.stdout, new RegExp(`failed-${key}`));
 });
 
 const serviceReplaced = service(["ecs-svc/9", "PRIMARY", "COMPLETED"]);
@@ -713,6 +909,7 @@ test("a rollback that does not settle in time puts live back and tags nothing fa
   });
   assert.equal(status, 1);
   assert.match(stdout, /::error::the service did not settle in time/);
+  assert.doesNotMatch(stdout, new RegExp(`failed-${key}`));
   assert.deepEqual(tags, before);
 });
 
@@ -724,6 +921,7 @@ test("a service that does not settle in time before live moves changes nothing",
   });
   assert.equal(status, 1);
   assert.match(stdout, /::error::the service did not settle in time/);
+  assert.ok(!calls.includes("put-image live sha256:new"));
   assert.ok(!calls.includes("update-service"));
   assert.deepEqual(tags, before);
 });
@@ -740,24 +938,29 @@ test("a release that is stopped by SIGTERM while it waits puts live back and exi
   assert.match(stdout, /::error::the release stopped before the service was confirmed to run/);
 });
 
-test("a release that gets SIGINT while it waits, which the shell alone gets first, puts live back and exits 130", () => {
+test("a release that gets SIGINT while it waits, which the shell alone gets first, puts live back and exits 130 before GitHub's SIGTERM", () => {
+  const start = performance.now();
   const { status, tags } = release({
     tags: before,
     services: [steady, steady, rolling],
     update: started,
     signal: "INT",
   });
+  assert.ok(performance.now() - start < 7500);
   assert.equal(status, 130);
   assert.deepEqual(tags, before);
 });
 
-test("a release that gets SIGINT while it waits to settle never moves live or starts a deployment", () => {
+test("a release that gets SIGINT while it waits to settle exits before GitHub's SIGTERM and never moves live or starts a deployment", () => {
+  const start = performance.now();
   const { status, calls, tags } = release({
     tags: before,
     services: [rolling],
     signal: "INT",
   });
+  assert.ok(performance.now() - start < 7500);
   assert.equal(status, 130);
+  assert.ok(!calls.includes("put-image live sha256:new"));
   assert.ok(!calls.includes("update-service"));
   assert.deepEqual(tags, before);
 });
@@ -773,7 +976,7 @@ test("a release whose restore fails says live still names the new image and does
   assert.equal(tags.live, "sha256:new");
   assert.match(
     stdout,
-    /::error::could not move live back to sha256:old: it still names sha256:new, so a release with these inputs ends without deploying until live moves/,
+    /^::error::could not move live back to sha256:old: it still names sha256:new, so a release with these inputs ends without deploying until live moves\. Move it back as Releasing in AGENTS\.md says, then re-run the newest release run, the one for production's tip\.$/m,
   );
   assert.doesNotMatch(stdout, /live names sha256:old again/);
 });
@@ -798,4 +1001,49 @@ test("an inputs tag that already names another image fails the release", () => {
   assert.equal(status, 1);
   assert.ok(!calls.includes("describe-services"));
   assert.ok(!("live" in tags));
+});
+
+test("a release that the tip check refuses calls nothing and uploads nothing", () => {
+  const { status, stdout, calls, tags } = release({ tags: before, tip: "c".repeat(40) });
+  assert.equal(status, 1);
+  assert.match(stdout, /^::error::refused a{40}: production is at c{40}/);
+  assert.deepEqual(calls, []);
+  assert.deepEqual(tags, before);
+});
+
+test("a release whose image is not the one the build job saved fails before docker load and calls no aws", () => {
+  const { status, stdout, calls } = release({ tags: before, digest: "0".repeat(64) });
+  assert.equal(status, 1);
+  assert.match(stdout, /^::error::the image artifact is not the one the build job saved/);
+  assert.deepEqual(calls, []);
+});
+
+test("the build job publishes the digest of the tar it saved", () => {
+  assert.match(workflow, /\n {6}digest: \$\{\{ steps\.save\.outputs\.digest \}\}\n/);
+  assert.match(workflow, /IMAGE_SHA256: \$\{\{ needs\.build\.outputs\.digest \}\}/);
+  const save = /\n {8}id: save\n[\s\S]*?(?=\n {6}- |\n[^ ]|$)/.exec(workflow)?.[0] ?? "";
+  const steps = [
+    'docker save fidant-signal:build -o "$RUNNER_TEMP/image.tar"',
+    'digest=$(sha256sum "$RUNNER_TEMP/image.tar" | cut -c1-64)',
+    'echo "digest=$digest" >>"$GITHUB_OUTPUT"',
+  ].map((line) => save.indexOf(line));
+  assert.ok(
+    steps.every((at, i) => at >= 0 && (i === 0 || at > (steps[i - 1] ?? 0))),
+    steps.join(),
+  );
+});
+
+test("a release whose image step fails uploads nothing", () => {
+  for (const start of [
+    { tags: before, services: ["!AccessDeniedException"] },
+    { tags: before, services: [steady, steady, rolling, failed, back], update: started },
+    { tags: before, services: [steady], update: "!AccessDeniedException" },
+    { tags: before, services: [steady, steady, rolling], update: started, expire: true },
+    { tags: before, services: [steady, steady, "!ThrottlingException"], update: started },
+    { tags: { [sha]: "sha256:new" }, lost: { [`inputs-${key}`]: "sha256:other" } },
+  ]) {
+    const { status, calls } = release(start);
+    assert.notEqual(status, 0, JSON.stringify(start));
+    assert.ok(!calls.some((call) => call.startsWith("s3 ")), JSON.stringify(start));
+  }
 });
