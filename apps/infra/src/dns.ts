@@ -8,6 +8,7 @@ import {
   mailRegion,
   primaryDomain,
   relayName,
+  signalName,
   zoneNames,
 } from "./config.ts";
 
@@ -15,6 +16,7 @@ export type DnsStackProps = StackProps & {
   mail: Mail;
   boxAddress: string;
   relayAddresses: Record<string, string>;
+  signalTargets: Record<string, string>;
   certificateRecords: DnsRecord[];
 };
 
@@ -126,6 +128,15 @@ export class DnsStack extends Stack {
           const recordName = relayName(id);
           const target = route53.RecordTarget.fromIpAddresses(address);
           new route53.ARecord(zone, `${recordName} A`, { zone, recordName, target });
+        }
+        for (const [id, domainName] of Object.entries(props.signalTargets)) {
+          const recordName = signalName(id);
+          new route53.CnameRecord(zone, `${recordName} CNAME`, {
+            zone,
+            recordName,
+            domainName,
+            ttl: Duration.seconds(60),
+          });
         }
       }
     }
