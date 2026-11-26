@@ -216,7 +216,7 @@ test.describe("in Swedish", () => {
     await expectNoOverflow(page);
   });
 
-  test("the Swedish header fits all four links at 768 px", async ({ page }) => {
+  test("the Swedish header fits all three links at 768 px", async ({ page }) => {
     await expectNoOverflow(page, 768);
   });
 });
