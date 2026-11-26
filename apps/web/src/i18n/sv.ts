@@ -1598,7 +1598,7 @@ export const sv: Messages = {
       ],
       [
         "Om vi mejlar en länk: adressen, länkens nyckel och ditt namn",
-        "Om du ber oss mejla en länk skickar din webbläsare mottagarens mejladress, länken med nyckeln och ditt namn till vår server. Nyckeln och ditt namn har vi bara tills mejlet har gått iväg. Adressen har vi i minnet medan din sida är öppen, så att vi kan mejla mottagaren en kod när länken öppnas. Vi har också den senaste koden och vilka flikar som har angett rätt kod. Vi loggar aldrig adressen och skriver den aldrig till disk. Vår mejltjänst, Amazon SES, levererar mejlen, och studsar går bara dit, aldrig till en inkorg hos oss. Amazon SES har kvar ett mejl med en länk, och därmed nyckeln och ditt namn, bara tills det har levererats. Om mottagarens mejlserver inte tar emot mejlet direkt försöker Amazon SES igen i högst 15 minuter och kastar det sedan. En adress som studsar för att den inte går att leverera hamnar på en lista som Amazon SES har för alla sina kunder, i upp till 14 dagar, så att ingen skickar fler mejl till den. Den listan kan vi inte stänga av.",
+        "Om du ber oss mejla en länk skickar din webbläsare mottagarens mejladress, länken med nyckeln och ditt namn till vår server. Nyckeln och ditt namn har vi bara tills mejlet har gått iväg. Adressen har vi i minnet medan din sida är öppen, så att vi kan mejla mottagaren en kod när länken öppnas. Vi har också den senaste koden och vilka flikar som har angett rätt kod. Vi loggar aldrig adressen och skriver den aldrig till disk. Vår mejltjänst levererar mejlen. Den har kvar ett mejl med en länk, och därmed nyckeln och ditt namn, tills den har levererat mejlet eller gett upp. Den kan också ha en lista över adresser som har studsat.",
       ],
       [
         "Antal mejl och koder",
@@ -1606,7 +1606,7 @@ export const sv: Messages = {
       ],
     ],
     keepHeading: "Vad vi sparar",
-    keep: "Vi har inga konton, ingen databas över personer eller överföringar, inga cookies och ingen spårning. När avsändarens sida har stängts sparas ingenting om dig, inom högst två minuter, förutom loggraderna nedan, en relälogg medan vi åtgärdar ett fel eller stoppar missbruk, antalet mejl och koder ovan, som finns kvar en timme, och mejltjänstens lista över adresser som studsat.",
+    keep: "Vi har inga konton, ingen databas över personer eller överföringar, inga cookies och ingen spårning. När avsändarens sida har stängts sparas ingenting om dig, inom högst två minuter, förutom loggraderna nedan, en relälogg medan vi åtgärdar ett fel eller stoppar missbruk, antalet mejl och koder ovan, som finns kvar en timme, och det som mejltjänsten fortfarande har: ett mejl som den ännu inte har levererat och en eventuell lista över adresser som har studsat.",
     logFields,
     logRetention: "Loggraderna raderas efter 30 dagar.",
     relayLog:

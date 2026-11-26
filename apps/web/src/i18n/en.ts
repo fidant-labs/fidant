@@ -1635,7 +1635,7 @@ export const en = {
       ],
       [
         "If we email a link: the address, the link's key and your name",
-        "If you ask us to email a link, your browser sends our server the recipient's email address, the link with its key, and your name. We keep the key and your name only until the email has gone. We keep the address in memory while your page is open, so we can email the recipient a code when they open the link. We also keep the latest code and which browser tabs entered the right one. We never log the address or write it to disk. Our mail service, Amazon SES, delivers the emails, and bounces go only to it, never to a mailbox of ours. Amazon SES keeps an email with a link, and so the key and your name, only until it is delivered. If the recipient's mail server doesn't accept the email at once, Amazon SES tries again for at most 15 minutes and then drops it. An address that bounces as undeliverable goes on a list that Amazon SES keeps for all its customers, for up to 14 days, so that nobody sends it more mail. We can't turn that list off.",
+        "If you ask us to email a link, your browser sends our server the recipient's email address, the link with its key, and your name. We keep the key and your name only until the email has gone. We keep the address in memory while your page is open, so we can email the recipient a code when they open the link. We also keep the latest code and which browser tabs entered the right one. We never log the address or write it to disk. Our mail service delivers the emails. It holds an email with a link, and so the key and your name, until it has delivered the email or given up. It may also keep a list of addresses that bounced.",
       ],
       [
         "Counts of emails and codes",
@@ -1643,7 +1643,7 @@ export const en = {
       ],
     ] as ReadonlyArray<readonly [string, string]>,
     keepHeading: "What we keep",
-    keep: "We have no accounts, no database of people or transfers, no cookies and no tracking. Once the sender's page is closed, nothing about you is kept, within 2 minutes at most, apart from the log lines below, a relay log while we fix a fault or stop abuse, the email and code counts above, which last an hour, and our mail service's list of bounced addresses.",
+    keep: "We have no accounts, no database of people or transfers, no cookies and no tracking. Once the sender's page is closed, nothing about you is kept, within 2 minutes at most, apart from the log lines below, a relay log while we fix a fault or stop abuse, the email and code counts above, which last an hour, and what our mail service still holds: an email it hasn't delivered yet, and any list of addresses that bounced.",
     logFields,
     logRetention: "Log lines are deleted after 30 days.",
     relayLog:
