@@ -136,9 +136,10 @@ const bodiless = new Set(["GET", "HEAD", "OPTIONS"]);
  * The body fields of a request record: the body as base64 when Playwright exposed one.
  * Otherwise `bodyMissing` marks a request that may have had a body the scan cannot see.
  *
- * Chromium exposes string, buffer, Blob, File and FormData bodies, but not streamed ones, and a
- * request without an exposed body may have been empty or hidden. So any request whose method
- * allows a body, with none exposed, is marked unless its headers say `content-length: 0`.
+ * Chromium and Firefox expose string, buffer, Blob, File and FormData bodies, WebKit all but Blob
+ * and File, and none a streamed one, and a request without an exposed body may have been empty or
+ * hidden. So any request whose method allows a body, with none exposed, is marked unless its
+ * headers say `content-length: 0`.
  */
 export function requestBody(method: string, headers: Headers, body: Buffer | null): RequestBody {
   if (body && body.length > 0) {

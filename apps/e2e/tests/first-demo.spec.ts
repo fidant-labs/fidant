@@ -40,7 +40,7 @@ interface Demo {
 }
 
 const test = harness.extend<{ demo: Demo }>({
-  demo: async ({ actor, observed }, use) => {
+  demo: async ({ actor, observed }, use, testInfo) => {
     const names: string[] = [];
     const pageErrors: string[] = [];
     await use({
@@ -55,6 +55,9 @@ const test = harness.extend<{ demo: Demo }>({
         return page;
       },
     });
+    if (testInfo.status === "skipped") {
+      return;
+    }
 
     const frames: { type: string; text: string }[] = [];
     for (const name of names) {
@@ -174,7 +177,7 @@ async function receive(
   }
   const again = page.waitForEvent("download", { timeout: 60_000 });
   await page.getByRole("link", { name: "Save file" }).click();
-  expect((await again).suggestedFilename()).toBe(file.name);
+  expect((await again).suggestedFilename().normalize()).toBe(file.name);
   return { page, bytes };
 }
 
@@ -186,7 +189,8 @@ async function download(page: Page, file: CanaryFile): Promise<Buffer> {
     timeout: 60_000,
   });
   const saved = await downloading;
-  expect(saved.suggestedFilename()).toBe(file.name);
+  // WebKit on macOS decomposes the accents in a download's name.
+  expect(saved.suggestedFilename().normalize()).toBe(file.name);
   await expect(page.getByRole("heading", { name: "Download complete" })).toBeFocused();
   return readFile(await saved.path());
 }
@@ -1504,7 +1508,12 @@ test.describe("through a server restart", () => {
     observed,
     leaks,
     canary,
+    browserName,
   }) => {
+    test.fixme(
+      browserName === "webkit",
+      "SIG-TBD: WebKit reports the restart's close code 1012 as 1005 or 1006",
+    );
     const file = makeFile(leaks, canary, 100_001);
     const sender = await openSender(demo, file, "", (page) => page.addInitScript(holdHosts));
     const early = makeName(leaks, canary, "Anna");
@@ -1921,7 +1930,12 @@ test.describe("emailed links", () => {
     demo,
     leaks,
     canary,
+    browserName,
   }) => {
+    test.fixme(
+      browserName === "firefox",
+      "SIG-TBD: Playwright's Firefox crashes the page on toHaveJSProperty after a locator query",
+    );
     const text = `${base32Token(canary.fork("text"), 40)} åäö`;
     leaks.watchContent("text", text);
     const sender = await demo.open("sender");

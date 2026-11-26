@@ -31,7 +31,7 @@ test("the app loads for a sender and a recipient", async ({
   }
 });
 
-test("request bodies are recorded", async ({ page, observed, baseURL, leaks }) => {
+test("request bodies are recorded", async ({ page, observed, baseURL, leaks, browserName }) => {
   // The empty POST has no visible body, which is a leak-check limit finding by design.
   leaks.expectLeaks();
   await page.goto("/");
@@ -46,8 +46,13 @@ test("request bodies are recorded", async ({ page, observed, baseURL, leaks }) =
   const at = (path: string) =>
     requests.find((record) => record.url === new URL(path, baseURL).href);
   expect(at("/text")?.body).toBe(Buffer.from("a text body").toString("base64"));
-  expect(at("/blob")?.body).toBe("AAH+/w==");
-  // Chromium does not say whether a POST without an exposed body was empty, so it is marked.
+  // WebKit hides Blob bodies, so the scan marks the request instead.
+  if (browserName === "webkit") {
+    expect(at("/blob")).toMatchObject({ bodyMissing: true });
+  } else {
+    expect(at("/blob")?.body).toBe("AAH+/w==");
+  }
+  // No engine says whether a POST without an exposed body was empty, so it is marked.
   expect(at("/empty")).toMatchObject({ bodyMissing: true });
   expect(at("/empty")?.body).toBeUndefined();
 });

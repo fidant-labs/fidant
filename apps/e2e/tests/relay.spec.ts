@@ -30,6 +30,9 @@ test.beforeAll(async ({ playwright }) => {
 
 type Transport = "udp" | "tcp";
 
+const loopbackRelay =
+  "Firefox pairs the local coturn's 127.0.0.1 relay candidates with no LAN candidate and ends ICE at once, before the sender falls back to the relay";
+
 const sha256Hex = (data: Uint8Array) => createHash("sha256").update(data).digest("hex");
 const panel = (page: Page) => page.getByRole("region", { name: "What our server has right now" });
 const relayed =
@@ -131,6 +134,7 @@ for (const transport of ["udp", "tcp"] as const) {
     canary,
     browserName,
   }) => {
+    test.skip(browserName === "firefox", loopbackRelay);
     const stdoutStart = await sizeOf(serverStdoutLog);
     const coturnStart = await sizeOf(coturnLog);
     const file = leaks.watch(canaryFile(canary.fork("file"), { size: 300_001 }));
@@ -251,7 +255,9 @@ test("a sender who refuses the relay: no credentials, no bytes, plain words on b
   observed,
   leaks,
   canary,
+  browserName,
 }) => {
+  test.skip(browserName === "firefox", loopbackRelay);
   const stdoutStart = await sizeOf(serverStdoutLog);
   const coturnStart = await sizeOf(coturnLog);
   const file = leaks.watch(canaryFile(canary.fork("file"), { size: 100_001 }));

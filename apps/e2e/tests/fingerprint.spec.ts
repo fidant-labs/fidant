@@ -15,7 +15,7 @@ import { type Signal, signalsOf, tamperSignal } from "../src/interpose.ts";
 import { base32Token } from "../src/leaks/canary.ts";
 import { mailTo } from "../src/mail.ts";
 
-// Firefox connects to the certificate a variant spelling names, which Chromium and WebKit ignore.
+// Firefox connects to the certificate a variant spelling names, which Chromium and WebKit refuse.
 
 test.skip(!process.env.SIGILL_E2E_MAILPIT, "needs Mailpit");
 
