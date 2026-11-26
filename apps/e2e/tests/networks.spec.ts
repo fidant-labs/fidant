@@ -1383,7 +1383,7 @@ test.describe("pages from the edge function", () => {
     }
 
     expect(await sender.page.evaluate(() => fetch("/signal").then((r) => r.status))).toBe(404);
-    const status = (path: string, ...curl: string[]) =>
+    const answer = (format: string, path: string, ...curl: string[]) =>
       inRelay(
         "curl",
         "-sk",
@@ -1395,13 +1395,15 @@ test.describe("pages from the edge function", () => {
         "-o",
         "/dev/null",
         "-w",
-        "%{http_code}",
+        format,
         `${boxOrigin}${path}`,
       );
+    const status = (path: string, ...curl: string[]) => answer("%{http_code}", path, ...curl);
+    const guarded = (path: string) => answer("%{http_code} %{size_download}", path);
     expect(await status("/relay-secret/net")).toBe("200");
     expect(await status("/relay-secret/sto")).toBe("404");
-    expect(await status("/relay-secret/%2e%2e/relay-status")).toBe("404");
-    expect(await status("//relay-secret/net")).toBe("404");
+    expect(await guarded("/relay-secret/%2e%2e/relay-status")).toBe("404 0");
+    expect(await guarded("//relay-secret/net")).toBe("404 0");
     expect(await status("/relay-secret/net", "-X", "POST")).toBe("403");
 
     let lines: string[] = [];

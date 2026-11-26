@@ -928,7 +928,7 @@ test("the build job publishes the digest of the tar it saved", () => {
   const save = /\n {8}id: save\n[\s\S]*?(?=\n {6}- |\n[^ ]|$)/.exec(workflow)?.[0] ?? "";
   const steps = [
     'docker save fidant-signal:build -o "$RUNNER_TEMP/image.tar"',
-    'sha256sum "$RUNNER_TEMP/image.tar"',
+    'digest=$(sha256sum "$RUNNER_TEMP/image.tar" | cut -c1-64)',
     'echo "digest=$digest" >>"$GITHUB_OUTPUT"',
   ].map((line) => save.indexOf(line));
   assert.ok(
