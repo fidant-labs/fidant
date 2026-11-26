@@ -1,7 +1,17 @@
 import type { App } from "aws-cdk-lib";
 import { BoxStack } from "./box.ts";
+import { CertsStack } from "./certs.ts";
 import { CiStack } from "./ci.ts";
-import { alertEmail, boxAddress, hostedZoneIds, mail, relayAddresses } from "./config.ts";
+import {
+  alertEmail,
+  boxAddress,
+  hostedZoneIds,
+  mail,
+  relayAddresses,
+  signalName,
+  signals,
+  zoneNames,
+} from "./config.ts";
 import { DnsStack } from "./dns.ts";
 import { DnssecStack } from "./dnssec.ts";
 
@@ -34,8 +44,16 @@ export function addStacks(app: App, env: Record<string, string | undefined>): vo
       alertEmail,
     });
   } else if (account === pocAccount) {
-    new CiStack(app, "FidantCi", { env: { account, region: "eu-north-1" } });
+    new CiStack(app, "FidantCi", { env: { account, region: "eu-north-1" }, release: true });
     new BoxStack(app, "FidantApp", { env: { account, region: "eu-north-1" }, alertEmail });
+    new CertsStack(app, "FidantPagesCerts", {
+      env: { account, region: "us-east-1" },
+      certificates: zoneNames.map((zone) => [zone, `www.${zone}`]),
+    });
+    new CertsStack(app, "FidantSignalCerts", {
+      env: { account, region: "eu-north-1" },
+      certificates: signals.map((signal) => [signalName(signal.id)]),
+    });
   } else {
     throw new Error(`Account ${account} is neither FIDANT_DNS_ACCOUNT nor FIDANT_POC_ACCOUNT.`);
   }

@@ -10,6 +10,22 @@ export function relayName(id: string): string {
   return `${id}.relay.${primaryDomain}`;
 }
 
+export const signals: readonly { id: string }[] = [{ id: "sto" }];
+
+export function signalName(id: string): string {
+  return `${id}.signal.${primaryDomain}`;
+}
+
+export const imageRepository = "fidant-signal";
+export const signalCluster = "fidant";
+export const signalService = "fidant-signal";
+export const releaseRoleName = "fidant-release";
+export const releaseSessionSeconds = 7200;
+
+export function pagesBucket(account: string): string {
+  return `fidant-pages-${account}`;
+}
+
 export type DnsRecord = { name: string; value: string };
 
 export type Mail = {

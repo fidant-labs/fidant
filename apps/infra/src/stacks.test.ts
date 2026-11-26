@@ -85,15 +85,57 @@ test("the committed config names the hosted zone that FidantDnssec signs for eve
   }
 });
 
-test("the fidant-poc account gets the CI and app box stacks, in eu-north-1", () => {
+test("the fidant-poc account gets the CI, app box and certificate stacks", () => {
   const stacks = stacksFor(pocAccount);
   assert.deepEqual(
     stacks.map((stack) => [stack.stackName, stack.region]),
     [
       ["FidantCi", "eu-north-1"],
       ["FidantApp", "eu-north-1"],
+      ["FidantPagesCerts", "us-east-1"],
+      ["FidantSignalCerts", "eu-north-1"],
     ],
   );
+});
+
+test("no stack depends on or imports from another, so deploying one never deploys another", () => {
+  for (const currentAccount of [dnsAccount, pocAccount]) {
+    const app = new App();
+    addStacks(app, {
+      CDK_DEFAULT_ACCOUNT: currentAccount,
+      FIDANT_DNS_ACCOUNT: dnsAccount,
+      FIDANT_POC_ACCOUNT: pocAccount,
+    });
+    const assembly = app.synth();
+    for (const stack of app.node.children.filter((child) => child instanceof Stack)) {
+      assert.deepEqual(stack.dependencies, [], stack.stackName);
+      const template = JSON.stringify(assembly.getStackByName(stack.stackName).template);
+      assert.doesNotMatch(template, /Fn::ImportValue/, stack.stackName);
+    }
+  }
+});
+
+test("the certificate stacks request DNS-validated certificates, with no zone, outputs or other resources", () => {
+  for (const [stackName, names] of [
+    ["FidantPagesCerts", zoneNames.map((zone) => [zone, `www.${zone}`])],
+    ["FidantSignalCerts", [["sto.signal.fidant.se"]]],
+  ] as const) {
+    const stack = stacksFor(pocAccount).find((child) => child.stackName === stackName);
+    const template = Template.fromStack(stack as Stack).toJSON();
+    assert.equal(template.Outputs, undefined, stackName);
+    assert.deepEqual(
+      Object.values(template.Resources),
+      names.map(([domainName, ...others]) => ({
+        Type: "AWS::CertificateManager::Certificate",
+        Properties: {
+          DomainName: domainName,
+          ...(others.length > 0 ? { SubjectAlternativeNames: others } : {}),
+          Tags: [{ Key: "Name", Value: `${stackName}/${domainName}` }],
+          ValidationMethod: "DNS",
+        },
+      })),
+    );
+  }
 });
 
 function ciTemplate(currentAccount: string): Template {
@@ -101,18 +143,37 @@ function ciTemplate(currentAccount: string): Template {
   return Template.fromStack(stack as Stack);
 }
 
+function roleNamed(ci: Template, roleName: string) {
+  const [role, ...others] = Object.entries(
+    ci.findResources("AWS::IAM::Role", { Properties: { RoleName: roleName } }),
+  );
+  assert.ok(role && others.length === 0, roleName);
+  return role;
+}
+
+function roleStatements(ci: Template, roleId: string) {
+  const policies = Object.values(ci.findResources("AWS::IAM::Policy")).filter((policy) =>
+    policy.Properties.Roles.some((role: { Ref: string }) => role.Ref === roleId),
+  );
+  assert.equal(policies.length, 1, roleId);
+  assert.deepEqual(policies[0]?.Properties.Roles, [{ Ref: roleId }]);
+  return policies[0]?.Properties.PolicyDocument.Statement;
+}
+
 test("only this repository's production environment can assume the CI role", () => {
-  for (const currentAccount of [dnsAccount, pocAccount]) {
+  for (const [currentAccount, roles] of [
+    [dnsAccount, 1],
+    [pocAccount, 2],
+  ] as const) {
     const ci = ciTemplate(currentAccount);
-    ci.resourceCountIs("AWS::IAM::Role", 1);
+    ci.resourceCountIs("AWS::IAM::Role", roles);
     ci.hasResourceProperties("AWS::IAM::OIDCProvider", {
       Url: "https://token.actions.githubusercontent.com",
       ClientIdList: ["sts.amazonaws.com"],
     });
     const [providerId] = Object.keys(ci.findResources("AWS::IAM::OIDCProvider"));
-    const [role] = Object.values(ci.findResources("AWS::IAM::Role"));
-    assert.equal(role?.Properties.RoleName, "fidant-ci-deploy");
-    assert.deepEqual(role?.Properties.AssumeRolePolicyDocument.Statement, [
+    const [, role] = roleNamed(ci, "fidant-ci-deploy");
+    assert.deepEqual(role.Properties.AssumeRolePolicyDocument.Statement, [
       {
         Action: "sts:AssumeRoleWithWebIdentity",
         Effect: "Allow",
@@ -131,16 +192,80 @@ test("only this repository's production environment can assume the CI role", () 
 
 test("the CI role may only assume its own account's CDK bootstrap roles", () => {
   const ci = ciTemplate(pocAccount);
-  const [role] = Object.values(ci.findResources("AWS::IAM::Role"));
-  assert.equal(role?.Properties.ManagedPolicyArns, undefined);
-  assert.equal(role?.Properties.Policies, undefined);
-  const policies = Object.values(ci.findResources("AWS::IAM::Policy"));
-  assert.equal(policies.length, 1);
-  assert.deepEqual(policies[0]?.Properties.PolicyDocument.Statement, [
+  const [roleId, role] = roleNamed(ci, "fidant-ci-deploy");
+  assert.equal(role.Properties.ManagedPolicyArns, undefined);
+  assert.equal(role.Properties.Policies, undefined);
+  assert.deepEqual(roleStatements(ci, roleId), [
     {
       Action: "sts:AssumeRole",
       Effect: "Allow",
       Resource: `arn:aws:iam::${pocAccount}:role/cdk-hnb659fds-*`,
+    },
+  ]);
+});
+
+test("only the app environment can assume the release role, which only fidant-poc has", () => {
+  assert.doesNotMatch(JSON.stringify(ciTemplate(dnsAccount).toJSON()), /fidant-release|:app"/);
+  const ci = ciTemplate(pocAccount);
+  ci.resourceCountIs("AWS::IAM::ManagedPolicy", 0);
+  const [providerId] = Object.keys(ci.findResources("AWS::IAM::OIDCProvider"));
+  const [, role] = roleNamed(ci, "fidant-release");
+  assert.deepEqual(role.Properties, {
+    RoleName: "fidant-release",
+    MaxSessionDuration: 7200,
+    AssumeRolePolicyDocument: {
+      Version: "2012-10-17",
+      Statement: [
+        {
+          Action: "sts:AssumeRoleWithWebIdentity",
+          Effect: "Allow",
+          Principal: { Federated: { Ref: providerId } },
+          Condition: {
+            StringEquals: {
+              "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+              "token.actions.githubusercontent.com:sub":
+                "repo:sigill-labs@360211033/sigill@1468787132:environment:app",
+            },
+          },
+        },
+      ],
+    },
+  });
+});
+
+test("the release role may only push the one image, move its tags, redeploy the one service and write the one bucket", () => {
+  const ci = ciTemplate(pocAccount);
+  const [roleId] = roleNamed(ci, "fidant-release");
+  assert.deepEqual(roleStatements(ci, roleId), [
+    { Action: "ecr:GetAuthorizationToken", Effect: "Allow", Resource: "*" },
+    {
+      Action: [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:InitiateLayerUpload",
+        "ecr:UploadLayerPart",
+        "ecr:CompleteLayerUpload",
+        "ecr:PutImage",
+        "ecr:BatchGetImage",
+      ],
+      Effect: "Allow",
+      Resource: `arn:aws:ecr:eu-north-1:${pocAccount}:repository/fidant-signal`,
+    },
+    {
+      Action: ["ecs:DescribeServices", "ecs:UpdateService"],
+      Effect: "Allow",
+      Resource: `arn:aws:ecs:eu-north-1:${pocAccount}:service/fidant/fidant-signal`,
+    },
+    {
+      Action: "ecs:UpdateService",
+      Effect: "Deny",
+      Resource: "*",
+      Condition: { StringEquals: { "ecs:enable-execute-command": "true" } },
+    },
+    {
+      Action: "s3:PutObject",
+      Effect: "Allow",
+      Resource: `arn:aws:s3:::fidant-pages-${pocAccount}/*`,
+      Condition: { StringEquals: { "s3:ResourceAccount": pocAccount } },
     },
   ]);
 });
@@ -159,14 +284,23 @@ const committed = Template.fromStack(stacksFor(dnsAccount)[0] as Stack);
 
 test("the committed config points every site name and the relay at the box, over IPv4 only", () => {
   assert.equal(isIP(boxAddress), 4);
-  for (const name of [...siteNames, "turn.fidant.se"]) {
+  for (const [name, ttl] of [
+    ...siteNames.map((site) => [site, "60"]),
+    ["turn.fidant.se", "1800"],
+  ]) {
     committed.hasResourceProperties(recordSet, {
       Name: `${name}.`,
       Type: "A",
       ResourceRecords: [boxAddress],
+      TTL: ttl,
     });
     committed.resourcePropertiesCountIs(recordSet, { Name: `${name}.`, Type: "AAAA" }, 0);
   }
+  committed.hasResourceProperties(recordSet, {
+    Name: "sto.relay.fidant.se.",
+    Type: "A",
+    TTL: "1800",
+  });
 });
 
 test("the app box is open only on 80, 443 and the relay's ports, and on 22 only to Lightsail's browser SSH", () => {
@@ -590,13 +724,18 @@ test("fidant.eu and fidant.org declare that they send no mail", () => {
   }
 });
 
-test("only Caddy's two certificate authorities may issue for any name, and no wildcards", () => {
+test("only Let's Encrypt, Sectigo and Amazon may issue for any name, and no wildcards", () => {
   for (const zoneName of ["fidant.se", "fidant.eu", "fidant.org"]) {
     dns.hasResourceProperties("AWS::Route53::RecordSet", {
       HostedZoneId: zoneRef(zoneName),
       Name: `${zoneName}.`,
       Type: "CAA",
-      ResourceRecords: ['0 issue "letsencrypt.org"', '0 issue "sectigo.com"', '0 issuewild ";"'],
+      ResourceRecords: [
+        '0 issue "letsencrypt.org"',
+        '0 issue "sectigo.com"',
+        '0 issue "amazon.com"',
+        '0 issuewild ";"',
+      ],
     });
   }
   assert.equal(
@@ -667,12 +806,13 @@ test("fidant.se holds the SES records for notify with SPF and MX, and no other z
   }
 });
 
-test("every site name points at the box over IPv4 only", () => {
+test("every site name points at the box over IPv4 only, with a 60-second lifetime", () => {
   for (const name of siteNames) {
     dns.hasResourceProperties("AWS::Route53::RecordSet", {
       Name: `${name}.`,
       Type: "A",
       ResourceRecords: ["192.0.2.10"],
+      TTL: "60",
     });
   }
   dns.resourcePropertiesCountIs("AWS::Route53::RecordSet", { Type: "AAAA" }, 0);
@@ -1455,6 +1595,39 @@ test("FidantApp outputs only the app box's and the relay's addresses and the thr
       ],
     });
   }
+});
+
+test("FidantApp keeps the signaling images, where only live moves and only untagged images expire", () => {
+  const box = appBox();
+  const repository = box.findResources("AWS::ECR::Repository")[onlyId(box, "AWS::ECR::Repository")];
+  assert.equal(repository?.DeletionPolicy, "Retain");
+  assert.equal(repository?.UpdateReplacePolicy, "Retain");
+  const { LifecyclePolicy, ...properties } = repository?.Properties ?? {};
+  assert.deepEqual(properties, {
+    RepositoryName: "fidant-signal",
+    ImageTagMutability: "IMMUTABLE_WITH_EXCLUSION",
+    ImageTagMutabilityExclusionFilters: [
+      {
+        ImageTagMutabilityExclusionFilterType: "WILDCARD",
+        ImageTagMutabilityExclusionFilterValue: "live",
+      },
+    ],
+  });
+  assert.deepEqual(Object.keys(LifecyclePolicy), ["LifecyclePolicyText"]);
+  assert.deepEqual(JSON.parse(LifecyclePolicy.LifecyclePolicyText), {
+    rules: [
+      {
+        rulePriority: 1,
+        selection: {
+          tagStatus: "untagged",
+          countType: "sinceImagePushed",
+          countNumber: 7,
+          countUnit: "days",
+        },
+        action: { type: "expire" },
+      },
+    ],
+  });
 });
 
 function mailPause(box: Template) {
