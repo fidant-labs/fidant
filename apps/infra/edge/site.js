@@ -46,7 +46,7 @@ const PAGES = [
   "/sv/villkor",
 ];
 const RELAY_SECRET = /^\/relay-secret\/[a-z][a-z0-9]{1,15}$/;
-const KINDS = ["receive", "file", "page", "404"];
+const KINDS = ["receive", "page"];
 const TYPES = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -156,16 +156,12 @@ function generated(statusCode, location) {
   return { statusCode: statusCode, headers: headers };
 }
 
-// CloudFront picks the behaviour from the normalised path but sends the raw one on.
+// CloudFront picks the behaviour from a normalised path and AWS gives no order for its steps.
 function underRelaySecret(uri) {
-  if (uri.startsWith("/relay-secret/")) {
-    return true;
-  }
-  try {
-    return decodeURIComponent(urlPath(uri.replace(/\/{2,}/g, "/"))).startsWith("/relay-secret/");
-  } catch (_) {
-    return false;
-  }
+  const plain = uri
+    .replace(/%([0-9a-f]{2})/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/\\/g, "/");
+  return plain.includes("/relay-secret/");
 }
 
 function viewerRequest(request) {

@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, before, test } from "node:test";
-// ponytail: relative import, not a workspace dependency on the server, for one function.
+// ponytail: relative import, not a workspace dependency on the server, for two functions.
 import { serveRelays, serveStatic } from "../../server/src/server.ts";
 import { type EdgeAnswer, edgeAnswer, edgePages, viewerRequest } from "./edge.ts";
 

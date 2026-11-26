@@ -276,6 +276,13 @@ test("a visitor's x-fidant-page cannot change what a file is served as", () => {
   }
 });
 
+test("a visitor's x-fidant-page cannot turn a path that decides 404 into a file", () => {
+  for (const sent of ["file", "404"]) {
+    const answer = onResponse(viewer("/nope", { "x-fidant-page": sent }), 200, {});
+    assert.equal(answer.statusCode, 404, sent);
+  }
+});
+
 test("a visitor's x-fidant-page cannot change the answer for a page or a receive path", () => {
   for (const target of ["/send", "/r/x"]) {
     const plain = onResponse(viewer(target), 200, fields({ vary: "accept-encoding" }));
@@ -313,6 +320,13 @@ test("/relay-secret/ passes only a relay id, unchanged, and anything else is a 4
     "/a/../relay-secret/x.js",
     "/%72elay-secret/sto",
     "/%72elay-secret/sto/x",
+    "/./relay-secret//..",
+    "/%72elay-secret//../sto",
+    "/./relay-secret/%2e%2e",
+    "/./relay-secret/.%2e/x.js",
+    "//relay-secret//../x/sto",
+    "/%2e%2e/relay-secret/sto",
+    "/how/relay-secret/x",
   ]) {
     const answer = onRequest(target);
     assert.equal(answer.statusCode, 404, target);

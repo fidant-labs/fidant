@@ -912,6 +912,16 @@ test("a release whose image is not the one the build job saved fails before dock
 test("the build job publishes the digest of the tar it saved", () => {
   assert.match(workflow, /\n {6}digest: \$\{\{ steps\.save\.outputs\.digest \}\}\n/);
   assert.match(workflow, /IMAGE_SHA256: \$\{\{ needs\.build\.outputs\.digest \}\}/);
+  const save = /\n {8}id: save\n[\s\S]*?(?=\n {6}- |\n[^ ]|$)/.exec(workflow)?.[0] ?? "";
+  const steps = [
+    'docker save fidant-signal:build -o "$RUNNER_TEMP/image.tar"',
+    'sha256sum "$RUNNER_TEMP/image.tar"',
+    'echo "digest=$digest" >>"$GITHUB_OUTPUT"',
+  ].map((line) => save.indexOf(line));
+  assert.ok(
+    steps.every((at, i) => at >= 0 && (i === 0 || at > (steps[i - 1] ?? 0))),
+    steps.join(),
+  );
 });
 
 test("a release whose image step fails uploads nothing", () => {

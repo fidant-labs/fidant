@@ -24,6 +24,7 @@ createServer(
     if (
       (method === "GET" || method === "HEAD") &&
       !("statusCode" in passed) &&
+      passed.headers["x-fidant-page"] === undefined &&
       passed.uri.startsWith("/relay-secret/")
     ) {
       request(
