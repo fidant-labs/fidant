@@ -220,6 +220,8 @@ export function startRelays(
       const up = entries.find((entry) => entry.state.up);
       return iceServersFor((up ?? entries[0])?.ice, Date.now(), turn && up !== undefined);
     },
+    /** Whether some relay is up. Mints no credential. */
+    up: () => entries.some((entry) => entry.state.up),
     status: () => entries.map(({ relay, state }) => ({ id: relay.id, up: state.up })),
     handOut: (id: string) => entries.find((entry) => entry.relay.id === id)?.sealed,
     stop: () => clearInterval(timer),

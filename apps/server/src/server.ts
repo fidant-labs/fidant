@@ -8,7 +8,7 @@ import { extname, join, resolve, sep } from "node:path";
 import type { Mailer } from "./mail.ts";
 import type { Relays } from "./relays.ts";
 import { attachSignaling, type Logger } from "./signaling.ts";
-import { type IceConfig, iceServersFor } from "./turn.ts";
+import { hasTurn, type IceConfig, iceServersFor } from "./turn.ts";
 
 const contentTypes: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -221,6 +221,7 @@ export function startServer(options: {
     log: options.log ?? (() => {}),
     iceServers: (turn) =>
       options.relays ? options.relays.ice(turn) : iceServersFor(options.ice, Date.now(), turn),
+    relayUp: () => (options.relays ? options.relays.up() : hasTurn(options.ice)),
     mail: options.mail,
     siteOrigin: options.siteOrigin,
     proxies: options.proxies,

@@ -34,6 +34,11 @@ export function chooseIce(
   return turn ?? (stun.length > 0 ? { urls: stun } : undefined);
 }
 
+/** Whether a config could hand out TURN: it has a secret and a `turn:` or `turns:` URL. Mints nothing. */
+export function hasTurn(ice: IceConfig | undefined): boolean {
+  return ice?.secret !== undefined && ice.urls.some((url) => !url.startsWith("stun:"));
+}
+
 /**
  * The ICE servers for one pairing: none without a config, TURN with fresh credentials if there is
  * a secret and the sender allows it, else only the STUN URLs, with no credential minted.

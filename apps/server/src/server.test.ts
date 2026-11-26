@@ -391,6 +391,16 @@ for (const { turn, allow, name } of iceCases) {
           assert.ok(!line.includes(secret) && !line.includes(ice.credential), line);
         }
       }
+      // Only a send that could get the relay by allowing it hears that one is up.
+      host.socket.send(JSON.stringify({ t: "relay", link: attempt, data: "x" }));
+      guest.socket.send(JSON.stringify({ t: "relay", link: attempt, data: "x" }));
+      for (const frame of [await guest.next(), await host.next()]) {
+        assert.deepEqual(
+          parseServerMessage(frame),
+          turn && !allow ? { t: "turn-up", link, attempt } : { t: "error", code: "not-on-link" },
+        );
+      }
+      assert.ok(!logs.join().includes("turn-up"));
     } finally {
       for (const socket of opened) {
         socket.terminate();
@@ -608,6 +618,45 @@ test("hands the first relay up's ICE servers, with its own credentials, in joine
         relaySecrets.some((secret) => frame.includes(secret) || logs.join().includes(secret)),
         false,
       );
+    }
+  } finally {
+    for (const socket of opened) {
+      socket.terminate();
+    }
+    server.close();
+  }
+});
+
+test("says a relay is up, with no credentials, when the list has one and the sender hasn't allowed it", async () => {
+  const { server } = await startServer({
+    port: 0,
+    root,
+    certDir: join(dir, "certs"),
+    hosts: ["localhost"],
+    relays,
+  });
+  const opened: WsClient[] = [];
+  try {
+    const { port } = server.address() as AddressInfo;
+    const ca = ensureCert(join(dir, "certs"), []).cert;
+    const host = await rawSocket(port, ca, opened);
+    const guest = await rawSocket(port, ca, opened);
+    const link = "AAAAAAAAAAAAAAAAAAAAAA";
+    const attempt = "ZZZZZZZZZZZZZZZZZZZZZZ";
+    host.socket.send(JSON.stringify({ t: "host", links: [link], turn: false }));
+    host.socket.send(JSON.stringify({ t: "relay", link: attempt, data: "x" }));
+    await host.next();
+    guest.socket.send(JSON.stringify({ t: "join", link, attempt }));
+    const joined = {
+      t: "joined",
+      link,
+      attempt,
+      iceServers: [{ urls: ["stun:loc.test:3478"] }],
+      turn: false,
+    };
+    for (const page of [guest, host]) {
+      assert.deepEqual(parseServerMessage(await page.next()), joined);
+      assert.deepEqual(parseServerMessage(await page.next()), { t: "turn-up", link, attempt });
     }
   } finally {
     for (const socket of opened) {

@@ -1,8 +1,8 @@
 // Relays signaling messages between a sender's browser (the host) and its
 // recipients' browsers (guests) over the /signal WebSocket.
 //
-// The server only learns link IDs, whether the sender allows our TURN relay,
-// and opaque base64url blobs, except from `email` (decision 0012). It knows
+// The server only learns link IDs, whether the sender allows our TURN relay
+// (for the whole send or per link), and opaque base64url blobs, except from `email` (decision 0012). It knows
 // which link IDs are hosted and binds at most one guest to each, but it keeps
 // no record of used links: the sender decides that and refuses with `refuse`.
 // Relay payloads are never inspected or logged.
@@ -99,6 +99,8 @@ type Peer = {
   hosted: Set<string>;
   /** Whether this host allows TURN for its next pairings, from its latest `host`. Never logged. */
   turn: boolean;
+  /** The hosted links this host allows TURN for even when `turn` is false. Never logged. */
+  turnLinks: Set<string>;
   /** The link this socket is bound to as a guest. */
   joined: string | undefined;
   /** The attempt ID the guest joined with. Never logged. */
@@ -227,6 +229,8 @@ export function attachSignaling(
     limits?: Partial<typeof LIMITS>;
     /** Minted once per pairing, so TURN credentials are fresh. Never logged. */
     iceServers?: (turn: boolean) => IceServer[];
+    /** Whether a relay could be handed out now. It must mint no credential (decision 0027). */
+    relayUp?: () => boolean;
     /** Sends notices that link to `${origin}/r/<link>#e.<mark>.<secret>`. Without it, no mail goes out. */
     mail?: { send: Mailer; origin: string } | undefined;
     /** Peers in these ranges are trusted to write X-Forwarded-For, as a loopback peer is. */
@@ -235,7 +239,7 @@ export function attachSignaling(
     siteOrigin?: string | undefined;
   },
 ): { close(): void } {
-  const { log, iceServers = () => [], mail } = options;
+  const { log, iceServers = () => [], relayUp = () => false, mail } = options;
   const limits = { ...LIMITS, ...options.limits };
   const startedAt = Date.now();
   const startingMs = options.startingMs ?? STARTING_MS;
@@ -312,6 +316,7 @@ export function attachSignaling(
       role: "none",
       hosted: new Set(),
       turn: false,
+      turnLinks: new Set(),
       joined: undefined,
       attempt: undefined,
       alive: true,
@@ -353,7 +358,7 @@ export function attachSignaling(
   function handle(socket: WebSocket, peer: Peer, message: ClientMessage): void {
     switch (message.t) {
       case "host":
-        host(socket, peer, message.links, message.turn);
+        host(socket, peer, message.links, message.turn, message.turnLinks ?? []);
         return;
       case "join":
         join(socket, peer, message.link, message.attempt, message.token);
@@ -387,7 +392,13 @@ export function attachSignaling(
     send(socket, { t: "error", code });
   }
 
-  function host(socket: WebSocket, peer: Peer, links: string[], turn: boolean): void {
+  function host(
+    socket: WebSocket,
+    peer: Peer,
+    links: string[],
+    turn: boolean,
+    turnLinks: string[],
+  ): void {
     if (peer.role === "guest") {
       error(socket, "wrong-role");
       return;
@@ -406,6 +417,7 @@ export function attachSignaling(
       free.some((link) => !peer.hosted.has(link));
     peer.role = "host";
     peer.turn = turn;
+    peer.turnLinks = new Set(turnLinks.filter((link) => next.has(link)));
     for (const link of peer.hosted) {
       if (!next.has(link)) {
         unhost(link);
@@ -415,7 +427,8 @@ export function attachSignaling(
       hosts.set(link, socket);
     }
     peer.hosted = next;
-    // A re-host with the same links only changes `turn`, which must leave no trace in the log.
+    // A re-host with the same links only changes `turn` or `turnLinks`, which must leave no trace
+    // in the log.
     if (changed) {
       log("host", { links: next.size });
     }
@@ -484,7 +497,8 @@ export function attachSignaling(
     log("joined", { link: short(link) });
     // The guest's ack goes first, so its peer exists before the host's offer can arrive on the
     // same ordered socket.
-    const turn = peers.get(hostSocket)?.turn ?? false;
+    const hostPeer = peers.get(hostSocket);
+    const turn = hostPeer !== undefined && (hostPeer.turn || hostPeer.turnLinks.has(link));
     const joined: ServerMessage = {
       t: "joined",
       link,
@@ -494,6 +508,12 @@ export function attachSignaling(
     };
     send(socket, joined);
     send(hostSocket, joined);
+    // Tells both pages that asking the sender is worth it. Never logged (decision 0027).
+    if (!turn && relayUp()) {
+      const turnUp: ServerMessage = { t: "turn-up", link, attempt };
+      send(socket, turnUp);
+      send(hostSocket, turnUp);
+    }
   }
 
   function relay(socket: WebSocket, peer: Peer, link: string, data: string): void {
