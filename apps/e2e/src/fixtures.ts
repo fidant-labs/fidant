@@ -459,13 +459,8 @@ export function makeName(leaks: Leaks, canary: SeededRandom, first: string): str
 export const recipientRow = (sender: Page, name: string) =>
   sender.getByRole("list", { name: "Recipients" }).getByRole("listitem").filter({ hasText: name });
 
-/** Also finds the row once every link has delivered and the list sits folded under "Show details". */
 export const delivered = (sender: Page, name: string) =>
-  sender
-    .getByRole("list", { name: "Recipients", includeHidden: true })
-    .getByRole("listitem", { includeHidden: true })
-    .filter({ hasText: name })
-    .getByText(`Delivered through ${name}'s link`);
+  recipientRow(sender, name).getByText(`Delivered through ${name}'s link`);
 
 /** Chooses a file the send page accepts, by its path or as name, type and bytes, then waits for the page to move focus to "Your name" a frame later, which would otherwise take the text of a field being filled. */
 export async function chooseFile(
