@@ -310,9 +310,13 @@ export const sv: Messages = {
     addEmailCheck: "Skapa och mejla länk med kontrollnummer",
     share: "Dela",
     shareFor: (name: string) => `Dela länken till ${name}`,
+    // No-break spaces keep the count on one line.
     sendingBar: (delivered: number, total: number) =>
-      `Skickar från den här fliken · ${delivered} av ${total} levererade · håll den öppen`,
-    allDone: "Alla länkar har levererat filen. Du kan stänga fliken.",
+      `${delivered}\u00a0av\u00a0${total}\u00a0levererade`,
+    keepOpen: "Håll fliken öppen",
+    // The bar shows these as two lines without full stops; a sentence built from them adds its own.
+    allDone: "Alla länkar har levererat filen",
+    closeTab: "Du kan stänga fliken",
     summary: (done: number, total: number) => `${done} av ${total} länkar har levererat filen`,
     delivered: "Levererad",
     doneTitle: "Allt levererat",
@@ -633,7 +637,7 @@ export const sv: Messages = {
     first: "Skriv eller klistra in hemligheten först.",
     locked: "Ta bort alla mottagare för att ändra ditt namn eller din hemlighet.",
     lockedDelivered: "Ladda om sidan för att ändra ditt namn eller din hemlighet.",
-    allDone: "Alla länkar har levererat hemligheten. Du kan stänga fliken.",
+    allDone: "Alla länkar har levererat hemligheten",
     summary: (done: number, total: number) =>
       `${done} av ${total} länkar har levererat hemligheten`,
     emailNotice:

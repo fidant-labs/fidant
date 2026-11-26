@@ -242,9 +242,13 @@ export function SendPage({
   const [textLength, setTextLength] = useState(0);
   const [canAskToNotify, setCanAskToNotify] = useState(false);
   const [notifyAnswer, setNotifyAnswer] = useState<"on" | "blocked" | undefined>(undefined);
-  // Once, when the answer replaces the button that held focus.
+  // When the answer replaces the button, it takes the focus the button (or nothing) held.
   useEffect(() => {
-    if (notifyAnswer && document.activeElement === document.body) {
+    const active = document.activeElement;
+    if (
+      notifyAnswer &&
+      (active === document.body || active === document.getElementById(id("notify-me")))
+    ) {
       document.getElementById(id("notify-answer"))?.focus();
     }
   }, [notifyAnswer]);
@@ -478,7 +482,7 @@ export function SendPage({
       const words = text ? t.secret : t.send;
       notify(
         all ? t.send.doneTitle : t.send.delivered,
-        all ? words.allDone : words.summary(done, recipients.length),
+        all ? `${words.allDone}. ${t.send.closeTab}.` : words.summary(done, recipients.length),
       );
     }
     for (const effect of next.effects) {
@@ -830,11 +834,11 @@ export function SendPage({
       setCanAskToNotify(notifyPermission() === "default");
     }
   }, [hasRecipients]);
+  const sendingText = t.send.sendingBar(delivered, sender.recipients.length);
+  const doneText = (text ? t.secret : t.send).allDone;
   const barText = unfinished
-    ? t.send.sendingBar(delivered, sender.recipients.length)
-    : text
-      ? t.secret.allDone
-      : t.send.allDone;
+    ? `${sendingText}. ${t.send.keepOpen}.`
+    : `${doneText}. ${t.send.closeTab}.`;
   const goToRecipients = () =>
     requestAnimationFrame(() => {
       const target = document.getElementById(id("recipients"));
@@ -1299,16 +1303,25 @@ export function SendPage({
                 while sending as when done, whichever text wraps to more lines (see SwapLabel). */}
             <p class="m-0 grid flex-1 text-[0.9rem] font-medium" aria-hidden="true">
               <span
-                class={`col-start-1 row-start-1 flex items-center gap-2 ${unfinished ? "" : "invisible"}`}
+                class={`col-start-1 row-start-1 flex items-center gap-3 ${unfinished ? "" : "invisible"}`}
               >
-                <span class="size-2 flex-none animate-pulse rounded-full bg-primary motion-reduce:animate-none" />
-                {t.send.sendingBar(delivered, sender.recipients.length)}
+                {/* In a box as wide as the check that replaces it, so the text starts at the same place. */}
+                <span class="flex size-4 flex-none items-center justify-center">
+                  <span class="size-2 animate-pulse rounded-full bg-primary motion-reduce:animate-none" />
+                </span>
+                <span>
+                  <span class="block">{sendingText}</span>
+                  <span class="block font-normal text-muted-foreground">{t.send.keepOpen}</span>
+                </span>
               </span>
               <span
-                class={`col-start-1 row-start-1 flex items-center gap-2 ${unfinished ? "invisible" : ""}`}
+                class={`col-start-1 row-start-1 flex items-center gap-3 ${unfinished ? "invisible" : ""}`}
               >
                 <Icon name="check" class="size-4 flex-none" />
-                {text ? t.secret.allDone : t.send.allDone}
+                <span>
+                  <span class="block">{doneText}</span>
+                  <span class="block font-normal">{t.send.closeTab}</span>
+                </span>
               </span>
             </p>
             {/* Once the button was offered its place stays: the button and the browser's answer share
@@ -1317,6 +1330,7 @@ export function SendPage({
             {(canAskToNotify || notifyAnswer) && (
               <div class="grid flex-none items-center justify-items-end">
                 <Button
+                  id={id("notify-me")}
                   type="button"
                   variant="outline"
                   size="sm"
@@ -1331,13 +1345,24 @@ export function SendPage({
                 >
                   {t.send.notifyMe}
                 </Button>
+                {/* Size the cell for the widest text, so the answer arriving changes no width. */}
+                {[t.send.notifyOn, t.send.notifyBlocked].map((text) => (
+                  <span
+                    key={text}
+                    aria-hidden="true"
+                    class="invisible col-start-1 row-start-1 text-[0.8rem]"
+                  >
+                    {text}
+                  </span>
+                ))}
                 {notifyAnswer && (
                   // Takes the focus the button held, and tells the sender what the browser answered.
+                  // Invisible while the button is offered again after an earlier answer.
                   <p
                     id={id("notify-answer")}
                     tabIndex={-1}
                     role="status"
-                    class={`col-start-1 row-start-1 m-0 text-[0.8rem] ${unfinished ? "text-muted-foreground" : ""}`}
+                    class={`col-start-1 row-start-1 m-0 text-[0.8rem] ${canAskToNotify ? "invisible" : ""} ${unfinished ? "text-muted-foreground" : ""}`}
                   >
                     {notifyAnswer === "on" ? t.send.notifyOn : t.send.notifyBlocked}
                   </p>
