@@ -274,7 +274,7 @@ async function record(
   await context.addInitScript(logPeerFailures);
 }
 
-/** Runs in the page through addInitScript, so it may use nothing from this module: logs why a peer connection call failed, every error the page builds and its cause, what a data channel refused, and who closed a peer or channel after which frames, which the app keeps out of its console. */
+/** Runs in the page through addInitScript, so it may use nothing from this module: logs why a peer connection call failed, every error the page builds and its cause, what a data channel refused, how often a channel opened and gained a message listener, and who closed a peer or channel after which frames, which the app keeps out of its console. */
 function logPeerFailures() {
   const log = (text: string) => console.warn(`sigill-e2e: ${text}`);
   const native = (fn: unknown) =>
@@ -356,7 +356,44 @@ function logPeerFailures() {
   const channelProto = RTCDataChannel.prototype;
   const listen = channelProto.addEventListener;
   const watched = new WeakSet<RTCDataChannel>();
+  // SIG-194: a second reader on one channel would explain a transfer that fails after it
+  // accepted, so log each open and each message listener added or removed, with how many are live.
+  // A per-page counter tags each channel, so the lines of several channels can be told apart.
+  const tags = new WeakMap<RTCDataChannel, string>();
+  let tagged = 0;
+  const channelTag = (channel: RTCDataChannel) => {
+    let known = tags.get(channel);
+    if (known === undefined) {
+      known = `c${++tagged}`;
+      tags.set(channel, known);
+    }
+    return known;
+  };
+  const readers = new WeakMap<RTCDataChannel, Set<unknown>>();
+  const onopen = Object.getOwnPropertyDescriptor(channelProto, "onopen");
+  if (onopen?.set) {
+    const { set } = onopen;
+    Object.defineProperty(channelProto, "onopen", {
+      ...onopen,
+      set(this: RTCDataChannel, handler: unknown) {
+        Reflect.apply(set, this, [
+          typeof handler === "function"
+            ? function (this: RTCDataChannel, event: Event) {
+                log(`channel ${channelTag(this)} open in ${this.readyState}`);
+                return Reflect.apply(handler, this, [event]) as unknown;
+              }
+            : handler,
+        ]);
+      },
+    });
+  }
   channelProto.addEventListener = function (this: RTCDataChannel, ...args: unknown[]) {
+    if (args[0] === "message") {
+      const live = readers.get(this) ?? new Set();
+      readers.set(this, live);
+      live.add(args[1]);
+      log(`channel ${channelTag(this)} message listener added, ${live.size} live, ${stack()}`);
+    }
     if (!watched.has(this)) {
       watched.add(this);
       Reflect.apply(listen, this, [
@@ -371,6 +408,14 @@ function logPeerFailures() {
     }
     return Reflect.apply(listen, this, args);
   } as RTCDataChannel["addEventListener"];
+  const unlisten = channelProto.removeEventListener;
+  channelProto.removeEventListener = function (this: RTCDataChannel, ...args: unknown[]) {
+    const live = readers.get(this);
+    if (args[0] === "message" && live?.delete(args[1])) {
+      log(`channel ${channelTag(this)} message listener removed, ${live.size} live`);
+    }
+    return Reflect.apply(unlisten, this, args);
+  } as RTCDataChannel["removeEventListener"];
   const send = channelProto.send;
   channelProto.send = function (this: RTCDataChannel, data: unknown) {
     try {
@@ -397,7 +442,8 @@ function logPeerFailures() {
             ? ` after in ${seen.in.join(" ")} out ${seen.out.join(" ")}`
             : " after no frames"
           : "";
-      log(`${label} close() ${stack()}${trail}`);
+      const name = this instanceof RTCDataChannel ? `channel ${channelTag(this)}` : label;
+      log(`${name} close() ${stack()}${trail}`);
       Reflect.apply(close, this, []);
     };
   }
