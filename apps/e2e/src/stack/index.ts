@@ -42,6 +42,9 @@ export async function startStack(services: readonly Service[] = defaultServices)
   if (!web?.url) {
     throw new Error("The stack has no server.");
   }
-  const origins = running.flatMap((service) => (service.url ? [new URL(service.url).origin] : []));
+  const origins = running.flatMap((service) => [
+    ...(service.url ? [new URL(service.url).origin] : []),
+    ...(service.origins ?? []),
+  ]);
   return { baseURL: web.url, origins, env, stop };
 }

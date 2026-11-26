@@ -5,11 +5,13 @@ import {
   type Project,
 } from "@playwright/test";
 import {
+  albIp,
   boxIp,
   relayHost,
   relayIp,
   remoteBrowsers,
   serverIp,
+  signalHost,
   turnHost,
   turnIp,
 } from "./src/stack/networks.ts";
@@ -68,9 +70,9 @@ export default defineConfig({
             // internet. The rule catches IP literals too, and TURN over TCP goes through the resolver,
             // so the TURN servers' addresses are excluded as well (127.0.0.1 locally). The first
             // matching MAP wins, so coturn's TLS name maps to its address before `*` catches it, and
-            // the box's and the relay box's names resolve to their containers.
+            // the box's, the relay box's and the signaling image's names resolve to their containers.
             networks
-              ? `--host-resolver-rules=MAP ${turnHost} ${turnIp}, MAP fidant.se ${boxIp}, MAP turn.fidant.se ${boxIp}, MAP ${relayHost} ${relayIp}, MAP * ~NOTFOUND, EXCLUDE ${serverIp}, EXCLUDE ${turnIp}, EXCLUDE ${relayIp}`
+              ? `--host-resolver-rules=MAP ${turnHost} ${turnIp}, MAP fidant.se ${boxIp}, MAP turn.fidant.se ${boxIp}, MAP ${relayHost} ${relayIp}, MAP ${signalHost} ${albIp}, MAP * ~NOTFOUND, EXCLUDE ${serverIp}, EXCLUDE ${turnIp}, EXCLUDE ${relayIp}`
               : "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1",
             // TURN over TLS ignores ignoreHTTPSErrors, so trust coturn's per-run certificate by its
             // public key. Set by global setup; workers inherit it.
