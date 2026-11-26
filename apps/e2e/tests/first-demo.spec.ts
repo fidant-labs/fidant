@@ -1400,7 +1400,8 @@ test.describe("through a server restart", () => {
   /**
    * Runs in the sender page: while `holdHost` is set, keeps back the `host` frames the page sends,
    * as if the sender reconnected late. `releaseHost()` sends those whose socket is still open.
-   * Records the close code of every socket that sent a frame in `closeCodes`.
+   * Records the close code of every socket that sent a frame in `closeCodes`, and an error event
+   * before it as 1006, the code the signaling client then acts on.
    */
   const holdHosts = () => {
     const global = globalThis as HostHold;
@@ -1412,6 +1413,7 @@ test.describe("through a server restart", () => {
     WebSocket.prototype.send = function (this: WebSocket, data) {
       if (!watched.has(this)) {
         watched.add(this);
+        this.addEventListener("error", () => closeCodes.push(1006));
         this.addEventListener("close", (event) => closeCodes.push(event.code));
       }
       if (global.holdHost && typeof data === "string" && data.startsWith('{"t":"host"')) {
@@ -1519,12 +1521,7 @@ test.describe("through a server restart", () => {
     observed,
     leaks,
     canary,
-    browserName,
   }) => {
-    test.fixme(
-      browserName === "webkit",
-      "SIG-287: WebKit reports the restart's close code 1012 as 1005 or 1006",
-    );
     const file = makeFile(leaks, canary, 100_001);
     const sender = await openSender(demo, file, "", (page) => page.addInitScript(holdHosts));
     const early = makeName(leaks, canary, "Anna");
@@ -1571,7 +1568,7 @@ test.describe("through a server restart", () => {
     }
     await expect(delivered(sender, early)).toBeAttached();
     await expect(delivered(sender, late)).toBeAttached();
-    expect(await sender.evaluate(() => (globalThis as HostHold).closeCodes)).toContain(4012);
+    expect(await sender.evaluate(() => (globalThis as HostHold).closeCodes)).toEqual([4012]);
     await expect(lost(sender)).toHaveCount(0);
   });
 });
