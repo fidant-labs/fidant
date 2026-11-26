@@ -119,7 +119,7 @@ export type PeerOptions = {
   iceServers: RTCIceServer[];
   /** Sender only: whether this recipient's safety number is on. The recipient reads it from the offer. */
   check?: boolean;
-  /** The channel is open, ordered, reliable, binaryType "arraybuffer". */
+  /** The channel is open, ordered, reliable, binaryType "arraybuffer". Called at most once. */
   onOpen(channel: RTCDataChannel, info: PeerOpenInfo): void;
   /**
    * The peer closed on its own. Called at most once, and never after close()
