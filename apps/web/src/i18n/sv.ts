@@ -192,7 +192,7 @@ export const sv: Messages = {
         heading: "Den låses två gånger",
         body: [
           "Din webbläsare låser filen med en nyckel som kommer från länken. Utan länken kan ingen låsa upp den.",
-          "Förbindelsen mellan de två webbläsarna är också låst, så filen är låst två gånger på vägen.",
+          "Anslutningen mellan de två webbläsarna är också låst, så filen är låst två gånger på vägen.",
         ],
       },
       transfer: {
@@ -1186,7 +1186,7 @@ export const sv: Messages = {
         ],
         [
           "Du vill inte att din trafik går via vårt relä",
-          "Bocka ur reläet för den sändningen. Vår server ger då inga inloggningsuppgifter till reläet, och avsändarens webbläsare avslutar en anslutning som går via det.",
+          "Bocka ur reläet för den sändningen. Vår server ger då inga inloggningsuppgifter till reläet, och avsändarens webbläsare avslutar en anslutning som den ser går via det.",
         ],
       ],
     },
@@ -1339,10 +1339,7 @@ export const sv: Messages = {
               "direct,relay",
               "Om vårt relä är tillgängligt och webbläsarna fortfarande inte är anslutna 3 sekunder efter att mottagaren svarat, lägger de till reläet. Det ger rader för ytterligare ett dussintal uppkopplingsmeddelanden, som antyder att du tillät reläet.",
             ],
-            [
-              "norelay",
-              "Om en anslutning via reläet ändå kommer till stånd: att din sida avslutade den.",
-            ],
+            ["norelay", "Om din sida ändå ser en anslutning via reläet: att den avslutade den."],
           ],
         },
         relay: {
