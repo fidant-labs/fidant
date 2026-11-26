@@ -225,9 +225,12 @@ test("delivers a file to two recipients with a verified checksum", async ({
   for (const name of names) {
     await expect(delivered(sender, name)).toBeAttached();
   }
-  // The tab's icon shows the transfer is done, on both sides, without a request to the server.
+  // The tab's icon shows the check, on both sides.
   for (const page of [sender, ...received.map(({ page }) => page)]) {
-    await expect(page.locator('link[rel="icon"]')).toHaveAttribute("href", /^data:image\/svg/);
+    await expect(page.locator('link[rel="icon"]')).toHaveAttribute(
+      "href",
+      /^data:image\/svg.*M9%2016\.5l5/,
+    );
   }
   await sender.getByText("Show details", { exact: true }).click();
   const cards = names.map((name) => recipientRow(sender, name));
