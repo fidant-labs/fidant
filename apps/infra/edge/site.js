@@ -199,6 +199,9 @@ function viewerRequest(request) {
 
 // AWS doesn't say whether this event carries the viewer's request or the rewritten one.
 function viewerResponse(request, response) {
+  if (request.uri.length > MAX_URI) {
+    return response;
+  }
   const decision = decide(request.uri);
   const sent = request.headers["x-fidant-page"];
   const kind =

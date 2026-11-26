@@ -78,7 +78,7 @@ export class PagesStack extends Stack {
               ],
             }
           : {
-              // Never contacted: the function redirects every request on these names.
+              // Never contacted: the function answers every request on these names.
               origin: new origins.HttpOrigin(primaryDomain),
               viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
               allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,

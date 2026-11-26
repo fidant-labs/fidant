@@ -200,6 +200,9 @@ test("a URI past 512 characters gets 414 with the headers on every host, before 
     assert.equal(answer.statusCode, 414, `${target.length} ${host}`);
     assert.deepEqual(values(answer.headers), securityHeaders, `${target.length} ${host}`);
   }
+  const response = onResponse(viewer(escapes(2730)), 414, {});
+  assert.equal(response.statusCode, 414);
+  assert.deepEqual(response.headers, {});
 });
 
 test("a malformed path gets 400 and one above the root 404, both with the headers", () => {
