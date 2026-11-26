@@ -31,7 +31,7 @@ This record amends 0001 (`0001-e2e-tests-and-leak-model.md`). Read 0001 with the
 ### Name lookups on loopback
 
 1. **Allow them with the rest of loopback.** Every lookup the stub forwards would leave unseen.
-2. **Block and count them.** Any lookup to a loopback port 53 is logged and refused before loopback is allowed. The local stack needs none: its addresses are IP literals and `localhost`. A lookup fails the Chromium and Firefox legs. The WebKit leg prints how many it refused and fails only on packets that leave loopback, because WebKit looks up the other peer's mDNS host candidate names through the resolver when the machine has no mDNS (see Consequences).
+2. **Block and count them.** Any lookup to a loopback port 53 is logged and refused before loopback is allowed. The local stack needs none: its addresses are IP literals and `localhost`. Before the block goes up, the job maps the machine's own names to 127.0.1.1 in `/etc/hosts`, the Debian and Ubuntu default, wherever the runner image left them out: something that starts with the suite looks the machine's full name up, and on such an image the lookup reached the resolver (run 45872122005, four lookups of a 28-character name, `ip-10-0-135-138.ec2.internal`, on the Firefox leg). Every other name still goes to the resolver and counts. A lookup fails the Chromium and Firefox legs. The WebKit leg prints how many it refused and fails only on packets that leave loopback, because WebKit looks up the other peer's mDNS host candidate names through the resolver when the machine has no mDNS (see Consequences).
 
 ### How the nightly picks what to run
 

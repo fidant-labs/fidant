@@ -79,6 +79,14 @@ jobs:
           sudo chgrp sigill-e2e apps/e2e
           sudo chmod g+w apps/e2e
           namei -l "$GITHUB_WORKSPACE/apps/e2e" "$PLAYWRIGHT_BROWSERS_PATH" "$(command -v node)"
+      # Some runner images leave this machine's own name out of /etc/hosts, so a lookup of it would reach the resolver.
+      - name: Map this machine's own name in /etc/hosts
+        run: |
+          mapfile -t names < <(printf '%s\n' "$(hostname -f 2>/dev/null || true)" "$(hostname -s)" | grep . | sort -u)
+          for name in "${names[@]}"; do
+            getent -s files hosts "$name" >/dev/null || echo "127.0.1.1 $name" | sudo tee -a /etc/hosts
+          done
+          getent -s files hosts "${names[@]}"
       - name: Let the test user reach loopback only
         id: egress
         run: |
