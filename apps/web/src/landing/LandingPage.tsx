@@ -5,7 +5,7 @@ import { cn } from "cn";
 import { useLayoutEffect, useRef } from "preact/hooks";
 import { buttonVariants } from "#components/ui/button";
 import { useI18n } from "../i18n/I18n.tsx";
-import { display, Icon, Link } from "../ui.tsx";
+import { display, Icon, Link, SECRET_HREF } from "../ui.tsx";
 
 // Made-up, but the real shape: a 16-byte link ID and a 32-byte secret, both base64url (lib/link.ts).
 const EXAMPLE_ID = "q7Hc2mXa9pLr0VbN3tYw8g";
@@ -83,7 +83,7 @@ export function LandingPage() {
           {l.cta} <Icon name="arrow" class="size-4" />
         </Link>
         <Link
-          href="/secret"
+          href={SECRET_HREF}
           class={cn(buttonVariants({ variant: "outline", size: "lg" }), "h-12 px-6 text-base")}
         >
           {t.menu.secret}
@@ -154,7 +154,7 @@ export function LandingPage() {
           >
             {l.tryCta} <Icon name="arrow" class="size-4" />
           </Link>
-          <Link href="/secret" class="rounded-sm font-medium underline underline-offset-4">
+          <Link href={SECRET_HREF} class="rounded-sm font-medium underline underline-offset-4">
             {l.trySecret}
           </Link>
         </div>

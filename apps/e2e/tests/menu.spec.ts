@@ -69,9 +69,9 @@ test("leaving /send for Privacy and going back keeps the file and recipient", as
   await expect(page.getByLabel(`Link for ${name}`, { exact: true })).toHaveText(link ?? "");
 });
 
-test("the menu's Send a file and the landing page's button open /send", async ({ page }) => {
+test("the menu's Send and the landing page's button open /send", async ({ page }) => {
   await page.goto("/privacy");
-  await nav(page).getByRole("link", { name: "Send a file" }).click();
+  await nav(page).getByRole("link", { name: "Send", exact: true }).click();
   await expect(page).toHaveURL(/\/send$/);
   await expect(page.getByLabel("Choose a file")).toBeAttached();
 
