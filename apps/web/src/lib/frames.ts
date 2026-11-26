@@ -53,11 +53,11 @@
 //
 // Version 3 is the first whose file key includes the attempt ID. A sender and
 // recipient on different versions (one on a cached old page) would derive
-// different keys, so the version is checked first. A frame of another version
-// fails as "unknown frame version" at INIT, on the recipient's side,
-// before any key is derived; the sender sees only the channel close. The
-// recipient's page shows the same text as for unreadable data, so only a reload
-// of the older page fixes it, and neither page says which.
+// different keys, so the version is checked first: the two pages compare it
+// before they connect (the version marker in peer.ts), and a frame of another
+// version still fails at INIT, on the recipient's side, before any key is
+// derived, as a VersionError. The recipient's page then says which page must
+// reload; the sender sees only the channel close.
 //
 // Writers and readers keep state: await each encrypt or decrypt before
 // starting the next one. A reader stops accepting frames after any failure.
@@ -68,6 +68,7 @@ import { Sha256 } from "./sha256.ts";
 
 export { hasForbiddenCharacters, MAX_FROM_LENGTH };
 
+/** Raise it for any change that breaks frames or signal payloads: peer.ts's version marker carries it. */
 export const FRAME_VERSION = 3;
 export const HEADER_BYTES = 10;
 export const TAG_BYTES = 16;
@@ -183,11 +184,22 @@ export function encodeInit(transferId: Uint8Array): Uint8Array<ArrayBuffer> {
   return out;
 }
 
-/** Reads the transferId from an INIT frame. Throws if `frame` is not a well-formed INIT. */
+/** A frame of another version than FRAME_VERSION: the two pages run different releases. */
+export class VersionError extends Error {
+  readonly version: number;
+
+  constructor(version: number) {
+    super(`unknown frame version ${version}`);
+    this.name = "VersionError";
+    this.version = version;
+  }
+}
+
+/** Reads the transferId from an INIT frame. Throws if `frame` is not a well-formed INIT, a VersionError for another version. */
 export function decodeInit(frame: Uint8Array): Uint8Array<ArrayBuffer> {
   const header = decodeHeader(frame);
   if (header.version !== FRAME_VERSION) {
-    throw new Error("unknown frame version");
+    throw new VersionError(header.version);
   }
   if (header.kind !== SenderKind.INIT || header.seq !== 0 || frame.length !== HEADER_BYTES + 16) {
     throw new Error("malformed INIT frame");
