@@ -1,4 +1,9 @@
-import { defineConfig } from "@playwright/test";
+import {
+  defineConfig,
+  type PlaywrightTestOptions,
+  type PlaywrightWorkerOptions,
+  type Project,
+} from "@playwright/test";
 import {
   boxIp,
   relayHost,
@@ -11,6 +16,20 @@ import {
 
 // `pnpm e2e:networks` runs only tests/networks.spec.ts, in browsers inside Docker networks.
 const networks = Boolean(process.env.SIGILL_E2E_NETWORKS);
+// `SIGILL_E2E_BROWSERS=firefox,webkit pnpm e2e` picks the engines; unset, Chromium only.
+const browsers = (process.env.SIGILL_E2E_BROWSERS || "chromium").split(",");
+const unknown = browsers.filter((name) => !["chromium", "firefox", "webkit"].includes(name));
+if (unknown.length > 0) {
+  throw new Error(`SIGILL_E2E_BROWSERS: no engine named ${unknown.join(", ")}.`);
+}
+if (networks && browsers.some((name) => name !== "chromium")) {
+  throw new Error("`pnpm e2e:networks` runs in Chromium only. Unset SIGILL_E2E_BROWSERS.");
+}
+const picked = (projects: Project<PlaywrightTestOptions, PlaywrightWorkerOptions>[]) =>
+  projects.filter(({ name }) => browsers.includes(name ?? ""));
+// Firefox and WebKit have no resolver rules, so every connection off this machine goes to a proxy
+// that refuses it. Playwright makes Firefox proxy localhost too, hence the bypass.
+const deadEnd = { server: "http://127.0.0.1:9", bypass: "localhost,127.0.0.1" };
 
 export default defineConfig({
   testDir: "tests",
@@ -36,7 +55,7 @@ export default defineConfig({
     // Service-worker traffic is a routing blind spot for the recorder. Revisit if SIG-7 adds a worker.
     serviceWorkers: "block",
   },
-  projects: [
+  projects: picked([
     {
       name: "chromium",
       use: {
@@ -64,5 +83,27 @@ export default defineConfig({
         },
       },
     },
-  ],
+    {
+      name: "firefox",
+      use: {
+        browserName: "firefox",
+        launchOptions: {
+          proxy: deadEnd,
+          firefoxUserPrefs: {
+            "network.proxy.failover_direct": false,
+            // Every name lookup, WebRTC's included, goes to a resolver that refuses it.
+            "network.trr.mode": 3,
+            "network.trr.uri": "https://127.0.0.1:9/dns-query",
+            "media.peerconnection.ice.obfuscate_host_addresses": false,
+            // Otherwise Firefox never asks the local coturn, which listens on 127.0.0.1.
+            "media.peerconnection.ice.loopback": true,
+          },
+        },
+      },
+    },
+    {
+      name: "webkit",
+      use: { browserName: "webkit", launchOptions: { proxy: deadEnd } },
+    },
+  ]),
 });
