@@ -67,7 +67,7 @@ const caddyHsts =
   )?.[1] ?? "";
 
 const securityHeaders = {
-  "content-security-policy": `default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; connect-src 'self' wss://${signalName(signals[0]?.id ?? "")}`,
+  "content-security-policy": `default-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; connect-src 'self' wss://${signalName(signals[0]?.id ?? "")}`,
   "referrer-policy": "no-referrer",
   "x-content-type-options": "nosniff",
   "strict-transport-security": caddyHsts,

@@ -61,7 +61,7 @@ const TYPES = {
 };
 const HEADERS = {
   "content-security-policy":
-    "default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; connect-src 'self' wss://sto.signal.fidant.se",
+    "default-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; connect-src 'self' wss://sto.signal.fidant.se",
   "referrer-policy": "no-referrer",
   "x-content-type-options": "nosniff",
   "strict-transport-security": "max-age=31536000; includeSubDomains",
