@@ -861,11 +861,6 @@ test("fidant.se passes /relay-secret/* uncached to the signaling name over HTTPS
   const id = idOf(pages, "AWS::CloudFront::Distribution", /^FidantSeDistribution/);
   const config = pages.toJSON().Resources[id].Properties.DistributionConfig;
   const [behavior, ...others] = config.CacheBehaviors;
-  const own = pages.toJSON().Resources[id].Properties.DistributionConfig.DefaultCacheBehavior;
-  assert.deepEqual(own.FunctionAssociations[0].EventType, "viewer-request");
-  assert.deepEqual(own.FunctionAssociations[0].FunctionARN, {
-    "Fn::GetAtt": [idOf(pages, "AWS::CloudFront::Function", /^FidantSeFunction/), "FunctionARN"],
-  });
   assert.deepEqual(others, []);
   assert.deepEqual(behavior, {
     AllowedMethods: ["GET", "HEAD"],

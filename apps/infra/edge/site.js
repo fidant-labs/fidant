@@ -45,7 +45,7 @@ const PAGES = [
   "/sv/sakerhet",
   "/sv/villkor",
 ];
-const RELAY_SECRET = /^\/relay-secret\/[a-z][a-z0-9]+$/;
+const RELAY_SECRET = /^\/relay-secret\/[a-z][a-z0-9]{1,15}$/;
 const KINDS = ["receive", "file", "page", "404"];
 const TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -156,13 +156,25 @@ function generated(statusCode, location) {
   return { statusCode: statusCode, headers: headers };
 }
 
+// CloudFront picks the behaviour from the normalised path but sends the raw one on.
+function underRelaySecret(uri) {
+  if (uri.startsWith("/relay-secret/")) {
+    return true;
+  }
+  try {
+    return decodeURIComponent(urlPath(uri.replace(/\/{2,}/g, "/"))).startsWith("/relay-secret/");
+  } catch (_) {
+    return false;
+  }
+}
+
 function viewerRequest(request) {
   const host = request.headers.host ? request.headers.host.value.toLowerCase() : "";
   if (host !== SITE) {
     return generated(301, `https://${SITE}${request.uri}${query(request, true)}`);
   }
-  if (request.uri.startsWith("/relay-secret/")) {
-    return RELAY_SECRET.test(request.uri) && request.uri.length <= 30 ? request : generated(404);
+  if (underRelaySecret(request.uri)) {
+    return RELAY_SECRET.test(request.uri) ? request : generated(404);
   }
   const decision = decide(request.uri);
   if (decision.kind === "400") {
@@ -189,11 +201,7 @@ function viewerResponse(request, response) {
   const decision = decide(request.uri);
   const sent = request.headers["x-fidant-page"];
   const kind =
-    decision.kind === "file"
-      ? "file"
-      : sent && KINDS.includes(sent.value)
-        ? sent.value
-        : decision.kind;
+    decision.kind === "404" && sent && KINDS.includes(sent.value) ? sent.value : decision.kind;
   if (kind === "404" && response.statusCode === 200) {
     response.statusCode = 404;
     response.statusDescription = "Not Found";

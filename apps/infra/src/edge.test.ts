@@ -258,23 +258,38 @@ test("the answer gets the headers, a 404 status and a type, whichever request th
 
 test("a visitor's x-fidant-page cannot change what a file is served as", () => {
   for (const sent of ["404", "receive", "page"]) {
-    for (const make of [
-      () => onRequest("/assets/app-abc.js", { "x-fidant-page": sent }),
-      () => viewer("/assets/app-abc.js", { "x-fidant-page": sent }),
-    ]) {
-      const answer = onResponse(make(), 200, fields({ "cache-control": "no-cache" }));
-      assert.equal(answer.statusCode, 200, sent);
-      assert.deepEqual(
-        values(answer.headers),
-        {
-          "cache-control": "no-cache",
-          ...securityHeaders,
-          "content-type": "text/javascript; charset=utf-8",
-        },
-        sent,
+    const answer = onResponse(
+      viewer("/assets/app-abc.js", { "x-fidant-page": sent }),
+      200,
+      fields({ "cache-control": "no-cache" }),
+    );
+    assert.equal(answer.statusCode, 200, sent);
+    assert.deepEqual(
+      values(answer.headers),
+      {
+        "cache-control": "no-cache",
+        ...securityHeaders,
+        "content-type": "text/javascript; charset=utf-8",
+      },
+      sent,
+    );
+  }
+});
+
+test("a visitor's x-fidant-page cannot change the answer for a page or a receive path", () => {
+  for (const target of ["/send", "/r/x"]) {
+    const plain = onResponse(viewer(target), 200, fields({ vary: "accept-encoding" }));
+    for (const sent of ["file", "404", "receive", "page"]) {
+      const answer = onResponse(
+        viewer(target, { "x-fidant-page": sent }),
+        200,
+        fields({ vary: "accept-encoding" }),
       );
+      assert.deepEqual(answer, plain, `${target} ${sent}`);
     }
   }
+  assert.equal(onResponse(viewer("/send"), 200).statusCode, 200);
+  assert.equal(onResponse(viewer("/r/x"), 200).headers["x-robots-tag"]?.value, "noindex");
 });
 
 test("/relay-secret/ passes only a relay id, unchanged, and anything else is a 404 with the headers", () => {
@@ -290,6 +305,14 @@ test("/relay-secret/ passes only a relay id, unchanged, and anything else is a 4
     "/relay-secret/",
     "/relay-secret/a",
     "/relay-secret/abcdefghijklmnopq",
+    "/relay-secret/1sto",
+    "/relay-secret/-sto",
+    "//relay-secret/sto",
+    "/./relay-secret/sto",
+    "/a/../relay-secret/sto",
+    "/a/../relay-secret/x.js",
+    "/%72elay-secret/sto",
+    "/%72elay-secret/sto/x",
   ]) {
     const answer = onRequest(target);
     assert.equal(answer.statusCode, 404, target);
@@ -306,6 +329,15 @@ test("a 304 stays 304, and a receive copy keeps the origin's own vary", () => {
   assert.equal(answer.headers.vary?.value, "accept-encoding, accept-language");
 });
 
+const shorthand = /(?:^|[^$])\{\s*[A-Za-z_]\w*\s*[,}]|,\s*[A-Za-z_]\w*\s*\}/;
+
+test("the shorthand pattern catches object shorthand and lets a regex quantifier pass", () => {
+  for (const shorthandCode of ["f({ a, b })", "f({ a })", "f({ a: 1, b })", "f({ b, a: 1 })"]) {
+    assert.match(shorthandCode, shorthand, shorthandCode);
+  }
+  assert.doesNotMatch("/^[a-z]{1,15}$/.test(x) && /a{2}/", shorthand);
+});
+
 test("the file fits CloudFront's 10 KB and keeps to what cloudfront-js-2.0 runs", () => {
   assert.ok(Buffer.byteLength(code) < 10 * 1024);
   const source = code.replace(/\/\/.*$/gm, "");
@@ -316,7 +348,7 @@ test("the file fits CloudFront's 10 KB and keeps to what cloudfront-js-2.0 runs"
     ["for...of", /\bfor\s*\([^)]*\bof\b/],
     ["destructuring", /\b(?:const|let|var)\s*[{[]/],
     ["default parameters", /function\s*\w*\([^)]*=/],
-    ["shorthand properties", /(?:^|[^$])\{\s*\w+\s*[,}]|,\s*\w+\s*\}/],
+    ["shorthand properties", shorthand],
     ["optional catch binding", /catch\s*\{/],
     ["classes", /\bclass\s/],
     ["Set or Map", /\b(?:Set|Map)\b/],

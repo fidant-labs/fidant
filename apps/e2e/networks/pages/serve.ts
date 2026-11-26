@@ -19,32 +19,15 @@ createServer(
   (req, res) => {
     const target = req.url ?? "/";
     const method = req.method ?? "GET";
-    if (target.startsWith("/relay-secret/")) {
-      if (method !== "GET" && method !== "HEAD") {
-        res.writeHead(403).end();
-        return;
-      }
-      const host = req.headers.host ?? "";
-      const passed = viewerRequest({ method, host, target });
-      if ("statusCode" in passed) {
-        res
-          .writeHead(
-            passed.statusCode,
-            Object.fromEntries(
-              Object.entries(passed.headers).map(([name, field]) => [name, field.value]),
-            ),
-          )
-          .end();
-        return;
-      }
+    const host = req.headers.host ?? "";
+    const passed = viewerRequest({ method, host, target });
+    if (
+      (method === "GET" || method === "HEAD") &&
+      !("statusCode" in passed) &&
+      passed.uri.startsWith("/relay-secret/")
+    ) {
       request(
-        {
-          host: alb,
-          port: 443,
-          path: target,
-          method,
-          rejectUnauthorized: false,
-        },
+        { host: alb, port: 443, path: passed.uri, method, rejectUnauthorized: false },
         (upstream) => {
           res.writeHead(upstream.statusCode ?? 502, upstream.headers);
           upstream.on("error", () => cut(res));
@@ -60,7 +43,7 @@ createServer(
         typeof value === "string" ? [[name, value]] : [],
       ),
     );
-    edgeAnswer(root, { method, host: req.headers.host ?? "", target, headers }).then(
+    edgeAnswer(root, { method, host, target, headers }).then(
       (answer) => res.writeHead(answer.status, answer.headers).end(answer.body),
       () => res.writeHead(500).end(),
     );

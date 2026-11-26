@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, before, test } from "node:test";
 // ponytail: relative import, not a workspace dependency on the server, for one function.
-import { serveStatic } from "../../server/src/server.ts";
+import { serveRelays, serveStatic } from "../../server/src/server.ts";
 import { type EdgeAnswer, edgeAnswer, edgePages, viewerRequest } from "./edge.ts";
 
 const root = mkdtempSync(join(tmpdir(), "sigill-edge-"));
@@ -177,14 +177,63 @@ test("other methods get CloudFront's 403, where the server answers 405", async (
   assert.equal(got.status, 403);
 });
 
-test("a relay id under /relay-secret/ is passed on unchanged, and any other path under it is a 404 with the headers", () => {
-  const ask = (target: string) => viewerRequest({ method: "GET", host: "fidant.se", target });
-  const passed = ask("/relay-secret/sto");
-  assert.ok(!("statusCode" in passed));
-  assert.equal(passed.uri, "/relay-secret/sto");
-  assert.equal(passed.headers["x-fidant-page"], undefined);
-  for (const target of ["/relay-secret/%2e%2e/signal", "/relay-secret/STO", "/relay-secret/"]) {
-    const got = ask(target);
-    assert.equal("statusCode" in got && got.statusCode, 404, target);
+test("the function passes /relay-secret/ exactly when the server hands out a secret", async () => {
+  const relays = { handOut: (id: string) => `sealed-${id}`, status: () => [] };
+  const listener = serveRelays(relays as never, (_req, res) => res.writeHead(418).end());
+  const server = createServer(listener);
+  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+  const { port } = server.address() as AddressInfo;
+  const status = (path: string) =>
+    new Promise<string>((done, fail) =>
+      get({ host: "127.0.0.1", port, path }, (res) => {
+        let body = "";
+        res.on("data", (chunk) => {
+          body += chunk;
+        });
+        res.on("end", () => done(`${res.statusCode} ${body}`));
+      }).on("error", fail),
+    );
+  const normalised = [
+    "//relay-secret/sto",
+    "/./relay-secret/sto",
+    "/a/../relay-secret/sto",
+    "/%72elay-secret/sto",
+  ];
+  try {
+    for (const target of [
+      "/relay-secret/sto",
+      `/relay-secret/${"a".repeat(16)}`,
+      "/relay-secret/a",
+      `/relay-secret/${"a".repeat(17)}`,
+      "/relay-secret/STO",
+      "/relay-secret/1sto",
+      "/relay-secret/-sto",
+      "/relay-secret/sto/x",
+      "/relay-secret/%2e%2e/relay-status",
+      "/relay-secret/",
+      "//relay-secret/sto",
+      "/./relay-secret/sto",
+      "/a/../relay-secret/sto",
+      "/a/../relay-secret/x.js",
+      "/%72elay-secret/sto",
+    ]) {
+      const got = viewerRequest({ method: "GET", host: "fidant.se", target });
+      const passed = !("statusCode" in got);
+      if (!passed) {
+        assert.equal(got.statusCode, 404, target);
+        assert.equal(Object.keys(got.headers).length, 4, target);
+        for (const name of [
+          "content-security-policy",
+          "referrer-policy",
+          "x-content-type-options",
+        ]) {
+          assert.ok(got.headers[name], `${target} ${name}`);
+        }
+      }
+      const served = (await status(target)).startsWith("200 sealed-");
+      assert.equal(passed, served && !normalised.includes(target), target);
+    }
+  } finally {
+    server.close();
   }
 });
