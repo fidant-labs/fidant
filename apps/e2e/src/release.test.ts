@@ -4,6 +4,8 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { releaseRoleName } from "../../infra/src/ci.ts";
+import { imageRepository, signalCluster, signalService } from "../../infra/src/config.ts";
 
 const workflow = readFileSync(
   new URL("../../../.github/workflows/release.yml", import.meta.url),
@@ -151,14 +153,11 @@ test("the image key covers every file the image is built from", () => {
 });
 
 test("the release workflow pins its actions and keeps credentials away from repository code", () => {
-  const uses = workflow.match(/uses: \S+/g) ?? [];
-  assert.equal(uses.length, 4);
-  for (const action of uses) {
+  for (const action of workflow.match(/uses: \S+/g) ?? []) {
     assert.match(action, /@[0-9a-f]{40}$/);
   }
-  const scripts = [...workflow.matchAll(/\n( +)run: \|\n((?:\1 +.*\n|\n)+)/g)];
-  assert.equal(scripts.length, 4);
-  for (const [, , script] of scripts) {
+  for (const [, , script] of workflow.matchAll(/\n( +)run: \|\n((?:\1 +.*\n|\n)+)/g)) {
+    assert.match(script ?? "", /^ *set -euo pipefail\n/);
     assert.doesNotMatch(script ?? "", /\$\{\{/);
   }
   const buildAt = workflow.indexOf("\n  build:\n");
@@ -166,9 +165,81 @@ test("the release workflow pins its actions and keeps credentials away from repo
   assert.ok(buildAt > 0 && releaseAt > buildAt);
   const build = workflow.slice(buildAt, releaseAt);
   const release = workflow.slice(releaseAt);
+  assert.match(workflow.slice(0, buildAt), /\npermissions: \{\}\n/);
+  assert.match(build, /\n {4}permissions:\n {6}contents: read\n {4}\S/);
+  assert.match(release, /\n {4}permissions:\n {6}id-token: write\n {4}\S/);
   assert.doesNotMatch(build, /id-token|secrets\./);
   assert.doesNotMatch(release, /checkout|pnpm|node /);
   assert.match(release, /\n {4}environment: app\n/);
+});
+
+test("the release workflow names what the infra names", () => {
+  for (const text of [
+    `repo=${imageRepository}\n`,
+    `--cluster ${signalCluster} --services ${signalService}`,
+    `--cluster ${signalCluster} --service ${signalService}`,
+    `:role/${releaseRoleName}\n`,
+    "aws-region: eu-north-1",
+  ]) {
+    assert.ok(workflow.includes(text), text);
+  }
+});
+
+test("the release job refuses a run that is not production's tip before it gets credentials, and keeps its session longer than its waits", () => {
+  const release = workflow.slice(workflow.indexOf("\n  release:\n"));
+  const check = release.indexOf("- name: Check the commit is production's tip\n");
+  const credentials = release.indexOf("uses: aws-actions/configure-aws-credentials@");
+  assert.ok(check > 0 && check < credentials);
+  const seconds = [...run("Push the image, move live and redeploy").matchAll(/SECONDS \+ (\d+)/g)];
+  const settles = [
+    ...run("Push the image, move live and redeploy").matchAll(/^ *settled (\d+)$/gm),
+  ];
+  const waits = [...seconds, ...settles].map(([, n]) => Number(n));
+  assert.equal(waits.length, 3);
+  const session = Number(release.match(/role-duration-seconds: (\d+)/)?.[1]);
+  const timeout = Number(release.match(/\n {4}timeout-minutes: (\d+)/)?.[1]) * 60;
+  assert.ok(waits.reduce((a, b) => a + b) < timeout);
+  assert.ok(timeout < session);
+});
+
+function tipCheck(sha: string, remote: string) {
+  let result: { status: number | null; stdout: string } | undefined;
+  withDir((dir) => {
+    mkdirSync(join(dir, "bin"));
+    writeFileSync(
+      join(dir, "bin", "git"),
+      `#!/bin/sh\n[ "$*" = "ls-remote https://github.com/o/r refs/heads/production" ] || exit 2\n${remote}\n`,
+      { mode: 0o755 },
+    );
+    const { status, stdout } = bash(run("Check the commit is production's tip"), dir, {
+      PATH: `${dir}/bin:${process.env.PATH}`,
+      GITHUB_REPOSITORY: "o/r",
+      SHA: sha,
+    });
+    result = { status, stdout: stdout.trim() };
+  });
+  assert.ok(result);
+  return result;
+}
+
+test("a release run for any commit but production's tip refuses", () => {
+  const tip = "a".repeat(40);
+  const older = "c".repeat(40);
+  assert.deepEqual(tipCheck(tip, `printf '${tip}\\trefs/heads/production\\n'`), {
+    status: 0,
+    stdout: "",
+  });
+  assert.deepEqual(tipCheck(older, `printf '${tip}\\trefs/heads/production\\n'`), {
+    status: 1,
+    stdout: `::error::refused ${older}: production is at ${tip}, and only its newest release runs`,
+  });
+  for (const remote of ["exit 1", "true"]) {
+    assert.deepEqual(tipCheck(tip, remote), {
+      status: 1,
+      stdout: "::error::could not read production's tip",
+    });
+  }
+  assert.deepEqual(tipCheck("", "true"), { status: 1, stdout: "::error::unexpected commit" });
 });
 
 const fake = `
@@ -258,8 +329,18 @@ function release(start: {
   services?: unknown[];
   update?: unknown;
   lost?: Record<string, string>;
+  expire?: boolean;
+  stop?: boolean;
 }) {
-  let result: { status: number | null; stdout: string; calls: string[]; tags: object } | undefined;
+  let result:
+    | {
+        status: number | null;
+        signal: NodeJS.Signals | null;
+        stdout: string;
+        calls: string[];
+        tags: Record<string, string>;
+      }
+    | undefined;
   withDir((dir) => {
     mkdirSync(join(dir, "bin"));
     mkdirSync(join(dir, "image"));
@@ -267,20 +348,31 @@ function release(start: {
     for (const tool of ["aws", "docker"]) {
       writeFileSync(join(dir, "bin", tool), `#!${process.execPath}\n${fake}`, { mode: 0o755 });
     }
-    writeFileSync(join(dir, "bin", "sleep"), "#!/bin/sh\n", { mode: 0o755 });
+    writeFileSync(
+      join(dir, "bin", "sleep"),
+      start.stop ? "#!/bin/sh\nkill -TERM $PPID\n" : "#!/bin/sh\n",
+      {
+        mode: 0o755,
+      },
+    );
     const state = join(dir, "state.json");
     const images = [...new Set(Object.values(start.tags))];
     writeFileSync(state, JSON.stringify({ calls: [], images, services: [], ...start }));
-    const { status, stdout } = bash(run("Push the image, move live and redeploy"), dir, {
-      PATH: `${dir}/bin:${process.env.PATH}`,
-      STATE: state,
-      RUNNER_TEMP: dir,
-      SHA: sha,
-      KEY: key,
-      ACCOUNT: "123456789012",
-    });
+    const script = run("Push the image, move live and redeploy");
+    const { status, signal, stdout } = bash(
+      start.expire ? script.replace(/\$\(\(SECONDS \+ [^)]+\)\)/g, "$SECONDS") : script,
+      dir,
+      {
+        PATH: `${dir}/bin:${process.env.PATH}`,
+        STATE: state,
+        RUNNER_TEMP: dir,
+        SHA: sha,
+        KEY: key,
+        ACCOUNT: "123456789012",
+      },
+    );
     const end = JSON.parse(readFileSync(state, "utf8"));
-    result = { status, stdout, calls: end.calls, tags: end.tags };
+    result = { status, signal, stdout, calls: end.calls, tags: end.tags };
   });
   assert.ok(result);
   return result;
@@ -469,5 +561,110 @@ test("a failed-<key> tag that is already there counts only when it names the ima
     `batch-get-image imageTag=failed-${key}`,
   ]);
   assert.deepEqual(another.tags, { ...before, [`failed-${key}`]: "sha256:old" });
-  assert.doesNotMatch(another.stdout, /::error::/);
+  assert.match(another.stdout, /::error::the new task failed its health check/);
+});
+
+const noFailedTag = (tags: object) => assert.ok(!(`failed-${key}` in tags));
+const serviceReplaced = service(["ecs-svc/9", "PRIMARY", "COMPLETED"]);
+
+test("a release that stops after live moved puts live back, so the next release with the same inputs deploys", () => {
+  const stopped = release({
+    tags: before,
+    services: [steady, steady, "!ThrottlingException"],
+    update: started,
+  });
+  assert.notEqual(stopped.status, 0);
+  assert.deepEqual(stopped.tags, before);
+  assert.match(stopped.stdout, /::error::the release stopped before the service ran sha256:new/);
+
+  const done = service(["ecs-svc/2", "PRIMARY", "COMPLETED"]);
+  const again = release({
+    tags: stopped.tags,
+    services: [steady, steady, rolling, done],
+    update: started,
+  });
+  assert.equal(again.status, 0);
+  assert.ok(again.calls.includes("update-service"));
+  assert.deepEqual(again.tags, { ...before, live: "sha256:new" });
+});
+
+test("a deployment that does not finish in time puts live back and tags nothing failed", () => {
+  const { status, stdout, tags } = release({
+    tags: before,
+    services: [steady, steady, rolling],
+    update: started,
+    expire: true,
+  });
+  assert.equal(status, 1);
+  assert.match(stdout, /::error::the deployment did not finish in time/);
+  assert.deepEqual(tags, before);
+});
+
+test("a deployment that left the list puts live back and tags nothing failed", () => {
+  const { status, stdout, tags } = release({
+    tags: before,
+    services: [steady, steady, serviceReplaced],
+    update: started,
+  });
+  assert.equal(status, 1);
+  assert.match(stdout, /::error::the deployment left the service's list before it finished/);
+  assert.deepEqual(tags, before);
+  noFailedTag(tags);
+});
+
+test("a rollback that does not settle in time puts live back and tags nothing failed", () => {
+  const { status, stdout, tags } = release({
+    tags: before,
+    services: [steady, steady, failed, failed],
+    update: started,
+    expire: true,
+  });
+  assert.equal(status, 1);
+  assert.match(stdout, /::error::the service did not settle in time/);
+  assert.deepEqual(tags, before);
+});
+
+test("a service that does not settle in time before live moves changes nothing", () => {
+  const { status, stdout, calls, tags } = release({
+    tags: before,
+    services: [rolling],
+    expire: true,
+  });
+  assert.equal(status, 1);
+  assert.match(stdout, /::error::the service did not settle in time/);
+  assert.ok(!calls.includes("update-service"));
+  assert.deepEqual(tags, before);
+});
+
+test("a release that is stopped by SIGTERM while it waits puts live back", () => {
+  const { signal, tags } = release({
+    tags: before,
+    services: [steady, steady, rolling],
+    update: started,
+    stop: true,
+  });
+  assert.equal(signal, "SIGTERM");
+  assert.deepEqual(tags, before);
+});
+
+test("an image whose commit tag is there but whose inputs tag is not is tagged without a docker load", () => {
+  const missing = { services: [], failures: [{ reason: "MISSING" }] };
+  const { status, calls, tags } = release({ tags: { [sha]: "sha256:new" }, services: [missing] });
+  assert.equal(status, 0);
+  assert.ok(!calls.some((call) => call.startsWith("docker")));
+  assert.deepEqual(tags, {
+    [sha]: "sha256:new",
+    [`inputs-${key}`]: "sha256:new",
+    live: "sha256:new",
+  });
+});
+
+test("an inputs tag that already names another image fails the release", () => {
+  const { status, calls, tags } = release({
+    tags: { [sha]: "sha256:new", other: "sha256:other" },
+    lost: { [`inputs-${key}`]: "sha256:other" },
+  });
+  assert.equal(status, 1);
+  assert.ok(!calls.includes("describe-services"));
+  assert.ok(!("live" in tags));
 });

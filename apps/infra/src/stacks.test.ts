@@ -212,6 +212,7 @@ test("only the app environment can assume the release role, which only fidant-po
   const [, role] = roleNamed(ci, "fidant-release");
   assert.deepEqual(role.Properties, {
     RoleName: "fidant-release",
+    MaxSessionDuration: 7200,
     AssumeRolePolicyDocument: {
       Version: "2012-10-17",
       Statement: [

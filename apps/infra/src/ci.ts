@@ -1,9 +1,11 @@
-import { Stack, type StackProps } from "aws-cdk-lib";
+import { Duration, Stack, type StackProps } from "aws-cdk-lib";
 import * as iam from "aws-cdk-lib/aws-iam";
 import type { Construct } from "constructs";
 import { imageRepository, pagesBucket, signalCluster, signalService } from "./config.ts";
 
 const issuer = "token.actions.githubusercontent.com";
+
+export const releaseRoleName = "fidant-release";
 
 export type CiStackProps = StackProps & { release?: boolean };
 
@@ -36,7 +38,8 @@ export class CiStack extends Stack {
 
     if (props.release) {
       const release = new iam.Role(this, "Release", {
-        roleName: "fidant-release",
+        roleName: releaseRoleName,
+        maxSessionDuration: Duration.hours(2),
         assumedBy: new iam.WebIdentityPrincipal(github.oidcProviderArn, {
           StringEquals: {
             [`${issuer}:aud`]: "sts.amazonaws.com",
