@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import type { Page } from "@playwright/test";
+import type { Download, Page } from "@playwright/test";
 import { maskAddress } from "@sigill/protocol";
 import {
   breakableSender,
@@ -177,8 +177,14 @@ async function receive(
   }
   const again = page.waitForEvent("download", { timeout: 60_000 });
   await page.getByRole("link", { name: "Save file" }).click();
-  expect((await again).suggestedFilename().normalize()).toBe(file.name);
+  expect(downloadName(page, await again)).toBe(file.name);
   return { page, bytes };
+}
+
+/** The download's name; WebKit on macOS decomposes its accents, so only WebKit's is normalized. */
+function downloadName(page: Page, saved: Download): string {
+  const name = saved.suggestedFilename();
+  return page.context().browser()?.browserType().name() === "webkit" ? name.normalize() : name;
 }
 
 /** Clicks Download on the offer screen, waits for the verified file and returns its bytes. */
@@ -189,8 +195,7 @@ async function download(page: Page, file: CanaryFile): Promise<Buffer> {
     timeout: 60_000,
   });
   const saved = await downloading;
-  // WebKit on macOS decomposes the accents in a download's name.
-  expect(saved.suggestedFilename().normalize()).toBe(file.name);
+  expect(downloadName(page, saved)).toBe(file.name);
   await expect(page.getByRole("heading", { name: "Download complete" })).toBeFocused();
   return readFile(await saved.path());
 }
@@ -1956,6 +1961,7 @@ test.describe("emailed links", () => {
     await recipient.getByRole("button", { name: "Show", exact: true }).click();
     const shown = recipient.getByRole("region", { name: "The secret", exact: true });
     // Playwright's Firefox crashes the page on toHaveJSProperty after a role or label query.
+    await expect(shown).toBeVisible();
     await expect.poll(() => shown.evaluate((el) => el.textContent)).toBe(text);
     await expect(delivered(sender, name)).toBeAttached();
   });

@@ -120,15 +120,18 @@ for (const variant of ["a=Fingerprint:sha-256", "a=fingerprint sha-256"]) {
     await confirmEmail(recipient, to);
     const warnings = async () =>
       (await observed("sender").records()).flatMap((r) => (r.type === "console" ? [r.text] : []));
+    await expect.poll(() => added, { timeout: 10_000 }).toBe(true);
     await expect
       .poll(warnings, { timeout: 10_000 })
       .toContain("sigill: sender dropped a connection: bad-signal");
+    await expect
+      .poll(warnings, { timeout: 10_000 })
+      .toContain("sigill-e2e: error built: no single sha-256 fingerprint");
     await expect(recipient.getByText("Couldn't connect to the sender's computer")).toBeVisible({
       timeout: 10_000,
     });
     await expect(recipient.getByRole("button", { name: "Download" })).toHaveCount(0);
     expect(downloads, "downloads").toBe(0);
     await expect(delivered(sender, name)).toHaveCount(0);
-    expect(added, "added the line to the recipient's answer").toBe(true);
   });
 }

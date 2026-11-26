@@ -366,11 +366,9 @@ for (const row of scenarios) {
         const show = recipient.page.getByRole("button", { name: "Show", exact: true });
         await expect(show).toBeVisible({ timeout: 45_000 });
         await show.click();
-        const shown = recipient.page.getByRole("region", { name: "The secret", exact: true });
-        // Playwright's Firefox crashes the page on toHaveJSProperty after a role or label query.
-        await expect
-          .poll(() => shown.evaluate((el) => el.textContent), { timeout: 60_000 })
-          .toBe(sent);
+        await expect(
+          recipient.page.getByRole("region", { name: "The secret", exact: true }),
+        ).toHaveJSProperty("textContent", sent, { timeout: 60_000 });
         await expect(deliveredRow(sender.page, name)).toBeAttached();
       } else {
         const downloading = recipient.page.waitForEvent("download", { timeout: 60_000 });

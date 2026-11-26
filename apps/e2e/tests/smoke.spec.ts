@@ -60,8 +60,17 @@ test("request bodies are recorded", async ({ page, observed, baseURL, leaks, bro
 test.describe("the blocker", () => {
   test.use({ allowBlocked: true });
 
-  test("a navigation outside the stack is blocked and recorded", async ({ page, observed }) => {
-    await expect(page.goto(outside)).rejects.toThrow();
+  test("a navigation outside the stack is blocked and recorded", async ({
+    page,
+    observed,
+    browserName,
+  }) => {
+    const aborted = {
+      chromium: /ERR_BLOCKED_BY_CLIENT/,
+      firefox: /NS_ERROR_FAILURE/,
+      webkit: /Blocked by Web Inspector/,
+    }[browserName];
+    await expect(page.goto(outside)).rejects.toThrow(aborted);
     expect(observed("default").blocked).toEqual([
       expect.objectContaining({ url: outside, kind: "http" }),
     ]);
@@ -99,6 +108,9 @@ test.describe("the network block", () => {
     const ip = Object.values(networkInterfaces())
       .flat()
       .find((address) => address?.family === "IPv4" && !address.internal)?.address;
+    if (!ip && process.env.CI) {
+      throw new Error("the network block needs an IPv4 address besides loopback");
+    }
     test.skip(!ip, "this machine has no IPv4 address but loopback");
     let connections = 0;
     const sentinel = createServer((socket) => {

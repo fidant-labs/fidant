@@ -34,7 +34,7 @@ export class Recorder {
   /** Attaches the listeners and routes. Call it before the context opens any page. */
   async attach(context: BrowserContext): Promise<void> {
     this.context = context;
-    context.on("request", (request) => this.#add(requestRecord(request)));
+    context.on("request", (request) => this.#add(requestRecord(request, context)));
     context.on("response", (response) => this.#add(responseRecord(response)));
     context.on("requestfailed", (request) =>
       this.#add({
@@ -114,11 +114,17 @@ export class Recorder {
   }
 }
 
-async function requestRecord(request: Request): Promise<ObservationRecord> {
+async function requestRecord(
+  request: Request,
+  context: BrowserContext,
+): Promise<ObservationRecord> {
   const time = now();
   const body = request.postDataBuffer();
   const method = request.method();
-  const headers = await headersOf(request.allHeaders(), request.headers());
+  const headers = withCookies(
+    await headersOf(request.allHeaders(), request.headers()),
+    await context.cookies(request.url()).catch(() => []),
+  );
   return {
     type: "request",
     time,
@@ -136,19 +142,31 @@ const bodiless = new Set(["GET", "HEAD", "OPTIONS"]);
  * The body fields of a request record: the body as base64 when Playwright exposed one.
  * Otherwise `bodyMissing` marks a request that may have had a body the scan cannot see.
  *
- * Chromium and Firefox expose string, buffer, Blob, File and FormData bodies, WebKit all but Blob
- * and File, and none a streamed one, and a request without an exposed body may have been empty or
- * hidden. So any request whose method allows a body, with none exposed, is marked unless its
- * headers say `content-length: 0`.
+ * Chromium and Firefox expose string, buffer, Blob, File and FormData bodies. WebKit leaves the
+ * bytes of a Blob or File out of a body, so a multipart body is marked even when some bytes are
+ * exposed. No engine exposes a streamed body, and a request without an exposed body may have been
+ * empty or hidden. So any request whose method allows a body, with none exposed, is marked unless
+ * its headers say `content-length: 0`.
  */
 export function requestBody(method: string, headers: Headers, body: Buffer | null): RequestBody {
   if (body && body.length > 0) {
-    return { body: body.toString("base64") };
+    const text = body.toString("base64");
+    return headers["content-type"]?.toLowerCase().startsWith("multipart/form-data")
+      ? { body: text, bodyMissing: true }
+      : { body: text };
   }
   if (bodiless.has(method.toUpperCase()) || headers["content-length"] === "0") {
     return {};
   }
   return { bodyMissing: true };
+}
+
+/** WebKit's `allHeaders()` omits the Cookie header, so the context's jar for the URL fills it in. */
+export function withCookies(headers: Headers, cookies: { name: string; value: string }[]): Headers {
+  if (headers.cookie || cookies.length === 0) {
+    return headers;
+  }
+  return { ...headers, cookie: cookies.map(({ name, value }) => `${name}=${value}`).join("; ") };
 }
 
 async function responseRecord(response: Response): Promise<ObservationRecord> {

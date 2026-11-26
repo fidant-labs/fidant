@@ -107,6 +107,7 @@ test("a text goes from /secret to the recipient, who shows and copies it", async
     await expect(field).toHaveAttribute(attribute, value);
   }
   const link = await share(leaks, sender, text, from, name);
+  await expect(field).toBeVisible();
   await expect.poll(() => field.evaluate((el) => (el as HTMLTextAreaElement).value)).toBe(text);
   const senderPanel = sender.getByRole("region", { name: "What our server has right now" });
   await expect(senderPanel).toContainText("None. The secret goes directly between browsers.");
@@ -126,6 +127,7 @@ test("a text goes from /secret to the recipient, who shows and copies it", async
   await show.click();
 
   const shown = page.getByRole("region", { name: "The secret", exact: true });
+  await expect(shown).toBeVisible();
   await expect.poll(() => shown.evaluate((el) => el.textContent)).toBe(text);
   await expect.poll(() => shown.evaluate((el) => (el as HTMLElement).translate)).toBe(false);
   await expect(shown).toHaveAttribute("tabindex", "0");
@@ -251,6 +253,7 @@ test("declining a text keeps the link working", async ({ actor, leaks, canary })
   await expect(offer).toBeVisible();
   await page.getByRole("button", { name: "Show", exact: true }).click();
   const shown = page.getByRole("region", { name: "The secret", exact: true });
+  await expect(shown).toBeVisible();
   await expect.poll(() => shown.evaluate((el) => el.textContent)).toBe(text);
   await expect(delivered(sender, name)).toBeAttached();
 });

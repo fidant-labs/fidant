@@ -28,8 +28,7 @@ if (networks && browser !== "chromium") {
 }
 const picked = (projects: Project<PlaywrightTestOptions, PlaywrightWorkerOptions>[]) =>
   projects.filter(({ name }) => name === browser);
-// Firefox and WebKit have no resolver rules, so every connection off this machine goes to a proxy
-// that refuses it. Playwright makes Firefox proxy localhost too, hence the bypass.
+// Firefox and WebKit: HTTP and WebSocket off this machine go to a dead proxy (README network block table); Playwright proxies localhost in Firefox, hence the bypass.
 const deadEnd = { server: "http://127.0.0.1:9", bypass: "localhost,127.0.0.1" };
 
 export default defineConfig({

@@ -81,7 +81,7 @@ Other checks expect what an engine does instead. WebKit names no relay protocol 
 
 Today:
 
-- Browser requests and responses: URL, every header and request bodies. WebKit hides Blob and File bodies, and no engine exposes a streamed one, so the recorder marks such a request `bodyMissing`, which the scan reports as a limit and the test fails.
+- Browser requests and responses: URL, headers and request bodies. WebKit omits the Cookie header from `allHeaders()`, so the recorder adds the cookies the context holds for the URL. WebKit leaves the bytes of a Blob or File out of a body, and no engine exposes a streamed one, so the recorder marks a `multipart/form-data` request, and any body-bearing request with no exposed body, `bodyMissing`, which the scan reports as a limit and the test fails.
 - WebSocket frames, sent and received, including `/signal`.
 - Browser console messages: the text and the page URL without its fragment.
 - Server stdout and stderr. Stdout must also pass a strict allowlist: one JSON object per line, with known keys and values only (`src/leaks/server-log.ts`).
