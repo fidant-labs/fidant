@@ -821,6 +821,7 @@ export const sv: Messages = {
           "En länk som vi mejlar ligger kvar i mottagarens inkorg. Den som kan läsa inkorgen kan också få koden, och därmed filen. Och vår server har haft länkens nyckel. Därför måste du lita på att vi inte läser filen på vägen, om du inte skapar länken med kontrollnummer och jämför det med mottagaren. Vill du undvika båda, låt ”Mejla länken åt mig” vara urkryssad och skicka länken själv.",
           "Avsändarens namn skrivs av avsändaren och kontrolleras inte.",
           "De två webbläsarna ser varandras IP-adress, precis som i ett videosamtal. När filen går via vårt relä ser reläet båda IP-adresserna och ungefär hur stor filen är.",
+          "Din webbläsare kör den kod vår server skickar. En server som skickade annan kod skulle kunna läsa filer, och hoppa över kontrollnumret. Koden är offentlig, men webbläsare kan ännu inte kontrollera att det de fick stämmer med den.",
           "En dator som redan är kapad kan läsa filen innan den krypteras eller efter att den låsts upp.",
           "Fidant har ännu inte granskats av någon oberoende part.",
         ],
