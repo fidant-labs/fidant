@@ -75,10 +75,6 @@ test("a text goes from /secret to the recipient, who shows and copies it", async
   canary,
   browserName,
 }) => {
-  test.fixme(
-    browserName === "firefox",
-    "SIG-TBD: Playwright's Firefox crashes the page on toHaveJSProperty after a locator query",
-  );
   const body = makeText(leaks, canary);
   // Starts with a byte order mark, which Blob.text() would drop on the recipient's side.
   const text = `\uFEFF${body}`;
@@ -98,8 +94,11 @@ test("a text goes from /secret to the recipient, who shows and copies it", async
   await expect(entry).toHaveAttribute("aria-current", "page");
   const field = sender.getByLabel("Your secret");
   await expect(field).toHaveId("secret-text");
-  await expect(field).toHaveJSProperty("spellcheck", false);
-  await expect(field).toHaveJSProperty("translate", false);
+  // Playwright's Firefox crashes the page on toHaveJSProperty after a role or label query.
+  await expect
+    .poll(() => field.evaluate((el) => (el as HTMLTextAreaElement).spellcheck))
+    .toBe(false);
+  await expect.poll(() => field.evaluate((el) => (el as HTMLElement).translate)).toBe(false);
   for (const [attribute, value] of [
     ["autocomplete", "off"],
     ["autocorrect", "off"],
@@ -108,7 +107,7 @@ test("a text goes from /secret to the recipient, who shows and copies it", async
     await expect(field).toHaveAttribute(attribute, value);
   }
   const link = await share(leaks, sender, text, from, name);
-  await expect(field).toHaveJSProperty("value", text);
+  await expect.poll(() => field.evaluate((el) => (el as HTMLTextAreaElement).value)).toBe(text);
   const senderPanel = sender.getByRole("region", { name: "What our server has right now" });
   await expect(senderPanel).toContainText("None. The secret goes directly between browsers.");
   await expect(senderPanel).toContainText("never the part that unlocks the secret");
@@ -127,8 +126,8 @@ test("a text goes from /secret to the recipient, who shows and copies it", async
   await show.click();
 
   const shown = page.getByRole("region", { name: "The secret", exact: true });
-  await expect(shown).toHaveJSProperty("textContent", text);
-  await expect(shown).toHaveJSProperty("translate", false);
+  await expect.poll(() => shown.evaluate((el) => el.textContent)).toBe(text);
+  await expect.poll(() => shown.evaluate((el) => (el as HTMLElement).translate)).toBe(false);
   await expect(shown).toHaveAttribute("tabindex", "0");
   // Browsers save form controls' values with the session, so none may hold the text.
   const [firstLine = body] = body.split("\n");
@@ -229,11 +228,7 @@ test("a pasted text over 10,000 characters stays whole and can't be shared until
   await expect(add).toBeEnabled();
 });
 
-test("declining a text keeps the link working", async ({ actor, leaks, canary, browserName }) => {
-  test.fixme(
-    browserName === "firefox",
-    "SIG-TBD: Playwright's Firefox crashes the page on toHaveJSProperty after a locator query",
-  );
+test("declining a text keeps the link working", async ({ actor, leaks, canary }) => {
   const text = makeText(leaks, canary);
   const name = makeName(leaks, canary, "Erik");
   const { page: sender } = await actor("sender");
@@ -255,10 +250,8 @@ test("declining a text keeps the link working", async ({ actor, leaks, canary, b
   await page.getByRole("button", { name: "Show the secret again" }).click();
   await expect(offer).toBeVisible();
   await page.getByRole("button", { name: "Show", exact: true }).click();
-  await expect(page.getByRole("region", { name: "The secret", exact: true })).toHaveJSProperty(
-    "textContent",
-    text,
-  );
+  const shown = page.getByRole("region", { name: "The secret", exact: true });
+  await expect.poll(() => shown.evaluate((el) => el.textContent)).toBe(text);
   await expect(delivered(sender, name)).toBeAttached();
 });
 

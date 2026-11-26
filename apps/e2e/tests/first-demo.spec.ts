@@ -1930,12 +1930,7 @@ test.describe("emailed links", () => {
     demo,
     leaks,
     canary,
-    browserName,
   }) => {
-    test.fixme(
-      browserName === "firefox",
-      "SIG-TBD: Playwright's Firefox crashes the page on toHaveJSProperty after a locator query",
-    );
     const text = `${base32Token(canary.fork("text"), 40)} åäö`;
     leaks.watchContent("text", text);
     const sender = await demo.open("sender");
@@ -1959,9 +1954,9 @@ test.describe("emailed links", () => {
       recipient.getByRole("heading", { name: "You've been sent a secret" }),
     ).toBeVisible();
     await recipient.getByRole("button", { name: "Show", exact: true }).click();
-    await expect(
-      recipient.getByRole("region", { name: "The secret", exact: true }),
-    ).toHaveJSProperty("textContent", text);
+    const shown = recipient.getByRole("region", { name: "The secret", exact: true });
+    // Playwright's Firefox crashes the page on toHaveJSProperty after a role or label query.
+    await expect.poll(() => shown.evaluate((el) => el.textContent)).toBe(text);
     await expect(delivered(sender, name)).toBeAttached();
   });
 });
