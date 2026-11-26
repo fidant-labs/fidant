@@ -51,6 +51,8 @@ interface Fixtures {
    * browser served by `playwright run-server` at that endpoint, with the project's launch options.
    */
   remoteBrowsers: Record<string, string>;
+  /** Put first in this test's remote browsers' `--host-resolver-rules`, where the first match wins. */
+  hostRules: string;
   /** Registers this test's secrets. Its teardown fails the test if any of them leaked. */
   leaks: Leaks;
   /**
@@ -67,6 +69,7 @@ interface Fixtures {
 export const test = base.extend<Fixtures>({
   allowBlocked: [false, { option: true }],
   remoteBrowsers: [{}, { option: true }],
+  hostRules: ["", { option: true }],
 
   // `_recorders` depends on this, so this is set up first and torn down last: the scan runs once
   // every context has closed and `_recorders` has completed and written the records.
@@ -216,9 +219,26 @@ export const test = base.extend<Fixtures>({
   },
 
   actor: async (
-    { browser, playwright, launchOptions, remoteBrowsers, _actorContextOptions, _recorders },
+    {
+      browser,
+      playwright,
+      launchOptions,
+      remoteBrowsers,
+      hostRules,
+      _actorContextOptions,
+      _recorders,
+    },
     use,
   ) => {
+    const rules = "--host-resolver-rules=";
+    const options = hostRules
+      ? {
+          ...launchOptions,
+          args: launchOptions.args?.map((arg) =>
+            arg.startsWith(rules) ? `${rules}${hostRules}, ${arg.slice(rules.length)}` : arg,
+          ),
+        }
+      : launchOptions;
     const opened: BrowserContext[] = [];
     const remotes: Browser[] = [];
     await use(async (name) => {
@@ -234,7 +254,7 @@ export const test = base.extend<Fixtures>({
       if (ws) {
         // run-server drops launch args unless started with --unsafe.
         target = await playwright.chromium.connect(ws, {
-          headers: { "x-playwright-launch-options": JSON.stringify(launchOptions) },
+          headers: { "x-playwright-launch-options": JSON.stringify(options) },
         });
         remotes.push(target);
       }

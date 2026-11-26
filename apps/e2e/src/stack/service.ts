@@ -12,6 +12,8 @@ export interface RunningService {
    * browser may reach over HTTP have one: it goes into the request allowlist.
    */
   url?: string;
+  /** Other origins the browser may reach through this service, such as a name it maps to it. */
+  origins?: string[];
   port?: number;
   /** Environment for the services that start after this one. */
   env?: Record<string, string>;
