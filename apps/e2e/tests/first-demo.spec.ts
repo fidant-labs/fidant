@@ -610,7 +610,7 @@ test("the Why? link to /how keeps a transfer alive on both pages", async ({
   await expect(delivered(sender, name)).toBeAttached();
 });
 
-test("a lost sender says whether the file may have been saved", async ({ demo, leaks, canary }) => {
+test("a lost sender says whether the download can continue", async ({ demo, leaks, canary }) => {
   const file = makeFile(leaks, canary, 100_001);
   const sender = await openSender(demo, file, "", (page) => page.addInitScript(breakableSender));
   const stall = (stalled: boolean) =>
@@ -655,6 +655,86 @@ test("a lost sender says whether the file may have been saved", async ({ demo, l
   await expect(bo.getByText("The sender's page is closed")).toBeVisible({ timeout: 3_000 });
   await expect(bo.getByText("The file may not have been saved.")).toBeVisible();
 });
+
+for (const dialog of [false, true]) {
+  test(`a transfer dropped halfway sends only the rest on Try again${dialog ? ", into the save dialog's file" : ""}`, async ({
+    demo,
+    leaks,
+    canary,
+  }) => {
+    const CHUNK = 2;
+    const CREDIT = 19;
+    // Its own padded length, so exactly 128 CHUNKs of 48 KiB and no padding.
+    const file = makeFile(leaks, canary, 6 * MiB);
+    const sender = await openSender(demo, file, "", (page) => page.addInitScript(breakableSender));
+    const name = makeName(leaks, canary, "Anna");
+    const link = await addRecipient(leaks, sender, name);
+    const card = recipientRow(sender, name);
+
+    const recipient = await demo.open("recipient");
+    await recipient.addInitScript(breakableSender);
+    if (dialog) {
+      await recipient.context().addInitScript(fakeSavePicker);
+    }
+    let downloads = 0;
+    recipient.on("download", () => downloads++);
+    const set = (page: Page, values: Record<string, unknown>) =>
+      page.evaluate((v) => {
+        Object.assign(globalThis, v);
+      }, values);
+    const sent = (page: Page, kind: number) =>
+      page.evaluate((k) => (globalThis as { sent?: Record<number, number> }).sent?.[k] ?? 0, kind);
+    const download = recipient.getByRole("button", { name: "Download" });
+    const downloading = recipient.getByRole("heading", { name: "Downloading…" });
+
+    await recipient.goto(link);
+    await set(sender, { stallAt: 64 });
+    await set(recipient, { pick: "ok", saved: [] });
+    await download.click();
+    await expect(downloading).toBeVisible();
+    // The recipient tops up its credit once it has written 64 CHUNKs, and the sender sends no more.
+    await expect.poll(() => sent(recipient, CREDIT), { timeout: 30_000 }).toBe(2);
+    expect(await sent(sender, CHUNK)).toBe(64);
+
+    await sender.evaluate(() => (globalThis as { cut?: () => void }).cut?.());
+    await expect(
+      recipient.getByText("Try again to continue the download where it stopped."),
+    ).toBeVisible();
+    // Retrying before the sender sees the drop would find the link still busy.
+    await expect(card.getByText(`Waiting for ${name}'s link to be opened`)).toBeVisible();
+    await set(sender, { stalled: false });
+    // The resumed view shows before ACCEPT goes out, so holding it keeps that view up to check.
+    await set(recipient, { held: true });
+    const saving = dialog ? undefined : recipient.waitForEvent("download", { timeout: 60_000 });
+    await recipient.getByRole("button", { name: "Try again" }).click();
+    await expect(downloading).toBeVisible();
+    await expect(download).toHaveCount(0);
+    expect(
+      await recipient
+        .getByRole("progressbar")
+        .evaluate((progress) => (progress as HTMLProgressElement).value),
+    ).toBe(3 * MiB);
+    await recipient.evaluate(() => (globalThis as { release?: () => void }).release?.());
+
+    await expect(recipient.getByText("this is exactly the file that was sent")).toBeVisible({
+      timeout: 60_000,
+    });
+    await expect(delivered(sender, name)).toBeAttached();
+    // Sending the whole file again would make it 192.
+    expect(await sent(sender, CHUNK)).toBe(128);
+    if (saving) {
+      const bytes = await readFile(await (await saving).path());
+      expect(sha256Hex(bytes)).toBe(sha256Hex(file.bytes));
+    } else {
+      expect(await recipient.evaluate(() => (globalThis as { saved?: string[] }).saved)).toEqual([
+        "pick",
+        ...Array<string>(128).fill("write"),
+        "close",
+      ]);
+    }
+    expect(downloads, "browser downloads").toBe(dialog ? 0 : 1);
+  });
+}
 
 test("a recipient who leaves mid-download returns the sender's card to waiting", async ({
   demo,

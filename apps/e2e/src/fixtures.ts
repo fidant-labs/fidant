@@ -478,9 +478,31 @@ export async function chooseFile(
   await expect(page.getByLabel("Your name")).toBeFocused();
 }
 
-/** Runs in the page through addInitScript, so it may use nothing from this module: `cut()` closes the sender's peers, `stalled` stops its data channels sending. */
+/**
+ * Runs in the page through addInitScript, so it may use nothing from this module. `cut()` closes the
+ * page's peers; `stalled` drops what its data channels send, and is set once `stallAt` CHUNKs went
+ * out; `held` queues it until `release()` sends it in order; `sent` counts what went out by kind
+ * (header byte 1, see apps/web/src/lib/frames.ts), on a recipient's page too.
+ */
 export function breakableSender() {
-  const g = globalThis as { cut?: () => void; stalled?: boolean };
+  const g = globalThis as {
+    cut?: () => void;
+    stalled?: boolean;
+    stallAt?: number;
+    held?: boolean;
+    release?: () => void;
+    sent?: Record<number, number>;
+  };
+  const CHUNK = 2;
+  const sent: Record<number, number> = {};
+  const queue: Array<() => void> = [];
+  g.sent = sent;
+  g.release = () => {
+    g.held = false;
+    for (const flush of queue.splice(0)) {
+      flush();
+    }
+  };
   const peers: RTCPeerConnection[] = [];
   const Native = globalThis.RTCPeerConnection;
   globalThis.RTCPeerConnection = class extends Native {
@@ -496,8 +518,22 @@ export function breakableSender() {
   };
   const send = RTCDataChannel.prototype.send;
   RTCDataChannel.prototype.send = function (this: RTCDataChannel, ...args: unknown[]) {
-    if (!g.stalled) {
+    if (g.stalled) {
+      return;
+    }
+    const out = () => {
       Reflect.apply(send, this, args);
+      const [frame] = args;
+      const kind = frame instanceof Uint8Array ? (frame[1] ?? -1) : -1;
+      sent[kind] = (sent[kind] ?? 0) + 1;
+      if (kind === CHUNK && sent[kind] === g.stallAt) {
+        g.stalled = true;
+      }
+    };
+    if (g.held) {
+      queue.push(out);
+    } else {
+      out();
     }
   } as RTCDataChannel["send"];
 }
