@@ -193,16 +193,19 @@ test("the release workflow pins its actions and keeps credentials away from repo
   assert.match(release, /\n {4}environment: app\n/);
 });
 
-test("releases and infra deploys wait in one queue, so none overlaps another and none waiting is cancelled", () => {
+test("release.yml and deploy-infra.yml queue in one group without cancelling", () => {
   const infra = readFileSync(
     new URL("../../../.github/workflows/deploy-infra.yml", import.meta.url),
     "utf8",
   );
   const lock =
     "\nconcurrency:\n  group: fidant-deploy\n  cancel-in-progress: false\n  queue: max\n";
-  for (const file of [workflow, infra]) {
-    assert.ok(file.includes(lock));
-    assert.equal(file.match(/concurrency:/g)?.length, 1);
+  for (const [name, file] of [
+    ["release.yml", workflow],
+    ["deploy-infra.yml", infra],
+  ] as const) {
+    assert.ok(file.includes(lock), name);
+    assert.equal(file.match(/concurrency:/g)?.length, 1, name);
   }
 });
 

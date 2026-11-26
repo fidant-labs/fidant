@@ -906,7 +906,7 @@ export const en = {
         body: [
           "Two keys are derived from the secret with HKDF-SHA-256. Both are AES-256-GCM keys that the browser marks as non-extractable: the page can use them, but can't read them out.",
           "The signal key encrypts the setup messages. Its salt is the link ID.",
-          "The file key encrypts every frame between the browsers except the first, INIT, which carries only the random transfer ID. The file key's salt is made of two random values: a transfer ID that the sender picks for every attempt, and an attempt ID that the recipient's page picks every time it connects. So neither a retried transfer nor a replayed first frame ever reuses a key and nonce pair.",
+          "The file key encrypts every frame between the browsers except the first, INIT, which carries only the random transfer ID. The file key's salt is made of two random values: that transfer ID, which the sender picks for every attempt, and an attempt ID that the recipient's page picks every time it connects. So neither a retried transfer nor a replayed first frame ever reuses a key and nonce pair.",
         ],
       },
       signal: {
@@ -946,8 +946,8 @@ export const en = {
         heading: "Checking the file",
         body: [
           "The recipient's browser hashes the file as it arrives, and checks the size, the number of chunks, the padding and the checksum against END. Only when everything matches is the file kept. Any other ending, such as a frame that fails to decrypt or a connection that closes early, throws away what was written.",
-          "Chrome and Edge can write the file straight to a place on the disk the recipient chooses. Other browsers collect it in memory and start the download at the end, and for a file over 256 MiB the recipient is warned first. The download is always marked as plain binary data, whatever type the sender claims, so a file can't run as a web page on Fidant's site.",
-          "Names are refused if they contain control characters, line separators, the Unicode characters that override or isolate text direction, blank filler characters or long runs of spaces. So a name ending in .exe can't be made to look like one ending in .pdf.",
+          "Desktop Chromium browsers such as Chrome and Edge can write the file straight to a place on the disk the recipient chooses. Other browsers collect it in memory and start the download at the end, and for a file over 256 MiB the recipient is warned first. The download is always marked as plain binary data, whatever type the sender claims, so a file can't run as a web page on Fidant's site.",
+          "Names are refused if they contain control characters, line separators, Unicode direction controls, blank filler characters or long runs of spaces. So a name ending in .exe can't be made to look like one ending in .pdf.",
         ],
       },
       padding: {
@@ -972,7 +972,7 @@ export const en = {
           "When no direct route works, which is common on mobile data and office networks, the traffic goes through our TURN relay in Stockholm. The browsers add the relay only if the sender allows it, the relay is available and nothing has connected 3 seconds after the recipient answers. A page opened before we began adding the relay this way still reserves relay addresses from the start, until it is reloaded.",
           "To add the relay, the browsers start the connection setup again, with a new offer and answer, encrypted just like the first. A direct route can still win after that. So a connection that needs the relay starts about 3 seconds later. A direct route that is still connecting 3 seconds after the recipient answers, for example on a network that loses many packets, may end up on the relay.",
           "The relay forwards encrypted packets. It can't decrypt them and doesn't store them.",
-          "To use the relay a browser needs credentials, which our server creates for each pairing and gives only to the two paired pages. The credentials expire after 5 minutes. Our server checks every minute that the relay can carry traffic, and offers it once a check passes. The server stops offering it after two failed checks in a row. The relay gets the secret behind the credentials from our server, sealed so that only the relay can open it.",
+          "To use the relay a browser needs credentials, which our server creates for each pairing and gives only to the two paired pages. A relay connection can start with them for 5 minutes, and can then run longer. Our server checks every minute that the relay can carry traffic, and offers it once a check passes. The server stops offering it after two failed checks in a row. The relay gets the secret behind the credentials from our server, sealed so that only the relay can open it.",
           "Browsers reach the relay over UDP, or over TLS on port 443 where a network allows only web traffic. The relay forwards only over UDP, and only from its own address. It refuses to forward to other machines on private or internal networks, with one accepted exception: the relay's own box (see decision 0007). It also limits how many relayed connections run at once.",
           "Once the estimated cost of our traffic for the month reaches our budget, the relay and our STUN service switch off. They stay off until the month ends, unless we switch them on again sooner, for example by raising the budget. Until then, a new transfer connects only where it can without them, for example on the same local network, and often fails elsewhere.",
         ],
@@ -980,7 +980,7 @@ export const en = {
       norelay: {
         heading: "Refusing the relay",
         body: [
-          "The sender can untick \"Use our relay if needed\". Our server then gives that send no relay credentials, only the STUN address, so an unmodified browser can't use the relay. The sender's browser also enforces the choice itself: it starts the connection without relay credentials, whatever our server sends. As a backstop, if the sender's browser still sees a relayed connection, it ends it. File data only flows after the recipient accepts, so in practice the browser ends such a connection before any file data has passed.",
+          "The sender can untick \"Use our relay if needed\". Our server then gives that send no relay credentials, only the STUN address, so an unmodified browser can't use the relay. The sender's browser also enforces the choice itself: it starts the connection without relay credentials, whatever our server sends. As a backstop, if the sender's browser still sees a relayed connection, it ends it. The backstop is best effort: a modified recipient can hide that its side goes through a relay.",
           "The limit: a modified recipient can still send its side through our relay with credentials from another pairing, or through any public relay. That recipient has the key anyway. The choice decides which infrastructure carries the encrypted traffic, not who can read the file.",
         ],
       },
@@ -988,7 +988,7 @@ export const en = {
         heading: "Several recipients and one-time links",
         body: [
           "One send can go to up to 256 people. Each has their own link, key, connection and transfer.",
-          "A link counts as used only once the recipient's RECEIPT matches. After that it is refused. A link that is already open in one tab is refused in another.",
+          "A link counts as used only once the recipient's RECEIPT matches. After that it is refused. A link that is already connected in one tab is refused in another.",
           "Until then the link can be opened again: after a decline, a dropped connection or a failed check. Every new attempt has a new transfer ID and attempt ID, and so a new file key. A link with the safety number on stops working after 5 attempts that ended before both people confirmed the number. An attempt the sender's page stopped because the two pages run different versions doesn't count.",
           "Nothing is stored, so a link works only while the sender's page is open. When it closes, our server forgets its links within a minute.",
         ],
@@ -1038,7 +1038,7 @@ export const en = {
       planned: {
         heading: "Planned: verified transfers",
         body: [
-          "Not built yet. The plan: the recipient signs a receipt with BankID before they can open the file, and the receipt names the file. The file key is split, and our server releases its half only after the receipt is signed. Events go into an audit log that makes tampering visible, anchored with trusted timestamps.",
+          "Not built yet. The plan: the recipient signs a receipt with BankID before they can open the file, and the receipt names the file. The key is split, and our server releases its half only after the receipt is signed. Events go into an audit log that makes tampering visible, anchored with trusted timestamps.",
           "When it ships, this page will describe it as a new mode.",
         ],
         link: [
@@ -1206,7 +1206,7 @@ export const en = {
         ],
         [
           "A link is opened twice, or by someone else after delivery",
-          "A link is refused once its file is delivered, and in a second tab while it is open in one.",
+          "A link is refused once its file is delivered, and in a second tab while one is connected to it.",
         ],
         [
           "An emailed link is forwarded or fetched by a mail scanner",
@@ -1230,7 +1230,7 @@ export const en = {
         ],
         [
           "You don't want your traffic through our relay",
-          "Untick the relay for that send. Our server then gives no relay credentials, and the sender's browser ends a relayed connection.",
+          "Untick the relay for that send. Our server then gives no relay credentials, and the sender's browser ends a relayed connection it sees.",
         ],
       ],
     },
@@ -1314,7 +1314,7 @@ export const en = {
             ],
             [
               "direct,relay",
-              "While our relay is available, it makes relay credentials for this pair of browsers, valid for 5 minutes, and sends them to both pages without keeping them.",
+              "While our relay is available, it makes relay credentials for this pair of browsers, with which a relay connection can start for 5 minutes, and sends them to both pages without keeping them.",
             ],
             [
               "email",
@@ -1369,7 +1369,7 @@ export const en = {
           lines: [
             [
               "",
-              "Short lines with a fixed list of fields: that a sender registered and how many links, that a recipient joined, the size of each setup message, and the route taken. A link shows only by its first 6 characters.",
+              "Short lines with a fixed list of fields: that a sender registered and how many links, that a recipient joined or was refused and why, the size of each setup message, and the route taken. A link shows only by its first 6 characters.",
             ],
             ["email", "Whether the email was sent, each code sent or refused, and a right code."],
             ["", "That a recipient left, and that your page closed, with how many links it had."],
@@ -1377,7 +1377,7 @@ export const en = {
               "direct,relay",
               "If our relay is available and the browsers still haven't connected 3 seconds after the recipient answers, they add the relay. That adds lines for about a dozen more setup messages, which hint that you allowed the relay.",
             ],
-            ["norelay", "If a relayed connection comes up anyway: that your page ended it."],
+            ["norelay", "If your page sees a relayed connection anyway: that it ended it."],
           ],
         },
         relay: {
@@ -1461,7 +1461,7 @@ export const en = {
             ],
             [
               "file",
-              "The file, where they save it: Chrome and Edge write it where the recipient chooses, other browsers to their downloads.",
+              "The file, where they save it: desktop Chromium browsers such as Chrome and Edge write it where the recipient chooses, other browsers to their downloads.",
             ],
             [
               "secret",
@@ -1534,10 +1534,10 @@ export const en = {
         ],
         [
           "A recipient opens their link",
-          "The link ID, a random attempt ID, and the recipient's IP address and browser details.",
+          "The link ID, a random attempt ID, and the recipient's IP address and browser details. If your page turns the recipient away, why: the link was already used, another page is connected to it, your page doesn't have that link, or your page ended the attempt.",
           "Which recipient page is paired with which link, in memory.",
           "That a recipient joined or was refused and why, with the first 6 characters of the link ID.",
-          "Nothing yet. If you allow the relay and it is available, our server gives the two pages credentials for it that expire after 5 minutes.",
+          "Nothing yet. If you allow the relay and it is available, our server gives the two pages credentials for it, with which a relay connection can start for 5 minutes.",
         ],
         [
           "The browsers set up the connection",
