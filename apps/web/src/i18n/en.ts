@@ -1369,7 +1369,7 @@ export const en = {
           lines: [
             [
               "",
-              "Short lines with a fixed list of fields: that a sender registered and how many links, that a recipient joined, the size of each setup message, and the route taken. A link shows only by its first 6 characters.",
+              "Short lines with a fixed list of fields: that a sender registered and how many links, that a recipient joined or was refused and why, the size of each setup message, and the route taken. A link shows only by its first 6 characters.",
             ],
             ["email", "Whether the email was sent, each code sent or refused, and a right code."],
             ["", "That a recipient left, and that your page closed, with how many links it had."],
@@ -1534,7 +1534,7 @@ export const en = {
         ],
         [
           "A recipient opens their link",
-          "The link ID, a random attempt ID, and the recipient's IP address and browser details.",
+          "The link ID, a random attempt ID, and the recipient's IP address and browser details. If your page turns the recipient away, why: the link was already used, another page is connected to it, your page doesn't have it, or your page ended the attempt.",
           "Which recipient page is paired with which link, in memory.",
           "That a recipient joined or was refused and why, with the first 6 characters of the link ID.",
           "Nothing yet. If you allow the relay and it is available, our server gives the two pages credentials for it, with which a relay connection can start for 5 minutes.",

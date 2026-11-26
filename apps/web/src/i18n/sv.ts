@@ -1325,7 +1325,7 @@ export const sv: Messages = {
           lines: [
             [
               "",
-              "Korta rader med en fast lista med fält: att en avsändare registrerade sig och hur många länkar, att en mottagare anslöt, storleken på varje uppkopplingsmeddelande och vilken väg anslutningen tog. En länk syns bara med sina 6 första tecken.",
+              "Korta rader med en fast lista med fält: att en avsändare registrerade sig och hur många länkar, att en mottagare anslöt eller nekades och varför, storleken på varje uppkopplingsmeddelande och vilken väg anslutningen tog. En länk syns bara med sina 6 första tecken.",
             ],
             [
               "email",
@@ -1500,7 +1500,7 @@ export const sv: Messages = {
         ],
         [
           "En mottagare öppnar sin länk",
-          "Länk-ID:t, ett slumpmässigt försöks-ID och mottagarens IP-adress och webbläsaruppgifter.",
+          "Länk-ID:t, ett slumpmässigt försöks-ID och mottagarens IP-adress och webbläsaruppgifter. Om din sida nekar mottagaren, varför: länken har redan använts, en annan sida är ansluten till den, din sida har inte länken eller din sida avbröt försöket.",
           "Vilken mottagarsida som är ihopkopplad med vilken länk, i minnet.",
           "Att en mottagare anslöt eller nekades och varför, med de 6 första tecknen i länk-ID:t.",
           "Ingenting än. Om du tillåter reläet och det är tillgängligt ger vår server de två sidorna inloggningsuppgifter till det, som en reläanslutning kan starta med i 5 minuter.",
