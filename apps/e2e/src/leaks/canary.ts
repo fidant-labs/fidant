@@ -186,11 +186,7 @@ export interface SampleRule {
 /** 0001's rule for nightly large files: the first and last MiB, and one MiB at every 64 MiB. */
 export const largeFileSamples: SampleRule = { piece: MiB, every: 64 * MiB };
 
-/**
- * The bytes `rule` samples from a file of `size` bytes, as runs `[offset, offset + length)`:
- * `piece` bytes at every multiple of `every`, and the last `piece` bytes, in order, cut at the
- * end of the file, with runs that overlap or touch joined into one.
- */
+/** The runs `[offset, offset + length)` that `rule` samples from `size` bytes, in order, joined where they overlap or touch. */
 export function sampledRanges(
   size: number,
   rule: SampleRule = largeFileSamples,
@@ -223,10 +219,7 @@ export interface LargeCanaryFile extends Omit<CanaryFile, "bytes"> {
   sha256: Buffer;
 }
 
-/**
- * Writes the canary that `canaryFile` would make from `random` to `dir`, under its name, a MiB at
- * a time, and keeps only the bytes `rule` samples.
- */
+/** Writes the canary `canaryFile` would make from `random` to `dir` under its name, a MiB at a time, keeping only the bytes `rule` samples. */
 export async function writeLargeCanary(
   random: SeededRandom,
   dir: string,

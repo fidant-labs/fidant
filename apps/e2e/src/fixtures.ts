@@ -467,10 +467,10 @@ export const delivered = (sender: Page, name: string) =>
     .filter({ hasText: name })
     .getByText(`Delivered through ${name}'s link`);
 
-/** Chooses a file the send page accepts, then waits for the page to move focus to "Your name" a frame later, which would otherwise take the text of a field being filled. */
+/** Chooses a file the send page accepts, by its path or as name, type and bytes, then waits for the page to move focus to "Your name" a frame later, which would otherwise take the text of a field being filled. */
 export async function chooseFile(
   page: Page,
-  file: { name: string; mimeType: string; buffer: Buffer },
+  file: string | { name: string; mimeType: string; buffer: Buffer },
 ): Promise<void> {
   const input = page.getByLabel("Choose a file");
   await input.focus();
@@ -531,6 +531,48 @@ export function breakableSender() {
       out();
     }
   } as RTCDataChannel["send"];
+}
+
+/**
+ * Runs in the recipient page through addInitScript, so it may use nothing from this module. A
+ * save dialog that does what `globalThis.pick` says: `cancel` closes it, `refuse` is denied, `fail`
+ * picks a file whose second write runs out of space, and anything else picks a file that takes
+ * every write. Each write it takes adds its bytes to `globalThis.written`, and each call is logged
+ * to `globalThis.saved`, starting with the dialog itself (`pick`).
+ */
+export function fakeSavePicker() {
+  const g = globalThis as {
+    pick?: string;
+    saved?: string[];
+    written?: number;
+    showSaveFilePicker?: unknown;
+  };
+  const log = (call: string) => g.saved?.push(call);
+  g.showSaveFilePicker = async () => {
+    log("pick");
+    const mode = g.pick;
+    if (mode === "cancel") {
+      throw new DOMException("The user aborted a request.", "AbortError");
+    }
+    if (mode === "refuse") {
+      throw new DOMException("Not allowed.", "NotAllowedError");
+    }
+    let writes = 0;
+    return {
+      createWritable: async () => ({
+        write: async (data: Uint8Array) => {
+          log("write");
+          if (mode === "fail" && ++writes === 2) {
+            throw new DOMException("No space left.", "QuotaExceededError");
+          }
+          g.written = (g.written ?? 0) + data.byteLength;
+        },
+        close: async () => log("close"),
+        abort: async () => log("abort"),
+      }),
+      remove: async () => log("remove"),
+    };
+  };
 }
 
 /** Lets `context`'s pages at `origin` read and write the clipboard, with the permissions each engine has. Playwright's Firefox needs none. */

@@ -9,6 +9,7 @@ import {
   chooseFile,
   delivered,
   expect,
+  fakeSavePicker,
   test as harness,
   type Leaks,
   makeName,
@@ -775,41 +776,6 @@ test("a recipient who leaves mid-download returns the sender's card to waiting",
   expect(sha256Hex(bytes)).toBe(sha256Hex(file.bytes));
   await expect(delivered(sender, name)).toBeAttached();
 });
-
-/**
- * Runs in the recipient page through addInitScript, so it may use nothing from this module. A
- * save dialog that does what `globalThis.pick` says: `cancel` closes it, `refuse` is denied, `fail`
- * picks a file whose second write runs out of space, and anything else picks a file that takes
- * every write. Each call is logged to `globalThis.saved`, starting with the dialog itself (`pick`).
- */
-function fakeSavePicker() {
-  const g = globalThis as { pick?: string; saved?: string[]; showSaveFilePicker?: unknown };
-  const log = (call: string) => g.saved?.push(call);
-  g.showSaveFilePicker = async () => {
-    log("pick");
-    const mode = g.pick;
-    if (mode === "cancel") {
-      throw new DOMException("The user aborted a request.", "AbortError");
-    }
-    if (mode === "refuse") {
-      throw new DOMException("Not allowed.", "NotAllowedError");
-    }
-    let writes = 0;
-    return {
-      createWritable: async () => ({
-        write: async () => {
-          log("write");
-          if (mode === "fail" && ++writes === 2) {
-            throw new DOMException("No space left.", "QuotaExceededError");
-          }
-        },
-        close: async () => log("close"),
-        abort: async () => log("abort"),
-      }),
-      remove: async () => log("remove"),
-    };
-  };
-}
 
 test("a recipient's save dialog can be cancelled, refused or fail without saving a partial file", async ({
   demo,
