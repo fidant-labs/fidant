@@ -51,7 +51,8 @@
 //   number before anything about the file, and receiveFile holds the offer
 //   until the recipient said it matches and the sender's page said so too.
 //   Either side saying it differs ends the attempt as "differed"; "Try again"
-//   makes a new connection with a new number.
+//   makes a new connection with a new number. The recipient saying it
+//   differs discards any part a lost connection kept.
 // - When the data channel opens, receiveFile runs the transfer. The offer
 //   screen resolves its decision with a Sink (Download or Show) or undefined
 //   (Decline). Show always collects a text in memory, never in a save dialog.
@@ -61,7 +62,9 @@
 // get "in use" instead of the sender's answer. After DECLINE or RECEIPT the
 // peer stays up for a moment so that frame reaches the sender, which closes
 // the channel itself. "Try again" starts a fresh attempt with a new socket and
-// a new peer.
+// a new peer, and hands it the part a lost connection kept (see
+// lib/receive-file.ts). Only an attempt that ends on the failed view keeps it,
+// and not one that ended as "differed" (keepsPart in lib/receive-problem.ts).
 //
 // The secret stays in this tab (it is never stripped from the address bar in
 // this demo). The file name and size, or the text, are shown, never logged or
@@ -90,9 +93,9 @@ import {
 import { deriveSignalKey } from "../lib/keys.ts";
 import { LINK_ID_BYTES, parseRecipientLocation } from "../lib/link.ts";
 import { createRecipientPeer, type OpenPath, type Peer, type PeerOpenInfo } from "../lib/peer.ts";
-import type { FileOffer } from "../lib/receive-file.ts";
+import type { FileOffer, Resumable } from "../lib/receive-file.ts";
 import { ReceiveError, receiveFile } from "../lib/receive-file.ts";
-import { peerLostProblem } from "../lib/receive-problem.ts";
+import { keepsPart, peerLostProblem, refusedProblem } from "../lib/receive-problem.ts";
 import { addRelay, type Kind, NO_RELAYS, type Tie } from "../lib/server-facts.ts";
 import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
 import {
@@ -161,7 +164,7 @@ type ProblemText = { title: string; body: string; detail?: string };
 
 type Offer = FileOffer & { text: boolean };
 
-type View =
+export type View =
   | { s: "connecting" }
   | { s: "verify"; to: string; asked: boolean; sending: boolean; result: CodeResult | undefined }
   | { s: "check"; number: string | undefined; said?: boolean }
@@ -184,12 +187,16 @@ type Attempt = {
   text: boolean;
   /** Set once the recipient accepted and the file started arriving. */
   receiving: boolean;
+  /** Set once the channel opened with a part an earlier attempt kept, until a different offer discards it. */
+  resuming?: boolean;
   /** The server said the sender is gone while the file was arriving. */
   hostGone: boolean;
   /** The sender refused our relay for this attempt, as the server's `joined` said. */
   relayRefused: boolean;
   /** Set once the attempt reached its final view. Later events are ignored. */
   ended: boolean;
+  /** The final view, set when finish() ends the attempt. */
+  ending?: View;
   /** Resolves the offer: a Sink to accept, undefined to decline. */
   decide?: ((sink: Sink | undefined) => void) | undefined;
   /** With the safety number on: resolves the recipient's own verdict. */
@@ -212,11 +219,25 @@ const MAX_REJOINS = 4;
 /** How long to wait before asking again after the server refuses with `starting`. */
 const STARTING_RETRY_MS = 1000;
 
+/**
+ * A state the dev panel (src/dev) puts the page in. While one is set the page connects to nothing,
+ * and each new one replaces the page's state in place, so the change shows as it would live.
+ */
+export type ReceivePreview = {
+  /** Left out, the page shows what a malformed link gets. */
+  view?: View;
+  emailed?: boolean;
+  path?: OpenPath;
+  tie?: Tie;
+};
+
 export function ReceivePage({
   onStatus,
+  preview,
 }: {
   /** Told "active" while a file or text is offered or arriving, which leaving the tab would lose, and "done" once it has arrived. */
   onStatus(status: TransferStatus): void;
+  preview?: ReceivePreview | undefined;
 }) {
   const { t, lang } = useI18n();
   const problemFor = (view: { problem: ProblemKey; text?: boolean }): ProblemText => {
@@ -225,12 +246,18 @@ export function ReceivePage({
       : t.receive.problems;
     return problems[view.problem];
   };
-  const link = useMemo(() => parseRecipientLocation(location), []);
+  const link = useMemo(
+    () =>
+      preview
+        ? preview.view && { linkId: "", secret: "", ...(preview.emailed && { mark: "" }) }
+        : parseRecipientLocation(location),
+    [preview],
+  );
   const [view, setView] = useState<View>({ s: "connecting" });
   const status: TransferStatus =
     view.s === "offer" || view.s === "receiving" ? "active" : view.s === "done" ? "done" : "idle";
   useEffect(() => onStatus(status), [onStatus, status]);
-  const downloading = view.s === "receiving";
+  const downloading = view.s === "receiving" && !preview;
   useEffect(() => {
     if (!downloading) {
       return;
@@ -247,6 +274,12 @@ export function ReceivePage({
   const [path, setPath] = useState<OpenPath | undefined>(undefined);
   const attemptRef = useRef<Attempt | undefined>(undefined);
   const codeAsked = useRef<string | undefined>(undefined);
+  const keptRef = useRef<Resumable | undefined>(undefined);
+  const discardKept = () => {
+    const kept = keptRef.current;
+    keptRef.current = undefined;
+    void kept?.sink.abort();
+  };
 
   /** Closes everything an attempt holds. `linger` keeps the peer up for a moment. */
   const release = (attempt: Attempt, linger = false) => {
@@ -265,7 +298,7 @@ export function ReceivePage({
   };
 
   const start = (rejoins = 0) => {
-    if (!link) {
+    if (!link || preview) {
       return;
     }
     const { linkId, secret, mark } = link;
@@ -302,6 +335,10 @@ export function ReceivePage({
         return;
       }
       release(attempt, linger);
+      attempt.ending = next;
+      if (!keepsPart(attempt)) {
+        discardKept();
+      }
       setView(
         attempt.text && (next.s === "refused" || next.s === "failed")
           ? { ...next, text: true }
@@ -543,7 +580,7 @@ export function ReceivePage({
             finish(
               message.reason === "drop"
                 ? { s: "failed", problem: lostMessage() }
-                : { s: "refused", problem: message.reason },
+                : refusedProblem(message.reason, keptRef.current !== undefined),
             );
           }
           break;
@@ -575,9 +612,25 @@ export function ReceivePage({
       if (!current()) {
         return;
       }
+      // receiveFile owns the kept part from here, so this attempt's own ending can't abort it while in use.
+      const resumable = keptRef.current;
+      keptRef.current = undefined;
+      if (resumable) {
+        attempt.resuming = true;
+      }
       attempt.channelOpen = true;
       let offered: Offer | undefined;
       let timeLeft: ReturnType<typeof etaTracker> | undefined;
+      const offerOf = (received: FileOffer): Offer => {
+        offered = { ...received, from: displayName(received.from), text: isTextOffer(received) };
+        attempt.text = offered.text;
+        return offered;
+      };
+      const startReceiving = (offer: Offer, bytes: number) => {
+        attempt.receiving = true;
+        timeLeft = etaTracker(offer.size);
+        setView({ s: "receiving", offer, bytes });
+      };
       const confirm = info.check
         ? new Promise<boolean>((resolve) => {
             attempt.confirm = resolve;
@@ -598,29 +651,28 @@ export function ReceivePage({
         attempt: attemptId,
         signal: attempt.abort.signal,
         ...(confirm && { confirm }),
+        ...(resumable && { resumable }),
         onOffer(received) {
+          attempt.resuming = false;
           return new Promise((resolve) => {
             if (!current()) {
               return;
             }
-            const offer: Offer = {
-              ...received,
-              from: displayName(received.from),
-              text: isTextOffer(received),
-            };
-            offered = offer;
-            attempt.text = offer.text;
+            const offer = offerOf(received);
             attempt.decide = (sink) => {
               attempt.decide = undefined;
               if (sink) {
-                attempt.receiving = true;
-                timeLeft = etaTracker(offer.size);
-                setView({ s: "receiving", offer, bytes: 0 });
+                startReceiving(offer, 0);
               }
               resolve(sink);
             };
             setView({ s: "offer", offer });
           });
+        },
+        onResume(received, bytes) {
+          if (current()) {
+            startReceiving(offerOf(received), bytes);
+          }
         },
         onProgress(bytes) {
           if (!current()) {
@@ -641,6 +693,13 @@ export function ReceivePage({
           }
         },
         (error: unknown) => {
+          const kept = error instanceof ReceiveError ? error.resumable : undefined;
+          // Not current(): a refusal or the grace timer can end the attempt as failed before this lands.
+          if (kept && attemptRef.current === attempt && keepsPart(attempt)) {
+            keptRef.current = kept;
+          } else {
+            void kept?.sink.abort();
+          }
           const reason = error instanceof ReceiveError ? error.reason : "connection";
           // RECEIPT went out for a mismatch: linger so it reaches the sender.
           if (reason === "checksum") {
@@ -659,8 +718,13 @@ export function ReceivePage({
     };
   };
 
-  // Runs once on mount; "Try again" calls start() again.
+  // Runs on mount, and again when a dev preview starts or ends. The cleanup
+  // closes the connection when a preview starts. Production never passes a
+  // preview. "Try again" calls start() again.
   useEffect(() => {
+    if (preview) {
+      return;
+    }
     start();
     // Once the page is really going, close the peer so the sender hears it now, not when ICE
     // consent runs out about 15 s later.
@@ -680,8 +744,21 @@ export function ReceivePage({
           attempt.peer?.close();
         }
       }
+      discardKept();
     };
-  }, []);
+  }, [preview === undefined]);
+
+  useEffect(() => {
+    if (!preview) {
+      return;
+    }
+    setView(preview.view ?? { s: "connecting" });
+    setPicking(false);
+    setReachedServer(true);
+    setTie(preview.tie ?? "closed");
+    setPath(preview.path);
+    setViaRelay(preview.path === "relay");
+  }, [preview]);
 
   // Each step replaces the button that had focus, so focus moves to the new step's heading.
   const firstView = useRef(true);
@@ -740,6 +817,9 @@ export function ReceivePage({
       return;
     }
     attempt.saidDiffers = !matches;
+    if (!matches) {
+      discardKept();
+    }
     attempt.confirm(matches);
     attempt.confirm = undefined;
     setView({ ...view, said: matches });

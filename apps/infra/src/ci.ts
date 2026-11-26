@@ -84,6 +84,13 @@ export class CiStack extends Stack {
           resources: [`arn:aws:s3:::${pagesBucket(this.account)}/*`],
           conditions: { StringEquals: { "s3:ResourceAccount": this.account } },
         }),
+        new iam.PolicyStatement({
+          actions: ["cloudformation:DescribeStacks"],
+          resources: [
+            `arn:aws:cloudformation:${this.region}:${this.account}:stack/FidantSignal/*`,
+            `arn:aws:cloudformation:us-east-1:${this.account}:stack/FidantPages/*`,
+          ],
+        }),
       ]) {
         release.addToPolicy(statement);
       }

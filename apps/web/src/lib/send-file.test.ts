@@ -5,6 +5,7 @@ import {
   decodeCheck,
   decodeInit,
   decodeMeta,
+  encodeAccept,
   encodeCheck,
   encodeCredit,
   type FileMeta,
@@ -56,8 +57,14 @@ const WINDOW = 8;
 /**
  * A fake open data channel whose far end is a scripted recipient using the
  * real frame code. Messages are delivered asynchronously, like a real channel.
+ * It accepts at `resume.offset`, holding the chunks of `resume.held` before it,
+ * and closes the channel if a frame fails its checks.
  */
-function fakeChannel(secret: string, behaviour: Behaviour) {
+function fakeChannel(
+  secret: string,
+  behaviour: Behaviour,
+  resume: { offset: number; held?: Uint8Array } = { offset: 0 },
+) {
   const target = new EventTarget();
   const received: {
     meta?: FileMeta;
@@ -129,12 +136,18 @@ function fakeChannel(secret: string, behaviour: Behaviour) {
     if (frame.kind === SenderKind.META) {
       received.meta = decodeMeta(frame.body);
       verifier.meta(received.meta);
+      const { chunkSize } = received.meta;
+      for (let offset = 0; resume.held && offset < resume.offset; offset += chunkSize) {
+        const body = new Uint8Array(chunkSize);
+        body.set(resume.held.subarray(offset, offset + chunkSize));
+        verifier.chunk(body);
+      }
       if (behaviour === "close-after-meta") {
         close();
       } else if (behaviour === "decline") {
         await reply(RecipientKind.DECLINE, new Uint8Array());
       } else {
-        await reply(RecipientKind.ACCEPT, new Uint8Array());
+        await reply(RecipientKind.ACCEPT, encodeAccept(resume.offset));
         if (behaviour !== "no-credit") {
           await grant(behaviour === "stingy" ? 1 : WINDOW);
         }
@@ -173,6 +186,7 @@ function fakeChannel(secret: string, behaviour: Behaviour) {
       }
       const copy = data.slice();
       incoming = incoming.then(() => handle(copy));
+      incoming.catch(close);
     },
     addEventListener: target.addEventListener.bind(target) as FrameChannel["addEventListener"],
     removeEventListener: target.removeEventListener.bind(
@@ -369,6 +383,46 @@ test("never sends more CHUNKs than the recipient granted", async () => {
   assert.deepEqual(result, { type: "receipt", match: true });
   assert.equal(fake.received.chunkFrames.length, 11);
   assert.equal(fake.received.overdrawn, 0);
+});
+
+test("continues from ACCEPT's offset: only the remaining CHUNKs, then END with the whole file's checksum", async () => {
+  const { secret } = createLink("https://localhost");
+  const bytes = new Uint8Array(randomBytes(5 * MAX_CHUNK_BYTES + 7));
+  const chunks = paddedLength(bytes.length) / MAX_CHUNK_BYTES;
+  const offset = 2 * MAX_CHUNK_BYTES;
+  const fake = fakeChannel(secret, "accept", { offset, held: bytes });
+  const o = options(fake.channel, secret, bytes);
+  assert.deepEqual(await sendFile(o.value), { type: "receipt", match: true });
+  await fake.done();
+  assert.equal(fake.received.chunkFrames.length, chunks - 2);
+  assert.equal(fake.received.bytes, bytes.length - offset);
+  assert.equal(o.progress[0], offset, "progress starts at the offset");
+  assert.equal(o.progress.at(-1), bytes.length);
+});
+
+test("an offset at the padded length sends END only", async () => {
+  const { secret } = createLink("https://localhost");
+  const bytes = new Uint8Array(randomBytes(3 * MAX_CHUNK_BYTES + 7));
+  const offset = paddedLength(bytes.length);
+  const fake = fakeChannel(secret, "accept", { offset, held: bytes });
+  const result = await sendFile(options(fake.channel, secret, bytes).value);
+  await fake.done();
+  assert.deepEqual(result, { type: "receipt", match: true });
+  assert.deepEqual(fake.received.kinds, [SenderKind.INIT, SenderKind.META, SenderKind.END]);
+});
+
+test("refuses an offset off a chunk boundary or past the padded length, and sends no CHUNK", async () => {
+  const bytes = new Uint8Array(randomBytes(3 * MAX_CHUNK_BYTES + 7));
+  const padded = paddedLength(bytes.length);
+  for (const offset of [1, MAX_CHUNK_BYTES - 1, MAX_CHUNK_BYTES + 1, padded + MAX_CHUNK_BYTES]) {
+    const { secret } = createLink("https://localhost");
+    const fake = fakeChannel(secret, "accept", { offset });
+    const o = options(fake.channel, secret, bytes);
+    await assert.rejects(sendFile(o.value), /ACCEPT offset/, `offset ${offset}`);
+    await fake.done();
+    assert.deepEqual(fake.received.kinds, [SenderKind.INIT, SenderKind.META], `offset ${offset}`);
+    assert.equal(o.wasAccepted(), false);
+  }
 });
 
 test("a CREDIT after END is accepted", async () => {

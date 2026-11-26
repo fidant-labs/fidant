@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { buttonVariants } from "#components/ui/button";
 import { HowPage, howStep } from "./how/HowPage.tsx";
 import type { Messages } from "./i18n/en.ts";
@@ -8,8 +8,8 @@ import { InfoPage } from "./info/InfoPage.tsx";
 import { LandingPage } from "./landing/LandingPage.tsx";
 import { faviconHref, overallStatus, type TransferStatus } from "./lib/favicon.ts";
 import { PrivacyPage } from "./privacy/PrivacyPage.tsx";
-import { ReceivePage } from "./receive/ReceivePage.tsx";
-import { SendPage } from "./send/SendPage.tsx";
+import { ReceivePage, type ReceivePreview } from "./receive/ReceivePage.tsx";
+import { SendPage, type SendPreview } from "./send/SendPage.tsx";
 import { pageUrl } from "./site-files.ts";
 import { applyTheme, type Theme } from "./theme.ts";
 import {
@@ -101,12 +101,21 @@ export function App({
   secure,
   theme: startTheme,
   prerender,
+  preview,
 }: {
   /** Web Crypto is available, so the send and receive pages can run. */
   secure: boolean;
   theme: Theme;
   /** Rendered at build time for this path: the send forms stay inert until the app takes over. */
   prerender?: string;
+  /** The state each transfer page is put in. Only the dev panel (src/dev) passes it. */
+  preview?: {
+    send?: SendPreview;
+    secret?: SendPreview;
+    receive?: ReceivePreview;
+    /** The page whose state was picked last. */
+    page?: "send" | "secret" | "receive";
+  };
 }) {
   const { t, lang } = useI18n();
   // The path, not just the route, so moving between /how steps renders the new step. On /how pages
@@ -128,8 +137,6 @@ export function App({
   const [place, setPlace] = useState<Place>(() =>
     prerender === undefined ? where() : { path: prerender, hash: "" },
   );
-  const { path } = place;
-  const route = routeOf(path);
   const [theme, setTheme] = useState(startTheme);
   const chooseTheme = (next: Theme) => {
     applyTheme(next);
@@ -142,6 +149,27 @@ export function App({
   const sendOpen = sendStatus === "active";
   const secretOpen = secretStatus === "active";
   const receiveOpen = receiveStatus === "active";
+  // One send at a time: while a file or a secret is on its way, both modes' addresses lead to it.
+  const lockedTo = sendOpen === secretOpen ? undefined : sendOpen ? "/send" : "/secret";
+  const path =
+    lockedTo &&
+    (place.path === "/send" || place.path === "/secret") &&
+    // The dev panel shows the page it picked, whatever the other one holds.
+    place.path !== `/${preview?.page}`
+      ? lockedTo
+      : place.path;
+  const route = routeOf(path);
+  // Before paint, so the address never shows the mode that didn't open.
+  useLayoutEffect(() => {
+    if (path !== place.path) {
+      history.replaceState(
+        history.state,
+        "",
+        localizedPath(path === "/secret" ? SECRET_HREF : "/send", lang),
+      );
+      setPlace(where());
+    }
+  }, [path, place]);
   const status = overallStatus([sendStatus, secretStatus, receiveStatus]);
   useEffect(() => {
     document
@@ -231,17 +259,27 @@ export function App({
         {!secure && holdsTransfer && <InsecurePage />}
         {secure && kept.current.has("receive") && (
           <div id="receive" hidden={route !== "receive"}>
-            <ReceivePage onStatus={setReceiveStatus} />
+            <ReceivePage onStatus={setReceiveStatus} preview={preview?.receive} />
           </div>
         )}
         {secure && kept.current.has("send") && (
           <div hidden={route !== "send"} inert={prerender !== undefined}>
-            <SendPage kind="file" onStatus={setSendStatus} />
+            <SendPage
+              kind="file"
+              onStatus={setSendStatus}
+              preview={preview?.send}
+              shown={route === "send"}
+            />
           </div>
         )}
         {secure && kept.current.has("secret") && (
           <div hidden={route !== "secret"} inert={prerender !== undefined}>
-            <SendPage kind="text" onStatus={setSecretStatus} />
+            <SendPage
+              kind="text"
+              onStatus={setSecretStatus}
+              preview={preview?.secret}
+              shown={route === "secret"}
+            />
           </div>
         )}
       </div>

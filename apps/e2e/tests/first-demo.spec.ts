@@ -9,6 +9,7 @@ import {
   chooseFile,
   delivered,
   expect,
+  fakeSavePicker,
   test as harness,
   type Leaks,
   makeName,
@@ -232,7 +233,6 @@ test("delivers a file to two recipients with a verified checksum", async ({
       /^data:image\/svg.*M9%2016\.5l5/,
     );
   }
-  await sender.getByText("Show details", { exact: true }).click();
   const cards = names.map((name) => recipientRow(sender, name));
   for (const scope of [...cards, ...received.map(({ page }) => page)]) {
     await expect(scope.getByText("Direct connection", { exact: true })).toBeVisible();
@@ -610,7 +610,7 @@ test("the Why? link to /how keeps a transfer alive on both pages", async ({
   await expect(delivered(sender, name)).toBeAttached();
 });
 
-test("a lost sender says whether the file may have been saved", async ({ demo, leaks, canary }) => {
+test("a lost sender says whether the download can continue", async ({ demo, leaks, canary }) => {
   const file = makeFile(leaks, canary, 100_001);
   const sender = await openSender(demo, file, "", (page) => page.addInitScript(breakableSender));
   const stall = (stalled: boolean) =>
@@ -644,7 +644,9 @@ test("a lost sender says whether the file may have been saved", async ({ demo, l
   const erik = await join("Erik", true);
   await cut();
   await expect(erik.getByText("The connection to the sender was lost")).toBeVisible();
-  await expect(erik.getByText("The file may not have been saved.")).toBeVisible();
+  await expect(
+    erik.getByText("Try again. The download continues where it stopped if it can."),
+  ).toBeVisible();
 
   // Mid-download, the sender's page closes. Its pagehide closes the peers, so the drop arrives
   // at once instead of when ICE consent expires (about 15 s).
@@ -654,7 +656,93 @@ test("a lost sender says whether the file may have been saved", async ({ demo, l
   await expect(bo.getByText("The file may not have been saved.")).toBeVisible();
 });
 
-test("a recipient who leaves mid-download returns the sender's card to waiting", async ({
+for (const dialog of [false, true]) {
+  test(`a transfer dropped halfway sends only the rest on Try again${dialog ? ", into the save dialog's file" : ""}`, async ({
+    demo,
+    leaks,
+    canary,
+  }) => {
+    const CHUNK = 2;
+    const CREDIT = 19;
+    // Its own padded length, so exactly 128 CHUNKs of 48 KiB and no padding.
+    const file = makeFile(leaks, canary, 6 * MiB);
+    const sender = await openSender(demo, file, "", (page) => page.addInitScript(breakableSender));
+    const name = makeName(leaks, canary, "Anna");
+    const link = await addRecipient(leaks, sender, name);
+    const card = recipientRow(sender, name);
+
+    const recipient = await demo.open("recipient");
+    await recipient.addInitScript(breakableSender);
+    if (dialog) {
+      await recipient.context().addInitScript(fakeSavePicker);
+    }
+    let downloads = 0;
+    recipient.on("download", () => downloads++);
+    const set = (page: Page, values: Record<string, unknown>) =>
+      page.evaluate((v) => {
+        Object.assign(globalThis, v);
+      }, values);
+    const sent = (page: Page, kind: number) =>
+      page.evaluate((k) => (globalThis as { sent?: Record<number, number> }).sent?.[k] ?? 0, kind);
+    const download = recipient.getByRole("button", { name: "Download" });
+    const downloading = recipient.getByRole("heading", { name: "Downloading…" });
+
+    await recipient.goto(link);
+    await set(sender, { stallAt: 64 });
+    await set(recipient, { pick: "ok", saved: [] });
+    await download.click();
+    await expect(downloading).toBeVisible();
+    // The recipient tops up its credit once it has written 64 CHUNKs, and the sender sends no more.
+    await expect.poll(() => sent(recipient, CREDIT), { timeout: 30_000 }).toBe(2);
+    expect(await sent(sender, CHUNK)).toBe(64);
+
+    await sender.evaluate(() => (globalThis as { cut?: () => void }).cut?.());
+    await expect(
+      recipient.getByText("Try again. The download continues where it stopped if it can."),
+    ).toBeVisible();
+    // Retrying before the sender sees the drop would find the link still busy.
+    await expect(
+      card.getByText(
+        `The transfer through ${name}'s link was interrupted. The link can be opened again to retry.`,
+      ),
+    ).toBeVisible();
+    await set(sender, { stalled: false });
+    // The resumed view shows before ACCEPT goes out, so holding it keeps that view up to check.
+    await set(recipient, { held: true });
+    const saving = dialog ? undefined : recipient.waitForEvent("download", { timeout: 60_000 });
+    await recipient.getByRole("button", { name: "Try again" }).click();
+    await expect(downloading).toBeVisible();
+    await expect(download).toHaveCount(0);
+    await expect
+      .poll(() =>
+        recipient
+          .getByRole("progressbar")
+          .evaluate((progress) => (progress as HTMLProgressElement).value),
+      )
+      .toBe(3 * MiB);
+    await recipient.evaluate(() => (globalThis as { release?: () => void }).release?.());
+
+    await expect(recipient.getByText("this is exactly the file that was sent")).toBeVisible({
+      timeout: 60_000,
+    });
+    await expect(delivered(sender, name)).toBeAttached();
+    // Sending the whole file again would make it 192.
+    expect(await sent(sender, CHUNK)).toBe(128);
+    if (saving) {
+      const bytes = await readFile(await (await saving).path());
+      expect(sha256Hex(bytes)).toBe(sha256Hex(file.bytes));
+    } else {
+      expect(await recipient.evaluate(() => (globalThis as { saved?: string[] }).saved)).toEqual([
+        "pick",
+        ...Array<string>(128).fill("write"),
+        "close",
+      ]);
+    }
+    expect(downloads, "browser downloads").toBe(dialog ? 0 : 1);
+  });
+}
+
+test("a recipient who leaves mid-download shows the sender's card as interrupted", async ({
   demo,
   leaks,
   canary,
@@ -680,9 +768,11 @@ test("a recipient who leaves mid-download returns the sender's card to waiting",
   // The receive page's pagehide closes its peer, so the sender notices at once instead of when
   // ICE consent expires (about 15 s).
   await first.close();
-  await expect(card.getByText(`Waiting for ${name}'s link to be opened`)).toBeVisible({
-    timeout: 3_000,
-  });
+  await expect(
+    card.getByText(
+      `The transfer through ${name}'s link was interrupted. The link can be opened again to retry.`,
+    ),
+  ).toBeVisible({ timeout: 3_000 });
 
   await stall(false);
   const second = await demo.open("recipient-2");
@@ -691,41 +781,6 @@ test("a recipient who leaves mid-download returns the sender's card to waiting",
   expect(sha256Hex(bytes)).toBe(sha256Hex(file.bytes));
   await expect(delivered(sender, name)).toBeAttached();
 });
-
-/**
- * Runs in the recipient page through addInitScript, so it may use nothing from this module. A
- * save dialog that does what `globalThis.pick` says: `cancel` closes it, `refuse` is denied, `fail`
- * picks a file whose second write runs out of space, and anything else picks a file that takes
- * every write. Each call is logged to `globalThis.saved`, starting with the dialog itself (`pick`).
- */
-function fakeSavePicker() {
-  const g = globalThis as { pick?: string; saved?: string[]; showSaveFilePicker?: unknown };
-  const log = (call: string) => g.saved?.push(call);
-  g.showSaveFilePicker = async () => {
-    log("pick");
-    const mode = g.pick;
-    if (mode === "cancel") {
-      throw new DOMException("The user aborted a request.", "AbortError");
-    }
-    if (mode === "refuse") {
-      throw new DOMException("Not allowed.", "NotAllowedError");
-    }
-    let writes = 0;
-    return {
-      createWritable: async () => ({
-        write: async () => {
-          log("write");
-          if (mode === "fail" && ++writes === 2) {
-            throw new DOMException("No space left.", "QuotaExceededError");
-          }
-        },
-        close: async () => log("close"),
-        abort: async () => log("abort"),
-      }),
-      remove: async () => log("remove"),
-    };
-  };
-}
 
 test("a recipient's save dialog can be cancelled, refused or fail without saving a partial file", async ({
   demo,
@@ -751,6 +806,9 @@ test("a recipient's save dialog can be cancelled, refused or fail without saving
   const tryAgain = recipient.getByRole("button", { name: "Try again" });
   const opened = card.getByText(`${name}'s link has been opened`);
   const waiting = card.getByText(`Waiting for ${name}'s link to be opened`);
+  const interrupted = card.getByText(
+    `The transfer through ${name}'s link was interrupted. The link can be opened again to retry.`,
+  );
   /** Clicks Download on the open offer with the dialog doing `mode`, after clearing the log. */
   const pick = async (mode: string) => {
     await expect(opened).toBeVisible();
@@ -786,7 +844,8 @@ test("a recipient's save dialog can be cancelled, refused or fail without saving
   await pick("fail");
   await problem("The file couldn't be saved", "Check that there's enough space on your disk.");
   expect(await saved()).toEqual(["pick", "write", "write", "abort", "remove"]);
-  await expect(waiting).toBeVisible();
+  // The sender had started sending, so the drop shows as interrupted.
+  await expect(interrupted).toBeVisible();
   await tryAgain.click();
 
   // Picked and written in full.
@@ -1067,14 +1126,16 @@ test.describe("a hostile path", () => {
 
     const card = recipientRow(sender, name);
     await expect(
-      card.getByText(`Ask ${name} to read the number on their screen. Does it match?`),
+      checkDialog(sender, name).getByText(
+        `Ask ${name} to read the number on their screen. Does it match?`,
+      ),
     ).toBeVisible({ timeout: 30_000 });
     await expect(recipient.getByText("Read this number to the sender.")).toBeVisible();
     const ours = await senderNumber(sender, name);
     const theirs = await recipientNumber(recipient);
     expect(theirs, "the recipient's number").not.toBe(ours);
 
-    await card.getByRole("button", { name: "It differs" }).click();
+    await checkDialog(sender, name).getByRole("button", { name: "It differs" }).click();
     await expect(card.getByText("The numbers didn't match, so nothing was sent.")).toBeVisible();
     await expect(
       recipient.getByRole("heading", { name: "The numbers didn't match" }),
@@ -1092,9 +1153,13 @@ test.describe("a hostile path", () => {
 
 const NUMBER = /^\d{3} \d{3}$/;
 
-/** The safety number on the sender's card for `name`, once it shows. */
+/** The sender's dialog that asks about the safety number for `name`. */
+const checkDialog = (sender: Page, name: string) =>
+  sender.getByRole("dialog", { name: `Safety number for ${name}` });
+
+/** The safety number in the sender's dialog for `name`, once it shows. */
 async function senderNumber(sender: Page, name: string): Promise<string> {
-  const number = recipientRow(sender, name).getByText(NUMBER);
+  const number = checkDialog(sender, name).getByText(NUMBER);
   await expect(number).toBeVisible({ timeout: 30_000 });
   return (await number.textContent()) ?? "";
 }
@@ -1157,12 +1222,12 @@ test.describe("safety number", () => {
     await expect(recipient.getByRole("heading", { name: "Safety number" })).toBeFocused();
     await expect(recipient.getByText("Read this number to the sender.")).toBeVisible();
     await expect(
-      recipientRow(sender, name).getByText(
+      checkDialog(sender, name).getByText(
         `Ask ${name} to read the number on their screen. Does it match?`,
       ),
     ).toBeVisible();
 
-    await recipientRow(sender, name).getByRole("button", { name: "It matches" }).click();
+    await checkDialog(sender, name).getByRole("button", { name: "It matches" }).click();
     await expect(
       recipientRow(sender, name).getByText("You said it matches. It goes once they confirm too."),
     ).toBeVisible();
@@ -1220,7 +1285,7 @@ test.describe("safety number", () => {
     ).toBeVisible();
   });
 
-  test("the sender answers from the keyboard: the card names the recipient, focus stays and the wait is announced", async ({
+  test("the sender answers from the keyboard: the dialog names the recipient, focus goes to the card and the wait is announced", async ({
     demo,
     leaks,
     canary,
@@ -1234,8 +1299,12 @@ test.describe("safety number", () => {
     const card = recipientRow(sender, name);
     expect(await card.locator("[role=status]:empty").count()).toBeGreaterThan(0);
 
-    await expect(card.getByRole("button", { name: `It differs for ${name}` })).toBeVisible();
-    await tabTo(sender, card.getByRole("button", { name: `It matches for ${name}` }));
+    const dialog = checkDialog(sender, name);
+    await expect(dialog.getByRole("button", { name: `It differs for ${name}` })).toBeVisible();
+    const matches = dialog.getByRole("button", { name: `It matches for ${name}` });
+    // The answer buttons are disabled for the dialog's first half second, and Tab skips them until then.
+    await expect(matches).toBeEnabled();
+    await tabTo(sender, matches);
     await sender.keyboard.press("Enter");
     await expect(card.locator("[data-status]")).toBeFocused();
     await expect(
@@ -1252,7 +1321,7 @@ test.describe("safety number", () => {
     const recipient = await demo.open("recipient");
     await recipient.goto(link);
     await sameNumber(sender, name, recipient);
-    await recipientRow(sender, name).getByRole("button", { name: "It differs" }).click();
+    await checkDialog(sender, name).getByRole("button", { name: "It differs" }).click();
     await expect(
       recipient.getByRole("heading", { name: "The numbers didn't match" }),
     ).toBeVisible();
@@ -1265,19 +1334,31 @@ test.describe("safety number", () => {
   test("two recipients each see their own number", async ({ demo, leaks, canary }) => {
     const sender = await openSender(demo, makeFile(leaks, canary, 10));
     const names = [makeName(leaks, canary, "Anna"), makeName(leaks, canary, "Erik")];
-    const pages: Page[] = [];
-    for (const [i, name] of names.entries()) {
-      const link = await addRecipient(leaks, sender, name, true);
-      const page = await demo.open(`recipient-${i + 1}`);
-      await page.goto(link);
-      pages.push(page);
+    // Both are added before either link is opened: the dialog is modal and shows one at a time.
+    const links: string[] = [];
+    for (const name of names) {
+      links.push(await addRecipient(leaks, sender, name, true));
     }
+    const pages: Page[] = [];
     const numbers: string[] = [];
     for (const [i, name] of names.entries()) {
-      numbers.push(await sameNumber(sender, name, pages[i] as Page));
+      const page = await demo.open(`recipient-${i + 1}`);
+      await page.goto(links[i] as string);
+      pages.push(page);
+      numbers.push(await sameNumber(sender, name, page));
+      // Put it off, so the dialog is free for the next recipient.
+      await checkDialog(sender, name).getByRole("button", { name: "Not now" }).click();
     }
     // Six digits from each connection's own fingerprints: a clash is one chance in a million.
     expect(numbers[0]).not.toBe(numbers[1]);
+    // Reopening a card's check shows that recipient's number again.
+    for (const [i, name] of names.entries()) {
+      await recipientRow(sender, name)
+        .getByRole("button", { name: `Compare number for ${name}` })
+        .click();
+      expect(await senderNumber(sender, name)).toBe(numbers[i]);
+      await checkDialog(sender, name).getByRole("button", { name: "Not now" }).click();
+    }
   });
 
   test("a recipient who reloads mid-check gets a new number on both sides", async ({
@@ -1342,11 +1423,12 @@ test.describe("safety number", () => {
     const expired = card.getByText("The safety number wasn't confirmed within 5 minutes");
 
     await sender.clock.fastForward(290_000);
-    await expect(card.getByText(number)).toBeVisible();
+    await expect(checkDialog(sender, name).getByText(number)).toBeVisible();
     await expect(expired).toHaveCount(0);
     await sender.clock.fastForward(10_000);
     await expect(expired).toBeVisible();
-    await expect(card.getByText(number)).toHaveCount(0);
+    await expect(checkDialog(sender, name)).toBeHidden();
+    await expect(sender.getByText(number)).toHaveCount(0);
     await expect(
       recipient.getByRole("heading", { name: "The connection to the sender was lost" }),
     ).toBeVisible();
@@ -1868,7 +1950,6 @@ test.describe("emailed links", () => {
     const bytes = await download(recipient, file);
     expect(sha256Hex(bytes)).toBe(sha256Hex(file.bytes));
     await expect(delivered(sender, name)).toBeAttached();
-    await sender.getByText("Show details", { exact: true }).click();
     await expect(verified).toBeVisible();
 
     // A reload joins with the tab's token, without a new code, and the sender refuses a used link.

@@ -1,5 +1,10 @@
 import { hash } from "node:crypto";
-import { type CanaryFile, defaultChunkSize, sizeIsCheckable } from "./canary.ts";
+import {
+  type CanaryFile,
+  defaultChunkSize,
+  type LargeCanaryFile,
+  sizeIsCheckable,
+} from "./canary.ts";
 
 /** The secret classes of 0001: content, metadata, keys and the server key half. */
 export type SecretClass = "C" | "M" | "K" | "S";
@@ -76,15 +81,30 @@ export function contentSecrets(label: string, bytes: Uint8Array): Secret[] {
 }
 
 /**
- * Everything a canary file must never leak: its bytes and their SHA-256 (C); the tokens in its
- * name and MIME type, the SHA-256 of its name, and its size when check (i) applies (M).
+ * Everything a canary file must never leak: its bytes, or a large file's sampled bytes, each
+ * sample on its own, and their SHA-256 (C); the tokens in its name and MIME type, the SHA-256 of
+ * its name, and its size when check (i) applies (M).
  */
 export function fileSecrets(
   label: string,
-  file: CanaryFile,
+  file: CanaryFile | LargeCanaryFile,
   options: FileSecretOptions = {},
 ): Secret[] {
-  const secrets: Secret[] = contentSecrets(label, file.bytes);
+  const secrets: Secret[] =
+    "bytes" in file
+      ? contentSecrets(label, file.bytes)
+      : [
+          ...file.samples
+            .filter(({ bytes }) => bytes.length >= minWindow)
+            .map(({ offset, bytes }) => ({
+              class: "C" as const,
+              label: `${label} at ${offset}`,
+              bytes,
+            })),
+          ...(file.size > 0
+            ? [{ class: "C" as const, label: `${label} sha256`, bytes: file.sha256 }]
+            : []),
+        ];
   secrets.push(
     tokenSecret("M", `${label} name`, file.token),
     tokenSecret("M", `${label} type`, file.mimeToken),

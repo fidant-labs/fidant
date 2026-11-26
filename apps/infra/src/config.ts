@@ -26,6 +26,9 @@ export function pagesBucket(account: string): string {
   return `fidant-pages-${account}`;
 }
 
+// Raise to make a new relay master; the task restarts with it.
+export const relayMasterGeneration = 1;
+
 // Copied by hand from ACM's certificate ARNs.
 export const certificateIds: { pages: Record<string, string>; signal: Record<string, string> } = {
   pages: {
@@ -93,6 +96,11 @@ export const boxAddress = "16.192.25.20";
 
 // Copied by hand from FidantApp's `Relay<Id>Ip` outputs, the way `boxAddress` is.
 export const relayAddresses: Record<string, string> = { sto: "13.51.1.111" };
+
+// Copied by hand from FidantSignal's LoadBalancerDnsName output.
+export const signalTargets: Record<string, string> = {
+  sto: "fidant-signal-1565593186.eu-north-1.elb.amazonaws.com",
+};
 
 // Copied by hand from `aws route53 list-hosted-zones --profile fidant-dns`; FidantDnssec signs these.
 export const hostedZoneIds: Record<string, string> = {

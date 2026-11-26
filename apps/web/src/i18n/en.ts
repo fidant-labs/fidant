@@ -312,33 +312,37 @@ export const en = {
     timeLeft: (duration: string) => `About ${duration} left`,
   },
   send: {
-    mode: { label: "What to send", file: "File", secret: "Secret" },
+    mode: {
+      label: "What to send",
+      file: "File",
+      secret: "Secret",
+      locked:
+        "One send at a time. You can switch when every link here has delivered, or when you remove them.",
+    },
     continue: "Continue",
     title: "Send a file",
     lede: "Choose a file, then create a link for each person. Your file is sent from this browser to them. It's encrypted the whole way and never uploaded or stored.",
     step: (n: number) => `Step ${n} of 2`,
     peopleHeading: "Create a link for each person",
     change: "Change",
-    fromSummary: (name: string) => `from ${name}`,
     connectionOptions: "Connection options",
     addEmail: "Create and email link",
     addEmailCheck: "Create and email link with safety number",
     share: "Share",
     shareFor: (name: string) => `Share link for ${name}`,
+    // No-break spaces keep the count on one line.
     sendingBar: (delivered: number, total: number) =>
-      `Sending from this tab · ${delivered} of ${total} delivered · keep it open`,
-    allDone: "Every link has delivered the file. You can close this tab.",
+      `${delivered}\u00a0of\u00a0${total}\u00a0delivered`,
+    keepOpen: "Keep the tab open",
+    // The bar shows these as two lines without full stops; a sentence built from them adds its own.
+    allDone: "Every link has delivered the file",
+    closeTab: "You can close this tab",
     notifyMe: "Notify me",
     notifyOn: "Notifications on",
     notifyBlocked: "Notifications blocked",
     summary: (done: number, total: number) => `${done} of ${total} links have delivered the file`,
     delivered: "Delivered",
     doneTitle: "All delivered",
-    doneOne: (name: string) => `The file arrived intact through ${name}'s link.`,
-    doneMany: (n: number) => `The file arrived intact through all ${n} links.`,
-    closeTab: "You can close this tab.",
-    sendMore: "Send to someone else",
-    showDetails: "Show details",
     localhost:
       "This page is open on localhost, so the links won't work on other computers. Open the network address the server printed instead.",
     lostServer:
@@ -368,6 +372,7 @@ export const en = {
     readFailed: "Couldn't read the file. Choose it again.",
     hashPending: "Not ready yet",
     locked: "Remove everyone to change your name or file.",
+    lockedDelivered: "Reload the page to change your name or file.",
     recipientLabel: "Who is it for?",
     recipientPlaceholder: "Their name",
     add: "Create link",
@@ -385,12 +390,15 @@ export const en = {
     check: {
       hint: (kind: Kind) =>
         `With a safety number, you compare 6 digits with them by phone or in person before ${items[kind].the} is sent, so you know nobody is in between.`,
-      number: "Safety number",
       ask: (name: string) => `Ask ${name} to read the number on their screen. Does it match?`,
       matches: "It matches",
       differs: "It differs",
       matchesFor: (name: string) => `It matches for ${name}`,
       differsFor: (name: string) => `It differs for ${name}`,
+      titleFor: (name: string) => `Safety number for ${name}`,
+      later: "Not now",
+      compare: "Compare number",
+      compareFor: (name: string) => `Compare number for ${name}`,
       waiting: "You said it matches. It goes once they confirm too.",
       differed:
         "The numbers didn't match, so nothing was sent. Someone may have been in between. The link still works if you want to try again.",
@@ -403,6 +411,13 @@ export const en = {
     full: (max: number) => `You can send to up to ${max} people at a time.`,
     oneLinkEach: "Each person gets their own link, which works once.",
     recipients: "Recipients",
+    steps: {
+      waiting: "Waiting",
+      checking: "Checking",
+      opened: "Opened",
+      receiving: "Receiving",
+      delivered: "Done",
+    },
     status: {
       waiting: (name: string) => `Waiting for ${name}'s link to be opened`,
       connecting: (name: string) => `Connecting through ${name}'s link…`,
@@ -412,6 +427,8 @@ export const en = {
         `${name}'s link was opened and the file was declined. The link still works.`,
       receiving: (name: string) => `Sending through ${name}'s link`,
       delivered: (name: string) => `Delivered through ${name}'s link`,
+      interrupted: (name: string) =>
+        `The transfer through ${name}'s link was interrupted. The link can be opened again to retry.`,
       failed: (name: string) =>
         `The file didn't arrive intact through ${name}'s link. The link can be opened again to retry.`,
       senderOutdated: (name: string) =>
@@ -546,7 +563,11 @@ export const en = {
       },
       lostReceiving: {
         title: "The connection to the sender was lost",
-        body: "The file may not have been saved. Try again to make sure you get it.",
+        body: "Try again. The download continues where it stopped if it can.",
+      },
+      senderBusy: {
+        title: "This link is busy",
+        body: "The sender's page may not have noticed that the connection dropped, or the link is open in another tab. Close any other tab with this link, wait a moment and try again. The download continues where it stopped if it can.",
       },
       checksum: {
         title: "The file didn't arrive intact",
@@ -636,10 +657,9 @@ export const en = {
     },
     first: "Write or paste the secret first.",
     locked: "Remove everyone to change your name or secret.",
-    allDone: "Every link has delivered the secret. You can close this tab.",
+    lockedDelivered: "Reload the page to change your name or secret.",
+    allDone: "Every link has delivered the secret",
     summary: (done: number, total: number) => `${done} of ${total} links have delivered the secret`,
-    doneOne: (name: string) => `The secret arrived intact through ${name}'s link.`,
-    doneMany: (n: number) => `The secret arrived intact through all ${n} links.`,
     emailNotice:
       "Our server will see this link's key once, to write the email. It doesn't store or log the key, but our mail service and anyone who reads the email on its way can see the key too. The link, key included, stays in the recipient's mailbox: anyone who can read that mailbox could receive the secret. For this link, our server could also put itself between you and the recipient. To see if it does, create the link with a safety number and compare it with the recipient. Sending the link yourself avoids all of this.",
     // Only the statuses whose file wording would be wrong; the rest come from send.status.
@@ -951,17 +971,18 @@ export const en = {
           "INIT: the sender sends the transfer ID. It is the only frame not encrypted. Changing it changes the file key, so the next frame fails to decrypt. Replaying it in a later attempt doesn't work either, because the recipient's new attempt ID changes the key.",
           "CHECK: with the safety number on, each side's answer, encrypted, once the person on that side has compared the numbers: matches or differs. META waits for both answers.",
           "META: the file name, size and type and the sender's typed name, encrypted. The recipient sees them and chooses.",
-          "ACCEPT or DECLINE: the recipient's answer, encrypted. ACCEPT also proves that the recipient has the key. No file data is sent before it.",
+          "ACCEPT or DECLINE: the recipient's answer, encrypted. ACCEPT also says where to start: at the beginning, or after the part of the file a dropped connection left with the recipient. It proves that the recipient has the key. No file data is sent before it.",
           "CREDIT: how many chunks the sender may send, encrypted. The recipient grants 128 at a time and more as it writes them, so a slow recipient never has more than about 6 MiB waiting. A sender that gets further ahead than that is stopped.",
-          "CHUNK: the file in frames of equal size, up to 48 KiB each.",
-          "END: the file's exact size and the checksum computed when it was chosen.",
-          "RECEIPT: the checksum the recipient computed from what arrived. The sender counts the file as delivered only when it matches.",
+          "CHUNK: the file in frames of equal size, up to 48 KiB each, from where ACCEPT says.",
+          "END: the whole file's exact size and the checksum computed when it was chosen.",
+          "RECEIPT: the checksum the recipient computed from what arrived. The sender counts the file as delivered only when it matches. It isn't proof that the file arrived: END already carries the checksum, so a modified recipient's page, which has the key anyway, can skip every chunk and send the checksum back.",
         ],
       },
       check: {
         heading: "Checking the file",
         body: [
-          "The recipient's browser hashes the file as it arrives, and checks the size, the number of chunks, the padding and the checksum against END. Only when everything matches is the file kept. Any other ending, such as a frame that fails to decrypt or a connection that closes early, throws away what was written.",
+          "The recipient's browser hashes the file as it arrives, and checks the size, the number of chunks, the padding and the checksum against END. Only when everything matches is the file finished. A frame that fails to decrypt, a checksum that doesn't match or any other failed check throws away what was written.",
+          "A lost connection is different. If every frame so far checked out, the recipient's page keeps what arrived, in memory or in the file they chose to save to, and Try again continues from there. Try again makes a new connection with a new key. If the sender offers the same file again, with the same name, size, type, chunk size and sender's name, the page doesn't show the offer or a save dialog again. It tells the sender how much it already has, so only the rest is sent. With the safety number on, the number is still compared first. The checksum covers the whole file, so if the rest doesn't belong with what already arrived, the check fails. A different offer starts from the beginning, and so does a shared secret. Only that tab can continue it, and the page discards it if the transfer ends some other way. When the tab closes or reloads, what was in memory is gone. What the browser then does with an unfinished file from the save dialog hasn't been tested yet.",
           "Desktop Chromium browsers such as Chrome and Edge can write the file straight to a place on the disk the recipient chooses. Other browsers collect it in memory and start the download at the end, and for a file over 256 MiB the recipient is warned first. The download is always marked as plain binary data, whatever type the sender claims, so a file can't run as a web page on Fidant's site.",
           "Names are refused if they contain control characters, line separators, Unicode direction controls, blank filler characters or long runs of spaces. So a name ending in .exe can't be made to look like one ending in .pdf.",
         ],
@@ -969,9 +990,9 @@ export const en = {
       padding: {
         heading: "Hiding the exact size",
         body: [
-          "Anyone who can see the encrypted traffic, such as the networks on the way or our relay, sees how big the frames are. So the size is rounded up with the Padmé scheme, which adds at most 12 %, and then to whole chunks. Every chunk frame has the same size, and the padding is zeros that the recipient checks.",
+          "Anyone who can see the encrypted traffic, such as the networks on the way or our relay, sees how big the frames are. So the size is rounded up with the Padmé scheme, which adds at most 12 %, and then to whole chunks. Every chunk frame has the same size, and the padding is zeros that the recipient checks. A download that continues after a dropped connection sends only the rest, in frames of the same sizes, so someone who sees both attempts can add them up to at least the rounded size of one whole transfer, more by any chunks sent twice.",
           "The exact size travels only inside the encrypted META and END. META always has the same size, so the length of the file name doesn't show either.",
-          "A shared secret is at most 32 KiB, and every shared secret is padded to exactly one chunk. The app enforces this: if a connection only allows messages too small for a 32 KiB chunk, nothing is sent over it, and the sender sees that the secret wasn't sent. With every browser we tested in November 2026 (Chromium, Firefox and WebKit), the chunk is 48 KiB. So every shared secret looks the same on the wire, whatever its length, and the same as any file of up to 48 KiB.",
+          "A shared secret is at most 32 KiB, and every shared secret is padded to exactly one chunk. The app enforces this: if a connection only allows messages too small for a 32 KiB chunk, nothing is sent over it, and the sender sees that the secret wasn't sent. With every browser we tested in November 2026 (Chromium, Firefox and WebKit), the chunk is 48 KiB. So every shared secret looks the same on the wire, whatever its length, and the same as any file of up to 48 KiB sent in one attempt. A file whose download continues after a drop can need no chunk at all on the new attempt, which a shared secret never does, because it always starts over.",
         ],
       },
       travel: {
@@ -1005,7 +1026,7 @@ export const en = {
         body: [
           "One send can go to up to 256 people. Each has their own link, key, connection and transfer.",
           "A link counts as used only once the recipient's RECEIPT matches. After that it is refused. A link that is already connected in one tab is refused in another, and so is a link that has had 10 connection attempts in the current 30-second window.",
-          "Until then the link can be opened again: after a decline, a dropped connection or a failed check. Every new attempt has a new transfer ID and attempt ID, and so a new file key. A link with the safety number on stops working after 5 attempts that ended before both people confirmed the number. An attempt the sender's page stopped because the two pages run different versions doesn't count.",
+          "Until then the link can be opened again: after a decline, a dropped connection or a failed check. After a dropped connection, Try again in the same tab continues a file's download where it stopped if it can. Every new attempt has a new transfer ID and attempt ID, and so a new file key. A link with the safety number on stops working after 5 attempts that ended before both people confirmed the number. An attempt the sender's page stopped because the two pages run different versions doesn't count.",
           "Nothing is stored, so a link works only while the sender's page is open. When it closes, our server forgets its links within a minute.",
         ],
       },
@@ -1218,7 +1239,7 @@ export const en = {
         ],
         [
           "A piece of the file is changed, dropped, repeated or reordered",
-          "Every frame is authenticated and numbered, and the recipient checks the size and the SHA-256 checksum. Anything else stops the transfer and throws away what was written.",
+          "Every frame is authenticated and numbered, and the recipient checks the size and the SHA-256 checksum. A frame or a checksum that doesn't check out stops the transfer and throws away what was written.",
         ],
         [
           "A link is opened twice, or by someone else after delivery",
@@ -1482,6 +1503,10 @@ export const en = {
             [
               "file",
               "The file, where they save it: desktop Chromium browsers such as Chrome and Edge write it where the recipient chooses, other browsers to their downloads.",
+            ],
+            [
+              "file",
+              "If the connection drops while the file arrives: the part that arrived, in the page's memory or in the file they chose to save to, so that Try again can continue it. The page discards it if the transfer ends some other way. When the tab closes or reloads, what was in memory is gone; what the browser does with an unfinished file from the save dialog hasn't been tested yet.",
             ],
             [
               "secret",

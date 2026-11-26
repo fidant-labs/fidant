@@ -3,12 +3,14 @@ import { createHash, randomBytes } from "node:crypto";
 import { test } from "node:test";
 import {
   ChecksumMismatchError,
+  decodeAccept,
   decodeCheck,
   decodeCredit,
   decodeEnd,
   decodeHeader,
   decodeInit,
   decodeMeta,
+  encodeAccept,
   encodeCheck,
   encodeCredit,
   encodeEnd,
@@ -31,6 +33,7 @@ import {
   ReceiveVerifier,
   RecipientKind,
   SenderKind,
+  TAG_BYTES,
   VersionError,
 } from "./frames.ts";
 import { createTransferId, deriveFileKey } from "./keys.ts";
@@ -236,7 +239,7 @@ test("recipient frames round trip and seq starts at 0 in each direction", async 
   const reader = new FrameReader(key, "r");
   const receipt = randomBytes(32);
   const frames = [
-    await writer.encrypt(ACCEPT, new Uint8Array(0)),
+    await writer.encrypt(ACCEPT, encodeAccept(0)),
     await writer.encrypt(RECEIPT, receipt),
     await writer.encrypt(DECLINE, new Uint8Array(0)),
   ];
@@ -246,7 +249,7 @@ test("recipient frames round trip and seq starts at 0 in each direction", async 
   );
   assert.deepEqual(await reader.decrypt(frames[0] as Uint8Array), {
     kind: ACCEPT,
-    body: new Uint8Array(0),
+    body: new Uint8Array(8),
   });
   assert.deepEqual(await reader.decrypt(frames[1] as Uint8Array), {
     kind: RECEIPT,
@@ -276,6 +279,29 @@ test("CREDIT carries a u64 grant from the recipient only", async () => {
   assert.throws(() => decodeCredit(randomBytes(9)), /malformed/);
   // A u64 above 2^53 is refused rather than rounded.
   assert.throws(() => decodeCredit(new Uint8Array(8).fill(0xff)), /out of range/);
+});
+
+test("ACCEPT carries a u64 offset, always 8 bytes, from the recipient only", async () => {
+  const { key } = await setup();
+  const offset = MAX_PADDABLE_SIZE;
+  assert.deepEqual([...encodeAccept(0)], [0, 0, 0, 0, 0, 0, 0, 0]);
+  assert.throws(() => encodeAccept(-1));
+  assert.throws(() => encodeAccept(1.5));
+  const frame = await new FrameWriter(key, "r").encrypt(ACCEPT, encodeAccept(offset));
+  const { kind, body } = await new FrameReader(key, "r").decrypt(frame);
+  assert.equal(kind, ACCEPT);
+  assert.equal(decodeAccept(body), offset);
+
+  await assert.rejects(new FrameReader(key, "s").decrypt(frame), /not allowed/);
+  const r = new FrameWriter(key, "r");
+  for (const length of [0, 7, 9]) {
+    await assert.rejects(r.encrypt(ACCEPT, new Uint8Array(length)), /out of range/);
+    assert.throws(() => decodeAccept(new Uint8Array(length)), /malformed/);
+  }
+  const empty = new Uint8Array(HEADER_BYTES + TAG_BYTES);
+  empty.set(encodeHeader({ version: FRAME_VERSION, kind: ACCEPT, seq: 0 }));
+  await assert.rejects(new FrameReader(key, "r").decrypt(empty), /length out of range/);
+  assert.throws(() => decodeAccept(new Uint8Array(8).fill(0xff)), /out of range/);
 });
 
 test("CHECK carries one byte, 1 for matches and 0 for differs, in each direction", async () => {
@@ -377,13 +403,13 @@ test("kinds are enforced per direction", async () => {
   const { key } = await setup();
   const s = new FrameWriter(key, "s");
   const r = new FrameWriter(key, "r");
-  await assert.rejects(s.encrypt(ACCEPT, new Uint8Array(0)), /not allowed/);
+  await assert.rejects(s.encrypt(ACCEPT, encodeAccept(0)), /not allowed/);
   await assert.rejects(r.encrypt(CHUNK, randomBytes(1)), /not allowed/);
   // @ts-expect-error INIT is not an encrypted kind.
   await assert.rejects(s.encrypt(SenderKind.INIT, randomBytes(16)), /not allowed/);
 
   // A recipient frame fed to a sender-direction reader, and the reverse.
-  const accept = await new FrameWriter(key, "r").encrypt(ACCEPT, new Uint8Array(0));
+  const accept = await new FrameWriter(key, "r").encrypt(ACCEPT, encodeAccept(0));
   await assert.rejects(new FrameReader(key, "s").decrypt(accept), /not allowed/);
   const chunk = await new FrameWriter(key, "s").encrypt(CHUNK, randomBytes(1));
   await assert.rejects(new FrameReader(key, "r").decrypt(chunk), /not allowed/);

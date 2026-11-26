@@ -208,6 +208,17 @@ jobs:
           fi
 
           settled 1200
+          # An access error names the account, so its stderr goes nowhere.
+          if ! stack=$(aws cloudformation describe-stacks --stack-name FidantSignal --query 'Stacks[0].StackStatus' --output text 2>/dev/null); then
+            echo "::error::could not read FidantSignal's status"
+            exit 1
+          fi
+          case "$stack" in
+          *_IN_PROGRESS)
+            echo "::error::FidantSignal is $stack, so live does not move; re-run the newest release run, the one for production's tip, once the stack has settled"
+            exit 1
+            ;;
+          esac
           trap restore EXIT
           tag "imageDigest=$d" live
           if ! json=$(aws ecs update-service --cluster fidant --service fidant-signal --force-new-deployment --output json); then

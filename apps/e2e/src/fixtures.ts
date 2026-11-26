@@ -459,18 +459,13 @@ export function makeName(leaks: Leaks, canary: SeededRandom, first: string): str
 export const recipientRow = (sender: Page, name: string) =>
   sender.getByRole("list", { name: "Recipients" }).getByRole("listitem").filter({ hasText: name });
 
-/** Also finds the row once every link has delivered and the list sits folded under "Show details". */
 export const delivered = (sender: Page, name: string) =>
-  sender
-    .getByRole("list", { name: "Recipients", includeHidden: true })
-    .getByRole("listitem", { includeHidden: true })
-    .filter({ hasText: name })
-    .getByText(`Delivered through ${name}'s link`);
+  recipientRow(sender, name).getByText(`Delivered through ${name}'s link`);
 
-/** Chooses a file the send page accepts, then waits for the page to move focus to "Your name" a frame later, which would otherwise take the text of a field being filled. */
+/** Chooses a file the send page accepts, by its path or as name, type and bytes, then waits for the page to move focus to "Your name" a frame later, which would otherwise take the text of a field being filled. */
 export async function chooseFile(
   page: Page,
-  file: { name: string; mimeType: string; buffer: Buffer },
+  file: string | { name: string; mimeType: string; buffer: Buffer },
 ): Promise<void> {
   const input = page.getByLabel("Choose a file");
   await input.focus();
@@ -478,9 +473,26 @@ export async function chooseFile(
   await expect(page.getByLabel("Your name")).toBeFocused();
 }
 
-/** Runs in the page through addInitScript, so it may use nothing from this module: `cut()` closes the sender's peers, `stalled` stops its data channels sending. */
+/** Runs in the page through addInitScript, so it may use nothing from this module: `cut()` closes its peers, `stalled` (set after `stallAt` CHUNKs) drops what its channels send, `held` queues it for `release()`, and `sent` counts frames by kind. */
 export function breakableSender() {
-  const g = globalThis as { cut?: () => void; stalled?: boolean };
+  const g = globalThis as {
+    cut?: () => void;
+    stalled?: boolean;
+    stallAt?: number;
+    held?: boolean;
+    release?: () => void;
+    sent?: Record<number, number>;
+  };
+  const CHUNK = 2;
+  const sent: Record<number, number> = {};
+  const queue: Array<() => void> = [];
+  g.sent = sent;
+  g.release = () => {
+    g.held = false;
+    for (const flush of queue.splice(0)) {
+      flush();
+    }
+  };
   const peers: RTCPeerConnection[] = [];
   const Native = globalThis.RTCPeerConnection;
   globalThis.RTCPeerConnection = class extends Native {
@@ -496,10 +508,66 @@ export function breakableSender() {
   };
   const send = RTCDataChannel.prototype.send;
   RTCDataChannel.prototype.send = function (this: RTCDataChannel, ...args: unknown[]) {
-    if (!g.stalled) {
+    if (g.stalled) {
+      return;
+    }
+    const out = () => {
       Reflect.apply(send, this, args);
+      const [frame] = args;
+      const kind = frame instanceof Uint8Array ? (frame[1] ?? -1) : -1;
+      sent[kind] = (sent[kind] ?? 0) + 1;
+      if (kind === CHUNK && sent[kind] === g.stallAt) {
+        g.stalled = true;
+      }
+    };
+    if (g.held) {
+      queue.push(out);
+    } else {
+      out();
     }
   } as RTCDataChannel["send"];
+}
+
+/**
+ * Runs in the recipient page through addInitScript, so it may use nothing from this module. A
+ * save dialog that does what `globalThis.pick` says: `cancel` closes it, `refuse` is denied, `fail`
+ * picks a file whose second write runs out of space, and anything else picks a file that takes
+ * every write. Each write it takes adds its bytes to `globalThis.written`, and each call is logged
+ * to `globalThis.saved`, starting with the dialog itself (`pick`).
+ */
+export function fakeSavePicker() {
+  const g = globalThis as {
+    pick?: string;
+    saved?: string[];
+    written?: number;
+    showSaveFilePicker?: unknown;
+  };
+  const log = (call: string) => g.saved?.push(call);
+  g.showSaveFilePicker = async () => {
+    log("pick");
+    const mode = g.pick;
+    if (mode === "cancel") {
+      throw new DOMException("The user aborted a request.", "AbortError");
+    }
+    if (mode === "refuse") {
+      throw new DOMException("Not allowed.", "NotAllowedError");
+    }
+    let writes = 0;
+    return {
+      createWritable: async () => ({
+        write: async (data: Uint8Array) => {
+          log("write");
+          if (mode === "fail" && ++writes === 2) {
+            throw new DOMException("No space left.", "QuotaExceededError");
+          }
+          g.written = (g.written ?? 0) + data.byteLength;
+        },
+        close: async () => log("close"),
+        abort: async () => log("abort"),
+      }),
+      remove: async () => log("remove"),
+    };
+  };
 }
 
 /** Lets `context`'s pages at `origin` read and write the clipboard, with the permissions each engine has. Playwright's Firefox needs none. */
