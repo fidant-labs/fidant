@@ -189,7 +189,7 @@ export function connectSignaling({
       closedByClient = true;
       clearTimeout(retry);
       if (!socket || socket.readyState === WebSocket.CLOSED) {
-        // Waiting to retry: no close event will come.
+        // No live socket, or one that already failed: a late error or close event reports nothing.
         clearListeners();
       } else {
         socket.close(1000);

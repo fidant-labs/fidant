@@ -58,3 +58,14 @@ test("the entrypoint writes nothing without RELAY_MASTER and stops without RELAY
   assert.match(result.stderr, /RELAY_MASTER_FILE/);
   assert.ok(!result.stderr.includes(master));
 });
+
+test("a set but empty RELAY_MASTER is written, so the server refuses it instead of making a new master", () => {
+  const file = join(dir, "empty-master");
+  const out = execFileSync("sh", printMaster, {
+    env: { PATH, RELAY_MASTER: "", RELAY_MASTER_FILE: file },
+    encoding: "utf8",
+  });
+  assert.equal(out, "gone\n");
+  assert.equal(existsSync(file), true);
+  assert.throws(() => readOrCreateMaster(file), /64 lowercase hex/);
+});
