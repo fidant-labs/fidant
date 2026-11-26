@@ -5,10 +5,14 @@ import { runInNewContext } from "node:vm";
 import { signalName, signals, siteNames } from "./config.ts";
 
 const code = readFileSync(new URL("../edge/site.js", import.meta.url), "utf8");
-// CloudFront runs functions in strict mode.
-const site = runInNewContext(`"use strict";\n${code}\n;({ handler, PAGES })`, Object.create(null));
+// CloudFront runs functions in strict mode; every regex method calls exec, so any regex the function runs throws.
+const site = runInNewContext(
+  `"use strict";\nRegExp.prototype.exec = () => { throw new Error("site.js ran a regular expression"); };\n${code}\n;({ handler, PAGES, MOVED })`,
+  Object.create(null),
+);
 const handler = site.handler as (event: unknown) => unknown;
 const pages = [...(site.PAGES as string[])];
+const moved = { ...(site.MOVED as Record<string, string>) };
 
 type Fields = Record<string, { value: string; multiValue?: { value: string }[] }>;
 type Request = { method: string; uri: string; headers: Fields; querystring: Fields };
@@ -205,7 +209,7 @@ test("a path past 256 characters gets 414 with the headers on every host, before
   assert.deepEqual(response.headers, {});
 });
 
-test("the function uses no regular expression, whose limits CloudFront hits within 512 characters", () => {
+test("the function names no regex method, and every test runs it with a RegExp whose exec throws", () => {
   assert.doesNotMatch(
     code,
     /\.(?:test|exec|match|matchAll|replace|replaceAll|search)\(|RegExp|split\(\//,
@@ -213,7 +217,8 @@ test("the function uses no regular expression, whose limits CloudFront hits with
 });
 
 test("every page and moved path has serveStatic's page shape, which the function no longer checks", () => {
-  for (const path of [...pages, "/technical"]) {
+  assert.ok(Object.keys(moved).length > 0);
+  for (const path of [...pages, ...Object.keys(moved), ...Object.values(moved)]) {
     assert.match(path, /^(?:\/[a-z]+(?:-[a-z]+)*)*\/?$/, path);
   }
 });
@@ -345,6 +350,10 @@ test("/relay-secret/ passes only a relay id, unchanged, and anything else is a 4
     "/relay-secret/abcdefghijklmnopq",
     "/relay-secret/1sto",
     "/relay-secret/-sto",
+    "/relay-secret/sTo",
+    "/relay-secret/s-o",
+    "/relay-secret%5csto",
+    "/relay-secret%5Csto",
     "//relay-secret/sto",
     "/./relay-secret/sto",
     "/a/../relay-secret/sto",

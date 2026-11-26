@@ -1,7 +1,7 @@
 // cloudfront-js-2.0 has no ??, ?., spread, destructuring, default parameters, for...of, Set or Map.
 
 const SITE = "fidant.se";
-// CloudFront's regex limits stop a function on 512 characters, so this file uses none.
+// CloudFront's undocumented regex limits stopped this file on 512-character paths, so it uses none and caps them lower.
 const MAX_URI = 256;
 const LOWER = "abcdefghijklmnopqrstuvwxyz";
 const DIGITS = "0123456789";
@@ -135,7 +135,7 @@ function decide(uri) {
   if (ext !== "" && ext.toLowerCase() !== ".html") {
     return { kind: "file", uri: `/${file.map(encodeURIComponent).join("/")}`, ext: ext };
   }
-  // Every page and moved path is lowercase words joined by hyphens, so the list alone is serveStatic's rule.
+  // Every page and moved path is lowercase words joined by hyphens, so the list gives serveStatic's rule but for //.
   const bare = pathname.length > 1 && pathname.slice(-1) === "/" ? pathname.slice(0, -1) : pathname;
   const target = MOVED[bare] || bare;
   if (PAGES.includes(target) && (bare !== "/" || pathname === "/")) {
