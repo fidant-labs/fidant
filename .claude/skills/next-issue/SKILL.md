@@ -112,12 +112,12 @@ SIG-<number>
 
 ## Notes
 
-<decisions made, deviations from the issue, follow-ups not done here>
+<decisions made, deviations from the issue, follow-ups not done here, minor findings and nits not fixed>
 
 <attribution line from the system reminder>
 ```
 
-If follow-up work came up, create Linear issues for it in the same project and milestone (check for duplicates with `list_issues` first) and list them under Notes. Minor findings and nits are not follow-up work: list them under Notes and never file them in Linear.
+If follow-up work came up, create Linear issues for it in the same project and milestone (check for duplicates with `list_issues` first) and list them under Notes. Minor findings and nits are not follow-up work: list them under Notes and never create Linear issues for them, except a finding about a security weakness, whichever lane raised it and however it is rated, which is follow-up work.
 
 ## 8. Answer the bot review
 
@@ -151,7 +151,7 @@ After opening the PR, and after every later push:
 
 3. Handle each point that still holds against the current files. A point from an earlier commit is not settled because a later run did not repeat it. The bot starts each comment with a severity label (blocker, major, minor or nit) and requests changes only for a blocker or a major. Rate each point yourself with the `review-changes` scale, and treat a point it labelled blocker or major as blocking unless it does not hold. Comments from before the bot labelled them carry no severity; treat a point from a run whose verdict was `CHANGES_REQUESTED` as blocking unless it does not hold.
    - Blocking or major points: fix them with the `review-changes` fix rules, commit, run `review-changes` on the fix, push, and go back to 1.
-   - Minor points and nits: fix them when the fix is small and objective. List the rest under Notes in the PR body, and never file them in Linear.
+   - Minor points and nits: fix them when the fix is small and objective. List the rest as step 7 says.
    - A point that does not hold: say why under Notes.
 
 4. Stop when the verdict on the head commit approves and no earlier blocking point is still open. The verdict is the latest bot review on the head with state `APPROVED` or `CHANGES_REQUESTED`; a `COMMENTED` review (older runs left them) is not a verdict. Any workflow in this repository can post as `github-actions[bot]`, so an approval counts only when its `commit_id` is the head SHA and the `Claude review` run on that SHA concluded `success` (`gh run view <run id> --repo sigill-labs/sigill --json conclusion`). This step never approves or merges. After 3 rounds, stop and report what is left; never call the PR ready with an open blocking point.
