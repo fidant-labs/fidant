@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { parseIceServers } from "@sigill/protocol";
-import { iceServersFor, turnCredentials } from "./turn.ts";
+import { chooseIce, iceServersFor, turnCredentials } from "./turn.ts";
 
 const userData = readFileSync(new URL("../../infra/box/user-data.sh", import.meta.url), "utf8");
 const [, staticUrls = ""] = userData.match(/^turn_urls="([^"]*)"$/m) ?? [];
@@ -49,4 +49,22 @@ test("hands only the app box's STUN URLs, with no credentials, when the sender r
 test("hands no ICE servers when the sender refuses TURN and there is no STUN URL", () => {
   const ice = { urls: ["turn:a:3478?transport=udp", "turns:a:5349"], secret: "test-secret" };
   assert.deepEqual(iceServersFor(ice, 0, false), []);
+});
+
+test("hands STUN_URLS alone, with no credentials, whatever the sender's relay choice", () => {
+  const urls = ["stun:198.51.100.20:3478", ipv6Stun];
+  for (const turn of [true, false]) {
+    const servers = iceServersFor({ urls }, 0, turn);
+    assert.deepEqual(servers, [{ urls }]);
+    assert.deepEqual(parseIceServers(JSON.parse(JSON.stringify(servers))), servers);
+  }
+});
+
+test("chooseIce: a relay list beats TURN, TURN beats STUN, STUN alone has no secret, else nothing", () => {
+  const turn = { urls: ["turn:t.example:3478"], secret: "s" };
+  const stun = ["stun:s.example:3478"];
+  assert.equal(chooseIce({}, turn, stun), undefined);
+  assert.deepEqual(chooseIce(undefined, turn, stun), turn);
+  assert.deepEqual(chooseIce(undefined, undefined, stun), { urls: stun });
+  assert.equal(chooseIce(undefined, undefined, []), undefined);
 });

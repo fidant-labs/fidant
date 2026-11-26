@@ -83,9 +83,45 @@ export function connectSignaling({
     closeListeners.clear();
   };
 
-  const open = (): WebSocket => {
-    const next = new WebSocket(url);
+  const open = (): WebSocket | undefined => {
     let openedAt: number | undefined;
+    let ended = false;
+    const end = (code: number) => {
+      if (ended) {
+        return;
+      }
+      ended = true;
+      socket = undefined;
+      const info: SignalingClose = { code, byClient: closedByClient };
+      for (const listener of [...closeListeners]) {
+        listener(info);
+      }
+      if (closedByClient) {
+        clearListeners();
+        return;
+      }
+      const restart = code === SERVICE_RESTART;
+      if (restart || (openedAt !== undefined && Date.now() - openedAt >= STABLE_MS)) {
+        failures = 0;
+      } else {
+        failures++;
+      }
+      retry = setTimeout(
+        () => {
+          socket = open();
+        },
+        restart ? 0 : retryDelay(failures),
+      );
+    };
+
+    let next: WebSocket;
+    try {
+      // Firefox and WebKit throw here when a CSP blocks the URL, before the page has its listeners.
+      next = new WebSocket(url);
+    } catch {
+      retry = setTimeout(() => end(1006), 0);
+      return undefined;
+    }
 
     next.addEventListener("open", () => {
       openedAt = Date.now();
@@ -108,37 +144,18 @@ export function connectSignaling({
       }
     });
 
-    next.addEventListener("close", (event: CloseEvent) => {
-      const info: SignalingClose = { code: event.code, byClient: closedByClient };
-      for (const listener of [...closeListeners]) {
-        listener(info);
-      }
-      if (closedByClient) {
-        clearListeners();
-        return;
-      }
-      const restart = event.code === SERVICE_RESTART;
-      if (restart || (openedAt !== undefined && Date.now() - openedAt >= STABLE_MS)) {
-        failures = 0;
-      } else {
-        failures++;
-      }
-      retry = setTimeout(
-        () => {
-          socket = open();
-        },
-        restart ? 0 : retryDelay(failures),
-      );
-    });
+    // Once per socket: Chromium reports a CSP block with error and no close.
+    next.addEventListener("error", () => end(1006));
+    next.addEventListener("close", (event: CloseEvent) => end(event.code));
 
     return next;
   };
 
-  let socket = open();
+  let socket: WebSocket | undefined = open();
 
   return {
     send(message) {
-      if (socket.readyState !== WebSocket.OPEN) {
+      if (!socket || socket.readyState !== WebSocket.OPEN) {
         return false;
       }
       socket.send(JSON.stringify(message));
@@ -171,8 +188,8 @@ export function connectSignaling({
       }
       closedByClient = true;
       clearTimeout(retry);
-      if (socket.readyState === WebSocket.CLOSED) {
-        // Waiting to retry: no close event will come.
+      if (!socket || socket.readyState === WebSocket.CLOSED) {
+        // No live socket, or one that already failed: a late error or close event reports nothing.
         clearListeners();
       } else {
         socket.close(1000);
