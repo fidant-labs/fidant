@@ -5,7 +5,7 @@
 //   sender → recipient   INIT(transferId)                     plaintext
 //   both directions      CHECK(matches)                       only with the safety number on
 //   sender → recipient   META{name, size, type, chunkSize, from}  → onOffer, user decides
-//   recipient → sender   ACCEPT  (or DECLINE: stop here)
+//   recipient → sender   ACCEPT(0)  (or DECLINE: stop here)
 //   recipient → sender   CREDIT(granted)                      after ACCEPT, then as chunks are written
 //   sender → recipient   CHUNK × n                            verified, file bytes to the sink
 //   sender → recipient   END(sha256, size)                    checked against what arrived
@@ -40,6 +40,7 @@ import {
   ChecksumMismatchError,
   decodeInit,
   decodeMeta,
+  encodeAccept,
   encodeCredit,
   FRAME_VERSION,
   type Frame,
@@ -217,8 +218,11 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
     );
     const answer = async (): Promise<Sink | undefined> => {
       const chosen = await abortable(decision, signal);
-      const kind = chosen ? RecipientKind.ACCEPT : RecipientKind.DECLINE;
-      send(await writer.encrypt(kind, new Uint8Array()));
+      send(
+        await (chosen
+          ? writer.encrypt(RecipientKind.ACCEPT, encodeAccept(0))
+          : writer.encrypt(RecipientKind.DECLINE, new Uint8Array())),
+      );
       return chosen;
     };
     const chosen = await Promise.race([answer(), early]);

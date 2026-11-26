@@ -1,7 +1,7 @@
 // Data channel framing and per-frame encryption.
 //
 // Frame  = header(10) || body
-// Header = version(1) = 3 || kind(1) || seq(8, u64 big-endian). Plaintext, and
+// Header = version(1) = 4 || kind(1) || seq(8, u64 big-endian). Plaintext, and
 //          the AES-GCM additional data of its frame.
 // Body   = AES-GCM-256(fileKey, iv, aad = header, plaintext body), 16-byte tag
 //          appended. Only INIT is sent in clear.
@@ -19,12 +19,13 @@
 // |      |         |     | after the end of the file (see Padding)          |
 // |    3 | END     |  s  | sha256(32) || size(8, u64 big-endian)            |
 // |    4 | CHECK   |  s  | 1 byte: 1 the safety number matches, 0 it differs |
-// |   16 | ACCEPT  |  r  | empty (proves the recipient holds the key)       |
+// |   16 | ACCEPT  |  r  | offset(8, u64 big-endian): CHUNK bytes already   |
+// |      |         |     | held, 0 for a new transfer (see Resuming)        |
 // |   17 | RECEIPT |  r  | sha256(32) the recipient computed                |
 // |   18 | DECLINE |  r  | empty                                            |
 // |   19 | CREDIT  |  r  | granted(8, u64 big-endian): cumulative count of  |
 // |      |         |     | CHUNKs the sender may send; it may send CHUNK i  |
-// |      |         |     | (0-based) only while i < granted                 |
+// |      |         |     | (0-based from the offset) only while i < granted |
 // |   20 | CHECK   |  r  | 1 byte: 1 the safety number matches, 0 it differs |
 //
 // CHECK: with the safety number on, each side's first frame after INIT is its CHECK,
@@ -39,6 +40,12 @@
 // and checks that the padding is zeros. chunkSize and so the CHUNK frame size
 // depends on the data channel's max message size, which observers see anyway.
 //
+// Resuming: ACCEPT's offset is the CHUNK data (padding included) the recipient
+// already holds from an earlier attempt of the same file. The sender refuses an
+// offset that is not a multiple of chunkSize or lies past the padded length, and
+// otherwise sends the CHUNKs from there on. CREDIT counts only this attempt's
+// CHUNKs, and END's checksum still covers the whole file.
+//
 // Sequence numbers: INIT carries the transferId that the file key is derived
 // from (with the recipient's attempt ID, see keys.ts), so it has to be sent
 // before either side has the key. It sits outside
@@ -51,13 +58,14 @@
 // attempt ID gives it a new key, so it never seals its frame 0 twice under one
 // key.
 //
-// Version 3 is the first whose file key includes the attempt ID. A sender and
-// recipient on different versions (one on a cached old page) would derive
-// different keys, so the version is checked first: the two pages compare it
-// before they connect (the version marker in peer.ts), and a frame of another
-// version still fails at INIT, on the recipient's side, before any key is
-// derived, as a VersionError. The recipient's page then says which page must
-// reload; the sender sees only the channel close.
+// Version 3 is the first whose file key includes the attempt ID, and version 4
+// the first whose ACCEPT carries an offset. A sender and recipient on different
+// versions (one on a cached old page) can't read each other's frames, so the
+// version is checked first: the two pages compare it before they connect (the
+// version marker in peer.ts), and a frame of another version still fails at
+// INIT, on the recipient's side, before any key is derived, as a VersionError.
+// The recipient's page then says which page must reload; the sender sees only
+// the channel close.
 //
 // Writers and readers keep state: await each encrypt or decrypt before
 // starting the next one. A reader stops accepting frames after any failure.
@@ -69,7 +77,7 @@ import { Sha256 } from "./sha256.ts";
 export { hasForbiddenCharacters, MAX_FROM_LENGTH };
 
 /** Raise it for any change that breaks frames or signal payloads: peer.ts's version marker carries it. */
-export const FRAME_VERSION = 3;
+export const FRAME_VERSION = 4;
 export const HEADER_BYTES = 10;
 export const TAG_BYTES = 16;
 export const MAX_CHUNK_BYTES = 48 * 1024;
@@ -117,7 +125,7 @@ const RULES: Record<EncryptedKind, { dir: Direction; min: number; max: number }>
   [SenderKind.CHUNK]: { dir: "s", min: 1, max: MAX_CHUNK_BYTES },
   [SenderKind.END]: { dir: "s", min: 40, max: 40 },
   [SenderKind.CHECK]: { dir: "s", min: 1, max: 1 },
-  [RecipientKind.ACCEPT]: { dir: "r", min: 0, max: 0 },
+  [RecipientKind.ACCEPT]: { dir: "r", min: 8, max: 8 },
   [RecipientKind.RECEIPT]: { dir: "r", min: 32, max: 32 },
   [RecipientKind.DECLINE]: { dir: "r", min: 0, max: 0 },
   [RecipientKind.CREDIT]: { dir: "r", min: 8, max: 8 },
@@ -466,6 +474,20 @@ export function decodeEnd(body: Uint8Array): { sha256: Uint8Array; size: number 
   }
   const view = new DataView(body.buffer, body.byteOffset, 40);
   return { sha256: body.slice(0, 32), size: readU64(view, 32) };
+}
+
+/** ACCEPT body: the CHUNK bytes the recipient already holds, where the sender continues. */
+export function encodeAccept(offset: number): Uint8Array<ArrayBuffer> {
+  const out = new Uint8Array(8);
+  writeU64(new DataView(out.buffer), 0, offset);
+  return out;
+}
+
+export function decodeAccept(body: Uint8Array): number {
+  if (body.length !== 8) {
+    throw new Error("malformed ACCEPT body");
+  }
+  return readU64(new DataView(body.buffer, body.byteOffset, 8), 0);
 }
 
 /** CREDIT body: the cumulative number of CHUNKs the recipient lets the sender send. */
