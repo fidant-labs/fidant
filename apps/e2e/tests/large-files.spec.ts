@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chooseFile, delivered, expect, fakeSavePicker, makeName, test } from "../src/fixtures.ts";
 import { writeLargeCanary } from "../src/leaks/canary.ts";
-import { type RssWindow, sampleRss } from "../src/rss.ts";
+import { sampleRss } from "../src/rss.ts";
 
 test.skip(
   ({ browserName }) => process.env.SIGILL_E2E_LARGE !== "1" || browserName !== "chromium",
@@ -50,15 +50,16 @@ for (const { gb, minutes } of [
       await expect(download).toBeVisible({ timeout: 30_000 });
       const rss = await sampleRss();
       const started = performance.now();
-      let memory: RssWindow;
       try {
         await download.click();
         await expect(recipient.getByText("this is exactly the file that was sent")).toBeVisible({
           timeout: gb * 2 * 60_000,
         });
-      } finally {
-        memory = await rss.end();
+      } catch (error) {
+        await rss.end().catch(() => {});
+        throw error;
       }
+      const memory = await rss.end();
       const seconds = (performance.now() - started) / 1000;
       console.log(
         `${gb} GB: ${(file.size / 1e6 / seconds).toFixed(1)} MB/s over ${seconds.toFixed(0)} s; ` +

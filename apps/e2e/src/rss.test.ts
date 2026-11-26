@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { test } from "node:test";
-import { setTimeout } from "node:timers/promises";
 import { descendants, parsePs, sampleRss } from "./rss.ts";
 
 // The worker (100) runs Chromium; the runner (50), the server (200) and another Chrome (900) don't count.
@@ -44,7 +43,7 @@ test("sums the RSS of a child process with this platform's ps", async () => {
   await once(child, "spawn");
   try {
     const window = await (await sampleRss()).end();
-    assert.ok(window.processes >= 1);
+    assert.equal(window.processes, 1);
     assert.equal(window.samples, 2);
     assert.ok(window.baselineBytes > 0);
     assert.ok(window.peakBytes >= window.baselineBytes);
@@ -71,6 +70,5 @@ test("keeps a sample that failed between ticks for end() to throw", async (t) =>
   } finally {
     process.env.PATH = path;
   }
-  await setTimeout(100);
   await assert.rejects(rss.end(), { code: "ENOENT" });
 });
