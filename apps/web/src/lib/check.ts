@@ -5,9 +5,6 @@
 
 import { encodeBase64url } from "./base64url.ts";
 
-/** Checked attempts per link that may end without both sides confirming. */
-export const CHECK_ATTEMPTS = 5;
-
 const FINGERPRINT = /^[0-9A-F]{2}(?::[0-9A-F]{2}){31}$/;
 const encoder = new TextEncoder();
 

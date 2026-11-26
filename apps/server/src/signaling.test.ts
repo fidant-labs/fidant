@@ -554,7 +554,7 @@ test("terminates a guest that never answers pings and tells the host it left", a
   assert.ok(performance.now() - joinedAt < 200, "the silent guest outlived two heartbeats");
 });
 
-test("close() closes every socket with 1012, so clients know the server is restarting", async (t) => {
+test("close() closes every socket with 4012, so clients know the server is restarting", async (t) => {
   const closing = createServer();
   const closingSignaling = attachSignaling(closing, { log: () => {} });
   t.after(() => closing.close());
@@ -563,7 +563,7 @@ test("close() closes every socket with 1012, so clients know the server is resta
   const host = await connect(url);
   const guest = await connect(url);
   closingSignaling.close();
-  assert.deepEqual(await Promise.all([host.closed, guest.closed]), [1012, 1012]);
+  assert.deepEqual(await Promise.all([host.closed, guest.closed]), [4012, 4012]);
 });
 
 test("keys clients by address, trusting X-Forwarded-For only from loopback without proxies", () => {
@@ -826,6 +826,7 @@ async function bufferedRelay(t: { after(fn: () => void): void }) {
     events,
     host,
     guest,
+    link,
     received: () => received,
     async flood(rounds: number) {
       for (let round = 0; round < rounds && !events.includes("relay-dropped"); round += 1) {
@@ -848,13 +849,21 @@ test("drops relays to a socket that stops reading and keeps the sender open", as
 
 test("drops nothing to a socket that keeps reading", async (t) => {
   const relay = await bufferedRelay(t);
-  await relay.flood(10);
-  // The guest's hello and joined ack, then 200 relays.
-  for (let wait = 0; wait < 200 && relay.received() < 202; wait += 1) {
-    await new Promise((done) => setTimeout(done, 5));
+  const data = "A".repeat(MAX_RELAY_DATA);
+  const link = relay.link;
+  for (let sent = 0; sent < 200 && !relay.events.includes("relay-dropped"); sent += 3) {
+    const burst = Math.min(3, 200 - sent);
+    const before = relay.received();
+    for (let i = 0; i < burst; i += 1) {
+      relay.host.send({ t: "relay", link, data });
+    }
+    for (let wait = 0; wait < 400 && relay.received() < before + burst; wait += 1) {
+      await new Promise((done) => setTimeout(done, 5));
+    }
   }
+  assert.ok(!relay.events.includes("relay-dropped"), "a relay was dropped");
+  // The guest's hello and joined ack, then 200 relays.
   assert.equal(relay.received(), 202);
-  assert.ok(!relay.events.includes("relay-dropped"));
 });
 
 const rawUpgrade = (path: string) =>

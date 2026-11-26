@@ -6,12 +6,23 @@ import { useI18n } from "./i18n/I18n.tsx";
 import { barePath, type Lang, localizedPath } from "./i18n/language.ts";
 import { InfoPage } from "./info/InfoPage.tsx";
 import { LandingPage } from "./landing/LandingPage.tsx";
+import { faviconHref, overallStatus, type TransferStatus } from "./lib/favicon.ts";
 import { PrivacyPage } from "./privacy/PrivacyPage.tsx";
 import { ReceivePage } from "./receive/ReceivePage.tsx";
 import { SendPage } from "./send/SendPage.tsx";
 import { pageUrl } from "./site-files.ts";
 import { applyTheme, type Theme } from "./theme.ts";
-import { Footer, Header, Link, LiveDot, lede, Page, Problem, type Route } from "./ui.tsx";
+import {
+  Footer,
+  Header,
+  Link,
+  LiveDot,
+  lede,
+  Page,
+  Problem,
+  type Route,
+  SECRET_HREF,
+} from "./ui.tsx";
 
 function InsecurePage() {
   const { t } = useI18n();
@@ -104,7 +115,14 @@ export function App({
   // A new object on every navigation, so following a link to the anchor already in the address
   // still scrolls to it.
   const where = (): Place => {
-    const path = barePath(location.pathname);
+    let path = barePath(location.pathname);
+    if (path === "/secret") {
+      // The old address of the secret page, which is now a mode of the send page.
+      history.replaceState(history.state, "", localizedPath(SECRET_HREF, lang));
+    } else if (path === "/send" && new URLSearchParams(location.search).get("mode") === "secret") {
+      // Inside the app the secret mode keeps its own path, so it has its own route, title and page.
+      path = "/secret";
+    }
     return { path, hash: routeOf(path) === "how" ? location.hash : "" };
   };
   const [place, setPlace] = useState<Place>(() =>
@@ -118,9 +136,18 @@ export function App({
     setTheme(next);
   };
   const kept = useRef(new Set<Route>());
-  const [sendOpen, setSendOpen] = useState(false);
-  const [secretOpen, setSecretOpen] = useState(false);
-  const [receiveOpen, setReceiveOpen] = useState(false);
+  const [sendStatus, setSendStatus] = useState<TransferStatus>("idle");
+  const [secretStatus, setSecretStatus] = useState<TransferStatus>("idle");
+  const [receiveStatus, setReceiveStatus] = useState<TransferStatus>("idle");
+  const sendOpen = sendStatus === "active";
+  const secretOpen = secretStatus === "active";
+  const receiveOpen = receiveStatus === "active";
+  const status = overallStatus([sendStatus, secretStatus, receiveStatus]);
+  useEffect(() => {
+    document
+      .querySelector('link[rel="icon"][type="image/svg+xml"]')
+      ?.setAttribute("href", faviconHref(status));
+  }, [status]);
   // Holds the key, so it stays out of the DOM: the link back shows only the path.
   const receiveUrl = useRef("");
   const away =
@@ -204,17 +231,17 @@ export function App({
         {!secure && holdsTransfer && <InsecurePage />}
         {secure && kept.current.has("receive") && (
           <div id="receive" hidden={route !== "receive"}>
-            <ReceivePage onUnfinished={setReceiveOpen} />
+            <ReceivePage onStatus={setReceiveStatus} />
           </div>
         )}
         {secure && kept.current.has("send") && (
           <div hidden={route !== "send"} inert={prerender !== undefined}>
-            <SendPage kind="file" onUnfinished={setSendOpen} />
+            <SendPage kind="file" onStatus={setSendStatus} />
           </div>
         )}
         {secure && kept.current.has("secret") && (
           <div hidden={route !== "secret"} inert={prerender !== undefined}>
-            <SendPage kind="text" onUnfinished={setSecretOpen} />
+            <SendPage kind="text" onStatus={setSecretStatus} />
           </div>
         )}
       </div>
@@ -233,7 +260,13 @@ export function App({
             <LiveDot />
             <span>{t.openTransfer[away]}</span>
             <Link
-              href={away === "receive" ? (receiveUrl.current.split("#")[0] ?? "") : `/${away}`}
+              href={
+                away === "receive"
+                  ? (receiveUrl.current.split("#")[0] ?? "")
+                  : away === "secret"
+                    ? SECRET_HREF
+                    : "/send"
+              }
               to={away === "receive" ? receiveUrl.current : undefined}
               class={`${buttonVariants({ size: "sm" })} rounded-full`}
             >

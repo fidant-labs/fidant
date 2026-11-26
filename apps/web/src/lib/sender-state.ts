@@ -163,7 +163,6 @@ import {
   MAX_LINKS,
   type RefuseReason,
 } from "@sigill/protocol";
-import { CHECK_ATTEMPTS } from "./check.ts";
 import type { Link } from "./link.ts";
 import type { OpenPath } from "./peer.ts";
 
@@ -184,7 +183,7 @@ export type Recipient = {
   readonly url: string;
   readonly status: RecipientStatus;
   readonly bytesSent: number;
-  readonly error?: string;
+  readonly error?: RecipientError;
   /** The attempt ID of the join that started the current connection. */
   readonly attempt?: string;
   /** How the current attempt's connection runs, once its data channel opened. */
@@ -262,6 +261,8 @@ export type SenderUpdate = { state: SenderState; effects: SenderEffect[] };
 export const SETUP_TIMEOUT_MS = 20_000;
 /** How long both people have to compare the safety number before the attempt ends as a failed check. */
 export const CHECK_TIMEOUT_MS = 5 * 60_000;
+/** Checked attempts per link that may end without both sides confirming. */
+export const CHECK_ATTEMPTS = 5;
 
 export const CHECKSUM_MISMATCH = "The recipient's checksum did not match.";
 export const TOO_SMALL_FOR_TEXT = "The connection can't carry a text in one chunk.";
@@ -270,6 +271,14 @@ export const CHECK_LIMIT = "The check failed too many times, so this link no lon
 export const CHECK_EXPIRED = "The safety number wasn't confirmed in time, so nothing was sent.";
 export const SENDER_OUTDATED = "This page runs an older version than the recipient's.";
 export const RECIPIENT_OUTDATED = "The recipient's page runs an older version than this one.";
+export type RecipientError =
+  | typeof CHECKSUM_MISMATCH
+  | typeof TOO_SMALL_FOR_TEXT
+  | typeof CHECK_DIFFERS
+  | typeof CHECK_LIMIT
+  | typeof CHECK_EXPIRED
+  | typeof SENDER_OUTDATED
+  | typeof RECIPIENT_OUTDATED;
 
 export const initialSenderState: SenderState = { recipients: [] };
 

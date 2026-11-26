@@ -15,8 +15,8 @@ export const RETRY_MAX_MS = 30_000;
 /** How long after it starts the server refuses unknown links with `starting` (decision 0018). */
 export const STARTING_MS = 2 * RETRY_MAX_MS;
 
-/** WebSocket close code (Service Restart) the server sends every socket when it stops. */
-export const SERVICE_RESTART = 1012;
+/** Close code the server sends every socket when it stops, a private-use code (decision 0025). */
+export const SERVICE_RESTART = 4012;
 
 /** The most links one sender may host at once. */
 export const MAX_LINKS = 256;
