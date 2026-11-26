@@ -16,17 +16,18 @@ import {
 
 // `pnpm e2e:networks` runs only tests/networks.spec.ts, in browsers inside Docker networks.
 const networks = Boolean(process.env.SIGILL_E2E_NETWORKS);
-// `SIGILL_E2E_BROWSERS=firefox,webkit pnpm e2e` picks the engines; unset, Chromium only.
-const browsers = (process.env.SIGILL_E2E_BROWSERS || "chromium").split(",");
-const unknown = browsers.filter((name) => !["chromium", "firefox", "webkit"].includes(name));
-if (unknown.length > 0) {
-  throw new Error(`SIGILL_E2E_BROWSERS: no engine named ${unknown.join(", ")}.`);
+// `SIGILL_E2E_BROWSER=firefox pnpm e2e` picks the engine; unset, Chromium.
+const browser = process.env.SIGILL_E2E_BROWSER || "chromium";
+if (!["chromium", "firefox", "webkit"].includes(browser)) {
+  throw new Error(
+    `SIGILL_E2E_BROWSER takes one engine, chromium, firefox or webkit, not "${browser}". Run one engine per invocation: the server respawned after the restart tests keeps its 60 s warm-up (STARTING_MS), which the next engine's early tests would hit.`,
+  );
 }
-if (networks && browsers.some((name) => name !== "chromium")) {
-  throw new Error("`pnpm e2e:networks` runs in Chromium only. Unset SIGILL_E2E_BROWSERS.");
+if (networks && browser !== "chromium") {
+  throw new Error("`pnpm e2e:networks` runs in Chromium only. Unset SIGILL_E2E_BROWSER.");
 }
 const picked = (projects: Project<PlaywrightTestOptions, PlaywrightWorkerOptions>[]) =>
-  projects.filter(({ name }) => browsers.includes(name ?? ""));
+  projects.filter(({ name }) => name === browser);
 // Firefox and WebKit have no resolver rules, so every connection off this machine goes to a proxy
 // that refuses it. Playwright makes Firefox proxy localhost too, hence the bypass.
 const deadEnd = { server: "http://127.0.0.1:9", bypass: "localhost,127.0.0.1" };
