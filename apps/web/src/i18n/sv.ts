@@ -292,7 +292,13 @@ export const sv: Messages = {
     timeLeft: (duration: string) => `Ungefär ${duration} kvar`,
   },
   send: {
-    mode: { label: "Vad du vill skicka", file: "Fil", secret: "Hemlighet" },
+    mode: {
+      label: "Vad du vill skicka",
+      file: "Fil",
+      secret: "Hemlighet",
+      locked:
+        "En sändning i taget. Du kan byta när alla länkar här har levererat, eller när du tar bort dem.",
+    },
     continue: "Fortsätt",
     title: "Skicka en fil",
     lede: "Välj en fil och skapa sedan en länk till varje person. Din fil skickas från den här webbläsaren till dem. Den är krypterad hela vägen och laddas aldrig upp eller sparas.",
