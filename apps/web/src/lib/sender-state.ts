@@ -84,11 +84,12 @@
 //   sender's peer made no offer (see peer.ts). The recipient is marked "failed"
 //   with SENDER_OUTDATED when this page is the older one, else
 //   RECIPIENT_OUTDATED, and the connection closed. This reducer sends no
-//   refusal: the recipient's page ends the attempt itself, and a refusal could
-//   reach it before the sender's version marker that tells it why. SendPage
-//   refuses the joiner with "drop" at the join deadline, which the server
-//   ignores once the joiner has left. The next join starts
-//   over, as after a mismatching RECEIPT.
+//   refusal: a recipient page with the check ends the attempt itself, and a
+//   refusal could reach it before the sender's version marker that tells it
+//   why. SendPage refuses the joiner with "drop" at the join deadline, which
+//   ends a recipient page from before the check and which the server ignores
+//   once the joiner has left. The next join starts over, as after a
+//   mismatching RECEIPT.
 // - Events that do not fit the current status (for example a late progress
 //   after a drop) are ignored, as are events for link IDs not on the list.
 // - `path` records how the current attempt's connection runs. It applies only

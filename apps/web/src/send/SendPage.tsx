@@ -23,8 +23,8 @@
 // - On /secret, a connection whose max message size can't carry every text in
 //   one chunk (textFitsOneChunk) gets nothing: reducer `unsendable` fails the
 //   recipient's card and refuses the joiner.
-// - A peer that closes on another frame version → `outdated`, which refuses the joiner only
-//   at the join deadline, so a joiner that is still bound then is unbound as a silent one is.
+// - A peer that closes on another frame version → `outdated`; onClose here, not the reducer,
+//   refuses the joiner at the join deadline, so a joiner still bound then is unbound as a silent one is.
 // - A peer that closes or fails before delivery → `dropped`; a data channel
 //   that has not opened SETUP_TIMEOUT_MS after the join, or a safety number
 //   not confirmed CHECK_TIMEOUT_MS after it opened → `timeout`. Both refuse
@@ -259,7 +259,7 @@ export function SendPage({
       return;
     }
     closeConnection(linkId);
-    const joinedAt = Date.now();
+    const joinedAt = performance.now();
     const connection: Connection = { abort: new AbortController(), early: [] };
     connectionsRef.current.set(linkId, connection);
     const dispatch = (action: SenderAction) => dispatchRef.current(action);
@@ -378,13 +378,15 @@ export function SendPage({
         if (reason === "outdated" || reason === "peer-outdated") {
           const older = reason === "outdated" ? "sender" : "recipient";
           dispatch({ type: "outdated", linkId, older });
-          // Outlives closeConnection: an honest page has left by then, a joiner that forged the marker is unbound.
+          // Outlives closeConnection: a recipient page that saw the mismatch has left by then; any other joiner is unbound.
           const refusal = setTimeout(
             () => {
               refusalsRef.current.delete(refusal);
-              signalingRef.current?.send({ t: "refuse", link: linkId, attempt, reason: "drop" });
+              if (hostedLinks(senderRef.current).includes(linkId)) {
+                signalingRef.current?.send({ t: "refuse", link: linkId, attempt, reason: "drop" });
+              }
             },
-            Math.max(0, joinedAt + SETUP_TIMEOUT_MS - Date.now()),
+            Math.max(0, joinedAt + SETUP_TIMEOUT_MS - performance.now()),
           );
           refusalsRef.current.add(refusal);
           return;

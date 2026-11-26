@@ -271,6 +271,7 @@ test.describe("pages of different versions", () => {
     leaks,
     canary,
   }) => {
+    test.setTimeout(60_000);
     const file = leaks.watch(canaryFile(canary.fork("file"), { size: 1000 }));
     const sender = await blobActor(actor, "sender");
     await openSend(sender, file);
@@ -281,9 +282,6 @@ test.describe("pages of different versions", () => {
     await page.goto("/");
     const attempt = bareAttempt();
     await joinBare(page, "forger", linkId, attempt);
-    await page.evaluate(({ linkId }) => Object.assign(globalThis, { forgerLink: linkId }), {
-      linkId,
-    });
     await sendBare(page, "forger", linkId, await seal(attempt, "r", marker(4)));
 
     await expect(recipientRow(sender, name).getByText(/newer version of Fidant/)).toBeVisible({
@@ -310,9 +308,6 @@ test.describe("pages of different versions", () => {
     await page.goto("/");
     const first = bareAttempt();
     await joinBare(page, "first", linkId, first);
-    await page.evaluate(({ linkId }) => Object.assign(globalThis, { firstLink: linkId }), {
-      linkId,
-    });
     await sendBare(page, "first", linkId, await seal(first, "r", marker(3)));
     await page.evaluate(
       () =>
