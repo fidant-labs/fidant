@@ -699,6 +699,26 @@ test("a kept part is discarded when the safety number differs or INIT is of anot
   await assert.rejects(old.sending);
 });
 
+test("an abort while the kept part resumes hands it back instead of discarding it", async () => {
+  const bytes = new Uint8Array(randomBytes(300_000));
+  const sink = new RecordingSink();
+  const kept = await dropped(sink, { bytes });
+  const controller = new AbortController();
+  const r = run({
+    bytes,
+    resumable: kept,
+    signal: controller.signal,
+    onResume: () => controller.abort(new Error("stopped")),
+  });
+  const error = await outcome(r.receiving);
+  assert.ok(failedWith("connection")(error) && /stopped/.test(String(error)), String(error));
+  assert.equal((error as ReceiveError).resumable?.sink, sink);
+  await settle();
+  assert.equal(sink.aborts, 0);
+  r.pair.close();
+  await assert.rejects(r.sending);
+});
+
 test("a connection lost before META hands the kept part back untouched", async () => {
   const bytes = new Uint8Array(randomBytes(300_000));
   const sink = new RecordingSink();
