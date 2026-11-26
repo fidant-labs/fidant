@@ -201,6 +201,11 @@ if (tool === "aws" && /^ecr batch-get-image --repository-name fidant-signal --im
   const tag = at("--image-tag");
   const digest = at("--image-manifest").slice(9);
   const call = "put-image " + tag + " " + digest;
+  if (state.lost?.[tag]) {
+    state.tags[tag] = state.lost[tag];
+    delete state.lost[tag];
+    finish(call, undefined, "ImageTagAlreadyExistsException");
+  }
   if (state.tags[tag] === digest) finish(call, undefined, "ImageAlreadyExistsException");
   if (state.tags[tag] && tag !== "live") finish(call, undefined, "ImageTagAlreadyExistsException");
   state.tags[tag] = digest;
@@ -248,7 +253,12 @@ const rolling = service(
 );
 const started = { service: rolling.services[0] };
 
-function release(start: { tags: Record<string, string>; services?: unknown[]; update?: unknown }) {
+function release(start: {
+  tags: Record<string, string>;
+  services?: unknown[];
+  update?: unknown;
+  lost?: Record<string, string>;
+}) {
   let result: { status: number | null; stdout: string; calls: string[]; tags: object } | undefined;
   withDir((dir) => {
     mkdirSync(join(dir, "bin"));
@@ -312,6 +322,7 @@ test("a new image is pushed and tagged, and with no service live moves and nothi
     `put-image inputs-${key} sha256:new`,
     `batch-get-image imageTag=inputs-${key}`,
     "batch-get-image imageTag=live",
+    `batch-get-image imageTag=failed-${key}`,
     "describe-services",
     "batch-get-image imageDigest=sha256:new",
     "put-image live sha256:new",
@@ -327,6 +338,7 @@ const before = { [`inputs-${key}`]: "sha256:new", live: "sha256:old" };
 const moved = [
   `batch-get-image imageTag=inputs-${key}`,
   "batch-get-image imageTag=live",
+  `batch-get-image imageTag=failed-${key}`,
   "describe-services",
   "describe-services",
   "batch-get-image imageDigest=sha256:new",
@@ -338,14 +350,14 @@ test("with no cluster live moves and nothing deploys, and a refused check moves 
   const noCluster = release({ tags: before, services: ["!ClusterNotFoundException"] });
   assert.equal(noCluster.status, 0);
   assert.deepEqual(noCluster.calls, [
-    ...moved.slice(0, 3),
+    ...moved.slice(0, 4),
     "batch-get-image imageDigest=sha256:new",
     "put-image live sha256:new",
   ]);
 
   const denied = release({ tags: before, services: ["!AccessDeniedException"] });
   assert.equal(denied.status, 1);
-  assert.deepEqual(denied.calls, moved.slice(0, 3));
+  assert.deepEqual(denied.calls, moved.slice(0, 4));
   assert.deepEqual(denied.tags, before);
 });
 
@@ -361,12 +373,12 @@ test("a deployment that completes leaves live on the new image", () => {
   assert.deepEqual(tags, { ...before, live: "sha256:new" });
 });
 
-test("a deployment that fails moves live back to the image the service went back to, and fails", () => {
-  const failed = service(
-    ["ecs-svc/3", "PRIMARY", "IN_PROGRESS"],
-    ["ecs-svc/2", "ACTIVE", "FAILED"],
-  );
-  const back = service(["ecs-svc/3", "PRIMARY", "COMPLETED"]);
+const failed = service(["ecs-svc/3", "PRIMARY", "IN_PROGRESS"], ["ecs-svc/2", "ACTIVE", "FAILED"]);
+const back = service(["ecs-svc/3", "PRIMARY", "COMPLETED"]);
+const marked = { ...before, [`failed-${key}`]: "sha256:new" };
+const markFailed = ["batch-get-image imageDigest=sha256:new", `put-image failed-${key} sha256:new`];
+
+test("a deployment that fails moves live back to the image the service went back to, tags the new image failed-<key>, and fails", () => {
   const { status, stdout, calls, tags } = release({
     tags: before,
     services: [steady, steady, rolling, failed, back],
@@ -380,13 +392,14 @@ test("a deployment that fails moves live back to the image the service went back
     "describe-services",
     "batch-get-image imageDigest=sha256:old",
     "put-image live sha256:old",
+    ...markFailed,
   ]);
-  assert.deepEqual(tags, before);
+  assert.deepEqual(tags, marked);
   assert.match(stdout, /::error::the new task failed its health check/);
 });
 
-test("a deployment that cannot start moves live back, and fails", () => {
-  const { status, calls, tags } = release({
+test("a deployment that cannot start moves live back, tags the new image failed-<key>, and fails", () => {
+  const { status, stdout, calls, tags } = release({
     tags: before,
     services: [steady],
     update: "!AccessDeniedException",
@@ -396,6 +409,62 @@ test("a deployment that cannot start moves live back, and fails", () => {
     ...moved,
     "batch-get-image imageDigest=sha256:old",
     "put-image live sha256:old",
+    ...markFailed,
   ]);
-  assert.deepEqual(tags, before);
+  assert.deepEqual(tags, marked);
+  assert.match(stdout, /::error::could not start a deployment/);
+});
+
+test("a later release with the same image inputs moves nothing, starts no deployment and warns, and other inputs still deploy", () => {
+  const first = release({
+    tags: before,
+    services: [steady, steady, rolling, failed, back],
+    update: started,
+  });
+  assert.equal(first.status, 1);
+  const again = release({ tags: first.tags as Record<string, string>, services: [steady] });
+  assert.equal(again.status, 0);
+  assert.deepEqual(again.calls, moved.slice(0, 3));
+  assert.deepEqual(again.tags, marked);
+  assert.match(
+    again.stdout,
+    new RegExp(
+      `^::warning::the server image for these inputs failed before and is not deployed: sha256:new is tagged failed-${key}\\.`,
+      "m",
+    ),
+  );
+
+  const other = "c".repeat(64);
+  const earlier = {
+    [`inputs-${other}`]: "sha256:bad",
+    [`failed-${other}`]: "sha256:bad",
+    ...before,
+  };
+  const done = service(["ecs-svc/2", "PRIMARY", "COMPLETED"]);
+  const next = release({
+    tags: earlier,
+    services: [steady, steady, rolling, done],
+    update: started,
+  });
+  assert.equal(next.status, 0);
+  assert.deepEqual(next.calls, [...moved, "describe-services", "describe-services"]);
+  assert.deepEqual(next.tags, { ...earlier, live: "sha256:new" });
+});
+
+test("a failed-<key> tag that is already there counts only when it names the image that failed", () => {
+  const cannotStart = { tags: before, services: [steady], update: "!AccessDeniedException" };
+  const same = release({ ...cannotStart, lost: { [`failed-${key}`]: "sha256:new" } });
+  assert.equal(same.status, 1);
+  assert.deepEqual(same.calls.slice(-3), [...markFailed, `batch-get-image imageTag=failed-${key}`]);
+  assert.deepEqual(same.tags, marked);
+  assert.match(same.stdout, /::error::could not start a deployment/);
+
+  const another = release({ ...cannotStart, lost: { [`failed-${key}`]: "sha256:old" } });
+  assert.equal(another.status, 1);
+  assert.deepEqual(another.calls.slice(-3), [
+    ...markFailed,
+    `batch-get-image imageTag=failed-${key}`,
+  ]);
+  assert.deepEqual(another.tags, { ...before, [`failed-${key}`]: "sha256:old" });
+  assert.doesNotMatch(another.stdout, /::error::/);
 });

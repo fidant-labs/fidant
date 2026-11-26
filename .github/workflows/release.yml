@@ -104,8 +104,15 @@ jobs:
             manifest=$(jq -er '.images[0].imageManifest' <<<"$json")
             type=$(jq -er '.images[0].imageManifestMediaType' <<<"$json")
             aws ecr put-image --repository-name "$repo" --image-tag "$2" --image-manifest "$manifest" \
-              --image-manifest-media-type "$type" >/dev/null 2>"$err" ||
-              grep -q '(ImageAlreadyExistsException)' "$err" || { cat "$err" >&2; exit 1; }
+              --image-manifest-media-type "$type" >/dev/null 2>"$err" && return
+            grep -q '(ImageAlreadyExistsException)' "$err" && return
+            if grep -q '(ImageTagAlreadyExistsException)' "$err"; then
+              want=$(jq -er '.images[0].imageId.imageDigest' <<<"$json")
+              have=$(digest "imageTag=$2")
+              [ "$have" = "$want" ] && return
+            fi
+            cat "$err" >&2
+            exit 1
           }
           services() { aws ecs describe-services --cluster fidant --services fidant-signal --output json; }
           # One deployment, COMPLETED, so no deployment starts while the service rolls back.
@@ -135,6 +142,11 @@ jobs:
           previous=$(digest imageTag=live)
           if [ "$previous" = "$d" ]; then
             echo "live already names $d"
+            exit 0
+          fi
+          f=$(digest "imageTag=failed-$KEY")
+          if [ "$f" != none ]; then
+            echo "::warning::the server image for these inputs failed before and is not deployed: $f is tagged failed-$KEY. To try it again, delete that tag as Releasing in AGENTS.md says, then re-run this release."
             exit 0
           fi
 
@@ -167,7 +179,8 @@ jobs:
           tag "imageDigest=$d" live
           if ! json=$(aws ecs update-service --cluster fidant --service fidant-signal --force-new-deployment --output json); then
             tag "imageDigest=$previous" live
-            echo "::error::could not start a deployment; live names $previous again"
+            tag "imageDigest=$d" "failed-$KEY"
+            echo "::error::could not start a deployment; live names $previous again, and $d is tagged failed-$KEY"
             exit 1
           fi
           dep=$(jq -r '[.service.deployments[] | select(.status == "PRIMARY") | .id][0] // "None"' <<<"$json")
@@ -183,7 +196,8 @@ jobs:
             FAILED* | None*)
               settled
               tag "imageDigest=$previous" live
-              echo "::error::the new task failed its health check; the service went back to $previous and live names it again"
+              tag "imageDigest=$d" "failed-$KEY"
+              echo "::error::the new task failed its health check; the service went back to $previous, live names it again, and $d is tagged failed-$KEY"
               exit 1
               ;;
             esac
