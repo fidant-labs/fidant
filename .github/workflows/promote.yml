@@ -32,6 +32,8 @@ jobs:
         run: |
           set -euo pipefail
           [[ $SHA =~ ^[0-9a-f]{40}$ ]] || { echo "::error::unexpected commit"; exit 1; }
+          git rev-parse --verify --quiet refs/remotes/origin/production >/dev/null ||
+            { echo "::error::no production branch: a maintainer creates it (AGENTS.md, FidantApp)"; exit 1; }
           # A run that starts late finds production already at or past its commit.
           if git merge-base --is-ancestor "$SHA" refs/remotes/origin/production; then
             echo "production already holds $SHA"
