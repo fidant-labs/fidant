@@ -147,7 +147,7 @@ jobs:
           path: apps/e2e/observations
           retention-days: 7
 
-  # One open issue collects every failed night; a leg past its timeout ends cancelled, not failed.
+  # One open issue collects every failed night; a leg past its timeout can end cancelled, not failed.
   report:
     needs: e2e
     if: always() && github.event_name != 'pull_request' && (needs.e2e.result == 'failure' || needs.e2e.result == 'cancelled')

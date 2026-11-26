@@ -71,7 +71,7 @@ Option 2 for the sink, option 2 for memory, option 2 for lookups, option 2 for p
 
 ### A failed night
 
-- A job `report`, which runs when a job of the night failed or was cancelled and the run is not for a pull request, comments on the open issue titled "Nightly failed" that the Actions bot opened. If there is none, it opens one. A job past its `timeout-minutes` ends cancelled, not failed, so a night that runs out of time comments too, and so does a run cancelled by hand or by a later run on the same branch. The comment names the run's URL and its branch only; the run's page shows which jobs did not succeed. The job has `issues: write` and nothing else; the workflow keeps `contents: read`.
+- A job `report`, which runs when a job of the night failed or was cancelled and the run is not for a pull request, comments on the open issue titled "Nightly failed" that the Actions bot opened. If there is none, it opens one. A job past its `timeout-minutes` can end cancelled, not failed, so a night that runs out of time comments too, and so does a run cancelled by hand or by a later run on the same branch. The comment names the run's URL and its branch only; the run's page shows which jobs did not succeed. The job has `issues: write` and nothing else; the workflow keeps `contents: read`.
 - Whoever fixes the failure closes the issue. The next failed night then opens a new one.
 
 ### Replacements to 0001
