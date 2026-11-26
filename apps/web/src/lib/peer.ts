@@ -363,6 +363,7 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
   let pc: RTCPeerConnection | undefined;
   let closed = false;
   let channel: RTCDataChannel | undefined;
+  let opened = false;
   let gotOffer = false;
   let commit: string | undefined;
   /** The other page's frame version, from its version marker. */
@@ -463,7 +464,9 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
     next.onopen = () => {
       // onOpen must not wait for the path: the other side may send at once,
       // and messages that arrive before onmessage is set are lost.
-      if (!closed) {
+      // Chromium has been seen to fire open twice on one channel; a second reader fails the transfer.
+      if (!closed && !opened) {
+        opened = true;
         options.onOpen(next, {
           maxMessageSize: maxMessageSizeOf(connection()),
           path: readPath(),
