@@ -1,0 +1,41 @@
+name: Promote
+
+# A shortcut for the early project, which SIG-331 removes: every merge to main goes to fidant.se (0026).
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+# One run at a time. A waiting run gives way to a newer one, which promotes a later commit.
+concurrency:
+  group: promote
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    # Holds the deploy key and deploys only from main, so no other branch's workflow can read it.
+    environment: promote
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      # No step runs code from the checkout: the deploy key stays in its git config.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ssh-key: ${{ secrets.PROMOTE_DEPLOY_KEY }}
+      - name: Move production to this commit
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          [[ $SHA =~ ^[0-9a-f]{40}$ ]] || { echo "::error::unexpected commit"; exit 1; }
+          # A run that starts late finds production already at or past its commit.
+          if git merge-base --is-ancestor "$SHA" refs/remotes/origin/production; then
+            echo "production already holds $SHA"
+            exit 0
+          fi
+          # The full ref, because a tag named production would make the push fail.
+          git push origin "$SHA":refs/heads/production
