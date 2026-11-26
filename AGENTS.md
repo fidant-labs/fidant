@@ -62,7 +62,7 @@ Planning lives in Linear: workspace `sigill`, team `SIG`, issue keys like `SIG-2
 - Box tests in `apps/e2e/tests/networks.spec.ts` share containers across the run: change one only inside the `try` whose `finally` undoes it, compare its times with its own `date +%s` or allow for drift against the host's `Date.now()`, and when a test finds no secret in a log, also prove the checked output reached that log.
 - Dependencies: `pnpm add --filter <package> <dep>`. pnpm is strict, so each package declares everything it imports.
 - Workspace packages: add one as a dependency with `pnpm add --filter <consumer> --workspace <package>`, which links and saves `workspace:*`. Without `--workspace`, pnpm can resolve the name from the public npm registry.
-- Commits: conventional commits, subject line only, imperative, under 72 characters, for example `feat: add signaling server`. The one allowed body is an attribution trailer (`Co-Authored-By: ...`) added by an agent.
+- Commits: conventional commits, subject line only, imperative, under 72 characters, for example `feat: add signaling server`, with no body or trailers. `.claude/settings.json` turns off Claude Code's commit and pull request attribution.
 - Branches: `sig-<number>-<short-slug>` after the Linear issue. One pull request per issue. `main` is protected: changes land only through pull requests with green CI.
 - Pull request titles start with the Linear issue key (`SIG-21: ...`) so Linear links them.
 - Keep the Linear issue's status current while working: assign it and set "In Progress" when work starts, link the pull request when it opens, and set "Done" when it merges.
