@@ -92,17 +92,17 @@ Option 2 for the sink, option 2 for memory, option 2 for lookups, option 2 for p
 
 ### Dispatch the nightly by hand
 
-A run on a branch cancels a run in progress on the same branch, so this cancels a running scheduled night on `main`, and that night comments on the "Nightly failed" issue.
+A run on a branch cancels a run in progress on the same branch, and the cancelled night would comment on the "Nightly failed" issue, so the first command dispatches only while no nightly run on `main` is in progress. It prints nothing either way.
 
 ```sh
-gh workflow run nightly.yml --ref main
+[ -z "$(gh run list --workflow nightly.yml --branch main --json status --jq '.[] | select(.status != "completed") | .status')" ] && gh workflow run nightly.yml --ref main
 gh run list --workflow nightly.yml --event workflow_dispatch --limit 1 --json databaseId,headBranch,status,createdAt --jq '.[0] | [.databaseId, .headBranch, .status, .createdAt] | @tsv'
 ```
 
-The second command prints the run's ID, `main`, its status and when it was created, separated by tabs. If that time is before the first command ran, the new run isn't listed yet: run the second command again. Once the status is `completed`, `gh run view <ID> --json jobs --jq '.jobs[] | [.name, .conclusion] | @tsv'` must print `e2e (chromium)`, `e2e (firefox)` and `e2e (webkit)`, each with a tab and `success`, and `report` with a tab and `skipped`. Any other output means the night failed. A dispatched run that fails or is cancelled comments on the "Nightly failed" issue like a scheduled one.
+The second command prints the run's ID, `main`, its status and when it was created, separated by tabs. If that time is before the first command ran, either the new run isn't listed yet or a night was in progress and nothing was dispatched: run the second command again, and if the time stays the same, wait for that night to end and start over. Once the status is `completed`, `gh run view <ID> --json jobs --jq '.jobs[] | [.name, .conclusion] | @tsv'` must print `e2e (chromium)`, `e2e (firefox)` and `e2e (webkit)`, each with a tab and `success`, and `report` with a tab and `skipped`. Any other output means the night failed. A dispatched run that fails or is cancelled comments on the "Nightly failed" issue like a scheduled one.
 
 ### Read the block's output
 
-- In each job's log, the step "Let the test user reach loopback only" prints the OUTPUT rules, `/etc/resolv.conf` and the `hosts:` line of `/etc/nsswitch.conf`. If a check fails, the step ends with `The test user ran <command> past the block` or `The block did not log <command>`, and the suite doesn't run.
+- In each job's log, the step "Let the test user reach loopback only" prints the OUTPUT rules, `/etc/resolv.conf`, the `hosts:` line of `/etc/nsswitch.conf` and every listening socket with its process (`ss -tulpn`). A listener on loopback whose process is not the test user's, other than `systemd-resolved` on port 53, is a daemon the test user could hand traffic to past the block. If a check fails, the step ends with `The test user ran <command> past the block` or `The block did not log <command>`, and the suite doesn't run.
 - The step "Count what the test user sent off loopback" prints both chains with their counters, then the kernel's lines since the counters were zeroed. A clean night prints `0` in the `pkts` column of both `LOG` rows and no line containing `sigill-egress: IN=`, which each of the chain's kernel lines holds, and the step passes. The `LOG` rows themselves show the prefix as `prefix "sigill-egress: "`. Otherwise the step ends with `The test user sent <N> packets off loopback or to a resolver`.
 - Each kernel line reads `sigill-egress: IN= OUT=<interface> SRC=<address> DST=<address> ... PROTO=<protocol> SPT=<port> DPT=<port> ... UID=<uid> GID=<gid>`. `OUT=lo` with `DPT=53` is a name lookup; the line doesn't hold the name. Any other `OUT=` is a packet that would have left the machine, to `DST` on `DPT`: `DST=224.0.0.251 DPT=5353` is mDNS, and `DST=239.255.255.250 DPT=1900` is SSDP. The line's time, against the timestamps of the step "Run the suite as the test user" (Show timestamps in the log's settings), tells which test was running.
