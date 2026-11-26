@@ -566,6 +566,16 @@ export class ReceiveVerifier {
     return this.size === undefined ? 0 : Math.min(this.received, this.size);
   }
 
+  /** CHUNK bytes accepted so far, padding included: the offset a resumed transfer continues from. */
+  get offset(): number {
+    return this.received;
+  }
+
+  /** True until a check failed or END arrived, so a dropped transfer can still continue from `offset`. */
+  get canContinue(): boolean {
+    return !this.failed && !this.digest;
+  }
+
   meta(meta: { size: number; chunkSize: number }): void {
     this.step(() => {
       if (this.size !== undefined) {
