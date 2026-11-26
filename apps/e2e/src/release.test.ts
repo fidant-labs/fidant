@@ -398,7 +398,7 @@ test("a deployment that fails moves live back to the image the service went back
   assert.match(stdout, /::error::the new task failed its health check/);
 });
 
-test("a deployment that cannot start moves live back, tags the new image failed-<key>, and fails", () => {
+test("a deployment that cannot start moves live back, leaves the image untagged as failed, and fails", () => {
   const { status, stdout, calls, tags } = release({
     tags: before,
     services: [steady],
@@ -409,9 +409,8 @@ test("a deployment that cannot start moves live back, tags the new image failed-
     ...moved,
     "batch-get-image imageDigest=sha256:old",
     "put-image live sha256:old",
-    ...markFailed,
   ]);
-  assert.deepEqual(tags, marked);
+  assert.deepEqual(tags, before);
   assert.match(stdout, /::error::could not start a deployment/);
 });
 
@@ -452,14 +451,18 @@ test("a later release with the same image inputs moves nothing, starts no deploy
 });
 
 test("a failed-<key> tag that is already there counts only when it names the image that failed", () => {
-  const cannotStart = { tags: before, services: [steady], update: "!AccessDeniedException" };
-  const same = release({ ...cannotStart, lost: { [`failed-${key}`]: "sha256:new" } });
+  const rolledBack = {
+    tags: before,
+    services: [steady, steady, rolling, failed, back],
+    update: started,
+  };
+  const same = release({ ...rolledBack, lost: { [`failed-${key}`]: "sha256:new" } });
   assert.equal(same.status, 1);
   assert.deepEqual(same.calls.slice(-3), [...markFailed, `batch-get-image imageTag=failed-${key}`]);
   assert.deepEqual(same.tags, marked);
-  assert.match(same.stdout, /::error::could not start a deployment/);
+  assert.match(same.stdout, /::error::the new task failed its health check/);
 
-  const another = release({ ...cannotStart, lost: { [`failed-${key}`]: "sha256:old" } });
+  const another = release({ ...rolledBack, lost: { [`failed-${key}`]: "sha256:old" } });
   assert.equal(another.status, 1);
   assert.deepEqual(another.calls.slice(-3), [
     ...markFailed,

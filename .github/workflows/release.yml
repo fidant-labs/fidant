@@ -179,8 +179,7 @@ jobs:
           tag "imageDigest=$d" live
           if ! json=$(aws ecs update-service --cluster fidant --service fidant-signal --force-new-deployment --output json); then
             tag "imageDigest=$previous" live
-            tag "imageDigest=$d" "failed-$KEY"
-            echo "::error::could not start a deployment; live names $previous again, and $d is tagged failed-$KEY"
+            echo "::error::could not start a deployment; live names $previous again"
             exit 1
           fi
           dep=$(jq -r '[.service.deployments[] | select(.status == "PRIMARY") | .id][0] // "None"' <<<"$json")
