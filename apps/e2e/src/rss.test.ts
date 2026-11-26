@@ -51,3 +51,11 @@ test("sums the RSS of a child process with this platform's ps", async () => {
     child.kill();
   }
 });
+
+test("samples every second, never two at once, until the window ends", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const rss = await sampleRss();
+  t.mock.timers.tick(1_000);
+  t.mock.timers.tick(1_000);
+  assert.equal((await rss.end()).samples, 3);
+});
