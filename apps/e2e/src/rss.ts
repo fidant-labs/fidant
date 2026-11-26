@@ -47,7 +47,7 @@ export interface RssWindow {
   samples: number;
 }
 
-/** Takes the summed RSS of the processes this one started, such as a worker's browser, as the baseline, then samples it every second until `end()`. */
+/** Takes the summed RSS of the processes this one started, such as a worker's browser, as the baseline, then samples it every second until `end()`, which throws the error of the first sample that failed. */
 export async function sampleRss(): Promise<{ end(): Promise<RssWindow> }> {
   const first = await treeRss();
   const window: RssWindow = {
@@ -63,15 +63,23 @@ export async function sampleRss(): Promise<{ end(): Promise<RssWindow> }> {
     window.samples++;
   };
   let sampling: Promise<void> | undefined;
+  let failed: unknown;
   const timer = setInterval(() => {
-    sampling ??= sample().finally(() => {
-      sampling = undefined;
-    });
+    sampling ??= sample()
+      .catch((error: unknown) => {
+        failed ??= error;
+      })
+      .finally(() => {
+        sampling = undefined;
+      });
   }, 1_000);
   return {
     async end() {
       clearInterval(timer);
       await sampling;
+      if (failed) {
+        throw failed;
+      }
       await sample();
       return window;
     },
@@ -79,9 +87,7 @@ export async function sampleRss(): Promise<{ end(): Promise<RssWindow> }> {
 }
 
 async function treeRss(): Promise<{ bytes: number; processes: number }> {
-  const { stdout } = await run("ps", ["-A", "-o", "pid=,ppid=,rss=,comm="], {
-    maxBuffer: 16 * 1024 * 1024,
-  });
+  const { stdout } = await run("ps", ["-A", "-o", "pid=,ppid=,rss=,comm="]);
   // ps itself is a child of this process while it runs.
   const tree = descendants(parsePs(stdout), process.pid).filter(
     (info) => !/(^|\/)ps$/.test(info.command),
