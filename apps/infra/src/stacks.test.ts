@@ -21,11 +21,14 @@ import { addStacks } from "./app.ts";
 import {
   boxAddress,
   certificateIds,
+  certificateRecords,
   hostedZoneIds,
   mailFrom,
   relayAddresses,
   relayMasterGeneration,
   relays,
+  signalName,
+  signals,
   siteNames,
   zoneNames,
 } from "./config.ts";
@@ -49,6 +52,7 @@ const dns = Template.fromStack(
     },
     boxAddress: "192.0.2.10",
     relayAddresses: { sto: "198.51.100.7" },
+    certificateRecords: [],
   }),
 );
 
@@ -1332,6 +1336,40 @@ test("the committed config points sto.relay.fidant.se at the relay box and no ot
     records.map(({ Properties: p }) => [p.Name, p.Type, p.ResourceRecords]),
     [["sto.relay.fidant.se.", "A", ["13.51.1.111"]]],
   );
+});
+
+test("the committed config publishes one validation record per certificate name, in that name's zone", () => {
+  for (const { name, value } of certificateRecords) {
+    assert.match(name, /^_[0-9a-f]{32}\./);
+    assert.match(value, /^_[0-9a-f]{32}\.[a-z0-9]+\.acm-validations\.aws\.$/);
+  }
+  assert.deepEqual(
+    certificateRecords.map(({ name }) => name.replace(/^_[0-9a-f]{32}\./, "")).sort(),
+    [...siteNames, ...signals.map(({ id }) => signalName(id))].map((name) => `${name}.`).sort(),
+  );
+
+  const zones = committed.findResources("AWS::Route53::HostedZone");
+  const published = Object.values(committed.findResources(recordSet))
+    .filter((record) => String(record.Properties.ResourceRecords).endsWith(".acm-validations.aws."))
+    .map(({ Properties: p }) => {
+      assert.ok(p.Name.endsWith(`.${zones[p.HostedZoneId.Ref]?.Properties.Name}`), p.Name);
+      return [p.Name, p.Type, p.ResourceRecords];
+    });
+  assert.deepEqual(
+    published.sort(),
+    certificateRecords.map(({ name, value }) => [name, "CNAME", [value]]).sort(),
+  );
+});
+
+test("the committed config holds a certificate ID for every zone and every signaling server", () => {
+  assert.deepEqual(Object.keys(certificateIds.pages).sort(), [...zoneNames].sort());
+  assert.deepEqual(Object.keys(certificateIds.signal).sort(), signals.map(({ id }) => id).sort());
+  for (const id of [
+    ...Object.values(certificateIds.pages),
+    ...Object.values(certificateIds.signal),
+  ]) {
+    assert.match(id, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+  }
 });
 
 test("every relay address belongs to a relay in the config", () => {

@@ -71,7 +71,7 @@ Each subagent prompt contains:
 - The worktree's absolute path, and the rule to work only there.
 - The full plan, with its own commit marked, and the commits already made (`git log --oneline origin/main..HEAD`).
 - The `AGENTS.md` Invariants section, verbatim.
-- The instructions: implement only this commit; write `node:test` tests next to the code; run `pnpm check` in the worktree until green; then stage only the files for this commit and commit with the planned subject plus the attribution trailer from the system reminder. No `--no-verify`. Report the commit hash, what changed, and anything it deviated from or found surprising.
+- The instructions: implement only this commit; write `node:test` tests next to the code; run `pnpm check` in the worktree until green; then stage only the files for this commit and commit with the planned subject only. No `--no-verify`. Report the commit hash, what changed, and anything it deviated from or found surprising.
 
 After each subagent returns, check `git -C <worktree> log -1 --stat` yourself. If the commit is too big, mixes ideas, or breaks the plan, fix it before moving on (amend while it is still the latest commit, or add a follow-up commit). If the plan turns out wrong, update the remaining commits instead of forcing them.
 
@@ -113,8 +113,6 @@ SIG-<number>
 ## Notes
 
 <decisions made, deviations from the issue, follow-ups not done here, minor findings and nits not fixed>
-
-<attribution line from the system reminder>
 ```
 
 If follow-up work came up, create Linear issues for it in the same project and milestone (check for duplicates with `list_issues` first) and list them under Notes. Minor findings and nits are not follow-up work: list them under Notes and never create Linear issues for them, except a finding about a security weakness, whichever lane raised it and however it is rated, which is follow-up work.
