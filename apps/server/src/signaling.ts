@@ -48,6 +48,14 @@ export const LIMITS = {
   /** Messages one socket may send per heartbeat window, counting ones that fail to parse. */
   messagesPerWindow: 1000,
   /**
+   * Guests a link pairs per heartbeat window. Each pairing can cost the sender's socket a message
+   * (a guest without the secret gets a `refuse`), so without this one guest could spend the
+   * sender's message limit (SIG-235). An honest recipient pairs at most 5 times per attempt.
+   * ponytail: per link, so a guest holding ~100 of one sender's links could still spend it; count
+   * pairings per host socket too if that ever matters.
+   */
+  pairingsPerLink: 10,
+  /**
    * Bytes queued to a socket beyond which relays to it are dropped, because it is not reading.
    * Past twice this, any message to it ends the socket.
    */
@@ -251,6 +259,8 @@ export function attachSignaling(
   const peers = new Map<WebSocket, Peer>();
   const hosts = new Map<string, WebSocket>();
   const guests = new Map<string, WebSocket>();
+  /** Pairings per link in the current heartbeat window. */
+  const pairings = new Map<string, number>();
   /** Open sockets per client address. */
   const perAddress = new Map<string, number>();
   const emailed = new Map<string, Emailed>();
@@ -454,7 +464,8 @@ export function attachSignaling(
       return;
     }
     const hostSocket = hosts.get(link);
-    if (!hostSocket || guests.has(link)) {
+    const paired = pairings.get(link) ?? 0;
+    if (!hostSocket || guests.has(link) || paired >= limits.pairingsPerLink) {
       // Just after a start, senders may not have re-hosted yet, so the link may not be dead.
       const reason: RefusedReason = hostSocket
         ? "busy"
@@ -466,6 +477,7 @@ export function attachSignaling(
       return;
     }
     guests.set(link, socket);
+    pairings.set(link, paired + 1);
     noEmail.add(link);
     peer.joined = link;
     peer.attempt = attempt;
@@ -766,6 +778,7 @@ export function attachSignaling(
         noticeTimes.delete(key);
       }
     }
+    pairings.clear();
     for (const [socket, peer] of peers) {
       peer.messages = 0;
       if (!peer.alive) {
