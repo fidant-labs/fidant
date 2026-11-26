@@ -1,6 +1,7 @@
 import type { Download, Page } from "@playwright/test";
 import {
   type Actor,
+  allowClipboard,
   breakableSender,
   delivered,
   expect,
@@ -47,9 +48,7 @@ async function openRecipient(
   name = "recipient",
 ) {
   const { context, page } = await actor(name);
-  await context.grantPermissions(["clipboard-read", "clipboard-write"], {
-    origin: new URL(link).origin,
-  });
+  await allowClipboard(context, new URL(link).origin);
   await context.addInitScript(() => {
     const g = globalThis as {
       showSaveFilePicker?: (...args: unknown[]) => unknown;
