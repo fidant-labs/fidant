@@ -67,6 +67,15 @@ test("leaving /send for Privacy and going back keeps the file and recipient", as
   await expect(page.getByText(file.name, { exact: true })).toBeVisible();
   await expect(recipientRow(page, name)).toBeVisible();
   await expect(page.getByLabel(`Link for ${name}`, { exact: true })).toHaveText(link ?? "");
+
+  // One send at a time: the toggle is off, and the secret mode's link leads back to the file.
+  await expect(
+    page.getByRole("navigation", { name: "What to send" }).getByRole("button", { name: "Secret" }),
+  ).toBeDisabled();
+  await page.locator("footer").getByRole("link", { name: "Share a secret" }).click();
+  await expect(page).toHaveURL(/\/send$/);
+  await expect(page.getByText(file.name, { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Your secret")).toBeHidden();
 });
 
 test("the menu's Send and the landing page's button open /send", async ({ page }) => {

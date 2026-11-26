@@ -873,19 +873,38 @@ export function SendPage({
           </div>
           <nav
             aria-label={t.send.mode.label}
-            class="inline-flex flex-none gap-0.5 rounded-xl border border-border p-0.5"
+            // ponytail: a native tooltip, which touch and keyboard never show; a visible note if that matters
+            title={unfinished ? t.send.mode.locked : undefined}
+            class={`inline-flex flex-none gap-0.5 rounded-xl border border-border p-0.5 ${unfinished ? "cursor-not-allowed" : ""}`}
           >
             {(["file", "secret"] as const).map((mode) => {
               const current = (mode === "secret") === text;
-              return (
+              const look = buttonVariants({ variant: current ? "secondary" : "ghost", size: "sm" });
+              const label = (
+                <>
+                  <Icon name={mode === "secret" ? "key" : "file"} class="size-4" />
+                  {t.send.mode[mode]}
+                </>
+              );
+              // While this send is on its way both modes lead here (see App), so the toggle is off.
+              return unfinished ? (
+                <button
+                  key={mode}
+                  type="button"
+                  disabled
+                  aria-current={current ? "page" : undefined}
+                  class={look}
+                >
+                  {label}
+                </button>
+              ) : (
                 <Link
                   key={mode}
                   href={mode === "secret" ? SECRET_HREF : "/send?mode=file"}
                   aria-current={current ? "page" : undefined}
-                  class={buttonVariants({ variant: current ? "secondary" : "ghost", size: "sm" })}
+                  class={look}
                 >
-                  <Icon name={mode === "secret" ? "key" : "file"} class="size-4" />
-                  {t.send.mode[mode]}
+                  {label}
                 </Link>
               );
             })}
