@@ -66,7 +66,7 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-  # Holds AWS credentials, so it checks out nothing and runs only pinned actions, the aws CLI, docker and jq.
+  # Holds AWS credentials, so it checks out nothing and runs only pinned actions, git (ls-remote, before it signs in), the aws CLI, docker and jq.
   release:
     needs: build
     runs-on: ubuntu-latest
@@ -86,7 +86,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ $SHA =~ ^[0-9a-f]{40}$ ]] || { echo "::error::unexpected commit"; exit 1; }
-          tip=$(git ls-remote "https://github.com/$GITHUB_REPOSITORY" refs/heads/production | cut -f1) || tip=
+          tip=$(git ls-remote "https://github.com/$GITHUB_REPOSITORY" refs/heads/production | awk -F'\t' '$2 == "refs/heads/production" {print $1}') || tip=
           [[ $tip =~ ^[0-9a-f]{40}$ ]] || { echo "::error::could not read production's tip"; exit 1; }
           if [ "$tip" != "$SHA" ]; then
             echo "::error::refused $SHA: production is at $tip, and only its newest release runs"
@@ -105,6 +105,8 @@ jobs:
           KEY: ${{ needs.build.outputs.key }}
         run: |
           set -euo pipefail
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
           [[ $SHA =~ ^[0-9a-f]{40}$ && $KEY =~ ^[0-9a-f]{64}$ && $ACCOUNT =~ ^[0-9]{12}$ ]] || { echo "::error::unexpected input"; exit 1; }
           repo=fidant-signal
           registry=$ACCOUNT.dkr.ecr.eu-north-1.amazonaws.com
@@ -139,14 +141,19 @@ jobs:
                 echo "::error::the service did not settle in time: $s"
                 exit 1
               fi
-              sleep 15
+              sleep 15 & wait $!
             done
           }
           safe=
           restore() {
             if [ -z "$safe" ]; then
-              echo "::error::the release stopped before the service ran $d; live names $previous again"
-              tag "imageDigest=$previous" live
+              echo "::error::the release stopped before the service was confirmed to run $d"
+              echo "moving live back to $previous"
+              if (tag "imageDigest=$previous" live); then
+                echo "live names $previous again"
+              else
+                echo "::error::could not move live back to $previous: it still names $d, so a release with these inputs ends without deploying until live moves"
+              fi
             fi
           }
 
@@ -169,7 +176,7 @@ jobs:
           fi
           f=$(digest "imageTag=failed-$KEY")
           if [ "$f" != none ]; then
-            echo "::warning::the server image for these inputs failed before and is not deployed: $f is tagged failed-$KEY. To try it again, delete that tag as Releasing in AGENTS.md says, then re-run this release."
+            echo "::warning::the server image for these inputs failed before and is not deployed: $f is tagged failed-$KEY. To try it again, delete that tag as Releasing in AGENTS.md says, then re-run the newest release run, the one for production's tip, or promote a later commit."
             exit 0
           fi
 
@@ -226,7 +233,7 @@ jobs:
               exit 1
               ;;
             None*)
-              echo "::error::the deployment left the service's list before it finished; live names $previous again, and the next release with these inputs tries $d again"
+              echo "::error::the deployment left the service's list before it finished; live goes back to $previous, and the next release with these inputs tries $d again"
               exit 1
               ;;
             esac
@@ -234,5 +241,5 @@ jobs:
               echo "::error::the deployment did not finish in time: $s"
               exit 1
             fi
-            sleep 15
+            sleep 15 & wait $!
           done

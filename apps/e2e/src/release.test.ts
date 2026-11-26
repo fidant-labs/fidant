@@ -4,8 +4,13 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { releaseRoleName } from "../../infra/src/ci.ts";
-import { imageRepository, signalCluster, signalService } from "../../infra/src/config.ts";
+import {
+  imageRepository,
+  releaseRoleName,
+  releaseSessionSeconds,
+  signalCluster,
+  signalService,
+} from "../../infra/src/config.ts";
 
 const workflow = readFileSync(
   new URL("../../../.github/workflows/release.yml", import.meta.url),
@@ -41,6 +46,7 @@ function bash(script: string, cwd: string, extra: Record<string, string>) {
     cwd,
     env: { ...env, ...extra },
     encoding: "utf8",
+    timeout: 30000,
   });
 }
 
@@ -197,6 +203,7 @@ test("the release job refuses a run that is not production's tip before it gets 
   const waits = [...seconds, ...settles].map(([, n]) => Number(n));
   assert.equal(waits.length, 3);
   const session = Number(release.match(/role-duration-seconds: (\d+)/)?.[1]);
+  assert.equal(session, releaseSessionSeconds);
   const timeout = Number(release.match(/\n {4}timeout-minutes: (\d+)/)?.[1]) * 60;
   assert.ok(waits.reduce((a, b) => a + b) < timeout);
   assert.ok(timeout < session);
@@ -228,6 +235,17 @@ test("a release run for any commit but production's tip refuses", () => {
   assert.deepEqual(tipCheck(tip, `printf '${tip}\\trefs/heads/production\\n'`), {
     status: 0,
     stdout: "",
+  });
+  assert.deepEqual(
+    tipCheck(
+      tip,
+      `printf '${tip}\\trefs/heads/production\\n${older}\\trefs/tags/x/refs/heads/production\\n'`,
+    ),
+    { status: 0, stdout: "" },
+  );
+  assert.deepEqual(tipCheck(older, `printf '${older}\\trefs/tags/x/refs/heads/production\\n'`), {
+    status: 1,
+    stdout: "::error::could not read production's tip",
   });
   assert.deepEqual(tipCheck(older, `printf '${tip}\\trefs/heads/production\\n'`), {
     status: 1,
@@ -272,6 +290,7 @@ if (tool === "aws" && /^ecr batch-get-image --repository-name fidant-signal --im
   const tag = at("--image-tag");
   const digest = at("--image-manifest").slice(9);
   const call = "put-image " + tag + " " + digest;
+  if (state.failPut === call) finish(call, undefined, "ThrottlingException");
   if (state.lost?.[tag]) {
     state.tags[tag] = state.lost[tag];
     delete state.lost[tag];
@@ -330,7 +349,8 @@ function release(start: {
   update?: unknown;
   lost?: Record<string, string>;
   expire?: boolean;
-  stop?: boolean;
+  signal?: "INT" | "TERM";
+  failPut?: string;
 }) {
   let result:
     | {
@@ -350,7 +370,9 @@ function release(start: {
     }
     writeFileSync(
       join(dir, "bin", "sleep"),
-      start.stop ? "#!/bin/sh\nkill -TERM $PPID\n" : "#!/bin/sh\n",
+      start.signal
+        ? `#!/bin/sh\nkill -${start.signal} $PPID\nexec /bin/sleep 2 >/dev/null 2>&1\n`
+        : "#!/bin/sh\n",
       {
         mode: 0o755,
       },
@@ -513,7 +535,7 @@ test("a later release with the same image inputs moves nothing, starts no deploy
     update: started,
   });
   assert.equal(first.status, 1);
-  const again = release({ tags: first.tags as Record<string, string>, services: [steady] });
+  const again = release({ tags: first.tags, services: [steady] });
   assert.equal(again.status, 0);
   assert.deepEqual(again.calls, moved.slice(0, 3));
   assert.deepEqual(again.tags, marked);
@@ -523,6 +545,10 @@ test("a later release with the same image inputs moves nothing, starts no deploy
       `^::warning::the server image for these inputs failed before and is not deployed: sha256:new is tagged failed-${key}\\.`,
       "m",
     ),
+  );
+  assert.match(
+    again.stdout,
+    /then re-run the newest release run, the one for production's tip, or promote a later commit\.$/m,
   );
 
   const other = "c".repeat(64);
@@ -564,7 +590,6 @@ test("a failed-<key> tag that is already there counts only when it names the ima
   assert.match(another.stdout, /::error::the new task failed its health check/);
 });
 
-const noFailedTag = (tags: object) => assert.ok(!(`failed-${key}` in tags));
 const serviceReplaced = service(["ecs-svc/9", "PRIMARY", "COMPLETED"]);
 
 test("a release that stops after live moved puts live back, so the next release with the same inputs deploys", () => {
@@ -575,7 +600,10 @@ test("a release that stops after live moved puts live back, so the next release 
   });
   assert.notEqual(stopped.status, 0);
   assert.deepEqual(stopped.tags, before);
-  assert.match(stopped.stdout, /::error::the release stopped before the service ran sha256:new/);
+  assert.match(
+    stopped.stdout,
+    /::error::the release stopped before the service was confirmed to run sha256:new\nmoving live back to sha256:old\nlive names sha256:old again\n/,
+  );
 
   const done = service(["ecs-svc/2", "PRIMARY", "COMPLETED"]);
   const again = release({
@@ -607,9 +635,11 @@ test("a deployment that left the list puts live back and tags nothing failed", (
     update: started,
   });
   assert.equal(status, 1);
-  assert.match(stdout, /::error::the deployment left the service's list before it finished/);
+  assert.match(
+    stdout,
+    /::error::the deployment left the service's list before it finished; live goes back to sha256:old, and the next release/,
+  );
   assert.deepEqual(tags, before);
-  noFailedTag(tags);
 });
 
 test("a rollback that does not settle in time puts live back and tags nothing failed", () => {
@@ -636,15 +666,54 @@ test("a service that does not settle in time before live moves changes nothing",
   assert.deepEqual(tags, before);
 });
 
-test("a release that is stopped by SIGTERM while it waits puts live back", () => {
-  const { signal, tags } = release({
+test("a release that is stopped by SIGTERM while it waits puts live back and exits 143", () => {
+  const { status, stdout, tags } = release({
     tags: before,
     services: [steady, steady, rolling],
     update: started,
-    stop: true,
+    signal: "TERM",
   });
-  assert.equal(signal, "SIGTERM");
+  assert.equal(status, 143);
   assert.deepEqual(tags, before);
+  assert.match(stdout, /::error::the release stopped before the service was confirmed to run/);
+});
+
+test("a release that gets SIGINT while it waits, which the shell alone gets first, puts live back and exits 130", () => {
+  const { status, tags } = release({
+    tags: before,
+    services: [steady, steady, rolling],
+    update: started,
+    signal: "INT",
+  });
+  assert.equal(status, 130);
+  assert.deepEqual(tags, before);
+});
+
+test("a release that gets SIGINT while it waits to settle never moves live or starts a deployment", () => {
+  const { status, calls, tags } = release({
+    tags: before,
+    services: [rolling],
+    signal: "INT",
+  });
+  assert.equal(status, 130);
+  assert.ok(!calls.includes("update-service"));
+  assert.deepEqual(tags, before);
+});
+
+test("a release whose restore fails says live still names the new image and does not claim otherwise", () => {
+  const { status, stdout, tags } = release({
+    tags: before,
+    services: [steady, steady, "!ThrottlingException"],
+    update: started,
+    failPut: "put-image live sha256:old",
+  });
+  assert.notEqual(status, 0);
+  assert.equal(tags.live, "sha256:new");
+  assert.match(
+    stdout,
+    /::error::could not move live back to sha256:old: it still names sha256:new, so a release with these inputs ends without deploying until live moves/,
+  );
+  assert.doesNotMatch(stdout, /live names sha256:old again/);
 });
 
 test("an image whose commit tag is there but whose inputs tag is not is tagged without a docker load", () => {

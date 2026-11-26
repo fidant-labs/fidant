@@ -19,6 +19,8 @@ export function signalName(id: string): string {
 export const imageRepository = "fidant-signal";
 export const signalCluster = "fidant";
 export const signalService = "fidant-signal";
+export const releaseRoleName = "fidant-release";
+export const releaseSessionSeconds = 7200;
 
 export function pagesBucket(account: string): string {
   return `fidant-pages-${account}`;
