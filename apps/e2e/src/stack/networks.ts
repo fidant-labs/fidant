@@ -375,7 +375,12 @@ async function fetchImages(): Promise<void> {
     run("docker", ["image", "inspect", serverImage]).catch(() =>
       run("docker", ["pull", "--quiet", serverImage]),
     ),
-    run("docker", [...compose, "build", "--quiet"]),
+    run("docker", [...compose, "build"], { maxBuffer: 64 * 1024 * 1024 }).catch(
+      (error: { stdout?: string }) => {
+        process.stderr.write(error.stdout ?? "");
+        throw error;
+      },
+    ),
   ]);
 }
 
