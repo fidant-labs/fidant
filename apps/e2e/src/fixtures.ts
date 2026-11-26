@@ -478,9 +478,26 @@ export async function chooseFile(
   await expect(page.getByLabel("Your name")).toBeFocused();
 }
 
-/** Runs in the page through addInitScript, so it may use nothing from this module: `cut()` closes the sender's peers, `stalled` stops its data channels sending. */
+/** Runs in the page through addInitScript, so it may use nothing from this module: `cut()` closes its peers, `stalled` (set after `stallAt` CHUNKs) drops what its channels send, `held` queues it for `release()`, and `sent` counts frames by kind. */
 export function breakableSender() {
-  const g = globalThis as { cut?: () => void; stalled?: boolean };
+  const g = globalThis as {
+    cut?: () => void;
+    stalled?: boolean;
+    stallAt?: number;
+    held?: boolean;
+    release?: () => void;
+    sent?: Record<number, number>;
+  };
+  const CHUNK = 2;
+  const sent: Record<number, number> = {};
+  const queue: Array<() => void> = [];
+  g.sent = sent;
+  g.release = () => {
+    g.held = false;
+    for (const flush of queue.splice(0)) {
+      flush();
+    }
+  };
   const peers: RTCPeerConnection[] = [];
   const Native = globalThis.RTCPeerConnection;
   globalThis.RTCPeerConnection = class extends Native {
@@ -496,8 +513,22 @@ export function breakableSender() {
   };
   const send = RTCDataChannel.prototype.send;
   RTCDataChannel.prototype.send = function (this: RTCDataChannel, ...args: unknown[]) {
-    if (!g.stalled) {
+    if (g.stalled) {
+      return;
+    }
+    const out = () => {
       Reflect.apply(send, this, args);
+      const [frame] = args;
+      const kind = frame instanceof Uint8Array ? (frame[1] ?? -1) : -1;
+      sent[kind] = (sent[kind] ?? 0) + 1;
+      if (kind === CHUNK && sent[kind] === g.stallAt) {
+        g.stalled = true;
+      }
+    };
+    if (g.held) {
+      queue.push(out);
+    } else {
+      out();
     }
   } as RTCDataChannel["send"];
 }

@@ -6,9 +6,9 @@
 //   sender → recipient   INIT(transferId)                     plaintext
 //   both directions      CHECK(matches)                       only with the safety number on
 //   sender → recipient   META{name, size, type, chunkSize, from}  encrypted
-//   recipient → sender   ACCEPT  (or DECLINE: stop here)
+//   recipient → sender   ACCEPT(offset)  (or DECLINE: stop here)
 //   recipient → sender   CREDIT(granted)                      again as chunks are written
-//   sender → recipient   CHUNK × n                            all chunkSize, zero-padded
+//   sender → recipient   CHUNK × n                            from the offset, all chunkSize, zero-padded
 //   sender → recipient   END(sha256, size)
 //   recipient → sender   RECEIPT(sha256 the recipient computed)
 //
@@ -16,10 +16,15 @@
 // the numbers, and META goes only after both said they match. Either side's
 // CHECK(0) ends the transfer before anything about the file was sent.
 //
-// The sender sends CHUNK i (0-based) only while i < the highest CREDIT so far,
-// so a recipient that writes slowly holds at most its credit window in memory.
-// END needs no credit, and CREDITs that arrive after END change nothing. The
-// channel's bufferedAmount still paces sending as well.
+// The sender sends CHUNK i (0-based from ACCEPT's offset) only while i < the
+// highest CREDIT so far, so a recipient that writes slowly holds at most its
+// credit window in memory. END needs no credit, and CREDITs that arrive after
+// END change nothing. The channel's bufferedAmount still paces sending as well.
+//
+// ACCEPT's offset is the CHUNK data the recipient kept from a dropped attempt
+// of the same file. The sender refuses one that is not a whole number of chunks
+// within the padded length before sending any CHUNK. END carries the whole
+// file's checksum either way.
 //
 // The file key comes from the link secret, a fresh transferId per attempt and
 // the recipient's attempt ID (see keys.ts), so a restart after a drop never
@@ -32,6 +37,7 @@
 // fake channel. The file name only travels inside the encrypted META frame.
 
 import {
+  decodeAccept,
   decodeCheck,
   decodeCredit,
   encodeCheck,
@@ -171,6 +177,13 @@ export async function sendFile(options: SendFileOptions): Promise<SendResult> {
     if (answer.kind !== RecipientKind.ACCEPT) {
       throw new Error("expected ACCEPT or DECLINE");
     }
+    // Every CHUNK is exactly chunkSize bytes, and there are as many as the
+    // padded length needs; the bytes past the end of the file are zeros.
+    const total = paddedLength(file.size, chunkSize);
+    const start = decodeAccept(answer.body);
+    if (start % chunkSize !== 0 || start > total) {
+      throw new Error("ACCEPT offset is not a chunk boundary of this file");
+    }
     options.onAccepted();
 
     // Read the recipient's frames in the background: CREDITs raise the limit
@@ -197,7 +210,7 @@ export async function sendFile(options: SendFileOptions): Promise<SendResult> {
     // Progress counts bytes handed to the channel minus what is still
     // buffered, so it follows what has actually gone out. Padding counts as
     // sent bytes, but progress never goes past the file size.
-    let sent = 0;
+    let sent = start;
     let reported = -1;
     const report = () => {
       const value = Math.min(file.size, Math.max(0, sent - channel.bufferedAmount));
@@ -206,12 +219,10 @@ export async function sendFile(options: SendFileOptions): Promise<SendResult> {
         options.onProgress(value);
       }
     };
+    report();
     progressTimer = setInterval(report, PROGRESS_INTERVAL_MS);
 
-    // Every CHUNK is exactly chunkSize bytes, and there are as many as the
-    // padded length needs; the bytes past the end of the file are zeros.
-    const total = paddedLength(file.size, chunkSize);
-    for (let offset = 0, index = 0; offset < total; offset += chunkSize, index++) {
+    for (let offset = start, index = 0; offset < total; offset += chunkSize, index++) {
       while (index >= granted) {
         await abortable(
           new Promise<void>((resolve) => {

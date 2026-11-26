@@ -4,8 +4,8 @@
 //
 //   sender → recipient   INIT(transferId)                     plaintext
 //   both directions      CHECK(matches)                       only with the safety number on
-//   sender → recipient   META{name, size, type, chunkSize, from}  → onOffer, user decides
-//   recipient → sender   ACCEPT  (or DECLINE: stop here)
+//   sender → recipient   META{name, size, type, chunkSize, from}  → onOffer, user decides (or onResume)
+//   recipient → sender   ACCEPT(offset)  (or DECLINE: stop here)
 //   recipient → sender   CREDIT(granted)                      after ACCEPT, then as chunks are written
 //   sender → recipient   CHUNK × n                            verified, file bytes to the sink
 //   sender → recipient   END(sha256, size)                    checked against what arrived
@@ -17,9 +17,19 @@
 // window of chunks on their way to it.
 //
 // The transfer only succeeds on an authenticated END whose size matches META
-// and the bytes received and whose checksum matches the bytes received. Any
-// other ending (a frame that does not decrypt, wrong order, too many bytes, the
-// channel closing first) aborts the sink, so no partial file is kept.
+// and the bytes received and whose checksum matches the bytes received.
+//
+// A lost connection keeps what arrived: the rejection carries a Resumable (the
+// META, the verifier with its running checksum, and the sink) if every frame so
+// far checked out and the last write to the sink finished, unless the offer is
+// a shared secret or the recipient said the safety numbers differ. Passed to
+// the next attempt, it continues only if that attempt's META is the same in
+// every field: then onOffer is skipped, ACCEPT carries the verifier's offset
+// and the sender sends only the rest, which END's checksum still covers with
+// the bytes kept.
+// A different META discards it and the offer starts from zero. Any other ending
+// (a frame that does not decrypt, wrong order, too many bytes, a decline, a
+// differing check or checksum) aborts the sink, so no partial file is kept.
 //
 // If every frame was valid but the file bytes do not hash to END's checksum,
 // the recipient still sends RECEIPT, with the checksum it computed, so the
@@ -34,13 +44,15 @@
 // nothing is sent back.
 //
 // No DOM or UI here beyond the data channel API, so tests can drive it with a
-// fake channel. The file name only ever reaches onOffer.
+// fake channel. The file name only ever reaches onOffer or onResume.
 
 import {
   ChecksumMismatchError,
   decodeInit,
   decodeMeta,
+  encodeAccept,
   encodeCredit,
+  type FileMeta,
   FRAME_VERSION,
   type Frame,
   FrameReader,
@@ -61,6 +73,7 @@ import {
   PROGRESS_INTERVAL_MS,
 } from "./send-file.ts";
 import type { Sink } from "./sink.ts";
+import { isTextOffer } from "./text-secret.ts";
 
 /** CHUNKs the sender may have sent beyond those the sink has written. */
 export const CREDIT_WINDOW_CHUNKS = 128;
@@ -73,6 +86,9 @@ export type ReceiveChannel = Pick<
 
 /** What the recipient is shown before deciding. `from` is the sender's unverified name, or "". */
 export type FileOffer = { name: string; size: number; type: string; from: string };
+
+/** What a dropped transfer kept: its META, its verifier with the checksum so far, and the sink holding what arrived. */
+export type Resumable = { meta: FileMeta; verifier: ReceiveVerifier; sink: Sink };
 
 export type ReceiveFileOptions = {
   channel: ReceiveChannel;
@@ -94,6 +110,13 @@ export type ReceiveFileOptions = {
    * decline. Leaving it pending is fine: the transfer waits.
    */
   onOffer(offer: FileOffer): Promise<Sink | undefined>;
+  /**
+   * What an earlier attempt kept. receiveFile owns it from the call on: it
+   * continues it, hands it back in ReceiveError.resumable, or aborts its sink.
+   */
+  resumable?: Resumable;
+  /** The sender offered the kept file again, so it continues without onOffer; `bytes` already arrived. */
+  onResume?(offer: FileOffer, bytes: number): void;
   /** File bytes received and verified so far. Throttled. */
   onProgress(bytesReceived: number): void;
 };
@@ -115,11 +138,18 @@ export type ReceiveFailure =
 /** Why receiveFile rejected. The message is the underlying error's. */
 export class ReceiveError extends Error {
   readonly reason: ReceiveFailure;
+  /** Set only on a lost connection that kept what arrived; whoever catches it owns it. */
+  readonly resumable: Resumable | undefined;
 
-  constructor(reason: ReceiveFailure, message: string, options?: { cause: unknown }) {
+  constructor(
+    reason: ReceiveFailure,
+    message: string,
+    options?: { cause: unknown; resumable?: Resumable },
+  ) {
     super(message, options);
     this.name = "ReceiveError";
     this.reason = reason;
+    this.resumable = options?.resumable;
   }
 }
 
@@ -134,8 +164,8 @@ export type ReceiveResult =
 /**
  * Receives one file. Resolves after sending DECLINE or RECEIPT; the sender
  * closes the channel after either, which is then no longer an error. Rejects
- * with a ReceiveError (after aborting the sink) on any failure, abort or early
- * channel close.
+ * with a ReceiveError on any failure, abort or early channel close, after
+ * aborting the sink unless the error carries it as `resumable`.
  */
 export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveResult> {
   const { channel, maxMessageSize, secret, attempt } = options;
@@ -155,7 +185,9 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
   const inboxFailed = new AbortController();
   inbox.failed.catch((error: unknown) => inboxFailed.abort(error));
   const writeSignal = anySignal([signal, inboxFailed.signal]);
-  let sink: Sink | undefined;
+  let part = options.resumable;
+  let saidDiffers = false;
+  let lastWrite: Promise<void> = Promise.resolve();
 
   try {
     if (channel.readyState !== "open") {
@@ -174,7 +206,11 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
     inbox.start(new FrameReader(key, "s"));
 
     if (options.confirm) {
-      const differs = await exchangeCheck(options.confirm, "r", {
+      const own = options.confirm.then((matches) => {
+        saidDiffers = !matches;
+        return matches;
+      });
+      const differs = await exchangeCheck(own, "r", {
         channel,
         inbox,
         writer,
@@ -191,8 +227,16 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
       throw new Error("expected META");
     }
     const meta = decodeMeta(first.body);
-    const verifier = new ReceiveVerifier();
-    verifier.meta(meta);
+    const kept = part && sameMeta(part.meta, meta) ? part : undefined;
+    if (part && !kept) {
+      const replaced = part;
+      part = undefined;
+      await replaced.sink.abort().catch(() => {});
+    }
+    const verifier = kept?.verifier ?? new ReceiveVerifier();
+    if (!kept) {
+      verifier.meta(meta);
+    }
 
     // The sender may send nothing more until it has our answer, so any frame
     // that arrives before ACCEPT or DECLINE has gone out is a protocol error.
@@ -205,27 +249,37 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
     });
 
     const { name, size, type, from } = meta;
-    const decision = options.onOffer({ name, size, type, from });
-    // A sink that arrives after the transfer ended is discarded.
-    decision.then(
-      (late) => {
-        if (signal.aborted) {
-          void late?.abort();
-        }
-      },
-      () => {},
-    );
+    const offer = { name, size, type, from };
+    let decision: Promise<Sink | undefined>;
+    if (kept) {
+      decision = Promise.resolve(kept.sink);
+      options.onResume?.(offer, verifier.bytesReceived);
+    } else {
+      decision = options.onOffer(offer);
+      // A sink that arrives after the transfer ended is discarded.
+      decision.then(
+        (late) => {
+          if (signal.aborted) {
+            void late?.abort();
+          }
+        },
+        () => {},
+      );
+    }
     const answer = async (): Promise<Sink | undefined> => {
       const chosen = await abortable(decision, signal);
-      const kind = chosen ? RecipientKind.ACCEPT : RecipientKind.DECLINE;
-      send(await writer.encrypt(kind, new Uint8Array()));
+      part = chosen && { meta, verifier, sink: chosen };
+      send(
+        await (chosen
+          ? writer.encrypt(RecipientKind.ACCEPT, encodeAccept(verifier.offset))
+          : writer.encrypt(RecipientKind.DECLINE, new Uint8Array())),
+      );
       return chosen;
     };
-    const chosen = await Promise.race([answer(), early]);
-    if (!chosen) {
+    const sink = await Promise.race([answer(), early]);
+    if (!sink) {
       return { type: "declined" };
     }
-    sink = chosen;
     let granted = CREDIT_WINDOW_CHUNKS;
     let written = 0;
     send(await writer.encrypt(RecipientKind.CREDIT, encodeCredit(granted)));
@@ -239,7 +293,8 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
       if (frame.kind === SenderKind.CHUNK) {
         const data = verifier.chunk(frame.body);
         if (data.length > 0) {
-          await abortable(saving(sink.write(data)), writeSignal);
+          lastWrite = sink.write(data);
+          await abortable(saving(lastWrite), writeSignal);
         }
         written++;
         if (written + CREDIT_WINDOW_CHUNKS - granted >= CREDIT_WINDOW_CHUNKS / 2) {
@@ -259,9 +314,8 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
             throw error;
           }
           // Discard the file first, then tell the sender what arrived.
-          const discarded = sink;
-          sink = undefined;
-          await discarded.abort().catch(() => {});
+          part = undefined;
+          await sink.abort().catch(() => {});
           send(await writer.encrypt(RecipientKind.RECEIPT, error.actual));
           throw new ReceiveError("checksum", error.message, { cause: error });
         }
@@ -272,18 +326,45 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
     options.onProgress(verifier.bytesReceived);
 
     const blob = await saving(sink.close());
+    part = undefined;
     send(await writer.encrypt(RecipientKind.RECEIPT, sha256));
     return { type: "received", sha256, blob };
   } catch (error) {
-    if (sink) {
-      await sink.abort().catch(() => {});
+    const failure = classify(error, signal);
+    // A write still pending may yet fail and leave a hole the checksum can't show, so wait for it.
+    if (
+      part?.verifier.canContinue &&
+      !isTextOffer(part.meta) &&
+      !saidDiffers &&
+      failure.reason === "connection" &&
+      (await lastWrite.then(
+        () => true,
+        () => false,
+      ))
+    ) {
+      const resumable = part;
+      part = undefined;
+      throw new ReceiveError("connection", failure.message, { cause: failure.cause, resumable });
     }
-    throw classify(error, signal);
+    throw failure;
   } finally {
+    if (part) {
+      await part.sink.abort().catch(() => {});
+    }
     channel.removeEventListener("close", onClose);
     inbox.stop();
     abort.abort();
   }
+}
+
+function sameMeta(a: FileMeta, b: FileMeta): boolean {
+  return (
+    a.name === b.name &&
+    a.size === b.size &&
+    a.type === b.type &&
+    a.chunkSize === b.chunkSize &&
+    a.from === b.from
+  );
 }
 
 /** Marks a sink failure as a save failure. */

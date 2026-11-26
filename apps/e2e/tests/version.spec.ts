@@ -1,11 +1,9 @@
 import { randomBytes } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import type { Page } from "@playwright/test";
 import {
   type Actor,
   canaryFile,
   chooseFile,
-  delivered,
   expect,
   type Leaks,
   makeName,
@@ -30,6 +28,9 @@ function markerVersion(payload: Payload): number | undefined {
   const digits = MARKER.exec(fragment)?.[1];
   return digits === undefined ? undefined : Number(digits);
 }
+
+/** FRAME_VERSION in apps/web/src/lib/frames.ts. */
+const FRAME_VERSION = 4;
 
 const marker = (version: number): Payload => ({
   kind: "ice",
@@ -282,7 +283,7 @@ test.describe("pages of different versions", () => {
     await page.goto("/");
     const attempt = bareAttempt();
     await joinBare(page, "forger", linkId, attempt);
-    await sendBare(page, "forger", linkId, await seal(attempt, "r", marker(4)));
+    await sendBare(page, "forger", linkId, await seal(attempt, "r", marker(FRAME_VERSION + 1)));
 
     await expect(recipientRow(sender, name).getByText(/newer version of Fidant/)).toBeVisible({
       timeout: 15_000,
@@ -308,7 +309,7 @@ test.describe("pages of different versions", () => {
     await page.goto("/");
     const first = bareAttempt();
     await joinBare(page, "first", linkId, first);
-    await sendBare(page, "first", linkId, await seal(first, "r", marker(3)));
+    await sendBare(page, "first", linkId, await seal(first, "r", marker(FRAME_VERSION)));
     await page.evaluate(
       () =>
         new Promise<void>((resolve) => {
@@ -322,36 +323,30 @@ test.describe("pages of different versions", () => {
     expect(await seenBare(page, "second")).not.toContain("refused:busy");
   });
 
-  test("a page from before the version check still sends", async ({ actor, leaks, canary }) => {
-    const file = leaks.watch(canaryFile(canary.fork("file"), { size: 100_001 }));
+  test("a recipient's page from before the version check is asked to reload", async ({
+    actor,
+    leaks,
+    canary,
+  }) => {
+    const file = leaks.watch(canaryFile(canary.fork("file"), { size: 1000 }));
     const sender = await blobActor(actor, "sender");
-    const senderSide = await dropFirst(sender, "s");
     await openSend(sender, file);
     const name = makeName(leaks, canary, "Anna");
     const link = await addRecipient(leaks, sender, name);
-    senderSide.start(link);
     const recipient = await blobActor(actor, "recipient");
     const recipientSide = await dropFirst(recipient, "r");
     recipientSide.start(link);
     await recipient.goto(link);
 
-    const downloading = recipient.waitForEvent("download", { timeout: 30_000 });
-    await recipient.getByRole("button", { name: "Download" }).click({ timeout: 30_000 });
-    await expect(recipient.getByText("this is exactly the file that was sent")).toBeVisible({
-      timeout: 30_000,
-    });
-    const saved = await downloading;
-    expect(Buffer.compare(await readFile(await saved.path()), file.bytes)).toBe(0);
-    await expect(delivered(sender, name)).toBeAttached();
-
-    for (const [label, dropped] of [
-      ["the sender's", senderSide],
-      ["the recipient's", recipientSide],
-    ] as const) {
-      const first = await dropped.first();
-      expect(first && markerVersion(first), `${label} first signal is its marker`).toBeGreaterThan(
-        0,
-      );
-    }
+    await expect(
+      recipientRow(sender, name).getByText(
+        `${name}'s link was opened on an older version of Fidant. Nothing is wrong with the file. Ask them to reload that page.`,
+      ),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(recipient.getByRole("button", { name: "Download" })).toHaveCount(0);
+    const first = await recipientSide.first();
+    expect(first && markerVersion(first), "the recipient's first signal is its marker").toBe(
+      FRAME_VERSION,
+    );
   });
 });
