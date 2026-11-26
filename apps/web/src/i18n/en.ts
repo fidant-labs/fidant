@@ -498,6 +498,7 @@ export const en = {
       differs: "They said it differs",
       waiting: "Waiting for the sender to say it matches too.",
       why: "The number comes from this connection. If someone sat between you and the sender, your screens would show different numbers.",
+      expires: "The safety number expires after 5 minutes.",
     },
     whatHappened: "What happened",
     encryptionLabel: "Encryption",
@@ -567,6 +568,10 @@ export const en = {
       connect: {
         title: "Couldn't connect to the sender's computer",
         body: "Your two computers couldn't reach each other.",
+      },
+      browser: {
+        title: "This browser can't connect to the sender",
+        body: "It may have WebRTC turned off, or be too old. Try another browser.",
       },
       noRelay: {
         title: "Couldn't connect directly to the sender",

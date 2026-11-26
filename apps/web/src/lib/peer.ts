@@ -87,7 +87,9 @@ export type PeerCloseReason =
   /** The other page runs a newer frame version, so this page must reload. */
   | "outdated"
   /** The other page runs an older frame version, so that page must reload. */
-  | "peer-outdated";
+  | "peer-outdated"
+  /** This browser can't build a connection: WebRTC is off or missing, or its certificate has no sha-256 fingerprint. */
+  | "unsupported";
 
 export type OpenPath = Exclude<ConnectionPath, "failed">;
 
@@ -362,7 +364,6 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
   let closed = false;
   let channel: RTCDataChannel | undefined;
   let gotOffer = false;
-  let gotAnswer = false;
   let commit: string | undefined;
   /** The other page's frame version, from its version marker. */
   let theirVersion: number | undefined;
@@ -370,6 +371,9 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
   /** The other side's fingerprint in the safety number; a restart must carry the same one. */
   let theirFingerprint: string | undefined;
   let answered = false;
+  // Relays run one at a time and an answer that isn't accepted closes the
+  // peer, so this one flag both refuses a second answer and lets late relays
+  // through (handleRelay).
   let answerAccepted = false;
   let ownFingerprint: string | undefined;
   let check = side === "s" && options.check === true;
@@ -587,10 +591,9 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
         return;
       }
       case "answer": {
-        if (side !== "s" || gotAnswer || commit === undefined || !offerFingerprint) {
+        if (side !== "s" || answerAccepted || commit === undefined || !offerFingerprint) {
           throw new PeerError("bad-signal", "unexpected answer");
         }
-        gotAnswer = true;
         const theirs = remoteFingerprint(payload.sdp);
         if ((await commitFingerprint(theirs)) !== commit) {
           throw new PeerError("bad-signal", "answer does not match the commitment");
@@ -712,6 +715,9 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
   }
 
   async function setup(): Promise<void> {
+    if (typeof RTCPeerConnection === "undefined" || !RTCPeerConnection.generateCertificate) {
+      throw new PeerError("unsupported", "no RTCPeerConnection");
+    }
     const cert = await RTCPeerConnection.generateCertificate({
       name: "ECDSA",
       namedCurve: "P-256",
@@ -748,7 +754,14 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
         }
         attachChannel(event.channel);
       };
-      ownFingerprint = certificateFingerprint(cert);
+      try {
+        ownFingerprint = certificateFingerprint(cert);
+      } catch (error) {
+        throw new PeerError(
+          "unsupported",
+          error instanceof Error ? error.message : "no fingerprint",
+        );
+      }
       sendSignal({ kind: "commit", hash: await commitFingerprint(ownFingerprint) }, true);
     }
   }
