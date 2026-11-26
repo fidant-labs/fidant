@@ -307,6 +307,7 @@ export const sv: Messages = {
     doneOne: (name: string) => `Filen kom fram oskadd via länken till ${name}.`,
     doneMany: (n: number) => `Filen kom fram oskadd via alla ${n} länkar.`,
     closeTab: "Du kan stänga fliken.",
+    notifyMe: "Meddela mig",
     sendMore: "Skicka till någon mer",
     showDetails: "Visa detaljer",
     localhost:
@@ -1237,6 +1238,10 @@ export const sv: Messages = {
               "Hemligheten, i sin textruta tills du stänger fliken. Webbläsaren kan också spara den med sessionen, för att återställa den efter en krasch eller en återöppnad flik.",
             ],
             ["", "Ditt val av tema och språk, i webbläsarens lokala lagring, tills du rensar den."],
+            [
+              "",
+              "Om du trycker på Meddela mig: en notis för varje leverans, som din enhets notislista visar och sparar. Den säger bara hur många länkar som har levererat, aldrig ett filnamn, en persons namn, en länk eller en nyckel.",
+            ],
             [
               "direct,relay",
               "Så länge vårt relä är tillgängligt: inloggningsuppgifter till reläet, gjorda för det här paret av webbläsare, i minnet medan sidan är öppen. Med dem kan en reläanslutning starta i 5 minuter.",
