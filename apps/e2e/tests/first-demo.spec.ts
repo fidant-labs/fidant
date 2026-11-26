@@ -1960,8 +1960,8 @@ test.describe("emailed links", () => {
     ).toBeVisible();
     await recipient.getByRole("button", { name: "Show", exact: true }).click();
     const shown = recipient.getByRole("region", { name: "The secret", exact: true });
-    // Playwright's Firefox crashes the page on toHaveJSProperty after a role or label query.
     await expect(shown).toBeVisible();
+    // Playwright's Firefox crashes the page on toHaveJSProperty after a role or label query.
     await expect.poll(() => shown.evaluate((el) => el.textContent)).toBe(text);
     await expect(delivered(sender, name)).toBeAttached();
   });

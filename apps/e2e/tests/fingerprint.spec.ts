@@ -120,7 +120,9 @@ for (const variant of ["a=Fingerprint:sha-256", "a=fingerprint sha-256"]) {
     await confirmEmail(recipient, to);
     const warnings = async () =>
       (await observed("sender").records()).flatMap((r) => (r.type === "console" ? [r.text] : []));
-    await expect.poll(() => added, { timeout: 10_000 }).toBe(true);
+    await expect
+      .poll(() => added, { message: "added the line to the recipient's answer", timeout: 10_000 })
+      .toBe(true);
     await expect
       .poll(warnings, { timeout: 10_000 })
       .toContain("sigill: sender dropped a connection: bad-signal");

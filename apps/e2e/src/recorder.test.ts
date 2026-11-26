@@ -47,9 +47,12 @@ test("records a request body as base64", () => {
 });
 
 test("records no body for a method without one", () => {
-  for (const method of ["GET", "HEAD", "OPTIONS", "get"]) {
+  for (const method of ["GET", "HEAD", "get"]) {
     assert.deepEqual(requestBody(method, {}, null), {}, method);
   }
+  const preflight = { "access-control-request-method": "PUT" };
+  assert.deepEqual(requestBody("OPTIONS", preflight, null), {});
+  assert.deepEqual(requestBody("OPTIONS", {}, null), { bodyMissing: true });
 });
 
 test("marks a body that Playwright did not expose", () => {
@@ -66,7 +69,7 @@ test("records no body when the request says its length is 0", () => {
   assert.deepEqual(requestBody("POST", { "content-length": "0" }, null), {});
 });
 
-test("marks a multipart body, whose file parts WebKit leaves out", () => {
+test("marks a multipart body by its header or its part framing", () => {
   const body = Buffer.from("--x\r\nContent-Disposition: form-data; name=a\r\n\r\nb\r\n--x--");
   const headers = { "content-type": "multipart/form-data; boundary=x" };
   assert.deepEqual(requestBody("POST", headers, body), {
@@ -75,6 +78,10 @@ test("marks a multipart body, whose file parts WebKit leaves out", () => {
   });
   assert.deepEqual(requestBody("POST", { "content-type": "text/plain" }, body), {
     body: body.toString("base64"),
+    bodyMissing: true,
+  });
+  assert.deepEqual(requestBody("POST", { "content-type": "text/plain" }, Buffer.from("hi")), {
+    body: "aGk=",
   });
 });
 

@@ -57,6 +57,20 @@ test("request bodies are recorded", async ({ page, observed, baseURL, leaks, bro
   expect(at("/empty")?.body).toBeUndefined();
 });
 
+test("the recorder adds the context's cookies to a request", async ({
+  page,
+  observed,
+  baseURL,
+}) => {
+  await page.context().addCookies([{ name: "k", value: "plain", url: baseURL as string }]);
+  await page.goto("/");
+  const requests = (await observed("default").records()).filter(
+    (record) => record.type === "request",
+  );
+  const root = requests.find((record) => record.url === new URL("/", baseURL).href);
+  expect(root?.headers.cookie).toContain("k=plain");
+});
+
 test.describe("the blocker", () => {
   test.use({ allowBlocked: true });
 

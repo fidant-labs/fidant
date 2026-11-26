@@ -182,7 +182,7 @@ for (const transport of ["udp", "tcp"] as const) {
       const urls = await peerList(page, "iceUrls");
       expect(urls?.length).toBeGreaterThan(0);
       expect(new Set(urls)).toEqual(new Set(process.env.SIGILL_E2E_TURN_URLS?.split(",")));
-      // Through a relay candidate over the transport under test; WebKit's stats name no protocol.
+      // WebKit's stats name no protocol; watchPeers offers only this transport's TURN URLs.
       const path = browserName === "webkit" ? "relay/" : `relay/${transport}`;
       await expect.poll(() => peerList(page, "relayPaths")).toEqual([path]);
     }

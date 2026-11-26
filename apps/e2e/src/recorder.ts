@@ -121,10 +121,8 @@ async function requestRecord(
   const time = now();
   const body = request.postDataBuffer();
   const method = request.method();
-  const headers = withCookies(
-    await headersOf(request.allHeaders(), request.headers()),
-    await context.cookies(request.url()).catch(() => []),
-  );
+  const jar = context.cookies(request.url()).catch(() => []);
+  const headers = withCookies(await headersOf(request.allHeaders(), request.headers()), await jar);
   return {
     type: "request",
     time,
@@ -136,26 +134,20 @@ async function requestRecord(
 }
 
 /** Methods whose requests carry no body. */
-const bodiless = new Set(["GET", "HEAD", "OPTIONS"]);
+const bodiless = new Set(["GET", "HEAD"]);
 
-/**
- * The body fields of a request record: the body as base64 when Playwright exposed one.
- * Otherwise `bodyMissing` marks a request that may have had a body the scan cannot see.
- *
- * Chromium and Firefox expose string, buffer, Blob, File and FormData bodies. WebKit leaves the
- * bytes of a Blob or File out of a body, so a multipart body is marked even when some bytes are
- * exposed. No engine exposes a streamed body, and a request without an exposed body may have been
- * empty or hidden. So any request whose method allows a body, with none exposed, is marked unless
- * its headers say `content-length: 0`.
- */
+/** Body fields: base64 when exposed; bodyMissing when a body may be hidden from the scan (see README "What is scanned"). */
 export function requestBody(method: string, headers: Headers, body: Buffer | null): RequestBody {
   if (body && body.length > 0) {
     const text = body.toString("base64");
-    return headers["content-type"]?.toLowerCase().startsWith("multipart/form-data")
-      ? { body: text, bodyMissing: true }
-      : { body: text };
+    const multipart =
+      headers["content-type"]?.toLowerCase().startsWith("multipart/form-data") ||
+      body.toString("latin1").toLowerCase().includes("content-disposition: form-data");
+    return multipart ? { body: text, bodyMissing: true } : { body: text };
   }
-  if (bodiless.has(method.toUpperCase()) || headers["content-length"] === "0") {
+  const upper = method.toUpperCase();
+  const preflight = upper === "OPTIONS" && "access-control-request-method" in headers;
+  if (bodiless.has(upper) || preflight || headers["content-length"] === "0") {
     return {};
   }
   return { bodyMissing: true };
