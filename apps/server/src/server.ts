@@ -25,7 +25,7 @@ const contentTypes: Record<string, string> = {
 
 const securityHeaders = {
   "content-security-policy":
-    "default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+    "default-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
   "referrer-policy": "no-referrer",
   "x-content-type-options": "nosniff",
 };

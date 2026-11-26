@@ -67,6 +67,7 @@ import { Input } from "#components/ui/input";
 import { Label } from "#components/ui/label";
 import type { Messages } from "../i18n/en.ts";
 import { useI18n } from "../i18n/I18n.tsx";
+import type { TransferStatus } from "../lib/favicon.ts";
 import { formatBytes, toHex } from "../lib/format.ts";
 import { hasForbiddenCharacters, MAX_FROM_LENGTH, metaFits } from "../lib/frames.ts";
 import { deriveSignalKey } from "../lib/keys.ts";
@@ -180,11 +181,11 @@ function glideTo(el: HTMLElement) {
 
 export function SendPage({
   kind,
-  onUnfinished,
+  onStatus,
 }: {
   kind: "file" | "text";
-  /** Told whether any recipient is still unfinished, the same test that guards closing the tab. */
-  onUnfinished(unfinished: boolean): void;
+  /** Told "active" while any recipient is unfinished, the same test that guards closing the tab, and "done" once all have the file or text. */
+  onStatus(status: TransferStatus): void;
 }) {
   const { t, lang } = useI18n();
   const text = kind === "text";
@@ -745,9 +746,10 @@ export function SendPage({
   const connected = sender.recipients.filter(isActive).length;
   const emailed = sender.recipients.filter(emailBound);
   const unfinished = sender.recipients.some((r) => r.status !== "delivered");
-  useEffect(() => onUnfinished(unfinished), [onUnfinished, unfinished]);
   const delivered = sender.recipients.filter((r) => r.status === "delivered").length;
   const allDone = hasRecipients && !unfinished;
+  const status: TransferStatus = unfinished ? "active" : allDone ? "done" : "idle";
+  useEffect(() => onStatus(status), [onStatus, status]);
   // Asked only once there is a link to wait for, and never during prerender.
   useEffect(() => {
     if (hasRecipients) {
