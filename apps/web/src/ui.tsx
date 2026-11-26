@@ -146,6 +146,9 @@ export type Route =
   | "security"
   | "notFound";
 
+/** The send page in secret mode. Without `mode`, or with `mode=file`, it sends a file. */
+export const SECRET_HREF = "/send?mode=secret";
+
 /** Changes the page without reloading it, so a transfer held in memory survives. */
 export function navigate(href: string) {
   history.pushState(null, "", href);
@@ -186,9 +189,8 @@ export function Link({
   );
 }
 
-const MENU: ReadonlyArray<readonly ["send" | "secret" | "how" | "privacy", string]> = [
+const MENU: ReadonlyArray<readonly ["send" | "how" | "privacy", string]> = [
   ["send", "/send"],
-  ["secret", "/secret"],
   ["how", "/how"],
   ["privacy", "/privacy"],
 ];
@@ -287,18 +289,23 @@ export function Header({
         </Link>
         <nav aria-label={t.menu.label}>
           <ul class="flex items-center gap-0.5 sm:gap-1">
-            {MENU.map(([section, href]) => (
-              <li key={section} class={section === "secret" ? "max-md:hidden" : undefined}>
-                <Link
-                  href={href}
-                  aria-current={section === current ? "page" : undefined}
-                  class={`${buttonVariants({ variant: section === current ? "secondary" : "ghost" })} max-sm:px-1 max-sm:text-[0.8125rem]`}
-                >
-                  {t.menu[section]}
-                  {(section === "send" || section === "secret") && open[section] && <LiveDot />}
-                </Link>
-              </li>
-            ))}
+            {MENU.map(([section, href]) => {
+              // Send covers both modes of the send page.
+              const here = section === current || (section === "send" && current === "secret");
+              return (
+                <li key={section}>
+                  <Link
+                    // With only a secret open, Send leads back to it.
+                    href={section === "send" && open.secret && !open.send ? SECRET_HREF : href}
+                    aria-current={here ? "page" : undefined}
+                    class={`${buttonVariants({ variant: here ? "secondary" : "ghost" })} max-sm:px-1 max-sm:text-[0.8125rem]`}
+                  >
+                    {t.menu[section]}
+                    {section === "send" && (open.send || open.secret) && <LiveDot />}
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
         </nav>
       </div>
@@ -310,7 +317,7 @@ const FOOTER_LINKS: ReadonlyArray<
   readonly ["how" | "secret" | "privacy" | "about" | "terms" | "security", string]
 > = [
   ["how", "/how"],
-  ["secret", "/secret"],
+  ["secret", SECRET_HREF],
   ["about", "/about"],
   ["privacy", "/privacy"],
   ["terms", "/terms"],

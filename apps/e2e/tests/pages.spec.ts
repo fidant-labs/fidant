@@ -70,6 +70,25 @@ test("the not-found page says so and links home", async ({ page }) => {
   await expect(page).toHaveURL(/\/$/);
 });
 
+test("the send page's toggle switches between a file and a secret, and the address names the mode", async ({
+  actor,
+}) => {
+  const { page } = await actor("sender");
+  await page.goto("/send?mode=secret");
+  await expect(page.getByLabel("Your secret")).toBeVisible();
+  const toggle = page.getByRole("navigation", { name: "What to send" }).filter({ visible: true });
+  await toggle.getByRole("link", { name: "File" }).click();
+  await expect(page).toHaveURL(/\/send\?mode=file$/);
+  await expect(page.getByLabel("Your secret")).toBeHidden();
+  await expect(page).toHaveTitle("Send a file – Fidant");
+  await toggle.getByRole("link", { name: "Secret" }).click();
+  await expect(page).toHaveURL(/\/send\?mode=secret$/);
+  await expect(page.getByLabel("Your secret")).toBeVisible();
+  // The old address still opens secret mode.
+  await page.goto("/secret");
+  await expect(page).toHaveURL(/\/send\?mode=secret$/);
+});
+
 test.describe("in a Swedish browser", () => {
   test.use({ locale: "sv-SE" });
 
@@ -119,7 +138,7 @@ test("switching language while sharing keeps the share, and the recipient still 
 
   await sender.evaluate(() => Object.assign(window, { notReloaded: true }));
   await choose(sender, "Language", "Svenska");
-  await expect(sender).toHaveURL(/\/sv\/hemlighet$/);
+  await expect(sender).toHaveURL(/\/sv\/skicka\?mode=secret$/);
   await expect(sender.locator("html")).toHaveAttribute("lang", "sv");
   expect(await sender.evaluate(() => "notReloaded" in window)).toBe(true);
   await expect(sender.getByLabel(`Länk till ${name}`, { exact: true })).toHaveText(link);
@@ -141,7 +160,7 @@ test("back after a language switch shows the earlier page in the new language", 
   await page.goBack();
   await expect(page).toHaveURL(/\/sv\/integritet$/);
   await expect(page.locator("main h1")).toHaveText("Integritet");
-  await page.locator("header nav").getByRole("link", { name: "Skicka en fil" }).click();
+  await page.locator("header nav").getByRole("link", { name: "Skicka", exact: true }).click();
   await expect(page).toHaveURL(/\/sv\/skicka$/);
 });
 

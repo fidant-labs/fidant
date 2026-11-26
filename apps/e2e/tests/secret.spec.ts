@@ -87,9 +87,12 @@ test("a text goes from /secret to the recipient, who shows and copies it", async
 
   const { page: sender } = await actor("sender");
   await sender.goto("/send");
-  const entry = sender.locator("header nav").getByRole("link", { name: "Share a secret" });
+  const entry = sender
+    .getByRole("navigation", { name: "What to send" })
+    .filter({ visible: true })
+    .getByRole("link", { name: "Secret" });
   await entry.click();
-  await expect(sender).toHaveURL(/\/secret$/);
+  await expect(sender).toHaveURL(/\/send\?mode=secret$/);
   await expect(sender).toHaveTitle("Share a secret – Fidant");
   await expect(entry).toHaveAttribute("aria-current", "page");
   const field = sender.getByLabel("Your secret");
