@@ -65,6 +65,18 @@ jobs:
           path: ${{ runner.temp }}/image.tar
           retention-days: 1
           if-no-files-found: error
+
+  # Needs build so its first-parent check runs before this job installs anything.
+  web:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -84,7 +96,7 @@ jobs:
 
   # Holds AWS credentials, so it checks out nothing and runs only pinned actions, git (ls-remote, before it signs in), the aws CLI, docker and jq.
   release:
-    needs: build
+    needs: [build, web]
     runs-on: ubuntu-latest
     environment: app
     # Above the release step's waits (20, 30 and 30 minutes) and below the role's 2-hour session.
@@ -273,6 +285,6 @@ jobs:
           [[ $ACCOUNT =~ ^[0-9]{12}$ ]] || { echo "::error::unexpected input"; exit 1; }
           web=$RUNNER_TEMP/web
           bucket=s3://fidant-pages-$ACCOUNT
-          aws s3 cp "$web/assets" "$bucket/assets" --recursive --cache-control "public, max-age=31536000, immutable" --region us-east-1 --only-show-errors
-          aws s3 cp "$web" "$bucket" --recursive --exclude "assets/*" --cache-control no-cache --region us-east-1 --only-show-errors
+          aws s3 cp "$web/assets" "$bucket/assets" --recursive --no-follow-symlinks --cache-control "public, max-age=31536000, immutable" --region us-east-1 --only-show-errors
+          aws s3 cp "$web" "$bucket" --recursive --no-follow-symlinks --exclude "assets/*" --cache-control no-cache --region us-east-1 --only-show-errors
           echo "uploaded the web client"

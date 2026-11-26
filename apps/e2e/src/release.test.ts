@@ -169,14 +169,22 @@ test("the release workflow pins its actions and keeps credentials away from repo
     assert.doesNotMatch(script ?? "", /\$\{\{/);
   }
   const buildAt = workflow.indexOf("\n  build:\n");
+  const webAt = workflow.indexOf("\n  web:\n");
   const releaseAt = workflow.indexOf("\n  release:\n");
-  assert.ok(buildAt > 0 && releaseAt > buildAt);
-  const build = workflow.slice(buildAt, releaseAt);
+  assert.ok(buildAt > 0 && webAt > buildAt && releaseAt > webAt);
+  const build = workflow.slice(buildAt, webAt);
+  const web = workflow.slice(webAt, releaseAt);
   const release = workflow.slice(releaseAt);
   assert.match(workflow.slice(0, buildAt), /\npermissions: \{\}\n/);
-  assert.match(build, /\n {4}permissions:\n {6}contents: read\n {4}\S/);
+  for (const job of [build, web]) {
+    assert.match(job, /\n {4}permissions:\n {6}contents: read\n {4}\S/);
+    assert.doesNotMatch(job, /id-token|secrets\.|aws-actions/);
+    assert.match(job, /actions\/checkout@/);
+  }
+  assert.doesNotMatch(build, /pnpm install|setup-node/);
+  assert.match(web, /\n {4}needs: build\n/);
+  assert.match(release, /\n {4}needs: \[build, web\]\n/);
   assert.match(release, /\n {4}permissions:\n {6}id-token: write\n {4}\S/);
-  assert.doesNotMatch(build, /id-token|secrets\./);
   assert.doesNotMatch(release, /checkout|pnpm|node /);
   assert.match(release, /\n {4}environment: app\n/);
 });
@@ -444,6 +452,7 @@ const uploaded = [
     "$RUNNER_TEMP/web/assets",
     `${bucket}/assets`,
     "--recursive",
+    "--no-follow-symlinks",
     "--cache-control",
     uploadCacheControl("assets/index.js"),
     "--region",
@@ -454,6 +463,7 @@ const uploaded = [
     "$RUNNER_TEMP/web",
     bucket,
     "--recursive",
+    "--no-follow-symlinks",
     "--exclude",
     "assets/*",
     "--cache-control",
@@ -476,11 +486,8 @@ test("the release job runs each step only after every step before it succeeded, 
   );
 });
 
-test("the build job hands on the web client built for the signaling name, hidden files included", () => {
-  const build = workflow.slice(
-    workflow.indexOf("\n  build:\n"),
-    workflow.indexOf("\n  release:\n"),
-  );
+test("the web job hands on the web client built for the signaling name, hidden files included", () => {
+  const build = workflow.slice(workflow.indexOf("\n  web:\n"), workflow.indexOf("\n  release:\n"));
   assert.ok(
     build.includes(
       "      - run: pnpm install --frozen-lockfile\n      - name: Build the web client\n        env:\n          SIGNALS_FILE: signals.json\n        run: pnpm --filter @sigill/web build\n",
