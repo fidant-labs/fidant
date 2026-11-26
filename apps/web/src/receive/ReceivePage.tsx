@@ -185,6 +185,8 @@ type Attempt = {
   text: boolean;
   /** Set once the recipient accepted and the file started arriving. */
   receiving: boolean;
+  /** Set once the channel opened with a part an earlier attempt kept, until a different offer discards it. */
+  resuming?: boolean;
   /** The server said the sender is gone while the file was arriving. */
   hostGone: boolean;
   /** The sender refused our relay for this attempt, as the server's `joined` said. */
@@ -591,6 +593,9 @@ export function ReceivePage({
       // SIG-194: onOpen can run twice for one channel, and only one run may get the kept part.
       const resumable = keptRef.current;
       keptRef.current = undefined;
+      if (resumable) {
+        attempt.resuming = true;
+      }
       attempt.channelOpen = true;
       let offered: Offer | undefined;
       let timeLeft: ReturnType<typeof etaTracker> | undefined;
@@ -626,6 +631,7 @@ export function ReceivePage({
         ...(confirm && { confirm }),
         ...(resumable && { resumable }),
         onOffer(received) {
+          attempt.resuming = false;
           return new Promise((resolve) => {
             if (!current()) {
               return;

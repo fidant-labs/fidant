@@ -22,6 +22,22 @@ test("peerLostProblem blames a refused relay only while the channel never opened
   );
 });
 
+test("peerLostProblem says Try again continues while the attempt holds a kept part", () => {
+  const relayRefused = false;
+  assert.equal(
+    peerLostProblem({ channelOpen: true, receiving: false, resuming: true, relayRefused }),
+    "lostReceiving",
+  );
+  assert.equal(
+    peerLostProblem({ channelOpen: false, receiving: false, resuming: true, relayRefused }),
+    "connect",
+  );
+  assert.equal(
+    peerLostProblem({ channelOpen: false, receiving: false, resuming: true, relayRefused: true }),
+    "noRelay",
+  );
+});
+
 test("refusedProblem offers Try again for a busy link only while a part is kept", () => {
   assert.deepEqual(refusedProblem("busy", true), { s: "failed", problem: "senderBusy" });
   assert.deepEqual(refusedProblem("busy", false), { s: "refused", problem: "busy" });
