@@ -79,9 +79,9 @@ test("a text goes from /secret to the recipient, who shows and copies it", async
   // Starts with a byte order mark, which Blob.text() would drop on the recipient's side.
   const text = `\uFEFF${body}`;
   leaks.watchContent("text with its byte order mark", text);
-  // WebKit ends the box's selected text with a line break, and its clipboard drops the mark.
+  // WebKit ends the box's selected text with a line break, and on macOS its clipboard drops the mark.
   const selected = browserName === "webkit" ? `${text}\n` : text;
-  const copied = browserName === "webkit" ? body : text;
+  const copied = browserName === "webkit" && process.platform === "darwin" ? body : text;
   const from = makeName(leaks, canary, "David");
   const name = makeName(leaks, canary, "Anna");
 
