@@ -245,11 +245,13 @@ jobs:
               exit 0
               ;;
             FAILED*)
-              echo "::error::the new task failed its health check; the service is going back to $previous, live will name it again, and $d will be tagged failed-$KEY"
+              echo "::error::the new task failed its health check; the service is going back to $previous"
               settled 1800
               tag "imageDigest=$previous" live
               safe=1
+              echo "live names $previous again"
               tag "imageDigest=$d" "failed-$KEY"
+              echo "tagged $d failed-$KEY"
               exit 1
               ;;
             None*)

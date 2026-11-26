@@ -633,7 +633,13 @@ test("a deployment that fails moves live back to the image the service went back
     ...markFailed,
   ]);
   assert.deepEqual(tags, marked);
-  assert.match(stdout, /::error::the new task failed its health check/);
+  assert.match(
+    stdout,
+    new RegExp(
+      `^::error::the new task failed its health check; the service is going back to sha256:old\nlive names sha256:old again\ntagged sha256:new failed-${key}\n$`,
+      "m",
+    ),
+  );
 });
 
 test("a deployment that cannot start moves live back, leaves the image untagged as failed, and fails", () => {
@@ -702,7 +708,7 @@ test("a failed-<key> tag that is already there counts only when it names the ima
   assert.equal(same.status, 1);
   assert.deepEqual(same.calls.slice(-3), [...markFailed, `batch-get-image imageTag=failed-${key}`]);
   assert.deepEqual(same.tags, marked);
-  assert.match(same.stdout, /::error::the new task failed its health check/);
+  assert.match(same.stdout, new RegExp(`^tagged sha256:new failed-${key}$`, "m"));
 
   const another = release({ ...rolledBack, lost: { [`failed-${key}`]: "sha256:old" } });
   assert.equal(another.status, 1);
@@ -712,6 +718,7 @@ test("a failed-<key> tag that is already there counts only when it names the ima
   ]);
   assert.deepEqual(another.tags, { ...before, [`failed-${key}`]: "sha256:old" });
   assert.match(another.stdout, /::error::the new task failed its health check/);
+  assert.doesNotMatch(another.stdout, new RegExp(`failed-${key}`));
 });
 
 const serviceReplaced = service(["ecs-svc/9", "PRIMARY", "COMPLETED"]);
@@ -775,6 +782,7 @@ test("a rollback that does not settle in time puts live back and tags nothing fa
   });
   assert.equal(status, 1);
   assert.match(stdout, /::error::the service did not settle in time/);
+  assert.doesNotMatch(stdout, new RegExp(`failed-${key}`));
   assert.deepEqual(tags, before);
 });
 
