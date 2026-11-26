@@ -320,7 +320,7 @@ export const sv: Messages = {
       "Om vi mejlar en länk står ditt namn också i mejlet, markerat som inte verifierat. Vår server lägger in det där och sparar det inte.",
     allowRelay: "Använd vårt relä vid behov",
     allowRelayHint: (kind: Kind) =>
-      `Vissa nätverk stoppar direkta anslutningar. Då går det via vårt relä i Stockholm, fortfarande krypterat. Reläet ser båda IP-adresserna${kind === "file" ? " och ungefär storleken" : ""}, men kan inte öppna det.`,
+      `Vissa nätverk stoppar direkta anslutningar. Då går ${kind === "secret" ? "hemligheten" : "filen"} via vårt relä i Stockholm, fortfarande krypterad. Reläet ser båda IP-adresserna${kind === "file" ? " och ungefär storleken" : ""}, men kan inte öppna den. Om du bockar ur det här går ${kind === "secret" ? "hemligheten" : "filen"} aldrig via reläet, men reläet ser ändå varje IP-adress, eftersom varje webbläsare frågar det om sin offentliga adress.`,
     fromError: {
       unsafe:
         "Ditt namn innehåller tecken som inte kan skickas, eller tre eller fler mellanslag i rad. Ta bort dem och försök igen.",

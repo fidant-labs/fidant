@@ -340,7 +340,7 @@ export const en = {
       "If we email a link, your name also goes in that email, marked as not verified. Our server puts it there and doesn't keep it.",
     allowRelay: "Use our relay if needed",
     allowRelayHint: (kind: Kind) =>
-      `Some networks block direct connections. Then it goes through our relay in Stockholm, still encrypted. The relay sees both IP addresses${kind === "file" ? " and roughly the size" : ""}, but can't open it.`,
+      `Some networks block direct connections. Then the ${kind === "secret" ? "secret" : "file"} goes through our relay in Stockholm, still encrypted. The relay sees both IP addresses${kind === "file" ? " and roughly the size" : ""}, but can't open it. If you untick this, the ${kind === "secret" ? "secret" : "file"} never goes through the relay, but the relay still sees each IP address, because each browser asks it for its public address.`,
     fromError: {
       unsafe:
         "Your name contains characters that can't be sent, or three or more spaces in a row. Remove them and try again.",
