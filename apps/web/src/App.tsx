@@ -264,12 +264,22 @@ export function App({
         )}
         {secure && kept.current.has("send") && (
           <div hidden={route !== "send"} inert={prerender !== undefined}>
-            <SendPage kind="file" onStatus={setSendStatus} preview={preview?.send} />
+            <SendPage
+              kind="file"
+              onStatus={setSendStatus}
+              preview={preview?.send}
+              shown={route === "send"}
+            />
           </div>
         )}
         {secure && kept.current.has("secret") && (
           <div hidden={route !== "secret"} inert={prerender !== undefined}>
-            <SendPage kind="text" onStatus={setSecretStatus} preview={preview?.secret} />
+            <SendPage
+              kind="text"
+              onStatus={setSecretStatus}
+              preview={preview?.secret}
+              shown={route === "secret"}
+            />
           </div>
         )}
       </div>

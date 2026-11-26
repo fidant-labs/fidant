@@ -5,7 +5,6 @@ import { useEffect, useId, useRef, useState } from "preact/hooks";
 import { DropdownMenu } from "radix-ui";
 import { Alert, AlertDescription, AlertTitle } from "#components/ui/alert";
 import { buttonVariants } from "#components/ui/button";
-import { Card, CardContent } from "#components/ui/card";
 import { useI18n } from "./i18n/I18n.tsx";
 import { LANGUAGE_NAMES, type Lang, localizedPath } from "./i18n/language.ts";
 import { formatBytes } from "./lib/format.ts";
@@ -440,20 +439,6 @@ export function Direct({
   );
 }
 
-export function FileCard({ name, size }: { name: string; size: string }) {
-  return (
-    <Card className="my-4">
-      <CardContent className="flex items-center gap-3">
-        <Icon name="file" class="size-8 text-muted-foreground" />
-        <div>
-          <p class="m-0 font-semibold wrap-anywhere">{name}</p>
-          <p class="m-0 text-muted-foreground">{size}</p>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
 function Facts({
   rows,
   inline,
@@ -643,12 +628,11 @@ export function SectionLink({ link: [text, href] }: { link: readonly [string, st
 }
 
 /** A safety number shown as "482 913", heard digit by digit when it appears. */
-export function CheckNumber({ label, number }: { label?: string; number: string | undefined }) {
+export function CheckNumber({ number }: { number: string | undefined }) {
   return (
     <p class="m-0" role="status">
       {number && (
         <>
-          {label && <span class="block text-[0.85rem] text-muted-foreground">{label}</span>}
           <span
             class="font-mono text-3xl font-semibold tracking-widest tabular-nums"
             aria-hidden="true"

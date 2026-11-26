@@ -107,13 +107,20 @@ function build(people: Person[]): SenderState {
   return state;
 }
 
-/** A send page with these people on the list, each with an open safety number if it is checking. */
-function sending(people: Person[], more: SendPreview = {}): SendPreview {
+/**
+ * A send page with these people on the list, each with an open safety number if it is checking.
+ * Only "Safety number" leaves its dialog open; elsewhere the check is put off, or the dialog
+ * would cover the page on every reload.
+ */
+function sending(people: Person[], more: SendPreview = {}, later = true): SendPreview {
   const sender = build(people);
   const checks = Object.fromEntries(
     sender.recipients
       .filter((r) => r.status === "checking")
-      .map((r, i) => [r.linkId, i === 1 ? { number: NUMBER, said: true } : { number: NUMBER }]),
+      .map((r, i) => [
+        r.linkId,
+        i === 1 ? { number: NUMBER, said: true } : { number: NUMBER, later },
+      ]),
   );
   return { file: FILE, hash: { status: "ready", hex: SHA256 }, sender, checks, ...more };
 }
@@ -213,10 +220,14 @@ export const STATES: readonly DevState[] = [
   send("Waiting for the recipient", () => sending([{ name: "Anna" }])),
   send("Connecting", () => sending([{ name: "Anna", steps: [joined()] }])),
   send("Safety number", () =>
-    sending([
-      { name: "Anna", check: true, steps: [joined(), on("channel-open")] },
-      { name: "Björn (said it matches)", check: true, steps: [joined(), on("channel-open")] },
-    ]),
+    sending(
+      [
+        { name: "Anna", check: true, steps: [joined(), on("channel-open")] },
+        { name: "Björn (said it matches)", check: true, steps: [joined(), on("channel-open")] },
+      ],
+      {},
+      false,
+    ),
   ),
   send("Offered", () => sending([{ name: "Anna", steps: OPEN }])),
   send("Sending", () => sending([{ name: "Anna", steps: SENDING }], { from: "Anna Lind" })),
@@ -259,6 +270,7 @@ export const STATES: readonly DevState[] = [
   send("Every link problem", () =>
     sending([
       { name: "Checksum differed", steps: [...SENDING, receipt(false)] },
+      { name: "Interrupted", steps: [...SENDING, on("dropped")] },
       { name: "Could not connect", steps: [joined(), on("timeout")] },
       { name: "Could not connect, relay off", steps: [joined(false), on("timeout")] },
       { name: "Numbers differed", check: true, steps: DIFFERS },
