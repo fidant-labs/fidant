@@ -270,6 +270,7 @@ test("a sender who refuses the relay: no credentials, no bytes, plain words on b
     mimeType: file.mime,
     buffer: file.bytes,
   });
+  // The page glides after a file is chosen, here on the faked clock, so a pointer click can miss.
   await sender.getByText("Connection options", { exact: true }).press("Enter");
   const allowRelay = sender.getByLabel("Use our relay if needed");
   await allowRelay.uncheck();
