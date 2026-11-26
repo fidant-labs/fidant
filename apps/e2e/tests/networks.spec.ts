@@ -1382,7 +1382,6 @@ test.describe("pages from the edge function", () => {
       expect([...new Set(sockets.map((r) => new URL(r.url).host))], who).toEqual([signalHost]);
     }
 
-    // The page's own origin has no signaling, and the relay's secret passes on to the image.
     expect(await sender.page.evaluate(() => fetch("/signal").then((r) => r.status))).toBe(404);
     const status = (path: string) =>
       inRelay("curl", "-sk", "--max-time", "5", "-o", "/dev/null", "-w", "%{http_code}", path);

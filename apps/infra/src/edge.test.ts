@@ -22,7 +22,6 @@ function fields(values: Record<string, string | undefined>): Fields {
   );
 }
 
-/** The viewer's request for `target`, as CloudFront hands it to the function. */
 function viewer(target: string, headers: Record<string, string | undefined> = {}) {
   const cut = target.indexOf("?");
   const raw = cut < 0 ? undefined : target.slice(cut + 1);

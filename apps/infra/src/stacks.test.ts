@@ -632,7 +632,6 @@ function idOf(template: Template, type: string, pattern: RegExp): string {
   return ids[0] ?? "";
 }
 
-/** The ARN that CDK writes for a distribution, as the bucket policy and the plan name it. */
 function distributionArn(id: string) {
   return {
     "Fn::Join": [

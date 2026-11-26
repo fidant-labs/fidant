@@ -251,8 +251,7 @@ services:
       public: { ipv4_address: 198.51.100.50 }
       lb: { ipv4_address: 10.89.3.2 }
 
-  # The pages CDN: apps/infra/edge/site.js over the bucket, as CloudFront runs it, and
-  # /relay-secret/* passed on to alb. The browsers reach it as fidant.se where a test maps that name.
+  # The pages CDN stand-in: apps/infra/edge/site.js over the pages build, /relay-secret/* to alb.
   pages:
     image: sigill-e2e-node
     build:
