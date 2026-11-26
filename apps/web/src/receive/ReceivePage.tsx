@@ -679,7 +679,9 @@ export function ReceivePage({
     };
   };
 
-  // Runs once on mount; "Try again" calls start() again.
+  // Runs on mount, and again when a dev preview starts or ends. The cleanup
+  // closes the connection when a preview starts. Production never passes a
+  // preview. "Try again" calls start() again.
   useEffect(() => {
     if (preview) {
       return;

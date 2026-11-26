@@ -106,7 +106,7 @@ import {
 } from "../ui.tsx";
 import { type CheckView, RecipientList } from "./RecipientList.tsx";
 
-export type Hash =
+type Hash =
   | { status: "none" }
   | { status: "preparing" }
   | { status: "ready"; hex: string }
@@ -504,7 +504,9 @@ export function SendPage({
     });
   };
 
-  // Runs once on mount: everything it uses is read through refs.
+  // Runs on mount, and again when a dev preview starts or ends. The cleanup
+  // closes the connection when a preview starts. Production never passes a
+  // preview. Everything it uses is read through refs.
   useEffect(() => {
     if (preview) {
       return;
