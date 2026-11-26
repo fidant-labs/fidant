@@ -24,6 +24,8 @@ export const coturnPcap = join(runDir, "coturn.pcap");
 /** The box container's journal (sigill, caddy, coturn) and /var/log/syslog, network scenarios only. */
 export const boxJournal = join(runDir, "box-journal.jsonl");
 export const boxSyslog = join(runDir, "box-syslog.log");
+/** The signaling image's container log, stdout and stderr, network scenarios only. */
+export const signalLog = join(runDir, "signal.log");
 
 /**
  * Every file the harness writes directly in observations/run/, and how the leak checks read it:
@@ -43,6 +45,7 @@ export const runSources: readonly RunSource[] = [
   { path: stackEventsLog, read: "lines" },
   { path: boxJournal, read: "lines" },
   { path: boxSyslog, read: "lines" },
+  { path: signalLog, read: "lines" },
   { path: coturnPcap, read: "binary" },
   { path: serverPidFile, read: "ignored", reason: "a process ID the harness writes itself" },
 ];
