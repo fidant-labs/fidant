@@ -524,11 +524,11 @@ export const sv: Messages = {
       },
       lostReceiving: {
         title: "Anslutningen till avsändaren bröts",
-        body: "Försök igen så fortsätter nedladdningen där den avbröts.",
+        body: "Försök igen. Nedladdningen fortsätter där den avbröts om det går.",
       },
       senderBusy: {
-        title: "Avsändarens sida håller fortfarande i den förra anslutningen",
-        body: "Försök igen om en stund. Nedladdningen fortsätter där den avbröts.",
+        title: "Länken är upptagen",
+        body: "Avsändarens sida har kanske inte märkt att anslutningen bröts, eller så är länken öppen i en annan flik. Stäng andra flikar med länken, vänta en stund och försök igen. Nedladdningen fortsätter där den avbröts om det går.",
       },
       checksum: {
         title: "Filen kom inte fram oskadd",
@@ -932,7 +932,7 @@ export const sv: Messages = {
         body: [
           "Den som kan se den krypterade trafiken, till exempel nätverken på vägen eller vårt relä, ser hur stora ramarna är. Därför avrundas storleken uppåt med metoden Padmé, som lägger till högst 12 %, och sedan till hela delar. Alla ramar med fildata är lika stora, och utfyllnaden är nollor som mottagaren kontrollerar. En nedladdning som fortsätter efter en bruten anslutning skickar bara resten, i ramar av samma storlekar, så den som ser båda försöken kan lägga ihop dem till minst den avrundade storleken för en hel överföring, mer om några delar skickades två gånger.",
           "Den exakta storleken finns bara i de krypterade META och END. META är alltid lika stor, så inte heller filnamnets längd syns.",
-          "En delad hemlighet är högst 32 KiB, och varje delad hemlighet fylls ut till exakt en del. Appen ser till det: om en anslutning bara tillåter meddelanden som är för små för en del på 32 KiB skickas ingenting över den, och avsändaren ser att hemligheten inte skickades. Med alla webbläsare vi testade i november 2026 (Chromium, Firefox och WebKit) är delen 48 KiB. Så varje delad hemlighet ser likadan ut på nätet, oavsett längd, och likadan som vilken fil som helst på upp till 48 KiB.",
+          "En delad hemlighet är högst 32 KiB, och varje delad hemlighet fylls ut till exakt en del. Appen ser till det: om en anslutning bara tillåter meddelanden som är för små för en del på 32 KiB skickas ingenting över den, och avsändaren ser att hemligheten inte skickades. Med alla webbläsare vi testade i november 2026 (Chromium, Firefox och WebKit) är delen 48 KiB. Så varje delad hemlighet ser likadan ut på nätet, oavsett längd, och likadan som vilken fil som helst på upp till 48 KiB som skickas i ett försök. En fil vars nedladdning fortsätter efter ett avbrott behöver ibland ingen del alls i det nya försöket, vilket aldrig händer en delad hemlighet, eftersom den alltid börjar om.",
         ],
       },
       travel: {

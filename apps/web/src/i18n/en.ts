@@ -546,11 +546,11 @@ export const en = {
       },
       lostReceiving: {
         title: "The connection to the sender was lost",
-        body: "Try again to continue the download where it stopped.",
+        body: "Try again. The download continues where it stopped if it can.",
       },
       senderBusy: {
-        title: "The sender's page is still on the last connection",
-        body: "Try again in a moment. The download continues where it stopped.",
+        title: "This link is busy",
+        body: "The sender's page may not have noticed that the connection dropped, or the link is open in another tab. Close any other tab with this link, wait a moment and try again. The download continues where it stopped if it can.",
       },
       checksum: {
         title: "The file didn't arrive intact",
@@ -976,7 +976,7 @@ export const en = {
         body: [
           "Anyone who can see the encrypted traffic, such as the networks on the way or our relay, sees how big the frames are. So the size is rounded up with the Padmé scheme, which adds at most 12 %, and then to whole chunks. Every chunk frame has the same size, and the padding is zeros that the recipient checks. A download that continues after a dropped connection sends only the rest, in frames of the same sizes, so someone who sees both attempts can add them up to at least the rounded size of one whole transfer, more by any chunks sent twice.",
           "The exact size travels only inside the encrypted META and END. META always has the same size, so the length of the file name doesn't show either.",
-          "A shared secret is at most 32 KiB, and every shared secret is padded to exactly one chunk. The app enforces this: if a connection only allows messages too small for a 32 KiB chunk, nothing is sent over it, and the sender sees that the secret wasn't sent. With every browser we tested in November 2026 (Chromium, Firefox and WebKit), the chunk is 48 KiB. So every shared secret looks the same on the wire, whatever its length, and the same as any file of up to 48 KiB.",
+          "A shared secret is at most 32 KiB, and every shared secret is padded to exactly one chunk. The app enforces this: if a connection only allows messages too small for a 32 KiB chunk, nothing is sent over it, and the sender sees that the secret wasn't sent. With every browser we tested in November 2026 (Chromium, Firefox and WebKit), the chunk is 48 KiB. So every shared secret looks the same on the wire, whatever its length, and the same as any file of up to 48 KiB sent in one attempt. A file whose download continues after a drop can need no chunk at all on the new attempt, which a shared secret never does, because it always starts over.",
         ],
       },
       travel: {

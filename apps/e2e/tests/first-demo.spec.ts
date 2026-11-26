@@ -645,7 +645,7 @@ test("a lost sender says whether the download can continue", async ({ demo, leak
   await cut();
   await expect(erik.getByText("The connection to the sender was lost")).toBeVisible();
   await expect(
-    erik.getByText("Try again to continue the download where it stopped."),
+    erik.getByText("Try again. The download continues where it stopped if it can."),
   ).toBeVisible();
 
   // Mid-download, the sender's page closes. Its pagehide closes the peers, so the drop arrives
@@ -698,7 +698,7 @@ for (const dialog of [false, true]) {
 
     await sender.evaluate(() => (globalThis as { cut?: () => void }).cut?.());
     await expect(
-      recipient.getByText("Try again to continue the download where it stopped."),
+      recipient.getByText("Try again. The download continues where it stopped if it can."),
     ).toBeVisible();
     // Retrying before the sender sees the drop would find the link still busy.
     await expect(card.getByText(`Waiting for ${name}'s link to be opened`)).toBeVisible();
@@ -709,11 +709,13 @@ for (const dialog of [false, true]) {
     await recipient.getByRole("button", { name: "Try again" }).click();
     await expect(downloading).toBeVisible();
     await expect(download).toHaveCount(0);
-    expect(
-      await recipient
-        .getByRole("progressbar")
-        .evaluate((progress) => (progress as HTMLProgressElement).value),
-    ).toBe(3 * MiB);
+    await expect
+      .poll(() =>
+        recipient
+          .getByRole("progressbar")
+          .evaluate((progress) => (progress as HTMLProgressElement).value),
+      )
+      .toBe(3 * MiB);
     await recipient.evaluate(() => (globalThis as { release?: () => void }).release?.());
 
     await expect(recipient.getByText("this is exactly the file that was sent")).toBeVisible({
