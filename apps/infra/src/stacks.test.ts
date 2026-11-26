@@ -29,7 +29,6 @@ import {
   relays,
   signalName,
   signals,
-  signalTargets,
   siteNames,
   zoneNames,
 } from "./config.ts";
@@ -1358,17 +1357,14 @@ test("only fidant.se gets a signaling name per target, pointing at its load bala
   );
 });
 
-test("the committed config points every signaling server's name at a signaling load balancer", () => {
-  const ids = signals.map((signal) => signal.id);
-  for (const [id, target] of Object.entries(signalTargets)) {
-    assert.ok(ids.includes(id), id);
-    assert.match(target, /^fidant-signal-[0-9]+\.eu-north-1\.elb\.amazonaws\.com$/);
-    committed.hasResourceProperties(recordSet, {
-      Name: `${signalName(id)}.`,
-      Type: "CNAME",
-      ResourceRecords: [target],
-    });
-  }
+test("the committed config points sto.signal.fidant.se at the signaling load balancer and has no other signaling name", () => {
+  const records = Object.values(committed.findResources(recordSet)).filter((record) =>
+    /^[a-z]+\.signal\./.test(String(record.Properties.Name)),
+  );
+  assert.deepEqual(
+    records.map(({ Properties: p }) => [p.Name, p.Type, p.ResourceRecords]),
+    [["sto.signal.fidant.se.", "CNAME", ["fidant-signal-1565593186.eu-north-1.elb.amazonaws.com"]]],
+  );
 });
 
 test("the committed config publishes one validation record per certificate name, in that name's zone", () => {
