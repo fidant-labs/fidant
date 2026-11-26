@@ -207,8 +207,11 @@ export function SendPage({
   kind,
   onStatus,
   preview,
+  shown = true,
 }: {
   kind: "file" | "text";
+  /** False while the page sits hidden: its safety-number dialog stays closed. */
+  shown?: boolean;
   /** Told "active" while any recipient is unfinished, the same test that guards closing the tab, and "done" once all have the file or text. */
   onStatus(status: TransferStatus): void;
   preview?: SendPreview | undefined;
@@ -789,11 +792,7 @@ export function SendPage({
       const button = neighbour
         ? document.querySelector<HTMLElement>(`[data-remove="${neighbour.linkId}"]`)
         : null;
-      const target =
-        button && !button.closest("details:not([open])")
-          ? button
-          : document.getElementById(id("recipient-name"));
-      target?.focus();
+      (button ?? document.getElementById(id("recipient-name")))?.focus();
     });
   };
 
@@ -1007,7 +1006,13 @@ export function SendPage({
             <span
               class={`col-start-1 row-start-1 ${hasRecipients && !fileStatus ? "" : "invisible"}`}
             >
-              {text ? t.secret.locked : t.send.locked}
+              {
+                (text ? t.secret : t.send)[
+                  sender.recipients.some((r) => r.status === "delivered")
+                    ? "lockedDelivered"
+                    : "locked"
+                ]
+              }
             </span>
             {fileStatus === "preparing" && (
               <span class="col-start-1 row-start-1" role="status">
@@ -1214,6 +1219,7 @@ export function SendPage({
           checks={checks}
           onCheck={onCheck}
           onLater={onLater}
+          visible={shown}
         />
         <details class="mt-6 text-[0.9rem]">
           <summary class="cursor-pointer text-muted-foreground">{t.send.connectionOptions}</summary>

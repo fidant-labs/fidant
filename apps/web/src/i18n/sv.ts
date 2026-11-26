@@ -348,6 +348,7 @@ export const sv: Messages = {
     readFailed: "Det gick inte att läsa filen. Välj den igen.",
     hashPending: "Inte klar än",
     locked: "Ta bort alla mottagare för att ändra ditt namn eller din fil.",
+    lockedDelivered: "Ladda om sidan för att ändra ditt namn eller din fil.",
     recipientLabel: "Vem ska få den?",
     recipientPlaceholder: "Mottagarens namn",
     add: "Skapa länk",
@@ -365,7 +366,6 @@ export const sv: Messages = {
     check: {
       hint: (kind: Kind) =>
         `Med kontrollnummer jämför ni sex siffror i telefon eller på plats innan ${items[kind].the} skickas, så att du vet att ingen är emellan.`,
-      number: "Kontrollnummer",
       ask: (name: string) => `Be ${name} läsa upp numret på sin skärm. Stämmer det?`,
       matches: "Det stämmer",
       differs: "Det skiljer sig",
@@ -374,7 +374,7 @@ export const sv: Messages = {
       titleFor: (name: string) => `Kontrollnummer för ${name}`,
       later: "Inte nu",
       compare: "Jämför nummer",
-      compareFor: (name: string) => `Jämför kontrollnumret för ${name}`,
+      compareFor: (name: string) => `Jämför nummer för ${name}`,
       waiting: "Du sa att det stämmer. Det skickas när mottagaren också har bekräftat.",
       differed:
         "Numren stämde inte, så inget skickades. Någon kan ha varit emellan. Länken fungerar fortfarande om du vill försöka igen.",
@@ -632,6 +632,7 @@ export const sv: Messages = {
     },
     first: "Skriv eller klistra in hemligheten först.",
     locked: "Ta bort alla mottagare för att ändra ditt namn eller din hemlighet.",
+    lockedDelivered: "Ladda om sidan för att ändra ditt namn eller din hemlighet.",
     allDone: "Alla länkar har levererat hemligheten. Du kan stänga fliken.",
     summary: (done: number, total: number) =>
       `${done} av ${total} länkar har levererat hemligheten`,

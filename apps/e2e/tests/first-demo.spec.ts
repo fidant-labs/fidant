@@ -700,7 +700,11 @@ for (const dialog of [false, true]) {
       recipient.getByText("Try again. The download continues where it stopped if it can."),
     ).toBeVisible();
     // Retrying before the sender sees the drop would find the link still busy.
-    await expect(card.getByText(`Waiting for ${name}'s link to be opened`)).toBeVisible();
+    await expect(
+      card.getByText(
+        `The transfer through ${name}'s link was interrupted. The link can be opened again to retry.`,
+      ),
+    ).toBeVisible();
     await set(sender, { stalled: false });
     // The resumed view shows before ACCEPT goes out, so holding it keeps that view up to check.
     await set(recipient, { held: true });
@@ -737,7 +741,7 @@ for (const dialog of [false, true]) {
   });
 }
 
-test("a recipient who leaves mid-download returns the sender's card to waiting", async ({
+test("a recipient who leaves mid-download shows the sender's card as interrupted", async ({
   demo,
   leaks,
   canary,
@@ -763,9 +767,11 @@ test("a recipient who leaves mid-download returns the sender's card to waiting",
   // The receive page's pagehide closes its peer, so the sender notices at once instead of when
   // ICE consent expires (about 15 s).
   await first.close();
-  await expect(card.getByText(`Waiting for ${name}'s link to be opened`)).toBeVisible({
-    timeout: 3_000,
-  });
+  await expect(
+    card.getByText(
+      `The transfer through ${name}'s link was interrupted. The link can be opened again to retry.`,
+    ),
+  ).toBeVisible({ timeout: 3_000 });
 
   await stall(false);
   const second = await demo.open("recipient-2");
@@ -834,6 +840,9 @@ test("a recipient's save dialog can be cancelled, refused or fail without saving
   const tryAgain = recipient.getByRole("button", { name: "Try again" });
   const opened = card.getByText(`${name}'s link has been opened`);
   const waiting = card.getByText(`Waiting for ${name}'s link to be opened`);
+  const interrupted = card.getByText(
+    `The transfer through ${name}'s link was interrupted. The link can be opened again to retry.`,
+  );
   /** Clicks Download on the open offer with the dialog doing `mode`, after clearing the log. */
   const pick = async (mode: string) => {
     await expect(opened).toBeVisible();
@@ -869,7 +878,8 @@ test("a recipient's save dialog can be cancelled, refused or fail without saving
   await pick("fail");
   await problem("The file couldn't be saved", "Check that there's enough space on your disk.");
   expect(await saved()).toEqual(["pick", "write", "write", "abort", "remove"]);
-  await expect(waiting).toBeVisible();
+  // The sender had started sending, so the drop shows as interrupted.
+  await expect(interrupted).toBeVisible();
   await tryAgain.click();
 
   // Picked and written in full.
@@ -1325,7 +1335,10 @@ test.describe("safety number", () => {
 
     const dialog = checkDialog(sender, name);
     await expect(dialog.getByRole("button", { name: `It differs for ${name}` })).toBeVisible();
-    await tabTo(sender, dialog.getByRole("button", { name: `It matches for ${name}` }));
+    const matches = dialog.getByRole("button", { name: `It matches for ${name}` });
+    // The answer buttons are disabled for the dialog's first half second, and Tab skips them until then.
+    await expect(matches).toBeEnabled();
+    await tabTo(sender, matches);
     await sender.keyboard.press("Enter");
     await expect(card.locator("[data-status]")).toBeFocused();
     await expect(
@@ -1355,19 +1368,31 @@ test.describe("safety number", () => {
   test("two recipients each see their own number", async ({ demo, leaks, canary }) => {
     const sender = await openSender(demo, makeFile(leaks, canary, 10));
     const names = [makeName(leaks, canary, "Anna"), makeName(leaks, canary, "Erik")];
-    const pages: Page[] = [];
-    for (const [i, name] of names.entries()) {
-      const link = await addRecipient(leaks, sender, name, true);
-      const page = await demo.open(`recipient-${i + 1}`);
-      await page.goto(link);
-      pages.push(page);
+    // Both are added before either link is opened: the dialog is modal and shows one at a time.
+    const links: string[] = [];
+    for (const name of names) {
+      links.push(await addRecipient(leaks, sender, name, true));
     }
+    const pages: Page[] = [];
     const numbers: string[] = [];
     for (const [i, name] of names.entries()) {
-      numbers.push(await sameNumber(sender, name, pages[i] as Page));
+      const page = await demo.open(`recipient-${i + 1}`);
+      await page.goto(links[i] as string);
+      pages.push(page);
+      numbers.push(await sameNumber(sender, name, page));
+      // Put it off, so the dialog is free for the next recipient.
+      await checkDialog(sender, name).getByRole("button", { name: "Not now" }).click();
     }
     // Six digits from each connection's own fingerprints: a clash is one chance in a million.
     expect(numbers[0]).not.toBe(numbers[1]);
+    // Reopening a card's check shows that recipient's number again.
+    for (const [i, name] of names.entries()) {
+      await recipientRow(sender, name)
+        .getByRole("button", { name: `Compare number for ${name}` })
+        .click();
+      expect(await senderNumber(sender, name)).toBe(numbers[i]);
+      await checkDialog(sender, name).getByRole("button", { name: "Not now" }).click();
+    }
   });
 
   test("a recipient who reloads mid-check gets a new number on both sides", async ({
@@ -1432,11 +1457,12 @@ test.describe("safety number", () => {
     const expired = card.getByText("The safety number wasn't confirmed within 5 minutes");
 
     await sender.clock.fastForward(290_000);
-    await expect(card.getByText(number)).toBeVisible();
+    await expect(checkDialog(sender, name).getByText(number)).toBeVisible();
     await expect(expired).toHaveCount(0);
     await sender.clock.fastForward(10_000);
     await expect(expired).toBeVisible();
-    await expect(card.getByText(number)).toHaveCount(0);
+    await expect(checkDialog(sender, name)).toBeHidden();
+    await expect(sender.getByText(number)).toHaveCount(0);
     await expect(
       recipient.getByRole("heading", { name: "The connection to the sender was lost" }),
     ).toBeVisible();

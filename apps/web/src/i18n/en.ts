@@ -368,6 +368,7 @@ export const en = {
     readFailed: "Couldn't read the file. Choose it again.",
     hashPending: "Not ready yet",
     locked: "Remove everyone to change your name or file.",
+    lockedDelivered: "Reload the page to change your name or file.",
     recipientLabel: "Who is it for?",
     recipientPlaceholder: "Their name",
     add: "Create link",
@@ -385,7 +386,6 @@ export const en = {
     check: {
       hint: (kind: Kind) =>
         `With a safety number, you compare 6 digits with them by phone or in person before ${items[kind].the} is sent, so you know nobody is in between.`,
-      number: "Safety number",
       ask: (name: string) => `Ask ${name} to read the number on their screen. Does it match?`,
       matches: "It matches",
       differs: "It differs",
@@ -394,7 +394,7 @@ export const en = {
       titleFor: (name: string) => `Safety number for ${name}`,
       later: "Not now",
       compare: "Compare number",
-      compareFor: (name: string) => `Compare the safety number for ${name}`,
+      compareFor: (name: string) => `Compare number for ${name}`,
       waiting: "You said it matches. It goes once they confirm too.",
       differed:
         "The numbers didn't match, so nothing was sent. Someone may have been in between. The link still works if you want to try again.",
@@ -653,6 +653,7 @@ export const en = {
     },
     first: "Write or paste the secret first.",
     locked: "Remove everyone to change your name or secret.",
+    lockedDelivered: "Reload the page to change your name or secret.",
     allDone: "Every link has delivered the secret. You can close this tab.",
     summary: (done: number, total: number) => `${done} of ${total} links have delivered the secret`,
     emailNotice:

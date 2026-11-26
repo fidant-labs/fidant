@@ -1,5 +1,8 @@
 // One card per recipient (status, email, connection path, progress, link, copy and remove), and one
 // dialog for the safety number, which names its recipient so the number is never read off the wrong card.
+// The dialog stays on one recipient until that check is answered, put off or over, then opens afresh
+// for the next, so a click meant for one check can never answer another. Its answer buttons stay dead
+// for a moment after it shows a recipient, so a click already on its way cannot answer the new one.
 //
 // Only the status sentence, the email line, the safety number and the check's
 // confirmation sit in live regions, so screen readers hear "Sending through
@@ -8,7 +11,7 @@
 // it was made for.
 
 import { maskAddress } from "@sigill/protocol";
-import { useEffect, useId, useRef } from "preact/hooks";
+import { useEffect, useId, useRef, useState } from "preact/hooks";
 import { Button } from "#components/ui/button";
 import { Card, CardContent } from "#components/ui/card";
 import type { Messages } from "../i18n/en.ts";
@@ -31,6 +34,10 @@ import {
 import { CheckNumber, Icon, PathLine, SwapLabel, useCopyNote } from "../ui.tsx";
 
 const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
+
+// How long a dialog shows a recipient before its answer buttons work: a click or tap already on its way
+// to the previous check's button must not answer this one.
+const ARM_MS = 500;
 
 const STATUS_COLOR: Partial<Record<RecipientStatus, string>> = {
   failed: "text-destructive",
@@ -120,6 +127,8 @@ type Props = {
   onCheck(linkId: string, matches: boolean): void;
   /** The sender put the check's dialog off, or asked for it again. */
   onLater(linkId: string, later: boolean): void;
+  /** False while the page is hidden: the dialog stays closed then. */
+  visible: boolean;
 };
 
 export function RecipientList({
@@ -131,6 +140,7 @@ export function RecipientList({
   checks,
   onCheck,
   onLater,
+  visible,
 }: Props) {
   const { t } = useI18n();
   const titleId = useId();
@@ -139,23 +149,57 @@ export function RecipientList({
     r.status === "checking" &&
     checks[r.linkId] !== undefined &&
     checks[r.linkId]?.said === undefined;
-  // One at a time, in list order.
-  const asking = recipients.find((r) => unanswered(r) && !checks[r.linkId]?.later);
+  // The check on screen, pinned: a newer or earlier-listed check waits until it has ended.
+  const pinned = useRef<string | undefined>(undefined);
+  const stillAsked = recipients.find((r) => r.linkId === pinned.current && unanswered(r));
+  const asking =
+    visible && stillAsked && !checks[stillAsked.linkId]?.later
+      ? stillAsked
+      : visible
+        ? recipients.find((r) => unanswered(r) && !checks[r.linkId]?.later)
+        : undefined;
+  pinned.current = asking?.linkId;
   // The card whose status line takes focus when the dialog closes on an answer.
   const answered = useRef<string | undefined>(undefined);
+  // The check the dialog has on screen: set right after showModal(), so a queued close event names it, not a later render's.
+  const shown = useRef<string | undefined>(undefined);
+  // How many close events the page's own close() calls still have coming, so they aren't taken for the browser's.
+  const pageClosed = useRef(0);
+  // The link the answer buttons were armed for. Naming it keeps another recipient's buttons dead in the render that swaps them in.
+  const [armedFor, setArmedFor] = useState<string | undefined>(undefined);
+  const armed = asking !== undefined && armedFor === asking.linkId;
   useEffect(() => {
     const el = dialog.current;
-    if (asking && el && !el.open) {
-      el.showModal();
-    } else if (!asking && el?.open) {
+    if (!el) {
+      return;
+    }
+    if (el.open) {
+      pageClosed.current += 1;
       el.close();
-      if (answered.current) {
-        document.querySelector<HTMLElement>(`[data-status="${answered.current}"]`)?.focus();
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    if (asking) {
+      el.showModal();
+      shown.current = asking.linkId;
+      const id = asking.linkId;
+      timer = setTimeout(() => setArmedFor(id), ARM_MS);
+    } else {
+      // Nothing more to ask: focus goes to the card of the check just answered, or last shown and put off.
+      const target = answered.current ?? shown.current;
+      if (target) {
+        document.querySelector<HTMLElement>(`[data-status="${target}"]`)?.focus();
       }
+      shown.current = undefined;
+      setArmedFor(undefined);
     }
     answered.current = undefined;
+    return () => clearTimeout(timer);
   }, [asking?.linkId]);
-  const answer = (linkId: string, matches: boolean) => {
+  const answer = (event: MouseEvent, linkId: string, matches: boolean) => {
+    // The second click of a double-click would answer the next check.
+    if (event.detail > 1 || !armed) {
+      return;
+    }
     answered.current = linkId;
     onCheck(linkId, matches);
   };
@@ -199,9 +243,23 @@ export function RecipientList({
             onLater(asking.linkId, true);
           }
         }}
+        // A held key would answer the next check.
+        onKeyDown={(event) => {
+          if (event.repeat) {
+            event.preventDefault();
+          }
+        }}
+        // The browser closed it on its own: put the check off, so the card offers it again.
+        onClose={() => {
+          if (pageClosed.current > 0) {
+            pageClosed.current -= 1;
+          } else if (shown.current) {
+            onLater(shown.current, true);
+          }
+        }}
       >
         {asking && (
-          <>
+          <div key={asking.linkId}>
             {/* Takes the focus, not a button: the dialog can open while the sender types a name, and
                 their Enter must not answer the check. */}
             <h3
@@ -220,7 +278,8 @@ export function RecipientList({
               <Button
                 type="button"
                 aria-label={t.send.check.matchesFor(asking.name)}
-                onClick={() => answer(asking.linkId, true)}
+                disabled={!armed}
+                onClick={(event) => answer(event, asking.linkId, true)}
               >
                 {t.send.check.matches}
               </Button>
@@ -228,15 +287,20 @@ export function RecipientList({
                 type="button"
                 variant="outline"
                 aria-label={t.send.check.differsFor(asking.name)}
-                onClick={() => answer(asking.linkId, false)}
+                disabled={!armed}
+                onClick={(event) => answer(event, asking.linkId, false)}
               >
                 {t.send.check.differs}
               </Button>
-              <Button type="button" variant="link" onClick={() => onLater(asking.linkId, true)}>
+              <Button
+                type="button"
+                variant="link"
+                onClick={(event) => event.detail <= 1 && onLater(asking.linkId, true)}
+              >
                 {t.send.check.later}
               </Button>
             </div>
-          </>
+          </div>
         )}
       </dialog>
     </>
