@@ -129,6 +129,7 @@ for (const transport of ["udp", "tcp"] as const) {
     actor,
     leaks,
     canary,
+    browserName,
   }) => {
     const stdoutStart = await sizeOf(serverStdoutLog);
     const coturnStart = await sizeOf(coturnLog);
@@ -178,7 +179,9 @@ for (const transport of ["udp", "tcp"] as const) {
       expect(urls?.length).toBeGreaterThan(0);
       expect(new Set(urls)).toEqual(new Set(process.env.SIGILL_E2E_TURN_URLS?.split(",")));
       // Every connection went through a relay candidate reached over the transport under test.
-      await expect.poll(() => peerList(page, "relayPaths")).toEqual([`relay/${transport}`]);
+      // WebKit's stats name no relay protocol; its TURN URLs are only those for the transport.
+      const path = browserName === "webkit" ? "relay/" : `relay/${transport}`;
+      await expect.poll(() => peerList(page, "relayPaths")).toEqual([path]);
     }
 
     // The sender reports the path, so the server logs it, about a second after the channel opens.
