@@ -5,8 +5,10 @@
 //
 //   recipient → server   join {link, attempt}
 //   server → recipient   joined {link, attempt, iceServers, turn}   (recipient: createRecipientPeer)
+//   recipient → sender   relay seal_r(versionMarker(FRAME_VERSION))   each side's first signal
 //   recipient → sender   relay seal_r({kind:"commit", hash})   hash = commitFingerprint(its fingerprint)
 //   server → sender      joined {link, attempt, iceServers, turn}   (sender: createSenderPeer)
+//   sender → recipient   relay seal_s(versionMarker(FRAME_VERSION))
 //   sender               waits for the commit, then makes the offer
 //   sender → recipient   relay seal_s({kind:"offer", sdp, check})
 //   recipient → sender   relay seal_r({kind:"answer", sdp})   its fingerprint must match the commit
@@ -14,6 +16,14 @@
 //   sender → recipient   relay seal_s({kind:"restart-offer", sdp})   (TURN fallback, at most once)
 //   recipient → sender   relay seal_r({kind:"restart-answer", sdp})   both keep the first fingerprints
 //   sender ⇄ recipient   data channel "sigill" opens → onOpen(channel, info)
+//
+// The version marker is an `ice` signal whose empty candidate has the username
+// fragment "fidant-v<FRAME_VERSION>". The sender reads the recipient's before the
+// commit and the recipient the sender's before the offer; a page without a marker
+// counts as UNMARKED_VERSION. On another version the page makes no offer or
+// answer and closes with "outdated" (this page is older) or "peer-outdated".
+// Pages from before the check drop the marker like a candidate for another ICE
+// username fragment.
 //
 // Each side makes a fresh DTLS certificate for every connection. The recipient
 // commits to its certificate's fingerprint before the sender's offer exists, so
@@ -43,6 +53,7 @@
 import type { ClientMessage, ConnectionPath } from "@sigill/protocol";
 import { decodeBase64url } from "./base64url.ts";
 import { certificateFingerprint, checkNumber, commitFingerprint, sdpFingerprint } from "./check.ts";
+import { FRAME_VERSION } from "./frames.ts";
 import { type Direction, openSignal, sealSignal } from "./keys.ts";
 
 /** The data channel label. Fixed and neutral: never a file or recipient name. */
@@ -72,7 +83,11 @@ export type PeerCloseReason =
   /** Could not seal or send our own offer or answer. */
   | "signal-failed"
   /** Setting up the connection threw (createOffer, setRemoteDescription, ...). */
-  | "setup-failed";
+  | "setup-failed"
+  /** The other page runs a newer frame version, so this page must reload. */
+  | "outdated"
+  /** The other page runs an older frame version, so that page must reload. */
+  | "peer-outdated";
 
 export type OpenPath = Exclude<ConnectionPath, "failed">;
 
@@ -222,6 +237,37 @@ export function parseSignalPayload(value: unknown): SignalPayload | undefined {
   }
 }
 
+/** The frame version assumed for a page that sends no version marker, as no page from before the check does. */
+export const UNMARKED_VERSION = 3;
+
+const MARKER = /^fidant-v([1-9][0-9]{0,2})$/;
+
+/** Each side's first signal. Never change its form: pages from before the version check must keep dropping it. */
+export function versionMarker(version: number): SignalPayload {
+  return {
+    kind: "ice",
+    candidate: {
+      candidate: "",
+      sdpMid: null,
+      sdpMLineIndex: null,
+      usernameFragment: `fidant-v${version}`,
+    },
+  };
+}
+
+/** The version a signal names if it is exactly a version marker, else undefined. */
+export function markedVersion(payload: SignalPayload): number | undefined {
+  if (payload.kind !== "ice" || payload.candidate === null) {
+    return undefined;
+  }
+  const { candidate, sdpMid, sdpMLineIndex, usernameFragment } = payload.candidate;
+  if (candidate !== "" || sdpMid !== null || sdpMLineIndex !== null || usernameFragment === null) {
+    return undefined;
+  }
+  const digits = MARKER.exec(usernameFragment)?.[1];
+  return digits === undefined ? undefined : Number(digits);
+}
+
 /** Throws if a frame of `byteLength` bytes is larger than the channel accepts. */
 export function assertFrameFits(maxMessageSize: number, byteLength: number): void {
   if (byteLength > maxMessageSize) {
@@ -318,6 +364,8 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
   let gotOffer = false;
   let gotAnswer = false;
   let commit: string | undefined;
+  /** The other page's frame version, from its version marker. */
+  let theirVersion: number | undefined;
   let offerFingerprint: string | undefined;
   /** The other side's fingerprint in the safety number; a restart must carry the same one. */
   let theirFingerprint: string | undefined;
@@ -492,12 +540,27 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
     return fingerprint;
   }
 
+  /** Once our own signals are out, throws if the other page runs another frame version. */
+  async function checkVersion(): Promise<void> {
+    const theirs = theirVersion ?? UNMARKED_VERSION;
+    if (theirs === FRAME_VERSION) {
+      return;
+    }
+    // Our marker must reach the other page first, so that it can say which page is older.
+    await outgoing;
+    throw new PeerError(
+      theirs > FRAME_VERSION ? "outdated" : "peer-outdated",
+      `the other page runs frame version ${theirs}`,
+    );
+  }
+
   async function handleSignal(payload: SignalPayload): Promise<void> {
     switch (payload.kind) {
       case "commit": {
         if (side !== "s" || commit !== undefined) {
           throw new PeerError("bad-signal", "unexpected commit");
         }
+        await checkVersion();
         commit = payload.hash;
         const offer = await describe("offer");
         offerFingerprint = offer.fingerprint;
@@ -508,6 +571,7 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
         if (side !== "r" || gotOffer) {
           throw new PeerError("bad-signal", "unexpected offer");
         }
+        await checkVersion();
         gotOffer = true;
         const theirs = remoteFingerprint(payload.sdp);
         check = payload.check;
@@ -591,13 +655,26 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
         await setRemote("answer", payload.sdp, theirs);
         return;
       }
-      case "ice":
+      case "ice": {
+        const version = markedVersion(payload);
+        // A marker counts only before the commit or offer; a later one is dropped by its fragment.
+        if (
+          version !== undefined &&
+          theirVersion === undefined &&
+          commit === undefined &&
+          !gotOffer
+        ) {
+          theirVersion = version;
+          await checkVersion();
+          return;
+        }
         if (connection().remoteDescription) {
           await addCandidate(payload.candidate);
         } else {
           pendingCandidates.push(payload.candidate);
         }
         return;
+      }
     }
   }
 
@@ -676,6 +753,7 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
     }
   }
 
+  sendSignal(versionMarker(FRAME_VERSION), true);
   // Relayed signals wait for the certificate and the connection.
   incoming = setup().catch((error: unknown) => {
     failWith(error, "setup-failed");

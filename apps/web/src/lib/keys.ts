@@ -60,7 +60,7 @@ async function deriveKey(secret: string, salt: Uint8Array<ArrayBuffer>, info: st
   );
 }
 
-/** Key for sealing SDP and ICE messages on one link. */
+/** Key for sealing SDP and ICE messages on one link; peer.ts seals its version marker with it, so changing it loses the version check. */
 export function deriveSignalKey(secret: string, linkId: string): Promise<CryptoKey> {
   const salt = isLinkId(linkId) ? decodeBase64url(linkId) : undefined;
   if (!salt) {

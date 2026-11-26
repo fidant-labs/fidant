@@ -41,12 +41,14 @@ import {
   decodeInit,
   decodeMeta,
   encodeCredit,
+  FRAME_VERSION,
   type Frame,
   FrameReader,
   FrameWriter,
   ReceiveVerifier,
   RecipientKind,
   SenderKind,
+  VersionError,
 } from "./frames.ts";
 import { createInbox } from "./inbox.ts";
 import { deriveFileKey } from "./keys.ts";
@@ -104,7 +106,11 @@ export type ReceiveFailure =
   /** The channel closed or the transfer was aborted. */
   | "connection"
   /** The sink failed to write or close the file. */
-  | "save";
+  | "save"
+  /** INIT named a newer frame version, so this page must reload. */
+  | "outdated"
+  /** INIT named an older frame version, so the sender's page must reload. */
+  | "peer-outdated";
 
 /** Why receiveFile rejected. The message is the underlying error's. */
 export class ReceiveError extends Error {
@@ -302,6 +308,10 @@ function classify(error: unknown, signal: AbortSignal): ReceiveError {
   }
   if (error instanceof ReceiveError) {
     return error;
+  }
+  if (error instanceof VersionError) {
+    const reason = error.version > FRAME_VERSION ? "outdated" : "peer-outdated";
+    return new ReceiveError(reason, error.message, { cause: error });
   }
   return new ReceiveError("invalid", messageOf(error), { cause: error });
 }

@@ -650,6 +650,24 @@ test("without a web root, serves the relay routes and 404 for every other path",
   await rawSocket(port, ca, opened);
 });
 
+test("startServer keeps Node's idle timeouts unless keepAliveMs is set", async (t) => {
+  for (const [keepAliveMs, keepAlive, headers] of [
+    [undefined, 5000, 60_000],
+    [125_000, 125_000, 126_000],
+  ] as const) {
+    const { server } = await startServer({
+      port: 0,
+      root: undefined,
+      certDir: join(dir, "certs"),
+      hosts: ["localhost"],
+      keepAliveMs,
+    });
+    t.after(() => server.close());
+    assert.equal(server.keepAliveTimeout, keepAlive);
+    assert.equal(server.headersTimeout, headers);
+  }
+});
+
 test("startServer hands siteOrigin to signaling", async (t) => {
   const { server: site } = await startServer({
     port: 0,

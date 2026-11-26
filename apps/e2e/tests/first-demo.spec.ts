@@ -917,7 +917,7 @@ test.describe("a hostile path", () => {
     const failed = expectNoConnection(recipient);
     await recipient.goto(link);
     await failed(sender, name);
-    expect(changed, "changed the sender's offer").toBe(true);
+    expect(changed, "changed the sender's first signal").toBe(true);
   });
 
   test("a sender refuses its own offer reflected as the answer", async ({
@@ -927,6 +927,7 @@ test.describe("a hostile path", () => {
     canary,
   }) => {
     let offer: string | undefined;
+    let sentRelays = 0;
     let reflected = false;
     const sender = await openSender(demo, makeFile(leaks, canary, 10), "", (page) =>
       tamperSignal(page, (message, sent) => {
@@ -934,7 +935,10 @@ test.describe("a hostile path", () => {
           return message;
         }
         if (sent) {
-          offer ??= message.data;
+          // The first is the sender's version marker.
+          if (++sentRelays === 2) {
+            offer = message.data;
+          }
           return message;
         }
         if (reflected || offer === undefined) {
@@ -967,6 +971,7 @@ test.describe("a hostile path", () => {
     let signals: ReturnType<typeof signalsOf> | undefined;
     let attempt = "";
     let swapped = false;
+    let received = 0;
     const kinds: string[] = [];
     const sender = await openSender(demo, makeFile(leaks, canary, 10), "", (page) =>
       tamperSignal(page, (message, sent, toPage) => {
@@ -978,7 +983,8 @@ test.describe("a hostile path", () => {
           void signals.open(attempt, "s", message.data).then(({ kind }) => kinds.push(kind));
           return message;
         }
-        if (swapped) {
+        // The recipient's version marker comes first.
+        if (swapped || ++received < 2) {
           return message;
         }
         // The recipient's commit, swapped for one to a certificate nobody has.
@@ -1288,8 +1294,8 @@ test.describe("safety number", () => {
         const message = JSON.parse(text.toString()) as Signal;
         joins += message.t === "join" ? 1 : 0;
         server.send(text);
-        // The commit, then the answer: drop the socket as soon as the answer went out.
-        if (message.t === "relay" && ++relays === 2) {
+        // The version marker, the commit, then the answer: drop the socket as soon as the answer went out.
+        if (message.t === "relay" && ++relays === 3) {
           ws.close();
           server.close();
         }
