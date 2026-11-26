@@ -1,4 +1,7 @@
-import { hash, randomBytes } from "node:crypto";
+import { createHash, hash, randomBytes } from "node:crypto";
+import { createWriteStream } from "node:fs";
+import { join } from "node:path";
+import { pipeline } from "node:stream/promises";
 
 /** The chunk size of SIG-21's file frames. Canary sizes avoid its multiples. */
 export const defaultChunkSize = 48 * 1024;
@@ -153,6 +156,12 @@ export interface CanaryFileOptions extends SizeOptions {
 
 /** A canary file from `random`. Use a fork per file so each canary has its own stream. */
 export function canaryFile(random: SeededRandom, options: CanaryFileOptions = {}): CanaryFile {
+  const head = canaryHead(random, options);
+  return { ...head, bytes: random.bytes(head.size) };
+}
+
+/** Everything of a canary but its bytes, drawn from `random` before them. */
+function canaryHead(random: SeededRandom, options: CanaryFileOptions): Omit<CanaryFile, "bytes"> {
   const size = options.size ?? pickCanarySize(random, options);
   const token = base32Token(random);
   const mimeToken = base32Token(random);
@@ -160,11 +169,84 @@ export function canaryFile(random: SeededRandom, options: CanaryFileOptions = {}
   return {
     name: `sigill-${token}-räksmörgås.${ext}`.normalize("NFC"),
     mime: `application/x-sigill-${mimeToken}`,
-    bytes: random.bytes(size),
     size,
     token,
     mimeToken,
   };
+}
+
+const MiB = 1024 * 1024;
+
+/** Which bytes of a large file the leak check searches: `piece` bytes at every `every`. */
+export interface SampleRule {
+  piece: number;
+  every: number;
+}
+
+/** 0001's rule for nightly large files: the first and last MiB, and one MiB at every 64 MiB. */
+export const largeFileSamples: SampleRule = { piece: MiB, every: 64 * MiB };
+
+/** The runs `[offset, offset + length)` that `rule` samples from `size` bytes, in order, joined where they overlap or touch. */
+export function sampledRanges(
+  size: number,
+  rule: SampleRule = largeFileSamples,
+): Array<{ offset: number; length: number }> {
+  const starts = [];
+  for (let offset = 0; offset < size; offset += rule.every) {
+    starts.push(offset);
+  }
+  if (size > 0) {
+    starts.push(Math.max(0, size - rule.piece));
+  }
+  const ranges: Array<{ offset: number; length: number }> = [];
+  for (const start of starts.sort((a, b) => a - b)) {
+    const end = Math.min(start + rule.piece, size);
+    const last = ranges.at(-1);
+    if (last && start <= last.offset + last.length) {
+      last.length = Math.max(last.length, end - last.offset);
+    } else {
+      ranges.push({ offset: start, length: end - start });
+    }
+  }
+  return ranges;
+}
+
+/** A canary file on disk, too large to hold: its sampled bytes and the SHA-256 of all of them. */
+export interface LargeCanaryFile extends Omit<CanaryFile, "bytes"> {
+  path: string;
+  /** The bytes at each of `sampledRanges`. */
+  samples: Array<{ offset: number; bytes: Buffer }>;
+  sha256: Buffer;
+}
+
+/** Writes the canary `canaryFile` would make from `random` to `dir` under its name, a MiB at a time, keeping only the bytes `rule` samples. */
+export async function writeLargeCanary(
+  random: SeededRandom,
+  dir: string,
+  options: CanaryFileOptions & { rule?: SampleRule } = {},
+): Promise<LargeCanaryFile> {
+  const head = canaryHead(random, options);
+  const path = join(dir, head.name);
+  const samples = sampledRanges(head.size, options.rule).map(({ offset, length }) => ({
+    offset,
+    bytes: Buffer.alloc(length),
+  }));
+  const digest = createHash("sha256");
+  await pipeline(function* () {
+    for (let at = 0; at < head.size; at += MiB) {
+      const piece = random.bytes(Math.min(MiB, head.size - at));
+      digest.update(piece);
+      for (const { offset, bytes } of samples) {
+        const from = Math.max(at, offset);
+        const to = Math.min(at + piece.length, offset + bytes.length);
+        if (from < to) {
+          piece.copy(bytes, from - offset, from - at, to - at);
+        }
+      }
+      yield piece;
+    }
+  }, createWriteStream(path));
+  return { ...head, path, samples, sha256: digest.digest() };
 }
 
 /** A random key shaped like a fragment secret: 32 bytes, and 43 characters of base64url. */
