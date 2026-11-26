@@ -54,7 +54,8 @@ export const serverLogAllowlist: LogAllowlist = {
   events: new Set<string>(LOG_EVENTS),
   // LogReason in @sigill/protocol.
   reasons: new Set<string>([
-    ...REFUSED_REASONS,
+    // The server never logs a `refused` with `turn` (decision 0027).
+    ...REFUSED_REASONS.filter((reason) => reason !== "turn"),
     ...UPGRADE_REJECT_REASONS,
     ...CODE_RESULTS,
     "unverified",

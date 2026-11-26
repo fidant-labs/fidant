@@ -27,11 +27,11 @@ export function peerLostProblem(attempt: {
 
 /** A busy refusal while a part is kept means the sender's page still holds the last connection, so Try again can continue it. */
 export function refusedProblem(
-  reason: Exclude<RefuseReason, "drop">,
+  reason: Exclude<RefuseReason, "drop" | "turn">,
   keeping: boolean,
 ):
   | { s: "failed"; problem: "senderBusy" }
-  | { s: "refused"; problem: Exclude<RefuseReason, "drop"> } {
+  | { s: "refused"; problem: Exclude<RefuseReason, "drop" | "turn"> } {
   return reason === "busy" && keeping
     ? { s: "failed", problem: "senderBusy" }
     : { s: "refused", problem: reason };

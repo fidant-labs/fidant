@@ -537,7 +537,10 @@ export function attachSignaling(
       guestPeer.joined = undefined;
       guestPeer.attempt = undefined;
     }
-    log("refused", { link: short(link), reason });
+    // The relay choice is never logged (decision 0027).
+    if (reason !== "turn") {
+      log("refused", { link: short(link), reason });
+    }
     send(guest, { t: "refused", reason });
   }
 

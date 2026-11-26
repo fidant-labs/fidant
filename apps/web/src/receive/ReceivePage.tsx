@@ -578,7 +578,7 @@ export function ReceivePage({
             );
           } else {
             finish(
-              message.reason === "drop"
+              message.reason === "drop" || message.reason === "turn"
                 ? { s: "failed", problem: lostMessage() }
                 : refusedProblem(message.reason, keptRef.current !== undefined),
             );

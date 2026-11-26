@@ -483,9 +483,10 @@ Checked by `apps/e2e/tests/first-demo.spec.ts` ("refuses used, unknown and malfo
 | Message     | Direction            | Fields                                         | Path                  | Sensitive                                                  |
 | ----------- | -------------------- | ---------------------------------------------- | --------------------- | ---------------------------------------------------------- |
 | `hello`     | server → page        | `mail`                                         | all                   | no                                                         |
-| `host`      | sender → server      | `links` (IDs), `turn`                          | all                   | no                                                         |
+| `host`      | sender → server      | `links` (IDs), `turn`, `turnLinks` (IDs)       | all                   | no; `turn` and `turnLinks` are never logged                |
 | `join`      | recipient → server   | `link`, `attempt`, `token` on an emailed link  | all                   | `token` is a bearer value, never logged                    |
 | `joined`    | server → both        | `link`, `attempt`, `iceServers`, `turn`        | all                   | TURN credential, never logged                              |
+| `turn-up`   | server → both        | `link`, `attempt`                              | all                   | no; never logged                                           |
 | `relay`     | page → server → page | `link`, `data` sealed with the signal key      | all                   | sealed; server can't read it (except on emailed paths)     |
 | `refuse`    | sender → server      | `link`, `attempt`, `reason`                    | failures and refusals | no                                                         |
 | `refused`   | server → recipient   | `reason`                                       | failures and refusals | no                                                         |
