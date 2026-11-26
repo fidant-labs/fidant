@@ -700,7 +700,10 @@ test("the pages bucket is private, versioned, encrypted, kept, logs nothing and 
     },
     VersioningConfiguration: { Status: "Enabled" },
   });
-  pages.hasResource("AWS::S3::Bucket", { DeletionPolicy: "Retain", UpdateReplacePolicy: "Retain" });
+  pages.hasResource("AWS::S3::Bucket", {
+    DeletionPolicy: "RetainExceptOnCreate",
+    UpdateReplacePolicy: "Retain",
+  });
   const ci = ciTemplate(pocAccount);
   const writes = roleStatements(ci, roleNamed(ci, "fidant-release")[0]).filter(
     (statement: { Action: string | string[] }) =>
