@@ -1,5 +1,6 @@
 # A new Ubuntu server that runs apps/infra/relay/install.sh at boot, with its packages already there.
 FROM ubuntu:24.04@sha256:562111b88caa79c71391c0c4d3c2114a7d5c35915c20561fd893cb1e07929e6b
+RUN echo 'Acquire::Retries "10";' >/etc/apt/apt.conf.d/80-retries
 RUN apt-get update \
   && DEBIAN_FRONTEND=noninteractive apt-get install -y \
     systemd systemd-sysv coturn certbot sqlite3 ufw openssl curl iproute2 logrotate \

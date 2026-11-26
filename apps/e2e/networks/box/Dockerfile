@@ -7,6 +7,8 @@
 # node:26-bookworm, not slim: the server's certificate step shells out to openssl.
 FROM node:26.13.1-bookworm@sha256:0a7c0471c10988ef5ab64718fa58bf8d5be578b4d20cf42b10b5fa6ccda39ae1 AS node
 FROM ubuntu:24.04@sha256:562111b88caa79c71391c0c4d3c2114a7d5c35915c20561fd893cb1e07929e6b
+# apt waits 1, 2, 4, 8, 16, then 30 s between tries, so 10 retries keep it going for at least 3 minutes.
+RUN echo 'Acquire::Retries "10";' >/etc/apt/apt.conf.d/80-retries
 # With recommends, as user-data.sh installs its packages and the cloud image has its own: a
 # recommended package can ship a journald drop-in, which is what the box test checks.
 # Caddy from its own apt repository, as user-data.sh does: Ubuntu's 2.6 can't read the PROXY
