@@ -688,7 +688,7 @@ test("a deployment that completes leaves live on the new image", () => {
   assert.deepEqual(tags, { ...before, live: "sha256:new" });
 });
 
-test("while FidantSignal's status ends in _IN_PROGRESS a release fails before live moves or a deployment starts, and UPDATE_COMPLETE goes on", () => {
+test("while FidantSignal's status ends in _IN_PROGRESS a release fails before live moves or a deployment starts, and UPDATE_COMPLETE or a _FAILED status goes on", () => {
   const done = service(["ecs-svc/2", "PRIMARY", "COMPLETED"]);
   const would = { tags: before, services: [steady, steady, rolling, done], update: started };
   for (const stack of [
@@ -705,15 +705,16 @@ test("while FidantSignal's status ends in _IN_PROGRESS a release fails before li
       `::error::FidantSignal is ${stack}, so live does not move; re-run the newest release run, the one for production's tip, once the stack has settled\n`,
     );
   }
-  const complete = release({ ...would, stack: "UPDATE_COMPLETE" });
-  assert.equal(complete.status, 0);
-  assert.deepEqual(complete.calls, [
-    ...moved,
-    "describe-services",
-    "describe-services",
-    ...uploading,
-  ]);
-  assert.deepEqual(complete.tags, { ...before, live: "sha256:new" });
+  for (const stack of ["UPDATE_COMPLETE", "UPDATE_ROLLBACK_FAILED"]) {
+    const settled = release({ ...would, stack });
+    assert.equal(settled.status, 0, stack);
+    assert.deepEqual(
+      settled.calls,
+      [...moved, "describe-services", "describe-services", ...uploading],
+      stack,
+    );
+    assert.deepEqual(settled.tags, { ...before, live: "sha256:new" }, stack);
+  }
 });
 
 test("a release that cannot read FidantSignal's status fails before live moves, and prints nothing aws said", () => {
