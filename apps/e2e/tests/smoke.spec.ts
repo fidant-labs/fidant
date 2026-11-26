@@ -57,11 +57,7 @@ test("request bodies are recorded", async ({ page, observed, baseURL, leaks, bro
   expect(at("/empty")?.body).toBeUndefined();
 });
 
-test("the recorder adds the context's cookies to a request", async ({
-  page,
-  observed,
-  baseURL,
-}) => {
+test("a request record carries the context's cookies", async ({ page, observed, baseURL }) => {
   await page.context().addCookies([{ name: "k", value: "plain", url: baseURL as string }]);
   await page.goto("/");
   const requests = (await observed("default").records()).filter(
