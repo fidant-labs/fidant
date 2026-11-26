@@ -146,3 +146,34 @@ jobs:
           name: e2e-observations-${{ matrix.browser }}
           path: apps/e2e/observations
           retention-days: 7
+
+  # One open issue collects every failed night, so a red run doesn't go unseen.
+  report:
+    needs: e2e
+    if: failure() && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      issues: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Comment on the open "Nightly failed" issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          legs=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs" \
+            --jq '.jobs[] | select(.conclusion != null and .conclusion != "success" and .conclusion != "skipped") | "- \(.name): \(.conclusion)"')
+          body=$(printf '%s/%s/actions/runs/%s on %s failed:\n\n%s\n' \
+            "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" "$GITHUB_REF_NAME" "$legs")
+          # Anyone can open an issue with this title, so only one the Actions bot opened counts.
+          issue=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues?state=open&per_page=100" \
+            --jq '.[] | select(.pull_request == null and .title == "Nightly failed" and .user.login == "github-actions[bot]") | .number' | sed -n 1p)
+          if [ -n "$issue" ]; then
+            gh issue comment "$issue" --body "$body"
+          else
+            gh issue create --title "Nightly failed" --body "$body"
+          fi
