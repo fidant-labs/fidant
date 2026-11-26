@@ -24,6 +24,12 @@ export function pagesBucket(account: string): string {
   return `fidant-pages-${account}`;
 }
 
+// Copied by hand from ACM's certificate ARNs; FidantSignal joins the app once signal.sto is set.
+export const certificateIds: { pages: Record<string, string>; signal: Record<string, string> } = {
+  pages: {},
+  signal: {},
+};
+
 export type DnsRecord = { name: string; value: string };
 
 export type Mail = {

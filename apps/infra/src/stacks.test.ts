@@ -20,6 +20,7 @@ import { Match, Template } from "aws-cdk-lib/assertions";
 import { addStacks } from "./app.ts";
 import {
   boxAddress,
+  certificateIds,
   hostedZoneIds,
   mailFrom,
   relayAddresses,
@@ -29,6 +30,7 @@ import {
 } from "./config.ts";
 import { DnsStack } from "./dns.ts";
 import { metricLine, overageLine, statusLines } from "./relay-cap/cap.mts";
+import { SignalStack } from "./signal.ts";
 import { renderRelayUserData, renderUserData } from "./user-data.ts";
 
 const account = "111111111111";
@@ -85,7 +87,7 @@ test("the committed config names the hosted zone that FidantDnssec signs for eve
   }
 });
 
-test("the fidant-poc account gets the CI, app box and certificate stacks", () => {
+test("the fidant-poc account gets the CI, app box and certificate stacks, and signaling once its certificate is", () => {
   const stacks = stacksFor(pocAccount);
   assert.deepEqual(
     stacks.map((stack) => [stack.stackName, stack.region]),
@@ -94,8 +96,185 @@ test("the fidant-poc account gets the CI, app box and certificate stacks", () =>
       ["FidantApp", "eu-north-1"],
       ["FidantPagesCerts", "us-east-1"],
       ["FidantSignalCerts", "eu-north-1"],
+      ...(certificateIds.signal.sto ? [["FidantSignal", "eu-north-1"]] : []),
     ],
   );
+});
+
+test("FidantSignal never synthesizes a listener without the committed signaling certificate", () => {
+  const stack = stacksFor(pocAccount).find((child) => child.stackName === "FidantSignal");
+  const id = certificateIds.signal.sto;
+  if (!id) {
+    assert.equal(stack, undefined);
+    return;
+  }
+  assert.match(id, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+  Template.fromStack(stack as Stack).hasResourceProperties(
+    "AWS::ElasticLoadBalancingV2::Listener",
+    { Certificates: [{ CertificateArn: certificateArn(id) }] },
+  );
+});
+
+const testCertificate = "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d";
+
+function certificateArn(id: string) {
+  return {
+    "Fn::Join": [
+      "",
+      ["arn:", { Ref: "AWS::Partition" }, `:acm:eu-north-1:${pocAccount}:certificate/${id}`],
+    ],
+  };
+}
+
+function signalApp(): { app: App; signal: Template } {
+  const app = new App();
+  const stack = new SignalStack(app, "FidantSignal", {
+    env: { account: pocAccount, region: "eu-north-1" },
+    certificateId: testCertificate,
+  });
+  return { app, signal: Template.fromStack(stack) };
+}
+
+function onlyOf(template: Template, type: string) {
+  const resources = Object.entries(template.findResources(type));
+  assert.equal(resources.length, 1, type);
+  const [id, resource] = resources[0] ?? [];
+  return { id: id ?? "", properties: resource?.Properties };
+}
+
+test("signaling runs in one VPC with two public subnets in two zones, no NAT, no flow logs and no IPv6", () => {
+  const { app, signal } = signalApp();
+  assert.equal(app.synth().manifest.missing, undefined);
+  for (const [type, count] of [
+    ["AWS::EC2::VPC", 1],
+    ["AWS::EC2::Subnet", 2],
+    ["AWS::EC2::InternetGateway", 1],
+    ["AWS::EC2::NatGateway", 0],
+    ["AWS::EC2::EIP", 0],
+    ["AWS::EC2::FlowLog", 0],
+    ["AWS::EC2::VPCCidrBlock", 0],
+    ["AWS::EC2::EgressOnlyInternetGateway", 0],
+    ["AWS::Lambda::Function", 0],
+  ] as const) {
+    signal.resourceCountIs(type, count);
+  }
+  assert.deepEqual(
+    Object.values(signal.findResources("AWS::EC2::Subnet")).map((subnet) => [
+      subnet.Properties.AvailabilityZone,
+      subnet.Properties.CidrBlock,
+      subnet.Properties.Ipv6CidrBlock,
+    ]),
+    [
+      ["eu-north-1a", "10.0.0.0/24", undefined],
+      ["eu-north-1b", "10.0.1.0/24", undefined],
+    ],
+  );
+  const routes = Object.values(signal.findResources("AWS::EC2::Route")).map((route) => [
+    route.Properties.DestinationCidrBlock,
+    route.Properties.GatewayId,
+  ]);
+  const gateway = { Ref: onlyOf(signal, "AWS::EC2::InternetGateway").id };
+  assert.deepEqual(routes, [
+    ["0.0.0.0/0", gateway],
+    ["0.0.0.0/0", gateway],
+  ]);
+});
+
+test("the signaling load balancer listens only on 443, with the signaling certificate and TLS 1.2 or later", () => {
+  const { signal } = signalApp();
+  const balancer = onlyOf(signal, "AWS::ElasticLoadBalancingV2::LoadBalancer");
+  assert.equal(balancer.properties.Name, "fidant-signal");
+  assert.equal(balancer.properties.Scheme, "internet-facing");
+  assert.equal(balancer.properties.Type, "application");
+  assert.equal(balancer.properties.IpAddressType, undefined);
+  const targets = onlyOf(signal, "AWS::ElasticLoadBalancingV2::TargetGroup");
+  assert.deepEqual(onlyOf(signal, "AWS::ElasticLoadBalancingV2::Listener").properties, {
+    LoadBalancerArn: { Ref: balancer.id },
+    Port: 443,
+    Protocol: "HTTPS",
+    SslPolicy: "ELBSecurityPolicy-TLS13-1-2-Res-PQ-2025-09",
+    Certificates: [{ CertificateArn: certificateArn(testCertificate) }],
+    DefaultActions: [{ Type: "forward", TargetGroupArn: { Ref: targets.id } }],
+  });
+  signal.resourceCountIs("AWS::ElasticLoadBalancingV2::ListenerRule", 0);
+  signal.resourceCountIs("AWS::ElasticLoadBalancingV2::ListenerCertificate", 0);
+  const group = balancer.properties.SecurityGroups[0]["Fn::GetAtt"][0];
+  assert.deepEqual(balancer.properties.SecurityGroups, [{ "Fn::GetAtt": [group, "GroupId"] }]);
+  assert.deepEqual(
+    signal.findResources("AWS::EC2::SecurityGroup")[group]?.Properties.SecurityGroupIngress,
+    [
+      {
+        CidrIp: "0.0.0.0/0",
+        Description: "Allow from anyone on port 443",
+        FromPort: 443,
+        IpProtocol: "tcp",
+        ToPort: 443,
+      },
+    ],
+  );
+  assert.deepEqual(
+    Object.values(signal.findResources("AWS::EC2::SecurityGroupIngress")).filter(
+      (rule) => rule.Properties.GroupId["Fn::GetAtt"]?.[0] === group,
+    ),
+    [],
+  );
+});
+
+test("the signaling load balancer keeps no logs and appends the client's address without its port", () => {
+  const { signal } = signalApp();
+  const balancer = onlyOf(signal, "AWS::ElasticLoadBalancingV2::LoadBalancer");
+  assert.deepEqual(balancer.properties.LoadBalancerAttributes, [
+    { Key: "deletion_protection.enabled", Value: "false" },
+    { Key: "idle_timeout.timeout_seconds", Value: "120" },
+    { Key: "routing.http.xff_header_processing.mode", Value: "append" },
+    { Key: "routing.http.xff_client_port.enabled", Value: "false" },
+  ]);
+  for (const type of [
+    "AWS::Logs::DeliverySource",
+    "AWS::Logs::Delivery",
+    "AWS::Logs::DeliveryDestination",
+    "AWS::S3::Bucket",
+    "AWS::WAFv2::WebACLAssociation",
+  ]) {
+    signal.resourceCountIs(type, 0);
+  }
+});
+
+test("the signaling targets are checked over HTTPS on /relay-status, and a stopped one is let go after 5 seconds", () => {
+  const { signal } = signalApp();
+  const { VpcId, ...targets } = onlyOf(
+    signal,
+    "AWS::ElasticLoadBalancingV2::TargetGroup",
+  ).properties;
+  assert.deepEqual(VpcId, { Ref: onlyOf(signal, "AWS::EC2::VPC").id });
+  assert.deepEqual(targets, {
+    Name: "fidant-signal",
+    TargetType: "ip",
+    Protocol: "HTTPS",
+    Port: 8443,
+    HealthCheckProtocol: "HTTPS",
+    HealthCheckPath: "/relay-status",
+    Matcher: { HttpCode: "200" },
+    HealthCheckIntervalSeconds: 10,
+    HealthCheckTimeoutSeconds: 5,
+    HealthyThresholdCount: 2,
+    UnhealthyThresholdCount: 2,
+    TargetGroupAttributes: [
+      { Key: "deregistration_delay.timeout_seconds", Value: "5" },
+      { Key: "stickiness.enabled", Value: "false" },
+    ],
+  });
+});
+
+test("FidantSignal outputs only the load balancer's name", () => {
+  const { signal } = signalApp();
+  assert.deepEqual(signal.toJSON().Outputs, {
+    LoadBalancerName: {
+      Value: {
+        "Fn::GetAtt": [onlyOf(signal, "AWS::ElasticLoadBalancingV2::LoadBalancer").id, "DNSName"],
+      },
+    },
+  });
 });
 
 test("no stack depends on or imports from another, so deploying one never deploys another", () => {
