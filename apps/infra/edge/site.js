@@ -45,6 +45,7 @@ const PAGES = [
   "/sv/sakerhet",
   "/sv/villkor",
 ];
+const RELAY_SECRET = /^\/relay-secret\/[a-z][a-z0-9]+$/;
 const KINDS = ["receive", "file", "page", "404"];
 const TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -136,19 +137,7 @@ function decide(uri) {
 }
 
 function query(request, keepEmpty) {
-  let raw;
-  if (typeof request.rawQueryString === "function") {
-    raw = request.rawQueryString();
-  } else {
-    const pairs = [];
-    Object.keys(request.querystring).forEach((name) => {
-      const field = request.querystring[name];
-      (field.multiValue || [field]).forEach((one) => {
-        pairs.push(`${encodeURIComponent(name)}=${encodeURIComponent(one.value)}`);
-      });
-    });
-    raw = pairs.length > 0 ? pairs.join("&") : undefined;
-  }
+  const raw = request.rawQueryString();
   return raw || (keepEmpty && raw === "") ? `?${raw}` : "";
 }
 
@@ -172,6 +161,9 @@ function viewerRequest(request) {
   if (host !== SITE) {
     return generated(301, `https://${SITE}${request.uri}${query(request, true)}`);
   }
+  if (request.uri.startsWith("/relay-secret/")) {
+    return RELAY_SECRET.test(request.uri) && request.uri.length <= 30 ? request : generated(404);
+  }
   const decision = decide(request.uri);
   if (decision.kind === "400") {
     return generated(400);
@@ -187,7 +179,6 @@ function viewerRequest(request) {
     const sv = lang ? /^sv\b/i.test(lang.value) : false;
     decision.uri = sv ? "/index.receive.sv.html" : "/index.receive.en.html";
   }
-  delete request.headers["x-fidant-page"];
   request.headers["x-fidant-page"] = { value: decision.kind };
   request.uri = decision.uri;
   return request;
@@ -197,7 +188,12 @@ function viewerRequest(request) {
 function viewerResponse(request, response) {
   const decision = decide(request.uri);
   const sent = request.headers["x-fidant-page"];
-  const kind = sent && KINDS.includes(sent.value) ? sent.value : decision.kind;
+  const kind =
+    decision.kind === "file"
+      ? "file"
+      : sent && KINDS.includes(sent.value)
+        ? sent.value
+        : decision.kind;
   if (kind === "404" && response.statusCode === 200) {
     response.statusCode = 404;
     response.statusDescription = "Not Found";

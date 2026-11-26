@@ -130,20 +130,6 @@ test("a moved path or a page's path with a slash is redirected, with its query",
   }
 });
 
-test("without rawQueryString the redirect rebuilds the query from the parsed one", () => {
-  const request = {
-    ...viewer("/technical"),
-    rawQueryString: undefined,
-    querystring: {
-      a: { value: "1" },
-      b: { value: "x/y", multiValue: [{ value: "x/y" }, { value: "z" }] },
-    },
-  };
-  const event = { version: "1.0", context: { eventType: "viewer-request" }, request };
-  const answer = JSON.parse(JSON.stringify(handler(event))) as Response;
-  assert.equal(answer.headers.location?.value, "/how?a=1&b=x%2Fy&b=z");
-});
-
 test("a path under /r/ gets the receive copy in the browser's language", () => {
   for (const [target, lang, uri] of [
     ["/r/abc", "sv-SE,sv;q=0.9", "/index.receive.sv.html"],
@@ -237,7 +223,7 @@ test("never hands the origin / or a path ending in /, which would list the bucke
   }
 });
 
-test("the viewer's own x-fidant-page never reaches the origin", () => {
+test("the forwarded request carries only the function's own x-fidant-page", () => {
   const answer = onRequest("/nope", { "x-fidant-page": "page" });
   assert.deepEqual(answer.headers["x-fidant-page"], { value: "404" });
 });
@@ -268,6 +254,50 @@ test("the answer gets the headers, a 404 status and a type, whichever request th
       );
     }
   }
+});
+
+test("a visitor's x-fidant-page cannot change what a file is served as", () => {
+  for (const sent of ["404", "receive", "page"]) {
+    for (const make of [
+      () => onRequest("/assets/app-abc.js", { "x-fidant-page": sent }),
+      () => viewer("/assets/app-abc.js", { "x-fidant-page": sent }),
+    ]) {
+      const answer = onResponse(make(), 200, fields({ "cache-control": "no-cache" }));
+      assert.equal(answer.statusCode, 200, sent);
+      assert.deepEqual(
+        values(answer.headers),
+        {
+          "cache-control": "no-cache",
+          ...securityHeaders,
+          "content-type": "text/javascript; charset=utf-8",
+        },
+        sent,
+      );
+    }
+  }
+});
+
+test("/relay-secret/ passes only a relay id, unchanged, and anything else is a 404 with the headers", () => {
+  const passed = onRequest("/relay-secret/sto");
+  assert.equal(passed.uri, "/relay-secret/sto");
+  assert.equal(passed.headers["x-fidant-page"], undefined);
+  assert.equal(onRequest("/relay-secret/abcdefghijklmnop").uri, "/relay-secret/abcdefghijklmnop");
+  for (const target of [
+    "/relay-secret/%2e%2e/signal",
+    "/relay-secret/..\\signal",
+    "/relay-secret/STO",
+    "/relay-secret/sto/x",
+    "/relay-secret/",
+    "/relay-secret/a",
+    "/relay-secret/abcdefghijklmnopq",
+  ]) {
+    const answer = onRequest(target);
+    assert.equal(answer.statusCode, 404, target);
+    assert.deepEqual(values(answer.headers), securityHeaders, target);
+  }
+  const www = onRequest("/relay-secret/sto", { host: "www.fidant.se" });
+  assert.equal(www.statusCode, 301);
+  assert.equal(www.headers.location?.value, "https://fidant.se/relay-secret/sto");
 });
 
 test("a 304 stays 304, and a receive copy keeps the origin's own vary", () => {

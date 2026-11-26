@@ -1384,9 +1384,22 @@ test.describe("pages from the edge function", () => {
 
     expect(await sender.page.evaluate(() => fetch("/signal").then((r) => r.status))).toBe(404);
     const status = (path: string) =>
-      inRelay("curl", "-sk", "--max-time", "5", "-o", "/dev/null", "-w", "%{http_code}", path);
-    expect(await status(`https://${pagesIp}/relay-secret/net`)).toBe("200");
-    expect(await status(`https://${pagesIp}/relay-secret/sto`)).toBe("404");
+      inRelay(
+        "curl",
+        "-sk",
+        "--max-time",
+        "5",
+        "--resolve",
+        `${new URL(boxOrigin).host}:443:${pagesIp}`,
+        "-o",
+        "/dev/null",
+        "-w",
+        "%{http_code}",
+        `${boxOrigin}${path}`,
+      );
+    expect(await status("/relay-secret/net")).toBe("200");
+    expect(await status("/relay-secret/sto")).toBe("404");
+    expect(await status("/relay-secret/%2e%2e/relay-status")).toBe("404");
 
     let lines: string[] = [];
     await expect

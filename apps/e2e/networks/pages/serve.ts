@@ -1,9 +1,18 @@
 import { readFileSync } from "node:fs";
+import type { ServerResponse } from "node:http";
 import { createServer, request } from "node:https";
-import { edgeAnswer } from "../../src/edge.ts";
+import { edgeAnswer, viewerRequest } from "../../src/edge.ts";
 
 const root = "/pages";
 const alb = "198.51.100.50";
+
+function cut(res: ServerResponse) {
+  if (res.headersSent) {
+    res.destroy();
+  } else {
+    res.writeHead(502).end();
+  }
+}
 
 createServer(
   { cert: readFileSync("/etc/pages/tls.crt"), key: readFileSync("/etc/pages/tls.key") },
@@ -13,6 +22,19 @@ createServer(
     if (target.startsWith("/relay-secret/")) {
       if (method !== "GET" && method !== "HEAD") {
         res.writeHead(403).end();
+        return;
+      }
+      const host = req.headers.host ?? "";
+      const passed = viewerRequest({ method, host, target });
+      if ("statusCode" in passed) {
+        res
+          .writeHead(
+            passed.statusCode,
+            Object.fromEntries(
+              Object.entries(passed.headers).map(([name, field]) => [name, field.value]),
+            ),
+          )
+          .end();
         return;
       }
       request(
@@ -25,10 +47,11 @@ createServer(
         },
         (upstream) => {
           res.writeHead(upstream.statusCode ?? 502, upstream.headers);
+          upstream.on("error", () => cut(res));
           upstream.pipe(res);
         },
       )
-        .on("error", () => res.writeHead(502).end())
+        .on("error", () => cut(res))
         .end();
       return;
     }

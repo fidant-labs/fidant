@@ -7,7 +7,7 @@ import { dirname, join } from "node:path";
 import { after, before, test } from "node:test";
 // ponytail: relative import, not a workspace dependency on the server, for one function.
 import { serveStatic } from "../../server/src/server.ts";
-import { type EdgeAnswer, edgeAnswer, edgePages } from "./edge.ts";
+import { type EdgeAnswer, edgeAnswer, edgePages, viewerRequest } from "./edge.ts";
 
 const root = mkdtempSync(join(tmpdir(), "sigill-edge-"));
 const files: Record<string, string> = {
@@ -19,6 +19,12 @@ const files: Record<string, string> = {
   "assets/app.js": "console.log(1)",
   "favicon.svg": "<svg></svg>",
   "robots.txt": "User-agent: *",
+  "assets/app.css": "a{}",
+  "data.json": "{}",
+  "preview.png": "png",
+  "favicon.ico": "ico",
+  "assets/font.woff2": "woff2",
+  "sitemap.xml": "<urlset/>",
   ...Object.fromEntries(
     edgePages.map((page) => [page === "/" ? "pages/index.html" : `pages${page}/index.html`, page]),
   ),
@@ -87,7 +93,6 @@ const cases: [string, Record<string, string>?][] = [
   ["/sv//om/"],
   ["/nope"],
   ["/relay-status"],
-  ["/relay-secret/sto"],
   ["/signal"],
   ["/r/abc", { "accept-language": "en-US" }],
   ["/r/abc", { "accept-language": "sv-SE,sv;q=0.9" }],
@@ -105,6 +110,12 @@ const cases: [string, Record<string, string>?][] = [
   ["/FAVICON.SVG"],
   ["/a/..%2ffavicon.svg"],
   ["/robots.txt"],
+  ["/assets/app.css"],
+  ["/data.json"],
+  ["/preview.png"],
+  ["/favicon.ico"],
+  ["/assets/font.woff2"],
+  ["/sitemap.xml"],
   ["/%E0"],
   ["/%E0%A4%A"],
   ["/a%20b"],
@@ -164,4 +175,16 @@ test("the edge function answers every case as serveStatic does, but for its one 
 test("other methods get CloudFront's 403, where the server answers 405", async () => {
   const got = await edgeAnswer(root, { method: "POST", host: "fidant.se", target: "/" });
   assert.equal(got.status, 403);
+});
+
+test("a relay id under /relay-secret/ is passed on unchanged, and any other path under it is a 404 with the headers", () => {
+  const ask = (target: string) => viewerRequest({ method: "GET", host: "fidant.se", target });
+  const passed = ask("/relay-secret/sto");
+  assert.ok(!("statusCode" in passed));
+  assert.equal(passed.uri, "/relay-secret/sto");
+  assert.equal(passed.headers["x-fidant-page"], undefined);
+  for (const target of ["/relay-secret/%2e%2e/signal", "/relay-secret/STO", "/relay-secret/"]) {
+    const got = ask(target);
+    assert.equal("statusCode" in got && got.statusCode, 404, target);
+  }
 });

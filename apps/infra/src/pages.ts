@@ -94,6 +94,7 @@ export class PagesStack extends Stack {
               viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
               allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
               cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+              functionAssociations: [viewerRequest],
             },
           },
         }),

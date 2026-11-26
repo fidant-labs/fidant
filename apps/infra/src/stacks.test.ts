@@ -648,6 +648,18 @@ function distributionArn(id: string) {
 }
 
 test("FidantPages joins fidant-poc in us-east-1 only once all three certificates are committed", () => {
+  const original = certificateIds.pages;
+  try {
+    for (const count of [0, 2, 3]) {
+      certificateIds.pages = Object.fromEntries(
+        zoneNames.slice(0, count).map((zone) => [zone, pageCertificates[zone] ?? ""]),
+      );
+      const joined = stacksFor(pocAccount).some((child) => child.stackName === "FidantPages");
+      assert.equal(joined, count === zoneNames.length, `${count} certificates`);
+    }
+  } finally {
+    certificateIds.pages = original;
+  }
   const stack = stacksFor(pocAccount).find((child) => child.stackName === "FidantPages");
   if (!zoneNames.every((zone) => certificateIds.pages[zone])) {
     assert.equal(stack, undefined);
@@ -844,16 +856,27 @@ test("each zone and its www get a distribution with their own certificate, funct
   }
 });
 
-test("fidant.se passes /relay-secret/* uncached to the signaling name over HTTPS, GET and HEAD only, with no function", () => {
+test("fidant.se passes /relay-secret/* uncached to the signaling name over HTTPS, GET and HEAD only, with the page function on viewer-request only", () => {
   const { pages } = pagesApp();
   const id = idOf(pages, "AWS::CloudFront::Distribution", /^FidantSeDistribution/);
   const config = pages.toJSON().Resources[id].Properties.DistributionConfig;
   const [behavior, ...others] = config.CacheBehaviors;
+  const own = pages.toJSON().Resources[id].Properties.DistributionConfig.DefaultCacheBehavior;
+  assert.deepEqual(own.FunctionAssociations[0].EventType, "viewer-request");
+  assert.deepEqual(own.FunctionAssociations[0].FunctionARN, {
+    "Fn::GetAtt": [idOf(pages, "AWS::CloudFront::Function", /^FidantSeFunction/), "FunctionARN"],
+  });
   assert.deepEqual(others, []);
   assert.deepEqual(behavior, {
     AllowedMethods: ["GET", "HEAD"],
     CachePolicyId: "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
     Compress: true,
+    FunctionAssociations: [
+      {
+        EventType: "viewer-request",
+        FunctionARN: config.DefaultCacheBehavior.FunctionAssociations[0].FunctionARN,
+      },
+    ],
     PathPattern: "/relay-secret/*",
     TargetOriginId: behavior.TargetOriginId,
     ViewerProtocolPolicy: "redirect-to-https",

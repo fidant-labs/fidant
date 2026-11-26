@@ -25,38 +25,44 @@ export interface EdgeAnswer {
   body: Buffer;
 }
 
+type Target = { method: string; host: string; target: string; headers?: Record<string, string> };
+
+function viewerEvent(request: Target) {
+  const cut = request.target.indexOf("?");
+  const raw = cut < 0 ? undefined : request.target.slice(cut + 1);
+  const headers: Fields = { host: { value: request.host } };
+  for (const [name, value] of Object.entries(request.headers ?? {})) {
+    headers[name.toLowerCase()] = { value };
+  }
+  return {
+    method: request.method,
+    uri: cut < 0 ? request.target : request.target.slice(0, cut),
+    querystring: {},
+    headers,
+    cookies: {},
+    rawQueryString: () => raw,
+  };
+}
+
+function eventOf(eventType: string, extra: object) {
+  return { version: "1.0", context: { eventType }, viewer: { ip: "192.0.2.1" }, ...extra };
+}
+
+/** The function's viewer-request answer: a generated response, or the request it forwards. */
+export function viewerRequest(request: Target): Generated | Forwarded {
+  return handler(eventOf("viewer-request", { request: viewerEvent(request) }));
+}
+
 // AWS doesn't say which request the response event carries, so `responseSees` picks one.
 export async function edgeAnswer(
   root: string,
-  request: { method: string; host: string; target: string; headers?: Record<string, string> },
+  request: Target,
   responseSees: "rewritten" | "viewer" = "rewritten",
 ): Promise<EdgeAnswer> {
   if (request.method !== "GET" && request.method !== "HEAD") {
     return { status: 403, headers: {}, body: Buffer.alloc(0) };
   }
-  const viewer = () => {
-    const cut = request.target.indexOf("?");
-    const raw = cut < 0 ? undefined : request.target.slice(cut + 1);
-    const headers: Fields = { host: { value: request.host } };
-    for (const [name, value] of Object.entries(request.headers ?? {})) {
-      headers[name.toLowerCase()] = { value };
-    }
-    return {
-      method: request.method,
-      uri: cut < 0 ? request.target : request.target.slice(0, cut),
-      querystring: {},
-      headers,
-      cookies: {},
-      rawQueryString: () => raw,
-    };
-  };
-  const event = (eventType: string, extra: object) => ({
-    version: "1.0",
-    context: { eventType },
-    viewer: { ip: "192.0.2.1" },
-    ...extra,
-  });
-  const forwarded = handler(event("viewer-request", { request: viewer() }));
+  const forwarded = viewerRequest(request);
   if ("statusCode" in forwarded) {
     return {
       status: forwarded.statusCode,
@@ -81,8 +87,8 @@ export async function edgeAnswer(
     headers: { "cache-control": { value: uploadCacheControl(key) } } as Fields,
   };
   const answered = handler(
-    event("viewer-response", {
-      request: responseSees === "rewritten" ? forwarded : viewer(),
+    eventOf("viewer-response", {
+      request: responseSees === "rewritten" ? forwarded : viewerEvent(request),
       response,
     }),
   ) as Generated;
