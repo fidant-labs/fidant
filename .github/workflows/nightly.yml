@@ -96,6 +96,7 @@ jobs:
           done
           grep -v '^#' /etc/resolv.conf
           grep '^hosts:' /etc/nsswitch.conf
+          sudo ss -tulpn
           logged() {
             for ipt in iptables ip6tables; do sudo "$ipt" -nvxL sigill-egress; done |
               awk '$3 == "LOG" { n += $1 } END { print n + 0 }'
@@ -140,6 +141,8 @@ jobs:
       - if: failure() || cancelled()
         run: "[ ! -d apps/e2e/observations ] || sudo -u sigill-e2e chmod -R a+rX apps/e2e/observations"
       # Same rule as ci.yml's e2e job: only the observations are uploaded, never traces or reports.
+      - if: failure() || cancelled()
+        run: '[ ! -e apps/e2e/observations ] || { [ ! -L apps/e2e/observations ] && [ -z "$(find apps/e2e/observations -type l)" ]; } || { echo "::error::apps/e2e/observations holds a symlink, so it is not uploaded"; exit 1; }'
       - if: failure() || cancelled()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
