@@ -52,8 +52,8 @@ jobs:
       - run: |
           sudo install -d -o "$(id -u)" -g "$(id -g)" "$PLAYWRIGHT_BROWSERS_PATH"
           pnpm --filter @sigill/e2e exec playwright install --with-deps "$SIGILL_E2E_BROWSER"
-      # The stack runs its own coturn on a free port, so the system service the package starts does not get in the way.
-      - run: sudo apt-get update && sudo apt-get install -y coturn
+      # The package starts a coturn that relays for anyone as its own user, past the block; the stack runs its own.
+      - run: sudo apt-get update && sudo apt-get install -y coturn && sudo systemctl disable --now coturn
       # Mailpit catches the server's mail. It is not in apt: a pinned release, checked against its hash.
       - run: |
           curl -fsSLo "$RUNNER_TEMP/mailpit.tar.gz" https://github.com/axllent/mailpit/releases/download/v1.33.1/mailpit-linux-amd64.tar.gz

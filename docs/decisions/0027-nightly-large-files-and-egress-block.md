@@ -67,7 +67,7 @@ Option 2 for the sink, option 2 for memory, option 2 for lookups, option 2 for p
 - Before the tests, three checks run as the user. Each must fail and raise the chain's LOG count: `curl http://1.1.1.1/`, `getent hosts example.com` and `curl 'http://[::1]:53/'`. Then the counters are zeroed.
 - After the tests, the job prints both chains and the kernel's `sigill-egress: ` lines since the counters were zeroed, and fails if the LOG count is above 0. Every packet counts, a browser's background traffic included. Such a packet is not a finding of the leak detector; the runbook says how to tell what sent it.
 - The block and its checks are inline in `nightly.yml`, a path that needs a `maintainers` approval. A script under `apps/e2e` that runs with sudo would not.
-- The owner match sees IP packets only. Traffic that the user hands to a daemon running as another user leaves unseen when it goes through a UNIX socket or D-Bus. Lookups sent to the stub on port 53 are the one such path the rules count.
+- The owner match sees only the packets the user itself sends. Whatever it hands to a daemon running as another user, through a UNIX socket, D-Bus or a loopback port, leaves as that daemon's user, unseen. Lookups to a loopback port 53 are the one such path the rules count. The `coturn` package starts a coturn service as `turnserver` that relays for anyone on every address, so the job stops and disables it right after the install; the stack starts its own coturn as the test user.
 
 ### A failed night
 
