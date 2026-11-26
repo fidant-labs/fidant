@@ -30,7 +30,7 @@ jobs:
         with:
           fetch-depth: 2
           persist-credentials: false
-      - name: Write PR diff
+      - name: Write PR diff and restore config from base
         run: |
           rm -f pr.diff
           git diff --text --no-ext-diff --no-textconv HEAD^1 HEAD > pr.diff
@@ -39,7 +39,7 @@ jobs:
             if git cat-file -e "HEAD^1:$p" 2> /dev/null; then git checkout HEAD^1 -- "$p"; fi
           done < <(
             printf '%s\0' .claude .mcp.json .claude.json .gitmodules .ripgreprc CLAUDE.md CLAUDE.local.md AGENTS.md .husky
-            { git ls-tree -r -z --name-only HEAD^1; git ls-files -z; } | grep -zE '(^|/)(AGENTS|CLAUDE)\.md$' | sort -zu
+            { git ls-tree -r -z --name-only HEAD^1; git ls-files -z; } | grep -azE '(^|/)(AGENTS|CLAUDE)\.md$' | sort -zu
           )
       - name: Install Claude Code
         run: curl -fsSL --retry 3 https://claude.ai/install.sh | bash -s -- 2.1.330
@@ -56,6 +56,7 @@ jobs:
             Review pull request #${{ github.event.pull_request.number }} in ${{ github.repository }}.
             Read AGENTS.md first; its invariants are hard rules. Also read any AGENTS.md in the directory of a changed file or above it, for the facts about that code.
             The full diff is at ./pr.diff and the merged code is in the working directory.
+            AGENTS.md, CLAUDE.md and the other agent config files in the working directory are the base branch's copies; this pull request's changes to them are only in ./pr.diff.
             Focus on correctness bugs, security issues, and any way file content, file names, file metadata or keys could reach the server, logs or other infrastructure.
             Then audit the diff against "Every path and its traces" in docs/how-fidant-works.md: for each place, path, failure case, signaling message and log line it lists, check that it is still true of the merged code.
             A diff that makes any of them untrue, or adds a path, step, trace, message, log field or stored value, without updating that section in this pull request is a blocking issue. Name the path in the finding.
@@ -95,7 +96,7 @@ jobs:
           event=$(jq -r 'if .verdict == "approve" and all(.findings[]; .severity == "minor" or .severity == "nit") then "APPROVE" else "REQUEST_CHANGES" end' "$review")
           post() {
             jq --arg sha "$HEAD_SHA" --arg event "$event" --argjson inline "$1" '
-              def clean: gsub("[\u200b-\u200d\u2060\ufeff\u202a-\u202e\u2066-\u2069]"; "") | until(test("<!--") | not; gsub("<!--([\\s\\S]*?-->|[\\s\\S]*$)"; ""));
+              def clean: gsub("[\\p{Cf}\\p{Variation_Selector}]"; "") | gsub("<!--"; "&lt;!--");
               .summary |= clean | .findings |= map(.body |= clean | .path |= clean)
               | (if $inline then [.findings[] | select(.line)] else [] end) as $c
               | {commit_id: $sha, event: $event,

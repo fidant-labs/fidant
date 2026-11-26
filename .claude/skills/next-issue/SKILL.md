@@ -121,7 +121,7 @@ If follow-up work came up, create Linear issues for it in the same project and m
 
 ## 8. Answer the bot review
 
-The `Claude review` workflow reviews every push and posts as `github-actions[bot]`: one review with the verdict, with inline comments on diff lines or, when GitHub refuses those, every finding in its body. Read it before telling the user the PR is ready. Two things make it easy to miss:
+The `Claude review` workflow reviews every push and posts as `github-actions[bot]`: one review with the verdict, with findings on diff lines as inline comments and the rest in its body, or every finding in its body when GitHub refuses the inline comments. Read it before telling the user the PR is ready. Two things make it easy to miss:
 
 - Each run reviews the head commit from scratch. A later run can approve without repeating a blocker an earlier run raised, and that blocker may still hold.
 - The `review` check passes even when the verdict is request changes (SIG-52), so a green check says nothing about the verdict.
