@@ -192,7 +192,7 @@ export const sv: Messages = {
         heading: "Den låses två gånger",
         body: [
           "Din webbläsare låser filen med en nyckel som kommer från länken. Utan länken kan ingen låsa upp den.",
-          "Förbindelsen mellan de två webbläsarna är också låst, så filen är låst två gånger på vägen.",
+          "Anslutningen mellan de två webbläsarna är också låst, så filen är låst två gånger på vägen.",
         ],
       },
       transfer: {
@@ -616,7 +616,7 @@ export const sv: Messages = {
         `Länken till ${name} öppnades i en äldre version av Fidant. Det är inget fel på hemligheten. Be mottagaren att ladda om den sidan.`,
     },
     unsendable: (name: string) =>
-      `Hemligheten skickades inte via länken till ${name}, eftersom dess längd skulle ha synts på den här förbindelsen. Länken fungerar fortfarande.`,
+      `Hemligheten skickades inte via länken till ${name}, eftersom dess längd skulle ha synts på den här anslutningen. Länken fungerar fortfarande.`,
     offerTitle: (from: string) =>
       from ? `${from} har skickat en hemlighet till dig` : "Du har fått en hemlighet",
     show: "Visa",
@@ -862,7 +862,7 @@ export const sv: Messages = {
         body: [
           "Två nycklar tas fram ur hemligheten med HKDF-SHA-256. Båda är AES-256-GCM-nycklar som webbläsaren markerar som icke-exporterbara: sidan kan använda dem men inte läsa ut dem.",
           "Signalnyckeln krypterar meddelandena för uppkopplingen. Dess salt är länk-ID:t.",
-          "Filnyckeln krypterar varje ram mellan webbläsarna utom den första, INIT, som bara innehåller det slumpmässiga överförings-ID:t. Filnyckelns salt består av två slumpmässiga värden: ett överförings-ID som avsändaren väljer för varje försök och ett försöks-ID som mottagarens sida väljer varje gång den ansluter. Därför använder varken en omstartad överföring eller en återuppspelad första ram samma nyckel och nonce två gånger.",
+          "Filnyckeln krypterar varje ram mellan webbläsarna utom den första, INIT, som bara innehåller det slumpmässiga överförings-ID:t. Filnyckelns salt består av två slumpmässiga värden: det överförings-ID:t, som avsändaren väljer för varje försök, och ett försöks-ID som mottagarens sida väljer varje gång den ansluter. Därför använder varken en omstartad överföring eller en återuppspelad första ram samma nyckel och nonce två gånger.",
         ],
       },
       signal: {
@@ -901,9 +901,9 @@ export const sv: Messages = {
       check: {
         heading: "Kontrollen av filen",
         body: [
-          "Mottagarens webbläsare räknar kontrollsumman medan filen kommer fram och kontrollerar storleken, antalet delar, utfyllnaden och kontrollsumman mot END. Filen sparas bara om allt stämmer. Varje annat slut, till exempel en ram som inte går att dekryptera eller en förbindelse som stängs för tidigt, kastar det som har skrivits.",
-          "Chrome och Edge kan skriva filen direkt till en plats på disken som mottagaren väljer. Andra webbläsare samlar den i minnet och startar nedladdningen i slutet, och för en fil över 256 MiB varnas mottagaren först. Nedladdningen märks alltid som rena binärdata, vilken typ avsändaren än anger, så en fil kan inte köras som en webbsida på Fidants webbplats.",
-          "Namn nekas om de innehåller styrtecken, radavgränsare, Unicode-tecken som åsidosätter eller isolerar textriktning, tomma utfyllnadstecken eller långa följder av mellanslag. Därför kan ett namn som slutar på .exe inte se ut att sluta på .pdf.",
+          "Mottagarens webbläsare räknar kontrollsumman medan filen kommer fram och kontrollerar storleken, antalet delar, utfyllnaden och kontrollsumman mot END. Filen sparas bara om allt stämmer. Varje annat slut, till exempel en ram som inte går att dekryptera eller en anslutning som stängs för tidigt, kastar det som har skrivits.",
+          "Chromium-webbläsare på datorn, som Chrome och Edge, kan skriva filen direkt till en plats på disken som mottagaren väljer. Andra webbläsare samlar den i minnet och startar nedladdningen i slutet, och för en fil över 256 MiB varnas mottagaren först. Nedladdningen märks alltid som rena binärdata, vilken typ avsändaren än anger, så en fil kan inte köras som en webbsida på Fidants webbplats.",
+          "Namn nekas om de innehåller styrtecken, radavgränsare, Unicodes styrtecken för textriktning, tomma utfyllnadstecken eller långa följder av mellanslag. Därför kan ett namn som slutar på .exe inte se ut att sluta på .pdf.",
         ],
       },
       padding: {
@@ -911,13 +911,13 @@ export const sv: Messages = {
         body: [
           "Den som kan se den krypterade trafiken, till exempel nätverken på vägen eller vårt relä, ser hur stora ramarna är. Därför avrundas storleken uppåt med metoden Padmé, som lägger till högst 12 %, och sedan till hela delar. Alla ramar med fildata är lika stora, och utfyllnaden är nollor som mottagaren kontrollerar.",
           "Den exakta storleken finns bara i de krypterade META och END. META är alltid lika stor, så inte heller filnamnets längd syns.",
-          "En delad hemlighet är högst 32 KiB, och varje delad hemlighet fylls ut till exakt en del. Appen ser till det: om en förbindelse bara tillåter meddelanden som är för små för en del på 32 KiB skickas ingenting över den, och avsändaren ser att hemligheten inte skickades. Med alla webbläsare vi testade i november 2026 (Chromium, Firefox och WebKit) är delen 48 KiB. Så varje delad hemlighet ser likadan ut på nätet, oavsett längd, och likadan som vilken fil som helst på upp till 48 KiB.",
+          "En delad hemlighet är högst 32 KiB, och varje delad hemlighet fylls ut till exakt en del. Appen ser till det: om en anslutning bara tillåter meddelanden som är för små för en del på 32 KiB skickas ingenting över den, och avsändaren ser att hemligheten inte skickades. Med alla webbläsare vi testade i november 2026 (Chromium, Firefox och WebKit) är delen 48 KiB. Så varje delad hemlighet ser likadan ut på nätet, oavsett längd, och likadan som vilken fil som helst på upp till 48 KiB.",
         ],
       },
       travel: {
         heading: "Så färdas filen",
         body: [
-          "Båda webbläsarna börjar med bara vår STUN-tjänst, så WebRTC provar de direkta vägarna först, utan reläet. De direkta vägarna går över det lokala nätverket, eller via varje sidas offentliga adress, som webbläsaren får veta från vår STUN-tjänst. Filen går då direkt mellan webbläsarna. Avsändarens sida visar vilken väg varje förbindelse tog.",
+          "Båda webbläsarna börjar med bara vår STUN-tjänst, så WebRTC provar de direkta vägarna först, utan reläet. De direkta vägarna går över det lokala nätverket, eller via varje sidas offentliga adress, som webbläsaren får veta från vår STUN-tjänst. Filen går då direkt mellan webbläsarna. Avsändarens sida visar vilken väg varje anslutning tog.",
           "På båda de direkta vägarna visar varje webbläsares fråga vår STUN-tjänst dess offentliga IP-adress. De två webbläsarna frågar ungefär samtidigt, så vår STUN-tjänst kan oftast se vilka två adresser som hör ihop. Webbläsarna lägger till reläet om du tillåter det, reläet är tillgängligt och ingen anslutning har kommit till stånd 3 sekunder efter att mottagaren har svarat. Reläet kan då få veta att de två adresserna hör ihop.",
           "På alla vägar ser varje webbläsare den andras IP-adress, precis som i ett videosamtal.",
         ],
@@ -926,9 +926,9 @@ export const sv: Messages = {
         heading: "När reläet används",
         body: [
           "När ingen direkt väg fungerar, vilket är vanligt på mobildata och kontorsnätverk, går trafiken via vårt TURN-relä i Stockholm. Webbläsarna lägger till reläet bara om avsändaren tillåter det, om reläet är tillgängligt och om ingen anslutning har kommit till stånd 3 sekunder efter att mottagaren har svarat. En sida som öppnades innan vi började lägga till reläet på det här sättet reserverar fortfarande reläadresser från början, tills den laddas om.",
-          "För att lägga till reläet börjar webbläsarna koppla upp på nytt, med ett nytt erbjudande och svar, krypterade precis som de första. En direkt väg kan fortfarande vinna efter det. En förbindelse som behöver reläet kommer alltså i gång ungefär 3 sekunder senare. En direkt väg som ännu inte är uppkopplad 3 sekunder efter att mottagaren har svarat, till exempel på ett nätverk som tappar många paket, kan hamna på reläet.",
+          "För att lägga till reläet börjar webbläsarna koppla upp på nytt, med ett nytt erbjudande och svar, krypterade precis som de första. En direkt väg kan fortfarande vinna efter det. En anslutning som behöver reläet kommer alltså i gång ungefär 3 sekunder senare. En direkt väg som ännu inte är uppkopplad 3 sekunder efter att mottagaren har svarat, till exempel på ett nätverk som tappar många paket, kan hamna på reläet.",
           "Reläet för vidare krypterade paket. Det kan inte dekryptera dem och sparar dem inte.",
-          "För att använda reläet behöver en webbläsare inloggningsuppgifter, som vår server skapar för varje ihopkoppling och bara ger till de två ihopkopplade sidorna. Inloggningsuppgifterna slutar gälla efter 5 minuter. Vår server kontrollerar varje minut att reläet kan föra vidare trafik och erbjuder det när en kontroll lyckas. Servern slutar erbjuda det efter två misslyckade kontroller i rad. Reläet får hemligheten bakom inloggningsuppgifterna från vår server, förseglad så att bara reläet kan öppna den.",
+          "För att använda reläet behöver en webbläsare inloggningsuppgifter, som vår server skapar för varje ihopkoppling och bara ger till de två ihopkopplade sidorna. Med dem kan en reläanslutning starta i 5 minuter, och den kan sedan pågå längre. Vår server kontrollerar varje minut att reläet kan föra vidare trafik och erbjuder det när en kontroll lyckas. Servern slutar erbjuda det efter två misslyckade kontroller i rad. Reläet får hemligheten bakom inloggningsuppgifterna från vår server, förseglad så att bara reläet kan öppna den.",
           "Webbläsare når reläet över UDP, eller över TLS på port 443 där ett nätverk bara släpper igenom webbtrafik. Reläet skickar bara vidare över UDP, och bara från sin egen adress. Det vägrar skicka till andra datorer på privata eller interna nätverk, med ett godtaget undantag: reläets egen server (se beslut 0007). Det begränsar också hur många anslutningar som går via det samtidigt.",
           "När den uppskattade kostnaden för vår trafik under månaden når vår budget stängs reläet och vår STUN-tjänst av. De förblir avstängda till månadens slut, om vi inte slår på dem igen tidigare, till exempel genom att höja budgeten. Till dess kan en ny överföring bara ansluta där den klarar sig utan dem, till exempel på samma lokala nätverk, och misslyckas ofta annars.",
         ],
@@ -936,16 +936,16 @@ export const sv: Messages = {
       norelay: {
         heading: "Att neka reläet",
         body: [
-          'Avsändaren kan bocka ur "Använd vårt relä vid behov". Vår server ger då inga inloggningsuppgifter till reläet för den sändningen, bara STUN-adressen, så en omodifierad webbläsare kan inte använda reläet. Avsändarens webbläsare upprätthåller också själv valet: den startar förbindelsen utan inloggningsuppgifter till reläet, vad vår server än skickar. Som extra skydd avslutar avsändarens webbläsare förbindelsen om den ändå ser att den går via reläet. Fildata skickas först när mottagaren har tackat ja, så i praktiken avslutar webbläsaren en sådan förbindelse innan några fildata har passerat.',
+          'Avsändaren kan bocka ur "Använd vårt relä vid behov". Vår server ger då inga inloggningsuppgifter till reläet för den sändningen, bara STUN-adressen, så en omodifierad webbläsare kan inte använda reläet. Avsändarens webbläsare upprätthåller också själv valet: den startar anslutningen utan inloggningsuppgifter till reläet, vad vår server än skickar. Som extra skydd avslutar avsändarens webbläsare anslutningen om den ändå ser att den går via reläet. Det extra skyddet är inte heltäckande: en modifierad mottagare kan dölja att dess sida går via ett relä.',
           "Gränsen: en modifierad mottagare kan ändå skicka sin del via vårt relä med uppgifter från en annan ihopkoppling, eller via vilket offentligt relä som helst. Den mottagaren har ju nyckeln ändå. Valet avgör vilken infrastruktur som bär den krypterade trafiken, inte vem som kan läsa filen.",
         ],
       },
       recipients: {
         heading: "Flera mottagare och engångslänkar",
         body: [
-          "En sändning kan gå till upp till 256 personer. Var och en har en egen länk, nyckel, förbindelse och överföring.",
-          "En länk räknas som använd först när mottagarens RECEIPT stämmer. Därefter nekas den. En länk som redan är öppen i en flik nekas i en annan.",
-          "Fram till dess kan länken öppnas igen: efter att mottagaren tackat nej, efter en bruten förbindelse eller efter en misslyckad kontroll. Varje nytt försök har ett nytt överförings-ID och ett nytt försöks-ID, och därmed en ny filnyckel. En länk med kontrollnummer slutar fungera efter 5 försök som tog slut innan båda hade bekräftat numret. Ett försök som avsändarens sida stoppade för att de två sidorna kör olika versioner räknas inte.",
+          "En sändning kan gå till upp till 256 personer. Var och en har en egen länk, nyckel, anslutning och överföring.",
+          "En länk räknas som använd först när mottagarens RECEIPT stämmer. Därefter nekas den. En länk som redan är ansluten i en flik nekas i en annan.",
+          "Fram till dess kan länken öppnas igen: efter att mottagaren tackat nej, efter en bruten anslutning eller efter en misslyckad kontroll. Varje nytt försök har ett nytt överförings-ID och ett nytt försöks-ID, och därmed en ny filnyckel. En länk med kontrollnummer slutar fungera efter 5 försök som tog slut innan båda hade bekräftat numret. Ett försök som avsändarens sida stoppade för att de två sidorna kör olika versioner räknas inte.",
           "Ingenting sparas, så en länk fungerar bara medan avsändarens sida är öppen. När den stängs glömmer vår server dess länkar inom en minut.",
         ],
       },
@@ -994,7 +994,7 @@ export const sv: Messages = {
       planned: {
         heading: "Planerat: verifierade överföringar",
         body: [
-          "Inte byggt ännu. Planen: mottagaren skriver under ett kvitto med BankID innan filen går att öppna, och kvittot namnger filen. Filnyckeln delas, och vår server lämnar ut sin halva först när kvittot är underskrivet. Händelser hamnar i en granskningslogg där manipulation syns, förankrad med betrodda tidsstämplar.",
+          "Inte byggt ännu. Planen: mottagaren skriver under ett kvitto med BankID innan filen går att öppna, och kvittot namnger filen. Nyckeln delas, och vår server lämnar ut sin halva först när kvittot är underskrivet. Händelser hamnar i en granskningslogg där manipulation syns, förankrad med betrodda tidsstämplar.",
           "När det finns beskriver den här sidan det som ett nytt läge.",
         ],
         link: [
@@ -1047,7 +1047,7 @@ export const sv: Messages = {
           },
           norelay: {
             heading: "Reläet nekat",
-            body: "Avsändaren kan neka vårt relä för en sändning. Vår server ger då inga inloggningsuppgifter till reläet, och en förbindelse utan direkt väg misslyckas.",
+            body: "Avsändaren kan neka vårt relä för en sändning. Vår server ger då inga inloggningsuppgifter till reläet, och en anslutning utan direkt väg misslyckas.",
           },
         },
       },
@@ -1063,11 +1063,11 @@ export const sv: Messages = {
       ],
       websocket: [
         "WebSocket",
-        "En bestående förbindelse åt båda hållen mellan en sida och en server. Fidants sidor håller en öppen mot vår server för att skicka meddelandena för uppkopplingen.",
+        "En bestående anslutning åt båda hållen mellan en sida och en server. Fidants sidor håller en öppen mot vår server för att skicka meddelandena för uppkopplingen.",
       ],
       sdp: [
         "Erbjudande och svar",
-        "Meddelandena som beskriver varje sida av en WebRTC-förbindelse, bland annat fingeravtrycket för dess DTLS-certifikat. Avsändarens webbläsare gör erbjudandet och mottagarens webbläsare svaret.",
+        "Meddelandena som beskriver varje sida av en WebRTC-anslutning, bland annat fingeravtrycket för dess DTLS-certifikat. Avsändarens webbläsare gör erbjudandet och mottagarens webbläsare svaret.",
       ],
       ice: [
         "Kandidater",
@@ -1083,11 +1083,11 @@ export const sv: Messages = {
       ],
       dtls: [
         "DTLS",
-        "Krypteringen som WebRTC alltid lägger på förbindelsen mellan två webbläsare, ungefär som TLS som HTTPS använder. Varje webbläsare kontrollerar den andras certifikat mot fingeravtrycket i erbjudandet eller svaret.",
+        "Krypteringen som WebRTC alltid lägger på anslutningen mellan två webbläsare, ungefär som TLS som HTTPS använder. Varje webbläsare kontrollerar den andras certifikat mot fingeravtrycket i erbjudandet eller svaret.",
       ],
       channel: [
         "Datakanal",
-        "En WebRTC-förbindelse som bär data i stället för ljud och bild. Fidant skickar sina ramar över en sådan.",
+        "En WebRTC-anslutning som bär data i stället för ljud och bild. Fidant skickar sina ramar över en sådan.",
       ],
       aes: [
         "AES-256-GCM",
@@ -1162,7 +1162,7 @@ export const sv: Messages = {
         ],
         [
           "En länk öppnas två gånger, eller av någon annan efter leveransen",
-          "En länk nekas när dess fil har levererats, och i en andra flik medan den är öppen i en.",
+          "En länk nekas när dess fil har levererats, och i en andra flik medan en flik är ansluten till den.",
         ],
         [
           "En mejlad länk vidarebefordras eller hämtas av en mejlskanner",
@@ -1186,7 +1186,7 @@ export const sv: Messages = {
         ],
         [
           "Du vill inte att din trafik går via vårt relä",
-          "Bocka ur reläet för den sändningen. Vår server ger då inga inloggningsuppgifter till reläet, och avsändarens webbläsare avslutar en förbindelse som går via det.",
+          "Bocka ur reläet för den sändningen. Vår server ger då inga inloggningsuppgifter till reläet, och avsändarens webbläsare avslutar en anslutning som den ser går via det.",
         ],
       ],
     },
@@ -1270,7 +1270,7 @@ export const sv: Messages = {
             ],
             [
               "direct,relay",
-              "Så länge vårt relä är tillgängligt skapar den inloggningsuppgifter till reläet för det här paret av webbläsare, giltiga i 5 minuter, och skickar dem till båda sidorna utan att spara dem.",
+              "Så länge vårt relä är tillgängligt skapar den inloggningsuppgifter till reläet för det här paret av webbläsare, som en reläanslutning kan starta med i 5 minuter, och skickar dem till båda sidorna utan att spara dem.",
             ],
             [
               "email",
@@ -1325,7 +1325,7 @@ export const sv: Messages = {
           lines: [
             [
               "",
-              "Korta rader med en fast lista med fält: att en avsändare registrerade sig och hur många länkar, att en mottagare anslöt, storleken på varje uppkopplingsmeddelande och vilken väg anslutningen tog. En länk syns bara med sina 6 första tecken.",
+              "Korta rader med en fast lista med fält: att en avsändare registrerade sig och hur många länkar, att en mottagare anslöt eller nekades och varför, storleken på varje uppkopplingsmeddelande och vilken väg anslutningen tog. En länk syns bara med sina 6 första tecken.",
             ],
             [
               "email",
@@ -1339,10 +1339,7 @@ export const sv: Messages = {
               "direct,relay",
               "Om vårt relä är tillgängligt och webbläsarna fortfarande inte är anslutna 3 sekunder efter att mottagaren svarat, lägger de till reläet. Det ger rader för ytterligare ett dussintal uppkopplingsmeddelanden, som antyder att du tillät reläet.",
             ],
-            [
-              "norelay",
-              "Om en anslutning via reläet ändå kommer till stånd: att din sida avslutade den.",
-            ],
+            ["norelay", "Om din sida ändå ser en anslutning via reläet: att den avslutade den."],
           ],
         },
         relay: {
@@ -1430,7 +1427,7 @@ export const sv: Messages = {
             ],
             [
               "file",
-              "Filen, där de sparar den: Chrome och Edge skriver den dit mottagaren väljer, andra webbläsare till sina nedladdningar.",
+              "Filen, där de sparar den: Chromium-webbläsare på datorn, som Chrome och Edge, skriver den dit mottagaren väljer, andra webbläsare till sina nedladdningar.",
             ],
             [
               "secret",
@@ -1500,10 +1497,10 @@ export const sv: Messages = {
         ],
         [
           "En mottagare öppnar sin länk",
-          "Länk-ID:t, ett slumpmässigt försöks-ID och mottagarens IP-adress och webbläsaruppgifter.",
+          "Länk-ID:t, ett slumpmässigt försöks-ID och mottagarens IP-adress och webbläsaruppgifter. Om din sida nekar mottagaren, varför: länken har redan använts, en annan sida är ansluten till den, din sida har inte länken eller din sida avbröt försöket.",
           "Vilken mottagarsida som är ihopkopplad med vilken länk, i minnet.",
           "Att en mottagare anslöt eller nekades och varför, med de 6 första tecknen i länk-ID:t.",
-          "Ingenting än. Om du tillåter reläet och det är tillgängligt ger vår server de två sidorna inloggningsuppgifter till det som slutar gälla efter 5 minuter.",
+          "Ingenting än. Om du tillåter reläet och det är tillgängligt ger vår server de två sidorna inloggningsuppgifter till det, som en reläanslutning kan starta med i 5 minuter.",
         ],
         [
           "Webbläsarna kopplar upp sig",
