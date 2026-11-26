@@ -553,7 +553,13 @@ const skipped = [`batch-get-image imageTag=inputs-${key}`, "batch-get-image imag
 
 test("while FidantPages's status ends in _IN_PROGRESS the upload fails before any put, and UPDATE_COMPLETE uploads", () => {
   const skip = { tags: { [`inputs-${key}`]: "sha256:new", live: "sha256:new" } };
-  for (const pages of ["CREATE_IN_PROGRESS", "DELETE_IN_PROGRESS"]) {
+  for (const pages of [
+    "CREATE_IN_PROGRESS",
+    "UPDATE_IN_PROGRESS",
+    "REVIEW_IN_PROGRESS",
+    "DELETE_IN_PROGRESS",
+    "UPDATE_COMPLETE_CLEANUP_IN_PROGRESS",
+  ]) {
     const { status, stdout, calls } = release({ ...skip, pages });
     assert.equal(status, 1, pages);
     assert.deepEqual(calls, [...skipped, "describe-stacks FidantPages"], pages);
