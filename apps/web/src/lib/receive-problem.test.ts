@@ -12,9 +12,17 @@ test("peerLostProblem says couldn't connect until the channel opened", () => {
   );
 });
 
-test("peerLostProblem blames a refused relay only while the channel never opened", () => {
+test("peerLostProblem blames a refused relay only after a stall, while the channel never opened", () => {
   const relayRefused = true;
-  assert.equal(peerLostProblem({ channelOpen: false, receiving: false, relayRefused }), "noRelay");
+  assert.equal(peerLostProblem({ channelOpen: false, receiving: false, relayRefused }), "connect");
+  assert.equal(
+    peerLostProblem({ channelOpen: false, receiving: false, relayRefused, stalled: true }),
+    "noRelay",
+  );
+  assert.equal(
+    peerLostProblem({ channelOpen: false, receiving: false, relayRefused: false, stalled: true }),
+    "connect",
+  );
   assert.equal(peerLostProblem({ channelOpen: true, receiving: false, relayRefused }), "lost");
   assert.equal(
     peerLostProblem({ channelOpen: true, receiving: true, relayRefused }),
@@ -33,7 +41,13 @@ test("peerLostProblem says Try again continues while the attempt holds a kept pa
     "connect",
   );
   assert.equal(
-    peerLostProblem({ channelOpen: false, receiving: false, resuming: true, relayRefused: true }),
+    peerLostProblem({
+      channelOpen: false,
+      receiving: false,
+      resuming: true,
+      relayRefused: true,
+      stalled: true,
+    }),
     "noRelay",
   );
 });

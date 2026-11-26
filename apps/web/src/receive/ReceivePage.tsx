@@ -193,6 +193,8 @@ type Attempt = {
   hostGone: boolean;
   /** The sender refused our relay for this attempt, as the server's `joined` said. */
   relayRefused: boolean;
+  /** Nothing had connected RELAY_FALLBACK_MS after the answer, and this page had no relay to add. */
+  stalled?: boolean;
   /** Set once the attempt reached its final view. Later events are ignored. */
   ended: boolean;
   /** The final view, set when finish() ends the attempt. */
@@ -534,6 +536,9 @@ export function ReceivePage({
             attempt: attemptId,
             signalKey,
             iceServers: message.iceServers,
+            onStalled: () => {
+              attempt.stalled = true;
+            },
             onOpen: (channel, info) => {
               // A short transfer can end before the path resolves, so this checks the attempt, not current().
               void info.path.then((resolved) => {

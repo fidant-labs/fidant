@@ -330,7 +330,12 @@ export const sv: Messages = {
       "Om vi mejlar en länk står ditt namn också i mejlet, markerat som inte verifierat. Vår server lägger in det där och sparar det inte.",
     allowRelay: "Använd vårt relä vid behov",
     allowRelayHint: (kind: Kind) =>
-      `Vissa nätverk stoppar direkta anslutningar. Då går ${items[kind].the} via vårt relä i Stockholm, fortfarande ${items[kind].encrypted}. Reläet ser båda IP-adresserna${kind === "file" ? " och ungefär storleken" : ""}, men kan inte öppna ${items[kind].it}. Om du bockar ur det här slutar vår server dela ut inloggningsuppgifter till reläet för den här sändningen. Reläet ser ändå varje IP-adress, eftersom varje webbläsare får veta sin offentliga adress från reläet.`,
+      `Vissa nätverk stoppar direkta anslutningar. Om du bockar i det här går ${items[kind].the} då via vårt relä i Stockholm, fortfarande ${items[kind].encrypted}. Reläet ser båda IP-adresserna${kind === "file" ? " och ungefär storleken" : ""}, men kan inte öppna ${items[kind].it}. Om du låter rutan vara tom frågar sidan dig när en länk inte kan ansluta direkt och vårt relä är tillgängligt. Då kan du tillåta reläet för just den länken. Reläet ser i båda fallen varje IP-adress, eftersom varje webbläsare får veta sin offentliga adress från reläet.`,
+    ask: (name: string) =>
+      `Länken till ${name} öppnades men kunde inte ansluta direkt. Den väntar på att du tillåter vårt relä.`,
+    allowRelayFor: (name: string) => `Tillåt vårt relä för ${name}`,
+    askTitle: "En länk väntar på dig",
+    askBody: "Den kunde inte ansluta direkt. Öppna Fidant för att tillåta vårt relä.",
     fromError: {
       unsafe:
         "Ditt namn innehåller tecken som inte kan skickas, eller tre eller fler mellanslag i rad. Ta bort dem och försök igen.",
@@ -415,7 +420,7 @@ export const sv: Messages = {
     noConnect: (name: string) =>
       `Länken till ${name} öppnades men kunde inte ansluta till din dator. Länken fungerar fortfarande om de försöker igen.`,
     noRelay: (name: string) =>
-      `Länken till ${name} öppnades men kunde inte ansluta direkt. Om du tillåter vårt relä kan den kanske ansluta när de försöker igen.`,
+      `Länken till ${name} öppnades men kunde inte ansluta direkt, och vårt relä är inte tillgängligt just nu. Länken fungerar fortfarande om de försöker igen.`,
     mail: {
       sending: (to: string) => `Skickar mejl till ${to}…`,
       sent: (to: string) => `Mejl skickat till ${to}`,
@@ -676,15 +681,19 @@ export const sv: Messages = {
       "Din IP-adress och de vanliga uppgifterna om webbläsaren som alla webbplatser får, och samma sak för varje mottagare när de öppnar sin länk.",
     seesRecipient:
       "Din IP-adress och de vanliga uppgifterna om webbläsaren som alla webbplatser får.",
-    senderHolds: ({ online, links, connected, relay, emailed, sending, mailed, kind }) => {
+    senderHolds: ({ online, links, connected, relay, granted, emailed, sending, mailed, kind }) => {
       if (!online) {
         return mailed
           ? "Bara antalet mejl den skickade åt dig, i förvrängd form, i upp till en timme, när den har märkt att anslutningen har stängts. Det tar upp till en minut om nätverket bröts."
           : "Ingenting, när den har märkt att anslutningen har stängts. Det tar upp till en minut om nätverket bröts.";
       }
-      const choice = relay
-        ? "Ditt val att tillåta vårt relä."
-        : "Ditt val att inte tillåta vårt relä.";
+      const grants =
+        granted === 0
+          ? ""
+          : granted === 1
+            ? " Länken du tillät det för."
+            : ` De ${granted} länkar du tillät det för.`;
+      const choice = `${relay ? "Ditt val att tillåta vårt relä." : "Ditt val att inte tillåta vårt relä."}${grants}`;
       const counts = mailed
         ? " Antalet mejl den skickade åt dig, i förvrängd form, i upp till en timme."
         : "";

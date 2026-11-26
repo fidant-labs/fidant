@@ -350,7 +350,12 @@ export const en = {
       "If we email a link, your name also goes in that email, marked as not verified. Our server puts it there and doesn't keep it.",
     allowRelay: "Use our relay if needed",
     allowRelayHint: (kind: Kind) =>
-      `Some networks block direct connections. Then ${items[kind].the} goes through our relay in Stockholm, still encrypted. The relay sees both IP addresses${kind === "file" ? " and roughly the size" : ""}, but can't open ${items[kind].it}. If you untick this, our server stops giving out relay credentials for this send. The relay still sees each IP address, because each browser learns its public address from the relay.`,
+      `Some networks block direct connections. Tick this and ${items[kind].the} then goes through our relay in Stockholm, still encrypted. The relay sees both IP addresses${kind === "file" ? " and roughly the size" : ""}, but can't open ${items[kind].it}. Leave it unticked and this page asks you when a link can't connect directly and our relay is available. You can then allow the relay for that link. Either way the relay sees each IP address, because each browser learns its public address from the relay.`,
+    ask: (name: string) =>
+      `${name}'s link was opened but couldn't connect directly. It is waiting for you to allow our relay.`,
+    allowRelayFor: (name: string) => `Allow our relay for ${name}`,
+    askTitle: "A link is waiting for you",
+    askBody: "It couldn't connect directly. Open Fidant to allow our relay.",
     fromError: {
       unsafe:
         "Your name contains characters that can't be sent, or three or more spaces in a row. Remove them and try again.",
@@ -435,7 +440,7 @@ export const en = {
     noConnect: (name: string) =>
       `${name}'s link was opened but couldn't connect to your computer. The link still works if they try again.`,
     noRelay: (name: string) =>
-      `${name}'s link was opened but couldn't connect directly. Allowing our relay may let it connect when they try again.`,
+      `${name}'s link was opened but couldn't connect directly, and our relay isn't available right now. The link still works if they try again.`,
     /** `to` is the masked address, like a***@example.se. */
     mail: {
       sending: (to: string) => `Sending email to ${to}…`,
@@ -700,6 +705,7 @@ export const en = {
       links,
       connected,
       relay,
+      granted,
       emailed,
       sending,
       mailed,
@@ -709,8 +715,10 @@ export const en = {
       online: boolean;
       links: number;
       connected: number;
-      /** Whether the sender allows our TURN relay. */
+      /** Whether the sender allows our TURN relay for the whole send. */
       relay: boolean;
+      /** Links the sender allowed our relay for when asked. */
+      granted: number;
       /** Hosted links the server emails or may be emailing. */
       emailed: number;
       /** Of those, links whose email the server may still be sending. */
@@ -723,9 +731,13 @@ export const en = {
           ? "Only scrambled counts of the emails it sent for you, for up to an hour, once it notices the connection has closed. That takes up to a minute if the network dropped."
           : "Nothing once it notices the connection has closed. That takes up to a minute if the network dropped.";
       }
-      const choice = relay
-        ? "Your choice to allow our relay."
-        : "Your choice not to allow our relay.";
+      const grants =
+        granted === 0
+          ? ""
+          : granted === 1
+            ? " The link you allowed it for."
+            : ` The ${granted} links you allowed it for.`;
+      const choice = `${relay ? "Your choice to allow our relay." : "Your choice not to allow our relay."}${grants}`;
       const counts = mailed
         ? " Scrambled counts of the emails it sent for you, for up to an hour."
         : "";

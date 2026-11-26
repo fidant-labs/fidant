@@ -125,16 +125,16 @@ The relay is off unless the sender allows it. The checkbox stays, unticked by de
 - The server forwards it as `refused` with `turn` and unbinds the recipient, as for any `refuse`. It doesn't log this one.
 - The recipient's page, on `refused` with `turn` before its channel has opened, starts a new attempt by itself, at most `MAX_REJOINS` (4) times in a row. Past that it shows the failure view with "Try again". With an open channel it ignores the message.
 - The new attempt is an ordinary join. Its `joined` carries credentials, and the relay is added as in 0019: only if nothing has connected 3 s after the answer, and ICE can still pick a direct route.
-- The grant lasts until the link is delivered or removed, or the page closes. There is no control to take it back.
+- The grant lasts until the link is delivered or removed, or the page closes. There is no control to take it back. When a link with a grant is delivered, the page re-sends `host` without it in `turnLinks`.
 - If the recipient leaves while the ask shows, or the sender's socket drops, the ask goes away. No grant is set.
 - There is no "Not now" button. A sender who doesn't want the relay leaves the ask alone.
 - Ticking the checkbox while asks show answers every one of them as the button does: each asking link gets the grant, and each waiting recipient's page joins again. No waiting recipient is left on a view with no "Try again". The grants stay if the checkbox is then unticked.
 
 ### Alerts
 
-- When an ask shows, the page beeps once. One minute later, if the ask is still open, it beeps twice, louder. Five minutes after the ask, it beeps three times, louder, and shows a notification that stays until dismissed (`requireInteraction`). Then it stops.
+- When an ask shows, the page beeps once. One minute later, if the ask is still open, it beeps twice, louder. Five minutes after the ask, it beeps three times, louder. Then it stops.
 - The sound is made in the page (`AudioContext`), with no audio file. It needs no opt-in. The page prepares it on the "Create link" click.
-- A notification shows only when the sender already allowed notifications through "Notify me" and the page isn't focused. The ask adds no permission prompt. Its text is fixed and names no recipient, file or link, as for the delivery notification.
+- Each of the three alerts also shows a notification, in place of the one before it, and only the third stays until dismissed (`requireInteraction`). A notification shows only when the sender already allowed notifications through "Notify me" and the page isn't focused. The ask adds no permission prompt. Its text is fixed and names no recipient, file or link, as for the delivery notification.
 - Allowing, removing the recipient, or the recipient leaving stops the alerts.
 - Assumptions about browsers, to be tested by the e2e tests in SIG-338 and not yet verified: a sound started by a timer plays after one earlier click on the page; `requireInteraction` keeps a notification up where the browser supports it and is ignored elsewhere. Where either fails, the sender still has the card.
 

@@ -6,7 +6,7 @@ import { formatBytes } from "./format.ts";
 import { addRelay, NO_RELAYS, type Relayed } from "./server-facts.ts";
 
 const { recipientHolds, senderAfterwards, senderHolds } = en.server;
-const PLAIN = { emailed: 0, sending: 0, mailed: false, kind: "file" } as const;
+const PLAIN = { granted: 0, emailed: 0, sending: 0, mailed: false, kind: "file" } as const;
 const passedOn = (relayed: Relayed) =>
   en.server.passedOn(relayed.messages, formatBytes(relayed.bytes, "en"), false);
 
@@ -99,8 +99,28 @@ test("the Swedish server text counts and picks singular or plural", () => {
   );
 });
 
+test("senderHolds names the links the sender allowed our relay for", () => {
+  const asked = { ...PLAIN, online: true, links: 3, connected: 0, relay: false };
+  assert.equal(
+    senderHolds({ ...asked, granted: 1 }),
+    "The IDs of your 3 links, never the part that unlocks the file. Your choice not to allow our relay. The link you allowed it for.",
+  );
+  assert.equal(
+    senderHolds({ ...asked, granted: 2 }),
+    "The IDs of your 3 links, never the part that unlocks the file. Your choice not to allow our relay. The 2 links you allowed it for.",
+  );
+  assert.equal(
+    sv.server.senderHolds({ ...asked, granted: 1 }),
+    "ID:na för dina 3 länkar, aldrig den del som låser upp filen. Ditt val att inte tillåta vårt relä. Länken du tillät det för.",
+  );
+  assert.equal(
+    sv.server.senderHolds({ ...asked, granted: 2 }),
+    "ID:na för dina 3 länkar, aldrig den del som låser upp filen. Ditt val att inte tillåta vårt relä. De 2 länkar du tillät det för.",
+  );
+});
+
 test("an emailed link adds what the server holds for it and how long its counts stay", () => {
-  const online = { online: true, connected: 0, relay: true, kind: "file" } as const;
+  const online = { online: true, connected: 0, relay: true, granted: 0, kind: "file" } as const;
   assert.equal(
     senderHolds({ ...online, links: 2, emailed: 1, sending: 1, mailed: true }),
     "The IDs of your 2 links. For the link it emails: the recipient's email address and the codes sent there. While it sends an email, also the part of that link that unlocks the file, and your name. Your choice to allow our relay. Scrambled counts of the emails it sent for you, for up to an hour.",
@@ -140,7 +160,7 @@ test("an emailed link adds what the server holds for it and how long its counts 
 });
 
 test("the Swedish text for an emailed link", () => {
-  const online = { online: true, connected: 1, relay: false, kind: "file" } as const;
+  const online = { online: true, connected: 1, relay: false, granted: 0, kind: "file" } as const;
   assert.equal(
     sv.server.senderHolds({ ...online, links: 1, emailed: 1, sending: 1, mailed: true }),
     "ID:t för din länk. För länken den mejlar: mottagarens e-postadress och koderna som skickas dit. Medan den skickar ett mejl också den del av länken som låser upp filen, och ditt namn. Ditt val att inte tillåta vårt relä. Antalet mejl den skickade åt dig, i förvrängd form, i upp till en timme. 1 mottagare är ansluten just nu.",
@@ -181,7 +201,14 @@ test("the server panel text names a secret, not a file, for a secret", () => {
 });
 
 test("no server panel string names a file for a secret", () => {
-  const sender = { online: true, links: 2, connected: 1, relay: true, kind: "secret" } as const;
+  const sender = {
+    online: true,
+    links: 2,
+    connected: 1,
+    relay: true,
+    granted: 2,
+    kind: "secret",
+  } as const;
   const strings = [
     [/\bfiles?\b/i, en.server],
     [/fil/i, sv.server],

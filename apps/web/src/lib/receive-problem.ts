@@ -5,7 +5,8 @@ import type { Messages } from "../i18n/en.ts";
  * What the recipient shows when the peer dropped, the sender gave up on the attempt or the channel
  * never opened in time. A data channel that never opened means the browsers never reached each
  * other (for example, no direct path and no relay), so that is a failed connection, not a lost
- * one, and when the sender refused our relay that refusal is the likely reason. An attempt that
+ * one, and when the sender refused our relay and the attempt stalled (nothing had connected
+ * RELAY_FALLBACK_MS after the answer) that refusal is the likely reason. An attempt that
  * resumes a kept part still holds it before the file arrives again, so Try again can continue it.
  * Once the recipient said the numbers differ, that is what ended the attempt.
  */
@@ -15,12 +16,13 @@ export function peerLostProblem(attempt: {
   resuming?: boolean | undefined;
   saidDiffers?: boolean | undefined;
   relayRefused: boolean;
+  stalled?: boolean | undefined;
 }): "connect" | "noRelay" | "lost" | "lostReceiving" | "differed" {
   if (attempt.saidDiffers) {
     return "differed";
   }
   if (!attempt.channelOpen) {
-    return attempt.relayRefused ? "noRelay" : "connect";
+    return attempt.relayRefused && attempt.stalled ? "noRelay" : "connect";
   }
   return attempt.receiving || attempt.resuming ? "lostReceiving" : "lost";
 }

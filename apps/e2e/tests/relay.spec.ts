@@ -250,7 +250,7 @@ test("the relay list: the wrong secret is down, each relay gets its own sealed s
   }
 });
 
-test("a sender who refuses the relay: no credentials, no bytes, plain words on both pages", async ({
+test("a sender who is asked and allows the relay: no credentials before, the relay after", async ({
   actor,
   observed,
   leaks,
@@ -271,32 +271,30 @@ test("a sender who refuses the relay: no credentials, no bytes, plain words on b
     mimeType: file.mime,
     buffer: file.bytes,
   });
-  // The page glides after a file is chosen, here on the faked clock, so a pointer click can miss.
-  await sender.getByText("Connection options", { exact: true }).press("Enter");
-  const allowRelay = sender.getByLabel("Use our relay if needed");
-  await allowRelay.uncheck();
+  // The relay is off unless the sender allows it.
   await sender.getByLabel("Who is it for?").fill("Anna");
   await sender.getByRole("button", { name: "Create link", exact: true }).click();
   const link = (await sender.getByLabel("Link for Anna", { exact: true }).textContent()) ?? "";
   leaks.watchKey("link secret", new URL(link).hash.slice(1));
-  const hostTurn = async () =>
-    (await signals(observed("sender"), "frame-sent", "host")).at(-1)?.turn;
-  await expect.poll(hostTurn).toBe(false);
+  const hosts = () => signals(observed("sender"), "frame-sent", "host");
+  await expect.poll(async () => (await hosts()).at(-1)?.turn).toBe(false);
+  expect((await hosts()).every((host) => !("turnLinks" in host))).toBe(true);
 
   const recipient = await relayOnly(actor, "recipient", "udp");
   await recipient.goto(link);
   for (const page of [sender, recipient]) {
     await expect.poll(async () => (await peerList(page, "peerStates"))?.length).toBeGreaterThan(0);
   }
-  // The sender gives up on the refused connection after its 20 s setup timeout.
-  await sender.clock.fastForward(20_000);
-  await expect(
-    recipient.getByRole("heading", { name: "Couldn't connect directly to the sender" }),
-  ).toBeVisible();
-  await expect(recipient.getByText("The sender doesn't allow our relay")).toBeVisible();
+  // The sender's page asks 3 s after the answer; its clock is faked, so no real wait.
+  const allow = sender.getByRole("button", { name: "Allow our relay for Anna", exact: true });
+  await expect(async () => {
+    await sender.clock.fastForward(3000);
+    await expect(allow).toBeVisible({ timeout: 500 });
+  }).toPass();
   await expect(
     sender.getByRole("list", { name: "Recipients" }).getByText("couldn't connect directly"),
   ).toBeVisible();
+  await expect(allow).not.toBeFocused();
 
   await expect(recipient.getByRole("button", { name: "Download" })).toHaveCount(0);
   for (const page of [sender, recipient]) {
@@ -310,7 +308,7 @@ test("a sender who refuses the relay: no credentials, no bytes, plain words on b
     ).toBe(true);
   }
 
-  // No relay credentials, before the recovery below legitimately hands them out.
+  // No relay credentials, before the grant below legitimately hands them out.
   for (const name of ["sender", "recipient"]) {
     const joined = await signals(observed(name), "frame-received", "joined");
     expect(joined.length, `joined frames for ${name}`).toBeGreaterThan(0);
@@ -328,8 +326,17 @@ test("a sender who refuses the relay: no credentials, no bytes, plain words on b
   expect(await allocations(coturnStart)).toEqual([]);
   await expect.poll(() => logged(stdoutStart, '{"event":"path","path":"failed"}')).toBe(true);
 
-  await allowRelay.check();
-  await expect.poll(hostTurn).toBe(true);
+  await allow.click();
+  await expect(allow).toHaveCount(0);
+  // The grant goes out on `host` before the refusal that ends the waiting attempt.
+  const linkId = (await hosts()).at(-1)?.links;
+  await expect.poll(async () => (await hosts()).at(-1)?.turnLinks).toEqual(linkId);
+  const sent = (await observed("sender").records()).flatMap((record) =>
+    record.type === "frame-sent" ? [JSON.parse(record.payload) as Record<string, unknown>] : [],
+  );
+  const refusal = sent.findIndex((message) => message.t === "refuse" && message.reason === "turn");
+  expect(refusal).toBeGreaterThan(sent.findIndex((message) => "turnLinks" in message));
+  // Until the recipient's page joins again by itself, the recipient presses "Try again".
   await recipient.getByRole("button", { name: "Try again" }).click();
   const download = recipient.getByRole("button", { name: "Download" });
   await expect(download).toBeVisible({ timeout: 30_000 });
@@ -340,9 +347,12 @@ test("a sender who refuses the relay: no credentials, no bytes, plain words on b
   });
   expect(sha256Hex(await readFile(await (await downloading).path()))).toBe(sha256Hex(file.bytes));
   await expect(recipient.getByText("Through our relay", { exact: true })).toBeVisible();
+  const log = (await since(serverStdoutLog, stdoutStart)).toString();
+  expect(log).toContain('{"event":"path","path":"failed"}');
+  expect(log).not.toContain('"reason":"turn"');
 });
 
-test("a sender who refuses the relay and fails setup shows the refused relay", async ({
+test("a sender whose setup fails with the relay off shows a failed connection", async ({
   actor,
   leaks,
   canary,
@@ -359,8 +369,6 @@ test("a sender who refuses the relay and fails setup shows the refused relay", a
     mimeType: file.mime,
     buffer: file.bytes,
   });
-  await sender.getByText("Connection options", { exact: true }).press("Enter");
-  await sender.getByLabel("Use our relay if needed").uncheck();
   await sender.getByLabel("Who is it for?").fill("Anna");
   await sender.getByRole("button", { name: "Create link", exact: true }).click();
   const link = (await sender.getByLabel("Link for Anna", { exact: true }).textContent()) ?? "";
@@ -368,8 +376,11 @@ test("a sender who refuses the relay and fails setup shows the refused relay", a
 
   const recipient = await relayOnly(actor, "recipient", "udp");
   await recipient.goto(link);
-  await expect(recipient.getByText("The sender doesn't allow our relay")).toBeVisible({
+  // The attempt ended before it could stall, so the relay isn't blamed and nothing is asked.
+  const card = sender.getByRole("list", { name: "Recipients" });
+  await expect(card.getByText("couldn't connect to your computer")).toBeVisible({
     timeout: 20_000,
   });
-  await expect(recipient.getByText("Couldn't connect to the sender's computer")).toHaveCount(0);
+  await expect(card.getByText("couldn't connect directly")).toHaveCount(0);
+  await expect(sender.getByRole("button", { name: /Allow our relay/ })).toHaveCount(0);
 });
