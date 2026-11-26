@@ -30,6 +30,7 @@ import {
 } from "./receive-file.ts";
 import { type FrameChannel, type SendFileOptions, type SendResult, sendFile } from "./send-file.ts";
 import { BlobSink, type Sink } from "./sink.ts";
+import { textFile } from "./text-secret.ts";
 
 type Transit = {
   /** Called for each sender → recipient frame. Return undefined to drop it, several to deliver them in order. */
@@ -738,6 +739,48 @@ test("a connection lost before META hands the kept part back untouched", async (
   assert.equal((error as ReceiveError).resumable?.sink, sink);
   assert.equal((error as ReceiveError).resumable?.verifier.offset, 3 * MAX_CHUNK_BYTES);
   assert.equal(sink.aborts, 0);
+  await assert.rejects(r.sending);
+});
+
+test("a kept part is discarded when the channel closes while the recipient's differs goes out", async () => {
+  const bytes = new Uint8Array(randomBytes(300_000));
+  const sink = new RecordingSink();
+  const kept = await dropped(sink, { bytes });
+  const pair = channelPair();
+  const send = pair.recipient.send.bind(pair.recipient);
+  pair.recipient.send = (data) => {
+    if (data[1] === RecipientKind.CHECK) {
+      pair.close();
+    }
+    send(data);
+  };
+  const r = run({
+    bytes,
+    pair,
+    resumable: kept,
+    senderConfirm: new Promise<boolean>(() => {}),
+    recipientConfirm: Promise.resolve(false),
+  });
+  const error = await outcome(r.receiving);
+  assert.ok(failedWith("connection")(error), String(error));
+  assert.ok(!(error as ReceiveError).resumable, "nothing kept");
+  assert.equal(sink.aborts, 1);
+  await assert.rejects(r.sending);
+});
+
+test("a shared secret is never kept after a lost connection", async () => {
+  const text = "a shared secret";
+  const file = textFile(text);
+  assert.ok(file);
+  const sink = new RecordingSink();
+  const pair = channelPair();
+  sink.onWrite = () => pair.close();
+  const r = run({ bytes: new TextEncoder().encode(text), file, pair, sink });
+  const error = await outcome(r.receiving);
+  assert.ok(failedWith("connection")(error), String(error));
+  assert.ok(!(error as ReceiveError).resumable, "nothing kept");
+  assert.equal(sink.writes, 1);
+  assert.equal(sink.aborts, 1);
   await assert.rejects(r.sending);
 });
 

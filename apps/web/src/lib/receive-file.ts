@@ -21,10 +21,12 @@
 //
 // A lost connection keeps what arrived: the rejection carries a Resumable (the
 // META, the verifier with its running checksum, and the sink) if every frame so
-// far checked out and the last write to the sink finished. Passed to the next
-// attempt, it continues only if that attempt's META is the same in every field:
-// then onOffer is skipped, ACCEPT carries the verifier's offset and the sender
-// sends only the rest, which END's checksum still covers with the bytes kept.
+// far checked out and the last write to the sink finished, unless the offer is
+// a shared secret or the recipient said the safety numbers differ. Passed to
+// the next attempt, it continues only if that attempt's META is the same in
+// every field: then onOffer is skipped, ACCEPT carries the verifier's offset
+// and the sender sends only the rest, which END's checksum still covers with
+// the bytes kept.
 // A different META discards it and the offer starts from zero. Any other ending
 // (a frame that does not decrypt, wrong order, too many bytes, a decline, a
 // differing check or checksum) aborts the sink, so no partial file is kept.
@@ -71,6 +73,7 @@ import {
   PROGRESS_INTERVAL_MS,
 } from "./send-file.ts";
 import type { Sink } from "./sink.ts";
+import { isTextOffer } from "./text-secret.ts";
 
 /** CHUNKs the sender may have sent beyond those the sink has written. */
 export const CREDIT_WINDOW_CHUNKS = 128;
@@ -183,6 +186,7 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
   inbox.failed.catch((error: unknown) => inboxFailed.abort(error));
   const writeSignal = anySignal([signal, inboxFailed.signal]);
   let part = options.resumable;
+  let saidDiffers = false;
   let lastWrite: Promise<void> = Promise.resolve();
 
   try {
@@ -202,7 +206,11 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
     inbox.start(new FrameReader(key, "s"));
 
     if (options.confirm) {
-      const differs = await exchangeCheck(options.confirm, "r", {
+      const own = options.confirm.then((matches) => {
+        saidDiffers = !matches;
+        return matches;
+      });
+      const differs = await exchangeCheck(own, "r", {
         channel,
         inbox,
         writer,
@@ -326,6 +334,8 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
     // A write still pending may yet fail and leave a hole the checksum can't show, so wait for it.
     if (
       part?.verifier.canContinue &&
+      !isTextOffer(part.meta) &&
+      !saidDiffers &&
       failure.reason === "connection" &&
       (await lastWrite.then(
         () => true,

@@ -51,7 +51,8 @@
 //   number before anything about the file, and receiveFile holds the offer
 //   until the recipient said it matches and the sender's page said so too.
 //   Either side saying it differs ends the attempt as "differed"; "Try again"
-//   makes a new connection with a new number.
+//   makes a new connection with a new number. The recipient saying it
+//   differs discards any part a lost connection kept.
 // - When the data channel opens, receiveFile runs the transfer. The offer
 //   screen resolves its decision with a Sink (Download or Show) or undefined
 //   (Decline). Show always collects a text in memory, never in a save dialog.
@@ -62,7 +63,8 @@
 // peer stays up for a moment so that frame reaches the sender, which closes
 // the channel itself. "Try again" starts a fresh attempt with a new socket and
 // a new peer, and hands it the part a lost connection kept (see
-// lib/receive-file.ts). Only an attempt that ends on the failed view keeps it.
+// lib/receive-file.ts). Only an attempt that ends on the failed view keeps it,
+// and not one that ended as "differed" (keepsPart in lib/receive-problem.ts).
 //
 // The secret stays in this tab (it is never stripped from the address bar in
 // this demo). The file name and size, or the text, are shown, never logged or
@@ -93,7 +95,7 @@ import { LINK_ID_BYTES, parseRecipientLocation } from "../lib/link.ts";
 import { createRecipientPeer, type OpenPath, type Peer, type PeerOpenInfo } from "../lib/peer.ts";
 import type { FileOffer, Resumable } from "../lib/receive-file.ts";
 import { ReceiveError, receiveFile } from "../lib/receive-file.ts";
-import { peerLostProblem, refusedProblem } from "../lib/receive-problem.ts";
+import { keepsPart, peerLostProblem, refusedProblem } from "../lib/receive-problem.ts";
 import { addRelay, type Kind, NO_RELAYS, type Tie } from "../lib/server-facts.ts";
 import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
 import {
@@ -193,8 +195,8 @@ type Attempt = {
   relayRefused: boolean;
   /** Set once the attempt reached its final view. Later events are ignored. */
   ended: boolean;
-  /** Set when that view offers Try again, which continues a kept part. */
-  retry?: boolean;
+  /** The final view, set when finish() ends the attempt. */
+  ending?: View;
   /** Resolves the offer: a Sink to accept, undefined to decline. */
   decide?: ((sink: Sink | undefined) => void) | undefined;
   /** With the safety number on: resolves the recipient's own verdict. */
@@ -313,8 +315,8 @@ export function ReceivePage({
         return;
       }
       release(attempt, linger);
-      attempt.retry = next.s === "failed" && next.problem !== "browser";
-      if (!attempt.retry) {
+      attempt.ending = next;
+      if (!keepsPart(attempt)) {
         discardKept();
       }
       setView(
@@ -590,7 +592,7 @@ export function ReceivePage({
       if (!current()) {
         return;
       }
-      // SIG-194: onOpen can run twice for one channel, and only one run may get the kept part.
+      // receiveFile owns the kept part from here, so this attempt's own ending can't abort it while in use.
       const resumable = keptRef.current;
       keptRef.current = undefined;
       if (resumable) {
@@ -673,13 +675,7 @@ export function ReceivePage({
         (error: unknown) => {
           const kept = error instanceof ReceiveError ? error.resumable : undefined;
           // Not current(): a refusal or the grace timer can end the attempt as failed before this lands.
-          if (
-            kept &&
-            attemptRef.current === attempt &&
-            !attempt.text &&
-            (!attempt.ended || attempt.retry)
-          ) {
-            discardKept();
+          if (kept && attemptRef.current === attempt && keepsPart(attempt)) {
             keptRef.current = kept;
           } else {
             void kept?.sink.abort();
@@ -784,6 +780,9 @@ export function ReceivePage({
       return;
     }
     attempt.saidDiffers = !matches;
+    if (!matches) {
+      discardKept();
+    }
     attempt.confirm(matches);
     attempt.confirm = undefined;
     setView({ ...view, said: matches });
