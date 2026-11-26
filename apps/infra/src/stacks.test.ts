@@ -1051,7 +1051,7 @@ test("only the app environment can assume the release role, which only fidant-po
   });
 });
 
-test("the release role may only push the one image, move its tags, redeploy the one service, write the one bucket and read the signaling stack's status", () => {
+test("the release role may only push the one image, move its tags, redeploy the one service, write the one bucket and read the signaling and pages stacks' status", () => {
   const ci = ciTemplate(pocAccount);
   const [roleId] = roleNamed(ci, "fidant-release");
   assert.deepEqual(roleStatements(ci, roleId), [
@@ -1088,7 +1088,10 @@ test("the release role may only push the one image, move its tags, redeploy the 
     {
       Action: "cloudformation:DescribeStacks",
       Effect: "Allow",
-      Resource: `arn:aws:cloudformation:eu-north-1:${pocAccount}:stack/FidantSignal/*`,
+      Resource: [
+        `arn:aws:cloudformation:eu-north-1:${pocAccount}:stack/FidantSignal/*`,
+        `arn:aws:cloudformation:us-east-1:${pocAccount}:stack/FidantPages/*`,
+      ],
     },
   ]);
 });

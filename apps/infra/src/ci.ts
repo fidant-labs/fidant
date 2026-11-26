@@ -86,7 +86,10 @@ export class CiStack extends Stack {
         }),
         new iam.PolicyStatement({
           actions: ["cloudformation:DescribeStacks"],
-          resources: [`arn:aws:cloudformation:${this.region}:${this.account}:stack/FidantSignal/*`],
+          resources: [
+            `arn:aws:cloudformation:${this.region}:${this.account}:stack/FidantSignal/*`,
+            `arn:aws:cloudformation:us-east-1:${this.account}:stack/FidantPages/*`,
+          ],
         }),
       ]) {
         release.addToPolicy(statement);

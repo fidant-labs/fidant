@@ -339,6 +339,9 @@ if (tool === "aws" && /^ecr batch-get-image --repository-name fidant-signal --im
 } else if (tool === "aws" && said === "cloudformation describe-stacks --stack-name FidantSignal --query Stacks[0].StackStatus --output text") {
   if (state.stack === "!") finish("describe-stacks", undefined, "AccessDenied", "User: arn:aws:sts::210987654321:assumed-role/fidant-release/run is not authorized");
   finish("describe-stacks", (state.stack ?? "CREATE_COMPLETE") + "\\n");
+} else if (tool === "aws" && said === "cloudformation describe-stacks --stack-name FidantPages --region us-east-1 --query Stacks[0].StackStatus --output text") {
+  if (state.pages === "!") finish("describe-stacks FidantPages", undefined, "AccessDenied", "User: arn:aws:sts::210987654321:assumed-role/fidant-release/run is not authorized");
+  finish("describe-stacks FidantPages", (state.pages ?? "CREATE_COMPLETE") + "\\n");
 } else if (tool === "aws" && said === "ecs update-service --cluster fidant --service fidant-signal --force-new-deployment --output json") {
   finish("update-service", ...ecs(state.update));
 } else if (tool === "aws" && args[0] === "s3" && args[1] === "cp") {
@@ -410,6 +413,7 @@ function release(start: {
   tip?: string;
   digest?: string;
   stack?: string;
+  pages?: string;
 }) {
   let result:
     | {
@@ -507,6 +511,7 @@ const uploaded = [
     "--only-show-errors",
   ],
 ].map((args) => `s3 cp ${JSON.stringify(args)}`);
+const uploading = ["describe-stacks FidantPages", ...uploaded];
 
 test("the release job runs each step only after every step before it succeeded, and uploads the web client last", () => {
   assert.doesNotMatch(releaseJob, /\n +(if|continue-on-error):/);
@@ -544,6 +549,36 @@ test("the upload puts the assets before the rest with the cache rules the edge t
   assert.deepEqual(upload(failedAssets.calls), uploaded.slice(0, 1));
 });
 
+const skipped = [`batch-get-image imageTag=inputs-${key}`, "batch-get-image imageTag=live"];
+
+test("while FidantPages's status ends in _IN_PROGRESS the upload fails before any put, and UPDATE_COMPLETE uploads", () => {
+  const skip = { tags: { [`inputs-${key}`]: "sha256:new", live: "sha256:new" } };
+  for (const pages of ["CREATE_IN_PROGRESS", "DELETE_IN_PROGRESS"]) {
+    const { status, stdout, calls } = release({ ...skip, pages });
+    assert.equal(status, 1, pages);
+    assert.deepEqual(calls, [...skipped, "describe-stacks FidantPages"], pages);
+    assert.equal(
+      stdout,
+      `live already names sha256:new\n::error::FidantPages is ${pages}, so nothing is uploaded; re-run the newest release run, the one for production's tip, once the stack has settled\n`,
+    );
+  }
+  const complete = release({ ...skip, pages: "UPDATE_COMPLETE" });
+  assert.equal(complete.status, 0);
+  assert.deepEqual(complete.calls, [...skipped, ...uploading]);
+});
+
+test("an upload that cannot read FidantPages's status fails before any put, and prints nothing aws said", () => {
+  const skip = { tags: { [`inputs-${key}`]: "sha256:new", live: "sha256:new" } };
+  const { status, stdout, stderr, calls } = release({ ...skip, pages: "!" });
+  assert.equal(status, 1);
+  assert.deepEqual(calls, [...skipped, "describe-stacks FidantPages"]);
+  assert.equal(
+    stdout,
+    "live already names sha256:new\n::error::could not read the status of FidantPages, so nothing is uploaded\n",
+  );
+  assert.equal(stderr, "");
+});
+
 test("the upload refuses an unexpected account before it calls aws", () => {
   withDir((dir) => {
     mkdirSync(join(dir, "bin"));
@@ -570,7 +605,7 @@ test("a release whose image inputs already have their image, which live names, m
   assert.deepEqual(calls, [
     `batch-get-image imageTag=inputs-${key}`,
     "batch-get-image imageTag=live",
-    ...uploaded,
+    ...uploading,
   ]);
   assert.deepEqual(tags, { [`inputs-${key}`]: "sha256:new", live: "sha256:new" });
 });
@@ -603,7 +638,7 @@ test("a new image is pushed and tagged, and with no service live moves and nothi
     "describe-services",
     "batch-get-image imageDigest=sha256:new",
     "put-image live sha256:new",
-    ...uploaded,
+    ...uploading,
   ]);
   assert.deepEqual(tags, {
     [sha]: "sha256:new",
@@ -632,7 +667,7 @@ test("with no cluster live moves and nothing deploys, and a refused check moves 
     ...moved.slice(0, 4),
     "batch-get-image imageDigest=sha256:new",
     "put-image live sha256:new",
-    ...uploaded,
+    ...uploading,
   ]);
 
   const denied = release({ tags: before, services: ["!AccessDeniedException"] });
@@ -649,7 +684,7 @@ test("a deployment that completes leaves live on the new image", () => {
     update: started,
   });
   assert.equal(status, 0);
-  assert.deepEqual(calls, [...moved, "describe-services", "describe-services", ...uploaded]);
+  assert.deepEqual(calls, [...moved, "describe-services", "describe-services", ...uploading]);
   assert.deepEqual(tags, { ...before, live: "sha256:new" });
 });
 
@@ -676,7 +711,7 @@ test("while FidantSignal's status ends in _IN_PROGRESS a release fails before li
     ...moved,
     "describe-services",
     "describe-services",
-    ...uploaded,
+    ...uploading,
   ]);
   assert.deepEqual(complete.tags, { ...before, live: "sha256:new" });
 });
@@ -752,7 +787,7 @@ test("a later release with the same image inputs moves nothing, starts no deploy
   assert.equal(first.status, 1);
   const again = release({ tags: first.tags, services: [steady] });
   assert.equal(again.status, 0);
-  assert.deepEqual(again.calls, [...moved.slice(0, 3), ...uploaded]);
+  assert.deepEqual(again.calls, [...moved.slice(0, 3), ...uploading]);
   assert.deepEqual(again.tags, marked);
   assert.match(
     again.stdout,
@@ -779,7 +814,7 @@ test("a later release with the same image inputs moves nothing, starts no deploy
     update: started,
   });
   assert.equal(next.status, 0);
-  assert.deepEqual(next.calls, [...moved, "describe-services", "describe-services", ...uploaded]);
+  assert.deepEqual(next.calls, [...moved, "describe-services", "describe-services", ...uploading]);
   assert.deepEqual(next.tags, { ...earlier, live: "sha256:new" });
 });
 
