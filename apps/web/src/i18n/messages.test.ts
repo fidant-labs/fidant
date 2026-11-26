@@ -43,7 +43,7 @@ test("server.logs lists every log field and what the server never logs", () => {
   );
   assert.equal(
     sv.server.logs("file"),
-    "Vad som hände, till exempel att en länk öppnades, med de 6 första tecknen i ett länk-ID, hur många länkar en avsändare har, meddelandens storlek, varför en länk, en anslutning, ett mejl eller en kod nekades, vad som var fel med ett meddelande som servern avvisade, om varje anslutning gick direkt, via vårt relä eller misslyckades och var på sin dator servern kan nås (dess portnummer). Aldrig namn, e-postadresser, mejlade koder, nycklar, filinnehåll eller IP-adresser.",
+    "Vad som hände, till exempel att en länk öppnades, med de 6 första tecknen i ett länk-ID, hur många länkar en avsändare har, meddelandens storlek, varför en länk, en anslutning, ett mejl eller en kod nekades, vad som var fel med ett meddelande som servern avvisade, om varje anslutning gick direkt, via vårt relä eller misslyckades och platsen på datorn där servern kan nås (dess portnummer). Aldrig namn, e-postadresser, mejlade koder, nycklar, filinnehåll eller IP-adresser.",
   );
 });
 
