@@ -514,8 +514,8 @@ export const en = {
         body: "Each link works once. If you still need the file, ask the sender for a new link.",
       },
       busy: {
-        title: "This link is open somewhere else",
-        body: "Each link can be open in one place at a time. Close the other tab and reload this page.",
+        title: "This link is busy",
+        body: "Each link can be open in one place at a time, and allows only a few connection attempts in a short time. Close any other tab with this link, wait half a minute and reload this page.",
       },
       offline: {
         title: "The sender's page is closed",
@@ -988,7 +988,7 @@ export const en = {
         heading: "Several recipients and one-time links",
         body: [
           "One send can go to up to 256 people. Each has their own link, key, connection and transfer.",
-          "A link counts as used only once the recipient's RECEIPT matches. After that it is refused. A link that is already connected in one tab is refused in another.",
+          "A link counts as used only once the recipient's RECEIPT matches. After that it is refused. A link that is already connected in one tab is refused in another, and so is a link that has had 10 connection attempts in the current 30-second window.",
           "Until then the link can be opened again: after a decline, a dropped connection or a failed check. Every new attempt has a new transfer ID and attempt ID, and so a new file key. A link with the safety number on stops working after 5 attempts that ended before both people confirmed the number. An attempt the sender's page stopped because the two pages run different versions doesn't count.",
           "Nothing is stored, so a link works only while the sender's page is open. When it closes, our server forgets its links within a minute.",
         ],
@@ -1019,7 +1019,7 @@ export const en = {
         body: [
           "The site is served only over HTTPS, and browsers are told never to use plain HTTP for it. Sending and receiving refuse to run without a secure connection.",
           "A Content Security Policy lets the pages load code, styles, fonts and connections only from our own site, and stops other sites from showing them in a frame. There are no cookies, no third-party scripts and no trackers.",
-          "The setup WebSocket refuses connections opened from other sites. Limits protect the server from overload: connections in total and per address, messages per connection, links per sender, the size of each setup message, and how many emails and codes it sends.",
+          "The setup WebSocket refuses connections opened from other sites. Limits protect the server from overload: connections in total and per address, messages per connection, pairings per link, links per sender, the size of each setup message, and how many emails and codes it sends.",
         ],
       },
       limits: {
