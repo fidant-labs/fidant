@@ -9,6 +9,7 @@ import {
   hostedZoneIds,
   mail,
   relayAddresses,
+  relayMasterGeneration,
   signalName,
   signals,
   zoneNames,
@@ -61,6 +62,7 @@ export function addStacks(app: App, env: Record<string, string | undefined>): vo
       new SignalStack(app, "FidantSignal", {
         env: { account, region: "eu-north-1" },
         certificateId: signalCertificate,
+        relayMasterGeneration,
       });
     }
   } else {

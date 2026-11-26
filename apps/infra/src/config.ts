@@ -24,6 +24,9 @@ export function pagesBucket(account: string): string {
   return `fidant-pages-${account}`;
 }
 
+// Raise to make a new relay master; the task restarts with it.
+export const relayMasterGeneration = 1;
+
 // Copied by hand from ACM's certificate ARNs; FidantSignal joins the app once signal.sto is set.
 export const certificateIds: { pages: Record<string, string>; signal: Record<string, string> } = {
   pages: {},
