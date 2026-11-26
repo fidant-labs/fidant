@@ -376,8 +376,9 @@ async function fetchImages(): Promise<void> {
       run("docker", ["pull", "--quiet", serverImage]),
     ),
     run("docker", [...compose, "build"], { maxBuffer: 64 * 1024 * 1024 }).catch(
-      (error: { stdout?: string }) => {
-        process.stderr.write(error.stdout ?? "");
+      async (error: { stdout?: string }) => {
+        // On a pipe, as in CI, the write is async and the run could exit before it drains.
+        await new Promise((done) => process.stderr.write(error.stdout ?? "", done));
         throw error;
       },
     ),
