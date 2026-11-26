@@ -127,7 +127,7 @@ export const en = {
     theme: "Theme",
     themes: { system: "System", light: "Light", dark: "Dark" },
     label: "Main",
-    send: "Send a file",
+    send: "Send",
     secret: "Share a secret",
     how: "How it works",
     privacy: "Privacy",
@@ -312,6 +312,7 @@ export const en = {
     timeLeft: (duration: string) => `About ${duration} left`,
   },
   send: {
+    mode: { label: "What to send", file: "File", secret: "Secret" },
     continue: "Continue",
     title: "Send a file",
     lede: "Choose a file, then create a link for each person. Your file is sent from this browser to them. It's encrypted the whole way and never uploaded or stored.",

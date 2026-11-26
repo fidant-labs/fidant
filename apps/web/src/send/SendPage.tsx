@@ -1,4 +1,4 @@
-// The sender page: choose a file (or, on /secret, paste a text that goes as
+// The sender page: choose a file (or, in secret mode, paste a text that goes as
 // one), add named recipients, share each one's link, and send it to every
 // recipient who opens their link.
 //
@@ -20,7 +20,7 @@
 //   the signals relayed before it were handled.
 // - When the data channel opens, sendFile runs the transfer and reports
 //   accepted, progress, declined and receipt back to the reducer.
-// - On /secret, a connection whose max message size can't carry every text in
+// - In secret mode, a connection whose max message size can't carry every text in
 //   one chunk (textFitsOneChunk) gets nothing: reducer `unsendable` fails the
 //   recipient's card and refuses the joiner.
 // - A peer that closes on another frame version → `outdated`; onClose here, not the reducer,
@@ -62,7 +62,7 @@ import {
 } from "@sigill/protocol";
 import { useEffect, useReducer, useRef, useState } from "preact/hooks";
 import { Alert, AlertDescription } from "#components/ui/alert";
-import { Button } from "#components/ui/button";
+import { Button, buttonVariants } from "#components/ui/button";
 import { Input } from "#components/ui/input";
 import { Label } from "#components/ui/label";
 import type { Messages } from "../i18n/en.ts";
@@ -100,6 +100,7 @@ import {
   Link,
   lede,
   Page,
+  SECRET_HREF,
   ServerPanel,
   TechDetails,
 } from "../ui.tsx";
@@ -802,10 +803,33 @@ export function SendPage({
   return (
     <Page>
       <section aria-labelledby={id("send-title")}>
-        <p class={stepLabel}>{t.send.step(1)}</p>
-        <h1 id={id("send-title")} class="mt-0">
-          {text ? t.menu.secret : t.send.title}
-        </h1>
+        <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+          <div>
+            <p class={stepLabel}>{t.send.step(1)}</p>
+            <h1 id={id("send-title")} class="mt-0">
+              {text ? t.menu.secret : t.send.title}
+            </h1>
+          </div>
+          <nav
+            aria-label={t.send.mode.label}
+            class="inline-flex flex-none gap-0.5 rounded-xl border border-border p-0.5"
+          >
+            {(["file", "secret"] as const).map((mode) => {
+              const current = (mode === "secret") === text;
+              return (
+                <Link
+                  key={mode}
+                  href={mode === "secret" ? SECRET_HREF : "/send?mode=file"}
+                  aria-current={current ? "page" : undefined}
+                  class={buttonVariants({ variant: current ? "secondary" : "ghost", size: "sm" })}
+                >
+                  <Icon name={mode === "secret" ? "key" : "file"} class="size-4" />
+                  {t.send.mode[mode]}
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
         <p class={lede}>{text ? t.secret.lede : t.send.lede}</p>
 
         {isLocalhost && (

@@ -108,7 +108,7 @@ export const sv: Messages = {
     theme: "Tema",
     themes: { system: "System", light: "Ljust", dark: "Mörkt" },
     label: "Huvudmeny",
-    send: "Skicka en fil",
+    send: "Skicka",
     secret: "Dela en hemlighet",
     how: "Så fungerar det",
     privacy: "Integritet",
@@ -292,6 +292,7 @@ export const sv: Messages = {
     timeLeft: (duration: string) => `Ungefär ${duration} kvar`,
   },
   send: {
+    mode: { label: "Vad du vill skicka", file: "Fil", secret: "Hemlighet" },
     continue: "Fortsätt",
     title: "Skicka en fil",
     lede: "Välj en fil och skapa sedan en länk till varje person. Din fil skickas från den här webbläsaren till dem. Den är krypterad hela vägen och laddas aldrig upp eller sparas.",

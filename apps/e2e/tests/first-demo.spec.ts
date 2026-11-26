@@ -227,7 +227,7 @@ test("delivers a file to two recipients with a verified checksum", async ({
   }
   // The tab's icon shows the check, on both sides.
   for (const page of [sender, ...received.map(({ page }) => page)]) {
-    await expect(page.locator('link[rel="icon"]')).toHaveAttribute(
+    await expect(page.locator('link[rel="icon"][type="image/svg+xml"]')).toHaveAttribute(
       "href",
       /^data:image\/svg.*M9%2016\.5l5/,
     );
