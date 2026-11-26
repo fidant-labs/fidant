@@ -108,7 +108,7 @@ export const sv: Messages = {
     theme: "Tema",
     themes: { system: "System", light: "Ljust", dark: "Mörkt" },
     label: "Huvudmeny",
-    send: "Skicka en fil",
+    send: "Skicka",
     secret: "Dela en hemlighet",
     how: "Så fungerar det",
     privacy: "Integritet",
@@ -292,6 +292,7 @@ export const sv: Messages = {
     timeLeft: (duration: string) => `Ungefär ${duration} kvar`,
   },
   send: {
+    mode: { label: "Vad du vill skicka", file: "Fil", secret: "Hemlighet" },
     continue: "Fortsätt",
     title: "Skicka en fil",
     lede: "Välj en fil och skapa sedan en länk till varje person. Din fil skickas från den här webbläsaren till dem. Den är krypterad hela vägen och laddas aldrig upp eller sparas.",
@@ -313,6 +314,9 @@ export const sv: Messages = {
     doneOne: (name: string) => `Filen kom fram oskadd via länken till ${name}.`,
     doneMany: (n: number) => `Filen kom fram oskadd via alla ${n} länkar.`,
     closeTab: "Du kan stänga fliken.",
+    notifyMe: "Meddela mig",
+    notifyOn: "Notiser på",
+    notifyBlocked: "Notiser blockerade",
     sendMore: "Skicka till någon mer",
     showDetails: "Visa detaljer",
     localhost:
@@ -472,6 +476,7 @@ export const sv: Messages = {
       differs: "Avsändaren sa att det skiljer sig",
       waiting: "Väntar på att avsändaren också säger att det stämmer.",
       why: "Numret kommer från den här anslutningen. Om någon satt mellan dig och avsändaren skulle era skärmar visa olika nummer.",
+      expires: "Kontrollnumret går ut efter 5 minuter.",
     },
     whatHappened: "Vad som hände",
     encryptionLabel: "Kryptering",
@@ -519,7 +524,11 @@ export const sv: Messages = {
       },
       lostReceiving: {
         title: "Anslutningen till avsändaren bröts",
-        body: "Filen kanske inte sparades. Försök igen för att vara säker på att du får den.",
+        body: "Försök igen. Nedladdningen fortsätter där den avbröts om det går.",
+      },
+      senderBusy: {
+        title: "Länken är upptagen",
+        body: "Avsändarens sida har kanske inte märkt att anslutningen bröts, eller så är länken öppen i en annan flik. Stäng andra flikar med länken, vänta en stund och försök igen. Nedladdningen fortsätter där den avbröts om det går.",
       },
       checksum: {
         title: "Filen kom inte fram oskadd",
@@ -543,6 +552,10 @@ export const sv: Messages = {
       connect: {
         title: "Det gick inte att ansluta till avsändarens dator",
         body: "Era två datorer kunde inte nå varandra.",
+      },
+      browser: {
+        title: "Den här webbläsaren kan inte ansluta till avsändaren",
+        body: "WebRTC kan vara avstängt, eller så är webbläsaren för gammal. Prova en annan webbläsare.",
       },
       noRelay: {
         title: "Det gick inte att ansluta direkt till avsändaren",
@@ -898,17 +911,18 @@ export const sv: Messages = {
           "INIT: avsändaren skickar överförings-ID:t. Det är den enda ramen som inte krypteras. Om den ändras blir filnyckeln en annan, och nästa ram går inte att dekryptera. Att spela upp den igen i ett senare försök fungerar inte heller, eftersom mottagarens nya försöks-ID ger en annan nyckel.",
           "CHECK: med kontrollnumret på, varje sidas svar, krypterat, när personen på den sidan har jämfört numren: stämmer eller skiljer sig. META väntar på båda svaren.",
           "META: filens namn, storlek och typ och det namn avsändaren skrev, krypterat. Mottagaren ser dem och väljer.",
-          "ACCEPT eller DECLINE: mottagarens svar, krypterat. ACCEPT visar också att mottagaren har nyckeln. Inga fildata skickas före det.",
+          "ACCEPT eller DECLINE: mottagarens svar, krypterat. ACCEPT anger också var avsändaren ska börja: från början, eller efter det som hann komma fram innan en anslutning bröts. ACCEPT visar dessutom att mottagaren har nyckeln. Inga fildata skickas före det.",
           "CREDIT: hur många delar avsändaren får skicka, krypterat. Mottagaren ger 128 i taget och fler allteftersom de skrivs, så en långsam mottagare har aldrig mer än ungefär 6 MiB som väntar. En avsändare som kommer längre före än så stoppas.",
-          "CHUNK: filen i lika stora ramar, högst 48 KiB var.",
-          "END: filens exakta storlek och kontrollsumman som räknades ut när filen valdes.",
-          "RECEIPT: kontrollsumman som mottagaren räknade ut på det som kom fram. Avsändaren räknar filen som levererad först när den stämmer.",
+          "CHUNK: filen i lika stora ramar, högst 48 KiB var, från den punkt som ACCEPT anger.",
+          "END: hela filens exakta storlek och kontrollsumman som räknades ut när filen valdes.",
+          "RECEIPT: kontrollsumman som mottagaren räknade ut på det som kom fram. Avsändaren räknar filen som levererad först när den stämmer. Det är inget bevis för att filen kom fram: END innehåller redan kontrollsumman, så en modifierad mottagarsida, som ju har nyckeln, kan hoppa över alla delar och skicka tillbaka kontrollsumman.",
         ],
       },
       check: {
         heading: "Kontrollen av filen",
         body: [
-          "Mottagarens webbläsare räknar kontrollsumman medan filen kommer fram och kontrollerar storleken, antalet delar, utfyllnaden och kontrollsumman mot END. Filen sparas bara om allt stämmer. Varje annat slut, till exempel en ram som inte går att dekryptera eller en anslutning som stängs för tidigt, kastar det som har skrivits.",
+          "Mottagarens webbläsare räknar kontrollsumman medan filen kommer fram och kontrollerar storleken, antalet delar, utfyllnaden och kontrollsumman mot END. Filen blir färdig först när allt stämmer. En ram som inte går att dekryptera, en kontrollsumma som inte stämmer eller någon annan kontroll som inte går igenom kastar det som har skrivits.",
+          "En bruten anslutning är något annat. Om varje ram hittills har gått igenom kontrollerna behåller mottagarens sida det som har kommit fram, i minnet eller i filen som mottagaren valde att spara till, och Försök igen fortsätter därifrån. Försök igen gör en ny anslutning med en ny nyckel. Om avsändaren erbjuder samma fil igen, där namn, storlek, typ, delstorlek och avsändarens namn är desamma, visar sidan inte erbjudandet eller någon sparadialog igen. Den talar om för avsändaren hur mycket den redan har, så bara resten skickas. Med kontrollnumret på jämförs numret ändå först. Kontrollsumman gäller hela filen, så om resten inte hör ihop med det som redan har kommit fram går kontrollen inte igenom. Ett annat erbjudande börjar från början, och det gör också en delad hemlighet. Bara den fliken kan fortsätta nedladdningen, och sidan kastar det som har kommit fram om överföringen slutar på något annat sätt. När fliken stängs eller laddas om försvinner det som låg i minnet. Vad webbläsaren då gör med en ofärdig fil från sparadialogen har vi inte testat än.",
           "Chromium-webbläsare på datorn, som Chrome och Edge, kan skriva filen direkt till en plats på disken som mottagaren väljer. Andra webbläsare samlar den i minnet och startar nedladdningen i slutet, och för en fil över 256 MiB varnas mottagaren först. Nedladdningen märks alltid som rena binärdata, vilken typ avsändaren än anger, så en fil kan inte köras som en webbsida på Fidants webbplats.",
           "Namn nekas om de innehåller styrtecken, radavgränsare, Unicodes styrtecken för textriktning, tomma utfyllnadstecken eller långa följder av mellanslag. Därför kan ett namn som slutar på .exe inte se ut att sluta på .pdf.",
         ],
@@ -916,9 +930,9 @@ export const sv: Messages = {
       padding: {
         heading: "Den exakta storleken döljs",
         body: [
-          "Den som kan se den krypterade trafiken, till exempel nätverken på vägen eller vårt relä, ser hur stora ramarna är. Därför avrundas storleken uppåt med metoden Padmé, som lägger till högst 12 %, och sedan till hela delar. Alla ramar med fildata är lika stora, och utfyllnaden är nollor som mottagaren kontrollerar.",
+          "Den som kan se den krypterade trafiken, till exempel nätverken på vägen eller vårt relä, ser hur stora ramarna är. Därför avrundas storleken uppåt med metoden Padmé, som lägger till högst 12 %, och sedan till hela delar. Alla ramar med fildata är lika stora, och utfyllnaden är nollor som mottagaren kontrollerar. En nedladdning som fortsätter efter en bruten anslutning skickar bara resten, i ramar av samma storlekar, så den som ser båda försöken kan lägga ihop dem till minst den avrundade storleken för en hel överföring, mer om några delar skickades två gånger.",
           "Den exakta storleken finns bara i de krypterade META och END. META är alltid lika stor, så inte heller filnamnets längd syns.",
-          "En delad hemlighet är högst 32 KiB, och varje delad hemlighet fylls ut till exakt en del. Appen ser till det: om en anslutning bara tillåter meddelanden som är för små för en del på 32 KiB skickas ingenting över den, och avsändaren ser att hemligheten inte skickades. Med alla webbläsare vi testade i november 2026 (Chromium, Firefox och WebKit) är delen 48 KiB. Så varje delad hemlighet ser likadan ut på nätet, oavsett längd, och likadan som vilken fil som helst på upp till 48 KiB.",
+          "En delad hemlighet är högst 32 KiB, och varje delad hemlighet fylls ut till exakt en del. Appen ser till det: om en anslutning bara tillåter meddelanden som är för små för en del på 32 KiB skickas ingenting över den, och avsändaren ser att hemligheten inte skickades. Med alla webbläsare vi testade i november 2026 (Chromium, Firefox och WebKit) är delen 48 KiB. Så varje delad hemlighet ser likadan ut på nätet, oavsett längd, och likadan som vilken fil som helst på upp till 48 KiB som skickas i ett försök. En fil vars nedladdning fortsätter efter ett avbrott behöver ibland ingen del alls i det nya försöket, vilket aldrig händer en delad hemlighet, eftersom den alltid börjar om.",
         ],
       },
       travel: {
@@ -952,7 +966,7 @@ export const sv: Messages = {
         body: [
           "En sändning kan gå till upp till 256 personer. Var och en har en egen länk, nyckel, anslutning och överföring.",
           "En länk räknas som använd först när mottagarens RECEIPT stämmer. Därefter nekas den. En länk som redan är ansluten i en flik nekas i en annan, och så gör en länk som har haft 10 anslutningsförsök under den pågående perioden på 30 sekunder.",
-          "Fram till dess kan länken öppnas igen: efter att mottagaren tackat nej, efter en bruten anslutning eller efter en misslyckad kontroll. Varje nytt försök har ett nytt överförings-ID och ett nytt försöks-ID, och därmed en ny filnyckel. En länk med kontrollnummer slutar fungera efter 5 försök som tog slut innan båda hade bekräftat numret. Ett försök som avsändarens sida stoppade för att de två sidorna kör olika versioner räknas inte.",
+          "Fram till dess kan länken öppnas igen: efter att mottagaren tackat nej, efter en bruten anslutning eller efter en misslyckad kontroll. Efter en bruten anslutning fortsätter Försök igen i samma flik en fils nedladdning där den avbröts, om det går. Varje nytt försök har ett nytt överförings-ID och ett nytt försöks-ID, och därmed en ny filnyckel. En länk med kontrollnummer slutar fungera efter 5 försök som tog slut innan båda hade bekräftat numret. Ett försök som avsändarens sida stoppade för att de två sidorna kör olika versioner räknas inte.",
           "Ingenting sparas, så en länk fungerar bara medan avsändarens sida är öppen. När den stängs glömmer vår server dess länkar inom en minut.",
         ],
       },
@@ -1165,7 +1179,7 @@ export const sv: Messages = {
         ],
         [
           "En del av filen ändras, tappas, upprepas eller kastas om",
-          "Varje ram är autentiserad och numrerad, och mottagaren kontrollerar storleken och SHA-256-kontrollsumman. Allt annat stoppar överföringen och kastar det som har skrivits.",
+          "Varje ram är autentiserad och numrerad, och mottagaren kontrollerar storleken och SHA-256-kontrollsumman. En ram eller kontrollsumma som inte stämmer stoppar överföringen och kastar det som har skrivits.",
         ],
         [
           "En länk öppnas två gånger, eller av någon annan efter leveransen",
@@ -1244,6 +1258,10 @@ export const sv: Messages = {
               "Hemligheten, i sin textruta tills du stänger fliken. Webbläsaren kan också spara den med sessionen, för att återställa den efter en krasch eller en återöppnad flik.",
             ],
             ["", "Ditt val av tema och språk, i webbläsarens lokala lagring, tills du rensar den."],
+            [
+              "",
+              "Om du tillåter notiser: en notis för varje leverans, som din enhets notislista visar och sparar. Den säger bara om en fil eller en hemlighet skickades och hur många länkar som har levererat, aldrig ett filnamn, en persons namn, en länk eller en nyckel.",
+            ],
             [
               "direct,relay",
               "Så länge vårt relä är tillgängligt: inloggningsuppgifter till reläet, gjorda för det här paret av webbläsare, i minnet medan sidan är öppen. Med dem kan en reläanslutning starta i 5 minuter.",
@@ -1435,6 +1453,10 @@ export const sv: Messages = {
             [
               "file",
               "Filen, där de sparar den: Chromium-webbläsare på datorn, som Chrome och Edge, skriver den dit mottagaren väljer, andra webbläsare till sina nedladdningar.",
+            ],
+            [
+              "file",
+              "Om anslutningen bryts medan filen kommer fram: det som hann komma fram, i sidans minne eller i filen de valde att spara till, så att Försök igen kan fortsätta därifrån. Sidan kastar det om överföringen slutar på något annat sätt. När fliken stängs eller laddas om försvinner det som låg i minnet. Vad webbläsaren då gör med en ofärdig fil från sparadialogen har vi inte testat än.",
             ],
             [
               "secret",

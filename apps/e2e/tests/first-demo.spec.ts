@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import type { Download, Page } from "@playwright/test";
+import type { Download, Locator, Page } from "@playwright/test";
 import { maskAddress } from "@sigill/protocol";
 import {
   breakableSender,
@@ -225,6 +225,13 @@ test("delivers a file to two recipients with a verified checksum", async ({
   for (const name of names) {
     await expect(delivered(sender, name)).toBeAttached();
   }
+  // The tab's icon shows the check, on both sides.
+  for (const page of [sender, ...received.map(({ page }) => page)]) {
+    await expect(page.locator('link[rel="icon"][type="image/svg+xml"]')).toHaveAttribute(
+      "href",
+      /^data:image\/svg.*M9%2016\.5l5/,
+    );
+  }
   await sender.getByText("Show details", { exact: true }).click();
   const cards = names.map((name) => recipientRow(sender, name));
   for (const scope of [...cards, ...received.map(({ page }) => page)]) {
@@ -430,6 +437,22 @@ harness("a recipient gives up connecting after 30 seconds", async ({ actor, leak
   await expect(recipient.getByRole("button", { name: "Try again" })).toBeVisible();
 });
 
+harness("a recipient whose browser has no WebRTC is told so", async ({ actor, leaks, canary }) => {
+  const demo: Demo = { open: async (name) => (await actor(name)).page };
+  const sender = await openSender(demo, makeFile(leaks, canary, 10));
+  const link = await addRecipient(leaks, sender, makeName(leaks, canary, "Anna"));
+
+  const recipient = await demo.open("recipient");
+  await recipient.addInitScript(() => {
+    delete (globalThis as { RTCPeerConnection?: unknown }).RTCPeerConnection;
+  });
+  await recipient.goto(link);
+  await expect(
+    recipient.getByRole("heading", { name: "This browser can't connect to the sender" }),
+  ).toBeVisible();
+  await expect(recipient.getByRole("button", { name: "Try again" })).toHaveCount(0);
+});
+
 harness("a recipient who can't reach the server is told so", async ({ actor, leaks, canary }) => {
   const { page: recipient } = await actor("recipient");
   // Every socket closes before it opens, so the page keeps retrying and never reaches the server.
@@ -587,7 +610,7 @@ test("the Why? link to /how keeps a transfer alive on both pages", async ({
   await expect(delivered(sender, name)).toBeAttached();
 });
 
-test("a lost sender says whether the file may have been saved", async ({ demo, leaks, canary }) => {
+test("a lost sender says whether the download can continue", async ({ demo, leaks, canary }) => {
   const file = makeFile(leaks, canary, 100_001);
   const sender = await openSender(demo, file, "", (page) => page.addInitScript(breakableSender));
   const stall = (stalled: boolean) =>
@@ -621,7 +644,9 @@ test("a lost sender says whether the file may have been saved", async ({ demo, l
   const erik = await join("Erik", true);
   await cut();
   await expect(erik.getByText("The connection to the sender was lost")).toBeVisible();
-  await expect(erik.getByText("The file may not have been saved.")).toBeVisible();
+  await expect(
+    erik.getByText("Try again. The download continues where it stopped if it can."),
+  ).toBeVisible();
 
   // Mid-download, the sender's page closes. Its pagehide closes the peers, so the drop arrives
   // at once instead of when ICE consent expires (about 15 s).
@@ -630,6 +655,88 @@ test("a lost sender says whether the file may have been saved", async ({ demo, l
   await expect(bo.getByText("The sender's page is closed")).toBeVisible({ timeout: 3_000 });
   await expect(bo.getByText("The file may not have been saved.")).toBeVisible();
 });
+
+for (const dialog of [false, true]) {
+  test(`a transfer dropped halfway sends only the rest on Try again${dialog ? ", into the save dialog's file" : ""}`, async ({
+    demo,
+    leaks,
+    canary,
+  }) => {
+    const CHUNK = 2;
+    const CREDIT = 19;
+    // Its own padded length, so exactly 128 CHUNKs of 48 KiB and no padding.
+    const file = makeFile(leaks, canary, 6 * MiB);
+    const sender = await openSender(demo, file, "", (page) => page.addInitScript(breakableSender));
+    const name = makeName(leaks, canary, "Anna");
+    const link = await addRecipient(leaks, sender, name);
+    const card = recipientRow(sender, name);
+
+    const recipient = await demo.open("recipient");
+    await recipient.addInitScript(breakableSender);
+    if (dialog) {
+      await recipient.context().addInitScript(fakeSavePicker);
+    }
+    let downloads = 0;
+    recipient.on("download", () => downloads++);
+    const set = (page: Page, values: Record<string, unknown>) =>
+      page.evaluate((v) => {
+        Object.assign(globalThis, v);
+      }, values);
+    const sent = (page: Page, kind: number) =>
+      page.evaluate((k) => (globalThis as { sent?: Record<number, number> }).sent?.[k] ?? 0, kind);
+    const download = recipient.getByRole("button", { name: "Download" });
+    const downloading = recipient.getByRole("heading", { name: "Downloading…" });
+
+    await recipient.goto(link);
+    await set(sender, { stallAt: 64 });
+    await set(recipient, { pick: "ok", saved: [] });
+    await download.click();
+    await expect(downloading).toBeVisible();
+    // The recipient tops up its credit once it has written 64 CHUNKs, and the sender sends no more.
+    await expect.poll(() => sent(recipient, CREDIT), { timeout: 30_000 }).toBe(2);
+    expect(await sent(sender, CHUNK)).toBe(64);
+
+    await sender.evaluate(() => (globalThis as { cut?: () => void }).cut?.());
+    await expect(
+      recipient.getByText("Try again. The download continues where it stopped if it can."),
+    ).toBeVisible();
+    // Retrying before the sender sees the drop would find the link still busy.
+    await expect(card.getByText(`Waiting for ${name}'s link to be opened`)).toBeVisible();
+    await set(sender, { stalled: false });
+    // The resumed view shows before ACCEPT goes out, so holding it keeps that view up to check.
+    await set(recipient, { held: true });
+    const saving = dialog ? undefined : recipient.waitForEvent("download", { timeout: 60_000 });
+    await recipient.getByRole("button", { name: "Try again" }).click();
+    await expect(downloading).toBeVisible();
+    await expect(download).toHaveCount(0);
+    await expect
+      .poll(() =>
+        recipient
+          .getByRole("progressbar")
+          .evaluate((progress) => (progress as HTMLProgressElement).value),
+      )
+      .toBe(3 * MiB);
+    await recipient.evaluate(() => (globalThis as { release?: () => void }).release?.());
+
+    await expect(recipient.getByText("this is exactly the file that was sent")).toBeVisible({
+      timeout: 60_000,
+    });
+    await expect(delivered(sender, name)).toBeAttached();
+    // Sending the whole file again would make it 192.
+    expect(await sent(sender, CHUNK)).toBe(128);
+    if (saving) {
+      const bytes = await readFile(await (await saving).path());
+      expect(sha256Hex(bytes)).toBe(sha256Hex(file.bytes));
+    } else {
+      expect(await recipient.evaluate(() => (globalThis as { saved?: string[] }).saved)).toEqual([
+        "pick",
+        ...Array<string>(128).fill("write"),
+        "close",
+      ]);
+    }
+    expect(downloads, "browser downloads").toBe(dialog ? 0 : 1);
+  });
+}
 
 test("a recipient who leaves mid-download returns the sender's card to waiting", async ({
   demo,
@@ -1093,6 +1200,17 @@ async function sameNumber(sender: Page, name: string, recipient: Page): Promise<
   return theirs;
 }
 
+/** Presses Tab until `target` has focus, as a keyboard user would reach it. */
+async function tabTo(page: Page, target: Locator): Promise<void> {
+  for (let i = 0; i < 60; i++) {
+    if (await target.evaluate((el) => el === document.activeElement)) {
+      break;
+    }
+    await page.keyboard.press("Tab");
+  }
+  await expect(target, "reached with Tab").toBeFocused();
+}
+
 /** The recipient says the numbers differ; both pages say so and nothing was offered. */
 async function differ(sender: Page, name: string, recipient: Page): Promise<void> {
   await recipient.getByRole("button", { name: "They said it differs" }).click();
@@ -1176,7 +1294,7 @@ test.describe("safety number", () => {
     await sameNumber(sender, name, recipient);
     expect(await recipient.locator("#receive [role=status]:empty").count()).toBeGreaterThan(0);
 
-    await recipient.getByRole("button", { name: "They said it matches" }).focus();
+    await tabTo(recipient, recipient.getByRole("button", { name: "They said it matches" }));
     await recipient.keyboard.press("Enter");
     await expect(recipient.getByRole("heading", { name: "Safety number" })).toBeFocused();
     await expect(
@@ -1201,7 +1319,7 @@ test.describe("safety number", () => {
     expect(await card.locator("[role=status]:empty").count()).toBeGreaterThan(0);
 
     await expect(card.getByRole("button", { name: `It differs for ${name}` })).toBeVisible();
-    await card.getByRole("button", { name: `It matches for ${name}` }).focus();
+    await tabTo(sender, card.getByRole("button", { name: `It matches for ${name}` }));
     await sender.keyboard.press("Enter");
     await expect(card.locator("[data-status]")).toBeFocused();
     await expect(
@@ -1238,9 +1356,12 @@ test.describe("safety number", () => {
       await page.goto(link);
       pages.push(page);
     }
+    const numbers: string[] = [];
     for (const [i, name] of names.entries()) {
-      await sameNumber(sender, name, pages[i] as Page);
+      numbers.push(await sameNumber(sender, name, pages[i] as Page));
     }
+    // Six digits from each connection's own fingerprints: a clash is one chance in a million.
+    expect(numbers[0]).not.toBe(numbers[1]);
   });
 
   test("a recipient who reloads mid-check gets a new number on both sides", async ({
@@ -1259,7 +1380,7 @@ test.describe("safety number", () => {
     expect(second).not.toBe(first);
   });
 
-  test("five checks that differ end the link", async ({ demo, leaks, canary }) => {
+  test("five failed checks, a reload among them, end the link", async ({ demo, leaks, canary }) => {
     test.setTimeout(120_000);
     const sender = await openSender(demo, makeFile(leaks, canary, 10));
     const name = makeName(leaks, canary, "Anna");
@@ -1268,7 +1389,10 @@ test.describe("safety number", () => {
     await recipient.goto(link);
     for (let i = 1; i <= 5; i++) {
       await sameNumber(sender, name, recipient);
-      if (i < 5) {
+      if (i === 2) {
+        // A reload drops the attempt, which counts like a check that differs.
+        await recipient.reload();
+      } else if (i < 5) {
         await differ(sender, name, recipient);
         await recipient.getByRole("button", { name: "Try again" }).click();
       }
@@ -1282,6 +1406,34 @@ test.describe("safety number", () => {
     await expect(recipientRow(sender, name).getByRole("button", { name: /^Copy/ })).toHaveCount(0);
     await recipient.getByRole("button", { name: "Try again" }).click();
     await expect(recipient.getByRole("heading", { name: "This link isn't active" })).toBeVisible();
+  });
+
+  test("an unconfirmed safety number ends 5 minutes after it opens", async ({
+    demo,
+    leaks,
+    canary,
+  }) => {
+    const sender = await openSender(demo, makeFile(leaks, canary, 10), "", (page) =>
+      page.clock.install(),
+    );
+    const name = makeName(leaks, canary, "Anna");
+    const link = await addRecipient(leaks, sender, name, true);
+    const recipient = await demo.open("recipient");
+    await recipient.goto(link);
+    const number = await sameNumber(sender, name, recipient);
+    await expect(recipient.getByText("The safety number expires after 5 minutes.")).toBeVisible();
+    const card = recipientRow(sender, name);
+    const expired = card.getByText("The safety number wasn't confirmed within 5 minutes");
+
+    await sender.clock.fastForward(290_000);
+    await expect(card.getByText(number)).toBeVisible();
+    await expect(expired).toHaveCount(0);
+    await sender.clock.fastForward(10_000);
+    await expect(expired).toBeVisible();
+    await expect(card.getByText(number)).toHaveCount(0);
+    await expect(
+      recipient.getByRole("heading", { name: "The connection to the sender was lost" }),
+    ).toBeVisible();
   });
 
   // Someone in the middle learns the recipient's number from its answer, before the channel opens,
@@ -1400,7 +1552,8 @@ test.describe("through a server restart", () => {
   /**
    * Runs in the sender page: while `holdHost` is set, keeps back the `host` frames the page sends,
    * as if the sender reconnected late. `releaseHost()` sends those whose socket is still open.
-   * Records the close code of every socket that sent a frame in `closeCodes`.
+   * Records the close code of every socket that sent a frame in `closeCodes`, and an error event
+   * before it as 1006, the code the signaling client then acts on.
    */
   const holdHosts = () => {
     const global = globalThis as HostHold;
@@ -1412,6 +1565,7 @@ test.describe("through a server restart", () => {
     WebSocket.prototype.send = function (this: WebSocket, data) {
       if (!watched.has(this)) {
         watched.add(this);
+        this.addEventListener("error", () => closeCodes.push(1006));
         this.addEventListener("close", (event) => closeCodes.push(event.code));
       }
       if (global.holdHost && typeof data === "string" && data.startsWith('{"t":"host"')) {
@@ -1519,12 +1673,7 @@ test.describe("through a server restart", () => {
     observed,
     leaks,
     canary,
-    browserName,
   }) => {
-    test.fixme(
-      browserName === "webkit",
-      "SIG-287: WebKit reports the restart's close code 1012 as 1005 or 1006",
-    );
     const file = makeFile(leaks, canary, 100_001);
     const sender = await openSender(demo, file, "", (page) => page.addInitScript(holdHosts));
     const early = makeName(leaks, canary, "Anna");
@@ -1571,7 +1720,7 @@ test.describe("through a server restart", () => {
     }
     await expect(delivered(sender, early)).toBeAttached();
     await expect(delivered(sender, late)).toBeAttached();
-    expect(await sender.evaluate(() => (globalThis as HostHold).closeCodes)).toContain(1012);
+    expect(await sender.evaluate(() => (globalThis as HostHold).closeCodes)).toEqual([4012]);
     await expect(lost(sender)).toHaveCount(0);
   });
 });

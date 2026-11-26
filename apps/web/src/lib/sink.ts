@@ -2,7 +2,9 @@
 //
 // - FileSystemSink: where the browser has showSaveFilePicker (Chromium), the
 //   user picks the destination when they click Download and the file streams
-//   straight to disk. On failure the writable is aborted and the file the
+//   straight to disk. A transfer that loses its connection keeps the writable
+//   open for the next attempt (see receive-file.ts). On any other failure, or
+//   when that kept part is discarded, the writable is aborted and the file the
 //   picker created (empty at that point) is removed where the browser can.
 // - BlobSink: everywhere else. Chunks are collected in memory and folded into
 //   one Blob as they arrive; the page starts its download at the end.

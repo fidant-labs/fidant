@@ -13,6 +13,7 @@ import {
   HEADER_BYTES,
   MAX_CHUNK_BYTES,
   MIN_CHUNK_BYTES,
+  paddedLength,
   RecipientKind,
   SenderKind,
 } from "./frames.ts";
@@ -24,10 +25,12 @@ import {
   ReceiveError,
   type ReceiveFailure,
   type ReceiveFileOptions,
+  type Resumable,
   receiveFile,
 } from "./receive-file.ts";
 import { type FrameChannel, type SendFileOptions, type SendResult, sendFile } from "./send-file.ts";
 import { BlobSink, type Sink } from "./sink.ts";
+import { textFile } from "./text-secret.ts";
 
 type Transit = {
   /** Called for each sender → recipient frame. Return undefined to drop it, several to deliver them in order. */
@@ -105,7 +108,7 @@ function newAttempt(): string {
 
 /** A sink that records what happened to it. */
 class RecordingSink extends BlobSink {
-  aborted = false;
+  aborts = 0;
   closed = false;
   writes = 0;
   onWrite: (() => void) | undefined;
@@ -120,8 +123,11 @@ class RecordingSink extends BlobSink {
     return super.close();
   }
   override async abort(): Promise<void> {
-    this.aborted = true;
+    this.aborts++;
     await super.abort();
+  }
+  get aborted(): boolean {
+    return this.aborts > 0;
   }
 }
 
@@ -144,6 +150,10 @@ type RunOptions = {
   /** Each side's own check verdict; without one, that side runs without the check. */
   senderConfirm?: Promise<boolean>;
   recipientConfirm?: Promise<boolean>;
+  /** The sender's name. Defaults to "Anna". */
+  from?: string;
+  resumable?: Resumable;
+  onResume?: ReceiveFileOptions["onResume"];
 };
 
 /** Matches a ReceiveError with this reason. */
@@ -168,7 +178,7 @@ function run(options: RunOptions) {
     channel: pair.sender,
     maxMessageSize,
     file,
-    from: "Anna",
+    from: options.from ?? "Anna",
     secret,
     attempt,
     sha256: Promise.resolve(options.senderSha256 ?? sha256(options.bytes)),
@@ -185,6 +195,8 @@ function run(options: RunOptions) {
     attempt,
     signal: options.signal ?? new AbortController().signal,
     ...(options.recipientConfirm ? { confirm: options.recipientConfirm } : {}),
+    ...(options.resumable ? { resumable: options.resumable } : {}),
+    ...(options.onResume ? { onResume: options.onResume } : {}),
     onOffer:
       options.onOffer ??
       (async (offer) => {
@@ -195,6 +207,32 @@ function run(options: RunOptions) {
   });
   return { pair, sending, receiving, offers, progress, sink };
 }
+
+/** Runs a transfer that loses its channel during the sink's third write, and returns what the recipient kept. */
+async function dropped(sink: RecordingSink, options: RunOptions): Promise<Resumable> {
+  const pair = channelPair();
+  sink.onWrite = () => {
+    if (sink.writes === 3) {
+      pair.close();
+    }
+  };
+  const r = run({ ...options, pair, sink });
+  const error = await r.receiving.then(
+    () => undefined,
+    (e: unknown) => e,
+  );
+  sink.onWrite = undefined;
+  await assert.rejects(r.sending);
+  assert.ok(error instanceof ReceiveError && error.resumable, `nothing kept: ${error}`);
+  return error.resumable;
+}
+
+/** The error a promise rejects with, or "resolved". */
+const outcome = (promise: Promise<unknown>) =>
+  promise.then(
+    () => "resolved",
+    (error: unknown) => error,
+  );
 
 test("receives a file, verifies it and sends a matching receipt", async () => {
   const bytes = new Uint8Array(randomBytes(300_000));
@@ -434,14 +472,316 @@ test("failures say whether the sender, the connection or the sink failed", async
   await assert.rejects(unsaved.sending);
 });
 
-test("aborts the sink when the channel closes mid-transfer", async () => {
+test("a lost connection keeps the sink, the checksum so far and the position", async () => {
+  const bytes = new Uint8Array(randomBytes(300_000));
+  const sink = new RecordingSink();
+  const pair = channelPair();
+  sink.onWrite = () => {
+    if (sink.writes === 3) {
+      pair.close();
+    }
+  };
+  const r = run({ bytes, pair, sink });
+  const error = await outcome(r.receiving);
+  assert.ok(failedWith("connection")(error) && /closed/.test(String(error)), String(error));
+  const kept = (error as ReceiveError).resumable;
+  assert.ok(kept);
+  assert.equal(kept.sink, sink);
+  assert.equal(kept.verifier.offset, 3 * MAX_CHUNK_BYTES);
+  assert.equal(kept.verifier.canContinue, true);
+  assert.deepEqual(kept.meta, {
+    name: "report.bin",
+    size: bytes.length,
+    type: "application/octet-stream",
+    chunkSize: MAX_CHUNK_BYTES,
+    from: "Anna",
+  });
+  assert.equal(sink.aborts, 0);
+  assert.equal(sink.closed, false);
+  assert.equal(sink.writes, 3);
+});
+
+test("a new attempt of the same file continues without an offer and gets only the rest", async () => {
+  const bytes = new Uint8Array(randomBytes(300_000));
+  const sink = new RecordingSink();
+  const kept = await dropped(sink, { bytes });
+  const { pair, kinds } = watchedPair();
+  const resumed: [FileOffer, number][] = [];
+  const r = run({
+    bytes,
+    pair,
+    resumable: kept,
+    onResume: (offer, held) => resumed.push([offer, held]),
+  });
+  const result = await r.receiving;
+  assert.equal(result.type, "received");
+  if (result.type !== "received") {
+    return;
+  }
+  assert.deepEqual(result.sha256, sha256(bytes));
+  assert.deepEqual(new Uint8Array(await (result.blob as Blob).arrayBuffer()), bytes);
+  assert.deepEqual(await r.sending, { type: "receipt", match: true });
+  assert.deepEqual(r.offers, []);
+  const offer = { name: "report.bin", size: bytes.length, type: "application/octet-stream" };
+  assert.deepEqual(resumed, [[{ ...offer, from: "Anna" }, 3 * MAX_CHUNK_BYTES]]);
+  const chunks = paddedLength(bytes.length) / MAX_CHUNK_BYTES;
+  assert.equal(kinds.filter((kind) => kind === SenderKind.CHUNK).length, chunks - 3);
+  assert.equal(sink.aborts, 0);
+  assert.equal(sink.closed, true);
+  assert.equal(r.progress.at(-1), bytes.length);
+});
+
+test("a sender whose file changed before resuming ends in a checksum mismatch", async () => {
+  const bytes = new Uint8Array(randomBytes(300_000));
+  const sink = new RecordingSink();
+  const kept = await dropped(sink, { bytes });
+  const changed = bytes.slice();
+  changed[0] = (changed[0] as number) ^ 1;
+  const r = run({ bytes: changed, resumable: kept });
+  const error = await outcome(r.receiving);
+  assert.ok(failedWith("checksum")(error), String(error));
+  assert.ok(!(error as ReceiveError).resumable, "nothing kept");
+  assert.deepEqual(await r.sending, { type: "receipt", match: false });
+  assert.equal(sink.aborts, 1);
+  assert.equal(sink.closed, false);
+});
+
+test("a META that differs in any field discards the kept part and offers the file from zero", async () => {
+  const bytes = new Uint8Array(randomBytes(300_000));
+  const file = (name: string, type: string) =>
+    new File([bytes as Uint8Array<ArrayBuffer>], name, { type });
+  const changes: [string, Partial<RunOptions>][] = [
+    ["name", { file: file("other.bin", "application/octet-stream") }],
+    ["size", { bytes: bytes.subarray(1) }],
+    ["type", { file: file("report.bin", "text/plain") }],
+    ["chunkSize", { maxMessageSize: 32_768 }],
+    ["from", { from: "Bo" }],
+  ];
+  for (const [field, change] of changes) {
+    const sink = new RecordingSink();
+    const kept = await dropped(sink, { bytes });
+    const { pair, kinds } = watchedPair();
+    const resumed: number[] = [];
+    const r = run({
+      bytes,
+      ...change,
+      pair,
+      resumable: kept,
+      onResume: (_, held) => resumed.push(held),
+    });
+    const result = await r.receiving;
+    assert.equal(result.type, "received", field);
+    assert.deepEqual(await r.sending, { type: "receipt", match: true }, field);
+    assert.equal(sink.aborts, 1, field);
+    assert.equal(r.offers.length, 1, field);
+    assert.deepEqual(resumed, [], field);
+    const meta = r.offers[0] as FileOffer;
+    const chunkSize = Math.min(
+      MAX_CHUNK_BYTES,
+      (change.maxMessageSize ?? 65_536) - FRAME_OVERHEAD_BYTES,
+    );
+    assert.equal(
+      kinds.filter((kind) => kind === SenderKind.CHUNK).length,
+      paddedLength(meta.size, chunkSize) / chunkSize,
+      field,
+    );
+  }
+});
+
+test("a tampered frame on a resumed attempt discards the kept part", async () => {
+  const bytes = new Uint8Array(randomBytes(300_000));
+  const sink = new RecordingSink();
+  const kept = await dropped(sink, { bytes });
+  let chunks = 0;
+  const pair = channelPair({
+    toRecipient(frame) {
+      if (frame[1] === SenderKind.CHUNK && ++chunks === 2) {
+        frame[HEADER_BYTES] = (frame[HEADER_BYTES] as number) ^ 1;
+      }
+      return frame;
+    },
+  });
+  const r = run({ bytes, pair, resumable: kept });
+  const error = await outcome(r.receiving);
+  assert.ok(failedWith("invalid")(error), String(error));
+  assert.ok(!(error as ReceiveError).resumable, "nothing kept");
+  assert.equal(sink.aborts, 1);
+  assert.equal(sink.writes, 4);
+  pair.close();
+  await assert.rejects(r.sending);
+});
+
+test("a write still pending when the connection drops keeps nothing if it then fails", async () => {
+  const sink = new RecordingSink();
+  const pair = channelPair();
+  const write = sink.write.bind(sink);
+  sink.write = async (chunk) => {
+    await write(chunk);
+    if (sink.writes === 2) {
+      pair.close();
+      throw new Error("disk full");
+    }
+  };
+  const r = run({ bytes: new Uint8Array(randomBytes(300_000)), pair, sink });
+  const error = await outcome(r.receiving);
+  assert.ok(failedWith("connection")(error), String(error));
+  assert.ok(!(error as ReceiveError).resumable, "nothing kept");
+  assert.equal(sink.aborts, 1);
+});
+
+test("a part is never kept once END arrived, even if the connection drops while it is saved", async () => {
+  const sink = new RecordingSink();
+  const pair = channelPair();
+  sink.close = async () => {
+    pair.close();
+    throw new Error("disk full");
+  };
+  const r = run({ bytes: new Uint8Array(randomBytes(100_000)), pair, sink });
+  const error = await outcome(r.receiving);
+  assert.ok(failedWith("connection")(error), String(error));
+  assert.ok(!(error as ReceiveError).resumable, "nothing kept");
+  assert.equal(sink.aborts, 1);
+});
+
+test("with the safety number on, a resumed attempt writes nothing before the recipient confirms", async () => {
+  const bytes = new Uint8Array(randomBytes(300_000));
+  const sink = new RecordingSink();
+  const kept = await dropped(sink, { bytes });
+  const own = confirmation();
+  const { pair, kinds } = watchedPair();
+  const resumed: number[] = [];
+  const r = run({
+    bytes,
+    pair,
+    resumable: kept,
+    onResume: (_, held) => resumed.push(held),
+    senderConfirm: Promise.resolve(true),
+    recipientConfirm: own.promise,
+  });
+  await until(() => kinds.length >= 2);
+  assert.deepEqual(kinds, [SenderKind.INIT, SenderKind.CHECK]);
+  assert.equal(sink.writes, 3);
+  assert.deepEqual(resumed, []);
+  own.resolve(true);
+  const result = await r.receiving;
+  assert.equal(result.type, "received");
+  assert.deepEqual(resumed, [3 * MAX_CHUNK_BYTES]);
+  assert.ok(sink.writes > 3);
+  assert.deepEqual(await r.sending, { type: "receipt", match: true });
+});
+
+test("a kept part is discarded when the safety number differs or INIT is of another version", async () => {
+  const bytes = new Uint8Array(randomBytes(300_000));
+  const differs = new RecordingSink();
+  const checked = run({
+    bytes,
+    resumable: await dropped(differs, { bytes }),
+    senderConfirm: Promise.resolve(false),
+    recipientConfirm: new Promise<boolean>(() => {}),
+  });
+  assert.deepEqual(await checked.receiving, { type: "check-differs", by: "sender" });
+  checked.pair.close();
+  await checked.sending;
+  assert.equal(differs.aborts, 1);
+
+  const outdated = new RecordingSink();
+  const pair = channelPair({
+    toRecipient(frame) {
+      if (frame[1] === SenderKind.INIT) {
+        frame[0] = FRAME_VERSION - 1;
+      }
+      return frame;
+    },
+  });
+  const old = run({ bytes, pair, resumable: await dropped(outdated, { bytes }) });
+  await assert.rejects(old.receiving, failedWith("peer-outdated"));
+  assert.equal(outdated.aborts, 1);
+  pair.close();
+  await assert.rejects(old.sending);
+});
+
+test("an abort while the kept part resumes hands it back instead of discarding it", async () => {
+  const bytes = new Uint8Array(randomBytes(300_000));
+  const sink = new RecordingSink();
+  const kept = await dropped(sink, { bytes });
+  const controller = new AbortController();
+  const r = run({
+    bytes,
+    resumable: kept,
+    signal: controller.signal,
+    onResume: () => controller.abort(new Error("stopped")),
+  });
+  const error = await outcome(r.receiving);
+  assert.ok(failedWith("connection")(error) && /stopped/.test(String(error)), String(error));
+  assert.equal((error as ReceiveError).resumable?.sink, sink);
+  await settle();
+  assert.equal(sink.aborts, 0);
+  r.pair.close();
+  await assert.rejects(r.sending);
+});
+
+test("a connection lost before META hands the kept part back untouched", async () => {
+  const bytes = new Uint8Array(randomBytes(300_000));
+  const sink = new RecordingSink();
+  const kept = await dropped(sink, { bytes });
+  const pair = channelPair({
+    toRecipient(frame, p) {
+      if (frame[1] !== SenderKind.META) {
+        return frame;
+      }
+      setTimeout(() => p.close(), 10);
+      return undefined;
+    },
+  });
+  const r = run({ bytes, pair, resumable: kept });
+  const error = await outcome(r.receiving);
+  assert.ok(failedWith("connection")(error), String(error));
+  assert.equal((error as ReceiveError).resumable?.sink, sink);
+  assert.equal((error as ReceiveError).resumable?.verifier.offset, 3 * MAX_CHUNK_BYTES);
+  assert.equal(sink.aborts, 0);
+  await assert.rejects(r.sending);
+});
+
+test("a kept part is discarded when the channel closes while the recipient's differs goes out", async () => {
+  const bytes = new Uint8Array(randomBytes(300_000));
+  const sink = new RecordingSink();
+  const kept = await dropped(sink, { bytes });
+  const pair = channelPair();
+  const send = pair.recipient.send.bind(pair.recipient);
+  pair.recipient.send = (data) => {
+    if (data[1] === RecipientKind.CHECK) {
+      pair.close();
+    }
+    send(data);
+  };
+  const r = run({
+    bytes,
+    pair,
+    resumable: kept,
+    senderConfirm: new Promise<boolean>(() => {}),
+    recipientConfirm: Promise.resolve(false),
+  });
+  const error = await outcome(r.receiving);
+  assert.ok(failedWith("connection")(error), String(error));
+  assert.ok(!(error as ReceiveError).resumable, "nothing kept");
+  assert.equal(sink.aborts, 1);
+  await assert.rejects(r.sending);
+});
+
+test("a shared secret is never kept after a lost connection", async () => {
+  const text = "a shared secret";
+  const file = textFile(text);
+  assert.ok(file);
   const sink = new RecordingSink();
   const pair = channelPair();
   sink.onWrite = () => pair.close();
-  const r = run({ bytes: new Uint8Array(randomBytes(300_000)), pair, sink });
-  await assert.rejects(r.receiving, /closed/);
-  assert.equal(sink.aborted, true);
-  assert.equal(sink.closed, false);
+  const r = run({ bytes: new TextEncoder().encode(text), file, pair, sink });
+  const error = await outcome(r.receiving);
+  assert.ok(failedWith("connection")(error), String(error));
+  assert.ok(!(error as ReceiveError).resumable, "nothing kept");
+  assert.equal(sink.writes, 1);
+  assert.equal(sink.aborts, 1);
+  await assert.rejects(r.sending);
 });
 
 test("aborts the sink when a chunk is tampered with", async () => {
@@ -463,7 +803,8 @@ test("aborts the sink when a chunk is tampered with", async () => {
   await assert.rejects(r.sending);
 });
 
-test("treats a missing END as truncation", async () => {
+test("treats a missing END as truncation, and the next attempt gets only END", async () => {
+  const bytes = new Uint8Array(randomBytes(100_000));
   const sink = new RecordingSink();
   const pair = channelPair({
     toRecipient(frame, p) {
@@ -474,11 +815,23 @@ test("treats a missing END as truncation", async () => {
       return undefined;
     },
   });
-  const r = run({ bytes: new Uint8Array(randomBytes(100_000)), pair, sink });
-  await assert.rejects(r.receiving, /closed/);
-  assert.equal(sink.aborted, true);
+  const r = run({ bytes, pair, sink });
+  const error = await outcome(r.receiving);
+  assert.ok(failedWith("connection")(error) && /closed/.test(String(error)), String(error));
   assert.equal(sink.closed, false);
   await assert.rejects(r.sending);
+  const kept = (error as ReceiveError).resumable;
+  assert.equal(kept?.verifier.offset, paddedLength(bytes.length));
+
+  const { pair: next, kinds } = watchedPair();
+  const again = run({ bytes, pair: next, ...(kept ? { resumable: kept } : {}) });
+  const result = await again.receiving;
+  assert.equal(result.type, "received");
+  if (result.type === "received") {
+    assert.deepEqual(new Uint8Array(await (result.blob as Blob).arrayBuffer()), bytes);
+  }
+  assert.deepEqual(kinds, [SenderKind.INIT, SenderKind.META, SenderKind.END]);
+  assert.equal(sink.aborts, 0);
 });
 
 async function failsOnSequence(toRecipient: NonNullable<Transit["toRecipient"]>): Promise<void> {

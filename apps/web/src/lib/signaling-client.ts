@@ -9,8 +9,9 @@
 // learn why and the client opens a new socket after retryDelay, until close()
 // is called. The wait grows with each socket that failed or closed within
 // STABLE_MS of opening, and resets after one that stayed open longer. A close
-// with 1012 (service restart: the server is stopping) resets it too and
-// reconnects at once, since the restart is no fault of this client.
+// with SERVICE_RESTART (the server is stopping), or with 1012, which older
+// servers send instead, resets it too and reconnects at once, since the
+// restart is no fault of this client.
 // Listeners stay registered across reconnects. onOpen fires on every open:
 // the page re-sends host/join there, since it knows them and this wrapper
 // does not.
@@ -100,7 +101,7 @@ export function connectSignaling({
         clearListeners();
         return;
       }
-      const restart = code === SERVICE_RESTART;
+      const restart = code === SERVICE_RESTART || code === 1012;
       if (restart || (openedAt !== undefined && Date.now() - openedAt >= STABLE_MS)) {
         failures = 0;
       } else {

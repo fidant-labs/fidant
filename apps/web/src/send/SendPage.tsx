@@ -1,4 +1,4 @@
-// The sender page: choose a file (or, on /secret, paste a text that goes as
+// The sender page: choose a file (or, in secret mode, paste a text that goes as
 // one), add named recipients, share each one's link, and send it to every
 // recipient who opens their link.
 //
@@ -20,7 +20,7 @@
 //   the signals relayed before it were handled.
 // - When the data channel opens, sendFile runs the transfer and reports
 //   accepted, progress, declined and receipt back to the reducer.
-// - On /secret, a connection whose max message size can't carry every text in
+// - In secret mode, a connection whose max message size can't carry every text in
 //   one chunk (textFitsOneChunk) gets nothing: reducer `unsendable` fails the
 //   recipient's card and refuses the joiner.
 // - A peer that closes on another frame version → `outdated`; onClose here, not the reducer,
@@ -62,15 +62,17 @@ import {
 } from "@sigill/protocol";
 import { useEffect, useReducer, useRef, useState } from "preact/hooks";
 import { Alert, AlertDescription } from "#components/ui/alert";
-import { Button } from "#components/ui/button";
+import { Button, buttonVariants } from "#components/ui/button";
 import { Input } from "#components/ui/input";
 import { Label } from "#components/ui/label";
 import type { Messages } from "../i18n/en.ts";
 import { useI18n } from "../i18n/I18n.tsx";
+import type { TransferStatus } from "../lib/favicon.ts";
 import { formatBytes, toHex } from "../lib/format.ts";
 import { hasForbiddenCharacters, MAX_FROM_LENGTH, metaFits } from "../lib/frames.ts";
 import { deriveSignalKey } from "../lib/keys.ts";
 import { createLink } from "../lib/link.ts";
+import { askToNotify, notify, notifyPermission } from "../lib/notify.ts";
 import { createSenderPeer, type Peer } from "../lib/peer.ts";
 import { hashFile, sendFile } from "../lib/send-file.ts";
 import {
@@ -98,6 +100,7 @@ import {
   Link,
   lede,
   Page,
+  SECRET_HREF,
   ServerPanel,
   TechDetails,
 } from "../ui.tsx";
@@ -177,13 +180,39 @@ function glideTo(el: HTMLElement) {
   requestAnimationFrame(step);
 }
 
+/**
+ * A state the dev panel (src/dev) puts the page in. While one is set the page connects to nothing,
+ * and each new one replaces the page's state in place, so the change shows as it would live.
+ */
+export type SendPreview = {
+  file?: File | undefined;
+  /** The text in the box. */
+  text?: string;
+  hash?: Hash;
+  sender?: SenderState;
+  checks?: Readonly<Record<string, CheckView>>;
+  lostServer?: boolean;
+  /** The server sends mail, so the form offers the email choice. */
+  mail?: boolean;
+  useEmail?: boolean;
+  mailed?: boolean;
+  viaRelay?: boolean;
+  from?: string;
+  fileError?: ErrorOf<"fileError">;
+  nameError?: ErrorOf<"nameError">;
+  fromError?: ErrorOf<"fromError">;
+  emailError?: boolean;
+};
+
 export function SendPage({
   kind,
-  onUnfinished,
+  onStatus,
+  preview,
 }: {
   kind: "file" | "text";
-  /** Told whether any recipient is still unfinished, the same test that guards closing the tab. */
-  onUnfinished(unfinished: boolean): void;
+  /** Told "active" while any recipient is unfinished, the same test that guards closing the tab, and "done" once all have the file or text. */
+  onStatus(status: TransferStatus): void;
+  preview?: SendPreview | undefined;
 }) {
   const { t, lang } = useI18n();
   const text = kind === "text";
@@ -211,6 +240,14 @@ export function SendPage({
   const [textLength, setTextLength] = useState(0);
   const [more, setMore] = useState(false);
   const [typed, setTyped] = useState(false);
+  const [canAskToNotify, setCanAskToNotify] = useState(false);
+  const [notifyAnswer, setNotifyAnswer] = useState<"on" | "blocked" | undefined>(undefined);
+  // Once, when the answer replaces the button that held focus.
+  useEffect(() => {
+    if (notifyAnswer && document.activeElement === document.body) {
+      document.getElementById(id("notify-answer"))?.focus();
+    }
+  }, [notifyAnswer]);
   const formRef = useRef<HTMLFormElement>(null);
 
   // Mutable state used from network callbacks, outside render.
@@ -239,7 +276,13 @@ export function SendPage({
       return;
     }
     connectionsRef.current.delete(linkId);
-    setChecks(({ [linkId]: _closed, ...rest }) => rest);
+    setChecks((all) => {
+      if (!Object.hasOwn(all, linkId)) {
+        return all;
+      }
+      const { [linkId]: _closed, ...rest } = all;
+      return rest;
+    });
     clearTimeout(connection.deadline);
     connection.abort.abort(new Error("connection closed"));
     connection.peer?.close();
@@ -423,9 +466,21 @@ export function SendPage({
   dispatchRef.current = (action: SenderAction) => {
     const hosted = hostedLinks(senderRef.current).join();
     const next = update(senderRef.current, action);
-    if (next.state !== senderRef.current) {
+    const changed = next.state !== senderRef.current;
+    if (changed) {
       senderRef.current = next.state;
       setSender(next.state);
+    }
+    // Only fixed text and counts: the system keeps a notification outside the page.
+    if (changed && action.type === "receipt" && action.match) {
+      const { recipients } = next.state;
+      const done = recipients.filter((r) => r.status === "delivered").length;
+      const all = done === recipients.length;
+      const words = text ? t.secret : t.send;
+      notify(
+        all ? t.send.doneTitle : t.send.delivered,
+        all ? words.allDone : words.summary(done, recipients.length),
+      );
     }
     for (const effect of next.effects) {
       runEffect(effect);
@@ -449,8 +504,13 @@ export function SendPage({
     });
   };
 
-  // Runs once on mount: everything it uses is read through refs.
+  // Runs on mount, and again when a dev preview starts or ends. The cleanup
+  // closes the connection when a preview starts. Production never passes a
+  // preview. Everything it uses is read through refs.
   useEffect(() => {
+    if (preview) {
+      return;
+    }
     const signaling = connectSignaling({ onRelay: countRelay });
     signalingRef.current = signaling;
     let disposed = false;
@@ -579,7 +639,37 @@ export function SendPage({
       }
       signaling.close();
     };
-  }, []);
+  }, [preview === undefined]);
+
+  useEffect(() => {
+    if (!preview) {
+      return;
+    }
+    const state = preview.sender ?? initialSenderState;
+    senderRef.current = state;
+    setSender(state);
+    setFile(preview.file);
+    setHash(preview.hash ?? { status: "none" });
+    setChecks(preview.checks ?? {});
+    setLostServer(preview.lostServer ?? false);
+    setViaRelay(preview.viaRelay ?? false);
+    setMail(preview.mail ?? false);
+    setUseEmail(preview.useEmail ?? false);
+    setMailed(preview.mailed ?? false);
+    setFrom(preview.from ?? "");
+    setFileError(preview.fileError ?? "");
+    setNameError(preview.nameError ?? "");
+    setFromError(preview.fromError ?? "");
+    setEmailError(preview.emailError ?? false);
+    setTextLength(preview.text?.length ?? 0);
+    setMore(false);
+    setTyped(false);
+    // The box is not a controlled field, so its text is set here.
+    const box = document.getElementById("secret-text");
+    if (text && box instanceof HTMLTextAreaElement) {
+      box.value = preview.text ?? "";
+    }
+  }, [preview]);
 
   const prepare = (chosen: File | undefined) => {
     hashAbortRef.current?.abort(new Error("a different file was chosen"));
@@ -718,9 +808,16 @@ export function SendPage({
   const connected = sender.recipients.filter(isActive).length;
   const emailed = sender.recipients.filter(emailBound);
   const unfinished = sender.recipients.some((r) => r.status !== "delivered");
-  useEffect(() => onUnfinished(unfinished), [onUnfinished, unfinished]);
   const delivered = sender.recipients.filter((r) => r.status === "delivered").length;
   const allDone = hasRecipients && !unfinished;
+  const status: TransferStatus = unfinished ? "active" : allDone ? "done" : "idle";
+  useEffect(() => onStatus(status), [onStatus, status]);
+  // Asked only once there is a link to wait for, and never during prerender.
+  useEffect(() => {
+    if (hasRecipients) {
+      setCanAskToNotify(notifyPermission() === "default");
+    }
+  }, [hasRecipients]);
   const finished = allDone && !more && !typed;
   // Read during render: once effects run, a remounted form or list no longer holds focus.
   const sectionHadFocus =
@@ -767,10 +864,33 @@ export function SendPage({
   return (
     <Page>
       <section aria-labelledby={id("send-title")}>
-        <p class={stepLabel}>{t.send.step(1)}</p>
-        <h1 id={id("send-title")} class="mt-0">
-          {text ? t.menu.secret : t.send.title}
-        </h1>
+        <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+          <div>
+            <p class={stepLabel}>{t.send.step(1)}</p>
+            <h1 id={id("send-title")} class="mt-0">
+              {text ? t.menu.secret : t.send.title}
+            </h1>
+          </div>
+          <nav
+            aria-label={t.send.mode.label}
+            class="inline-flex flex-none gap-0.5 rounded-xl border border-border p-0.5"
+          >
+            {(["file", "secret"] as const).map((mode) => {
+              const current = (mode === "secret") === text;
+              return (
+                <Link
+                  key={mode}
+                  href={mode === "secret" ? SECRET_HREF : "/send?mode=file"}
+                  aria-current={current ? "page" : undefined}
+                  class={buttonVariants({ variant: current ? "secondary" : "ghost", size: "sm" })}
+                >
+                  <Icon name={mode === "secret" ? "key" : "file"} class="size-4" />
+                  {t.send.mode[mode]}
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
         <p class={lede}>{text ? t.secret.lede : t.send.lede}</p>
 
         {isLocalhost && (
@@ -1183,20 +1303,49 @@ export function SendPage({
           data-page-bar
           class="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-background/80 p-4 backdrop-blur-xl"
         >
-          <p
-            class="m-0 mx-auto flex max-w-xl items-center gap-2 text-[0.9rem] font-medium"
-            aria-hidden="true"
-          >
-            {unfinished ? (
-              <span
-                class="size-2 flex-none animate-pulse rounded-full bg-primary"
-                aria-hidden="true"
-              />
-            ) : (
-              <Icon name="check" class="size-4 flex-none" />
+          <div class="mx-auto flex max-w-xl items-center gap-3">
+            <p
+              class="m-0 flex flex-1 items-center gap-2 text-[0.9rem] font-medium"
+              aria-hidden="true"
+            >
+              {unfinished ? (
+                <span
+                  class="size-2 flex-none animate-pulse rounded-full bg-primary"
+                  aria-hidden="true"
+                />
+              ) : (
+                <Icon name="check" class="size-4 flex-none" />
+              )}
+              {barText}
+            </p>
+            {unfinished && canAskToNotify && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  const answer = await askToNotify();
+                  if (answer !== "default") {
+                    setCanAskToNotify(false);
+                    setNotifyAnswer(answer === "granted" ? "on" : "blocked");
+                  }
+                }}
+              >
+                {t.send.notifyMe}
+              </Button>
             )}
-            {barText}
-          </p>
+            {notifyAnswer && (
+              // Takes the focus the button held, and tells the sender what the browser answered.
+              <p
+                id={id("notify-answer")}
+                tabIndex={-1}
+                role="status"
+                class="m-0 text-[0.8rem] text-muted-foreground"
+              >
+                {notifyAnswer === "on" ? t.send.notifyOn : t.send.notifyBlocked}
+              </p>
+            )}
+          </div>
         </div>
       )}
     </Page>

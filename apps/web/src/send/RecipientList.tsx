@@ -11,9 +11,9 @@ import { Button } from "#components/ui/button";
 import { Card, CardContent } from "#components/ui/card";
 import type { Messages } from "../i18n/en.ts";
 import { useI18n } from "../i18n/I18n.tsx";
-import { CHECK_ATTEMPTS } from "../lib/check.ts";
 import { formatProgress } from "../lib/format.ts";
 import {
+  CHECK_ATTEMPTS,
   CHECK_DIFFERS,
   CHECK_EXPIRED,
   CHECK_LIMIT,
@@ -243,7 +243,7 @@ function RecipientRow({
                     </>
                   )
                 : null}
-              <p class="m-0 text-[0.9rem] text-muted-foreground" role="status">
+              <p class="m-0 text-[0.9rem] text-muted-foreground empty:sr-only" role="status">
                 {check?.said && t.send.check.waiting}
               </p>
             </div>

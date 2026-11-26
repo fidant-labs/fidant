@@ -217,6 +217,7 @@ function resetFake(...fingerprints: string[]) {
   FakePeerConnection.fingerprints = fingerprints;
   FakePeerConnection.readBack = undefined;
   FakePeerConnection.localFingerprint = undefined;
+  FakePeerConnection.throwOnConstruct = false;
 }
 
 function fakeSdp(...lines: string[]): string {
@@ -235,6 +236,7 @@ class FakePeerConnection {
   static last: FakePeerConnection | undefined;
   static readBack: ((sdp: string) => string) | undefined;
   static localFingerprint: string | undefined;
+  static throwOnConstruct = false;
   static async generateCertificate(): Promise<FakeCert> {
     const value = FakePeerConnection.fingerprints.shift() ?? SENDER_FP;
     return { getFingerprints: () => [{ algorithm: "sha-256", value: value.toLowerCase() }] };
@@ -256,6 +258,9 @@ class FakePeerConnection {
   onconnectionstatechange = null;
   ondatachannel = null;
   constructor(config: FakeConfiguration & { certificates: FakeCert[] }) {
+    if (FakePeerConnection.throwOnConstruct) {
+      throw new TypeError("bad iceServers");
+    }
     this.config = config;
     this.certificate = config.certificates[0] as FakeCert;
     FakePeerConnection.last = this;
@@ -302,12 +307,13 @@ class FakePeerConnection {
 // Taken before any test mocks the timers, so waiting for signals still works.
 const realSetTimeout = globalThis.setTimeout;
 
-/** `wait` false returns before the peer's own first signals went out. */
+/** `wait` false returns before the peer's own first signals went out; `marked` relays this version's marker, as the other page sends it first. */
 async function harness(
   side: "s" | "r",
   check?: boolean,
   iceServers: RTCIceServer[] = [],
   wait = true,
+  marked = wait,
 ) {
   const { linkId, secret } = createLink("https://localhost");
   const key = await deriveSignalKey(secret, linkId);
@@ -337,11 +343,11 @@ async function harness(
   const relay = async (payload: unknown) =>
     peer.handleRelay(await sealSignal(key, linkId, attempt, from, payload));
   const settle = () => new Promise((resolve) => realSetTimeout(resolve, 10));
-  const relayFrom = async (direction: "s" | "r", otherAttempt: string, payload: unknown) =>
-    peer.handleRelay(await sealSignal(key, linkId, otherAttempt, direction, payload));
+  const relayFrom = async (otherAttempt: string, payload: unknown) =>
+    peer.handleRelay(await sealSignal(key, linkId, otherAttempt, from, payload));
   /** Every signal sent after the version marker so far, once at least `count` of them went out. */
   const signals = async (count = 0) => {
-    for (let i = 0; i < 500 && sent.length < count + 1; i++) {
+    for (let i = 0; i < 500 && sent.length < count + 1 && closes.length === 0; i++) {
       await settle();
     }
     await settle();
@@ -352,6 +358,9 @@ async function harness(
   if (wait) {
     // A peer that fails drops what it has not sealed yet, so wait for its own first signals.
     await signals(side === "r" ? 1 : 0);
+  }
+  if (marked) {
+    await relay(versionMarker(FRAME_VERSION));
   }
   return { peer, relay, relayFrom, signals, closes, opens };
 }
@@ -475,7 +484,6 @@ test("the recipient sends no answer and no number when the browser read another 
       { kind: "commit", hash: await commitFingerprint(RECIPIENT_FP) },
     ]);
   }
-  resetFake();
 });
 
 test("the sender opens no number when the browser read another fingerprint", async () => {
@@ -487,14 +495,16 @@ test("the sender opens no number when the browser read another fingerprint", asy
     FakePeerConnection.readBack = read;
     const h = await harness("s");
     await h.relay({ kind: "commit", hash: await commitFingerprint(RECIPIENT_FP) });
+    FakePeerConnection.last?.channel?.onopen?.();
+    const [info] = h.opens;
+    assert.ok(info);
     await h.relay({ kind: "answer", sdp: fakeSdp(`a=fingerprint:sha-256 ${RECIPIENT_FP}`) });
     assert.deepEqual(h.closes, [
       { reason: "bad-signal", detail: "the browser read another fingerprint" },
     ]);
-    FakePeerConnection.last?.channel?.onopen?.();
-    assert.deepEqual(h.opens, []);
+    const pending = new Promise((resolve) => realSetTimeout(resolve, 10, "pending"));
+    assert.equal(await Promise.race([info.checkNumber, pending]), "pending");
   }
-  resetFake();
 });
 
 test("the recipient fails locally when its answer names another certificate", async () => {
@@ -506,7 +516,41 @@ test("the recipient fails locally when its answer names another certificate", as
   assert.equal(h.closes[0]?.reason, "setup-failed");
   assert.equal(h.peer.answered, false);
   assert.equal((await h.signals(1)).length, 1);
-  resetFake();
+});
+
+/** Waits until the peer closes. A peer whose setup fails may drop its version marker unsent, so `signals()` can't be used. */
+async function failed(closes: unknown[]): Promise<void> {
+  for (let i = 0; i < 500 && closes.length === 0; i++) {
+    await new Promise((resolve) => realSetTimeout(resolve, 10));
+  }
+}
+
+test("a recipient whose certificate has no sha-256 fingerprint closes as unsupported", async () => {
+  resetFake("XX");
+  const h = await harness("r", undefined, [], false);
+  await failed(h.closes);
+  assert.equal(h.closes[0]?.reason, "unsupported");
+});
+
+test("a connection that will not construct closes as setup-failed, not unsupported", async () => {
+  resetFake(SENDER_FP);
+  FakePeerConnection.throwOnConstruct = true;
+  const h = await harness("s", undefined, [], false);
+  await failed(h.closes);
+  assert.equal(h.closes[0]?.reason, "setup-failed");
+});
+
+test("a browser without RTCPeerConnection closes as unsupported", async () => {
+  const g = globalThis as { RTCPeerConnection?: unknown };
+  g.RTCPeerConnection = undefined;
+  try {
+    resetFake(SENDER_FP);
+    const h = await harness("s", undefined, [], false);
+    await failed(h.closes);
+    assert.equal(h.closes[0]?.reason, "unsupported");
+  } finally {
+    g.RTCPeerConnection = FakePeerConnection;
+  }
 });
 
 test("after the answer the sender ignores signals sealed for another attempt or garbage", async () => {
@@ -514,7 +558,7 @@ test("after the answer the sender ignores signals sealed for another attempt or 
   const h = await harness("s");
   await h.relay({ kind: "commit", hash: await commitFingerprint(RECIPIENT_FP) });
   await h.relay({ kind: "answer", sdp: fakeSdp(`a=fingerprint:sha-256 ${RECIPIENT_FP}`) });
-  await h.relayFrom("r", "B".repeat(22), {
+  await h.relayFrom("B".repeat(22), {
     kind: "commit",
     hash: await commitFingerprint(OTHER_FP),
   });
@@ -524,11 +568,22 @@ test("after the answer the sender ignores signals sealed for another attempt or 
   assert.equal(h.opens.length, 1);
 });
 
+test("a channel that fires open twice opens the transfer once", async () => {
+  resetFake(SENDER_FP);
+  const h = await harness("s");
+  await h.relay({ kind: "commit", hash: await commitFingerprint(RECIPIENT_FP) });
+  await h.relay({ kind: "answer", sdp: fakeSdp(`a=fingerprint:sha-256 ${RECIPIENT_FP}`) });
+  FakePeerConnection.last?.channel?.onopen?.();
+  FakePeerConnection.last?.channel?.onopen?.();
+  assert.equal(h.opens.length, 1);
+  assert.deepEqual(h.closes, []);
+});
+
 test("before the answer the sender still closes on a signal that does not open", async () => {
   resetFake(SENDER_FP);
   const h = await harness("s");
   await h.relay({ kind: "commit", hash: await commitFingerprint(RECIPIENT_FP) });
-  await h.relayFrom("r", "B".repeat(22), { kind: "ice", candidate: null });
+  await h.relayFrom("B".repeat(22), { kind: "ice", candidate: null });
   assert.equal(h.closes[0]?.reason, "bad-signal");
 });
 
@@ -834,41 +889,53 @@ const recipientCommit = async () => ({
   hash: await commitFingerprint(RECIPIENT_FP),
 });
 
-test("a marker for this version, or none, still connects", async () => {
-  assert.equal(
-    FRAME_VERSION,
-    UNMARKED_VERSION,
-    "the no-marker case assumes FRAME_VERSION is UNMARKED_VERSION",
-  );
-  for (const marker of [versionMarker(FRAME_VERSION), undefined]) {
-    resetFake(SENDER_FP);
-    const sender = await harness("s");
-    if (marker) {
-      await sender.relay(marker);
-    }
-    await sender.relay(await recipientCommit());
-    await sender.relay({ kind: "answer", sdp: sdpWith(RECIPIENT_FP, "r1") });
-    assert.deepEqual(await kinds(sender, 1), ["offer"]);
-    assert.deepEqual(sender.closes, []);
-    assert.deepEqual(lastPc().added, []);
+test("a marker for this version still connects", async () => {
+  const marker = versionMarker(FRAME_VERSION);
+  resetFake(SENDER_FP);
+  const sender = await harness("s", undefined, [], true, false);
+  await sender.relay(marker);
+  await sender.relay(await recipientCommit());
+  await sender.relay({ kind: "answer", sdp: sdpWith(RECIPIENT_FP, "r1") });
+  assert.deepEqual(await kinds(sender, 1), ["offer"]);
+  assert.deepEqual(sender.closes, []);
+  assert.deepEqual(lastPc().added, []);
 
-    resetFake(RECIPIENT_FP);
-    const recipient = await harness("r");
-    if (marker) {
-      await recipient.relay(marker);
-    }
-    await recipient.relay({ kind: "offer", sdp: sdpWith(SENDER_FP, "s1"), check: false });
-    assert.deepEqual(await kinds(recipient, 2), ["commit", "answer"]);
-    assert.deepEqual(recipient.closes, []);
-    assert.deepEqual(lastPc().added, []);
-  }
+  resetFake(RECIPIENT_FP);
+  const recipient = await harness("r", undefined, [], true, false);
+  await recipient.relay(marker);
+  await recipient.relay({ kind: "offer", sdp: sdpWith(SENDER_FP, "s1"), check: false });
+  assert.deepEqual(await kinds(recipient, 2), ["commit", "answer"]);
+  assert.deepEqual(recipient.closes, []);
+  assert.deepEqual(lastPc().added, []);
+});
+
+test("a page without a marker counts as older, so neither side connects to it", async () => {
+  assert.ok(UNMARKED_VERSION < FRAME_VERSION);
+  resetFake(SENDER_FP);
+  const sender = await harness("s", undefined, [], true, false);
+  await sender.relay(await recipientCommit());
+  assert.deepEqual(
+    sender.closes.map((c) => c.reason),
+    ["peer-outdated"],
+  );
+  assert.deepEqual(await sender.signals(), []);
+  assert.equal(lastPc().localDescription, null);
+
+  resetFake(RECIPIENT_FP);
+  const recipient = await harness("r", undefined, [], true, false);
+  await recipient.relay({ kind: "offer", sdp: sdpWith(SENDER_FP, "s1"), check: false });
+  assert.deepEqual(
+    recipient.closes.map((c) => c.reason),
+    ["peer-outdated"],
+  );
+  assert.equal(recipient.peer.answered, false);
+  assert.equal(lastPc().remoteDescription, null);
 });
 
 test("a second marker, or one after the commit or the offer, reaches no addIceCandidate and closes nothing", async () => {
-  const here = versionMarker(FRAME_VERSION);
   for (const late of [newer, older]) {
     for (const sequence of [
-      [here, late, await recipientCommit(), late],
+      [late, await recipientCommit(), late],
       [await recipientCommit(), late],
     ]) {
       resetFake(SENDER_FP);
@@ -883,7 +950,7 @@ test("a second marker, or one after the commit or the offer, reaches no addIceCa
       assert.deepEqual(await kinds(sender, 1), ["offer"]);
     }
 
-    for (const before of [[here, late], []]) {
+    for (const before of [[late], []]) {
       resetFake(RECIPIENT_FP);
       const recipient = await harness("r");
       for (const payload of before) {
