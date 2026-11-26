@@ -62,12 +62,18 @@ const logFields: Record<"event" | keyof LogFields, readonly [string, string]> = 
     "varför en länk, en anslutning, ett mejl eller en kod nekades",
     "För att se varför anslutningar misslyckas, så att vi kan åtgärda orsaken.",
   ],
-  code: ["felkoder", "För att hitta fel i webbappen eller servern."],
+  code: [
+    "vad som var fel med ett meddelande som servern avvisade",
+    "För att hitta fel i webbappen eller servern.",
+  ],
   path: [
     "om varje anslutning gick direkt, via vårt relä eller misslyckades",
     "För att veta hur ofta anslutningar behöver vårt relä, vilket visar hur stort det måste vara.",
   ],
-  port: ["porten servern lyssnar på", "För att bekräfta att servern startade där den ska."],
+  port: [
+    "platsen på datorn där servern kan nås (dess portnummer)",
+    "För att bekräfta att servern startade där den ska.",
+  ],
 };
 
 export const sv: Messages = {
@@ -114,7 +120,7 @@ export const sv: Messages = {
     how: "Läs hur det fungerar",
     noAccount: "Inget konto. Inget sparas.",
     linkHeading: "Hela knepet sitter i länken",
-    linkId: "Länk-ID. Vår server ser det, bara för att koppla ihop de två webbläsarna.",
+    linkId: "Länk-ID. Vår server ser det och använder det för att koppla ihop de två webbläsarna.",
     linkKey: "Nyckel. Webbläsare skickar aldrig det som står efter # till någon server.",
     stepsHeading: "Så går det till",
     steps: [
@@ -127,7 +133,7 @@ export const sv: Messages = {
     ] as ReadonlyArray<readonly [string, string]>,
     serverHeading: "Vad vår server vet",
     neverHeading: "Vår server får aldrig",
-    seesHeading: "Vår server ser bara",
+    seesHeading: "Vår server ser",
     relayNote:
       "Om de två webbläsarna inte kan ansluta direkt och vårt relä är tillgängligt går filen i stället via reläet, fortfarande krypterad. Reläet ser då båda IP-adresserna och ungefär hur stor filen är, men kan inte låsa upp den.",
     caveat: "Haken: eftersom inget sparas måste fliken vara öppen tills filen har kommit fram.",
@@ -320,7 +326,7 @@ export const sv: Messages = {
       "Om vi mejlar en länk står ditt namn också i mejlet, markerat som inte verifierat. Vår server lägger in det där och sparar det inte.",
     allowRelay: "Använd vårt relä vid behov",
     allowRelayHint: (kind: Kind) =>
-      `Vissa nätverk stoppar direkta anslutningar. Då går det via vårt relä i Stockholm, fortfarande krypterat. Reläet ser båda IP-adresserna${kind === "file" ? " och ungefär storleken" : ""}, men kan inte öppna det.`,
+      `Vissa nätverk stoppar direkta anslutningar. Då går ${items[kind].the} via vårt relä i Stockholm, fortfarande ${items[kind].encrypted}. Reläet ser båda IP-adresserna${kind === "file" ? " och ungefär storleken" : ""}, men kan inte öppna ${items[kind].it}. Om du bockar ur det här slutar vår server dela ut inloggningsuppgifter till reläet för den här sändningen. Reläet ser ändå varje IP-adress, eftersom varje webbläsare får veta sin offentliga adress från reläet.`,
     fromError: {
       unsafe:
         "Ditt namn innehåller tecken som inte kan skickas, eller tre eller fler mellanslag i rad. Ta bort dem och försök igen.",
@@ -809,7 +815,7 @@ export const sv: Messages = {
         heading: "Så skyddas filen",
         body: [
           "Din webbläsare krypterar filen med AES-256-GCM innan den lämnar din dator. Nyckeln finns i den del av länken som står efter #. Den delen skickar webbläsare aldrig till någon server. Om du ber oss mejla en länk ger din webbläsare länkens nyckel till vår server en gång, för att lägga den i mejlet. Servern varken sparar eller loggar nyckeln.",
-          "Filen går direkt mellan de två webbläsarna. Om ett nätverk stoppar det och vårt relä är tillgängligt går den i stället krypterad via reläet. Vår server skickar bara vidare några små meddelanden för att koppla upp. De är krypterade så att servern inte kan läsa dem, utom för en länk som den har mejlat och därför haft nyckeln till.",
+          "Filen går direkt mellan de två webbläsarna. Om ett nätverk stoppar det och vårt relä är tillgängligt går den i stället krypterad via reläet. Mellan webbläsarna skickar vår server vidare några små meddelanden. De som kopplar upp anslutningen är krypterade så att servern inte kan läsa dem, utom för en länk som den har mejlat och därför haft nyckeln till.",
           "Mottagarens webbläsare kontrollerar filens SHA-256-kontrollsumma, så en fil som ändrats eller skadats på vägen sparas inte.",
         ],
         link: ["Så fungerar det, steg för steg", "/how"],
@@ -821,6 +827,7 @@ export const sv: Messages = {
           "En länk som vi mejlar ligger kvar i mottagarens inkorg. Den som kan läsa inkorgen kan också få koden, och därmed filen. Och vår server har haft länkens nyckel. Därför måste du lita på att vi inte läser filen på vägen, om du inte skapar länken med kontrollnummer och jämför det med mottagaren. Vill du undvika båda, låt ”Mejla länken åt mig” vara urkryssad och skicka länken själv.",
           "Avsändarens namn skrivs av avsändaren och kontrolleras inte.",
           "De två webbläsarna ser varandras IP-adress, precis som i ett videosamtal. När filen går via vårt relä ser reläet båda IP-adresserna och ungefär hur stor filen är.",
+          "Din webbläsare kör den kod vår server skickar. En server som skickade annan kod skulle kunna läsa filer, och hoppa över kontrollnumret. Koden är offentlig, men webbläsare kan ännu inte kontrollera att det de fick stämmer med den.",
           "En dator som redan är kapad kan läsa filen innan den krypteras eller efter att den låsts upp.",
           "Fidant har ännu inte granskats av någon oberoende part.",
         ],
@@ -1559,11 +1566,11 @@ export const sv: Messages = {
         "Inte namnen du ger dem du skickar till. Ditt eget namn når oss bara om du ber oss mejla en länk: det står då i mejlet, och vi sparar det inte.",
       ],
     ],
-    seesHeading: "Det här ser vår server, och bara för att koppla ihop er eller mejla en länk",
+    seesHeading: "Det här ser vår server",
     sees: [
       [
         "Din IP-adress och uppgifter om din webbläsare",
-        "Liksom alla webbplatser du besöker ser vi dem och vilken sida du öppnar. Sidans adress visar vilket språk du har valt. Vi använder dem bara för att visa dig sidan och koppla ihop er. Vår server skriver aldrig in dem i sina loggar. Vårt relä loggar dem inte heller, utom medan vi åtgärdar ett fel eller stoppar missbruk (se nedan).",
+        "Liksom alla webbplatser du besöker ser vi dem och vilken sida du öppnar. Sidans adress visar vilket språk du har valt. Vi använder dem för att visa dig sidan, koppla ihop er och begränsa missbruk. Vår server skriver aldrig in dem i sina loggar. Vårt relä loggar dem inte heller, utom medan vi åtgärdar ett fel eller stoppar missbruk (se nedan).",
       ],
       [
         "Ett länk-ID",
@@ -1578,8 +1585,20 @@ export const sv: Messages = {
         "Om avsändaren tillåter vårt relä, så att vi bara ger mottagare tillgång till det när avsändaren gör det. Vi glömmer det inom en minut efter att avsändarens sida har stängts, och skriver aldrig in det i våra loggar.",
       ],
       [
+        "Hur varje anslutning gick",
+        "Avsändarens sida berättar för oss om varje anslutning gick direkt, via vårt relä eller misslyckades. Vi skriver in det i våra loggar, för att veta hur ofta anslutningar behöver vårt relä.",
+      ],
+      [
+        "Varför en mottagare nekades",
+        "När avsändarens sida nekar en mottagare berättar den för oss varför: länken har redan använts, en annan sida är ansluten till den, avsändarens sida har inte länken eller så avbröt avsändarens sida försöket. Därför kan vi se att en länk har levererats om den öppnas igen. Vi skriver in orsaken i våra loggar.",
+      ],
+      [
+        "När varje sida ansluter och kopplar ner",
+        "Vi ser när varje sida ansluter till vår server och när den kopplar ner, så vi kan se när någon öppnar en länk. Våra loggrader noterar när en avsändares sida registrerar eller ändrar sina länkar och när den stängs, och när en mottagare ansluter eller kopplar ner.",
+      ],
+      [
         "Om vi mejlar en länk: adressen, länkens nyckel och ditt namn",
-        "Om du ber oss mejla en länk skickar din webbläsare mottagarens mejladress, länken med nyckeln och ditt namn till vår server. Nyckeln och ditt namn har vi bara tills mejlet har gått iväg. Adressen har vi i minnet medan din sida är öppen, så att vi kan mejla mottagaren en kod när länken öppnas. Vi har också den senaste koden och vilka flikar som har angett rätt kod. Vi loggar aldrig adressen och skriver den aldrig till disk. Vår mejltjänst, Amazon SES, levererar mejlen, och studsar går bara dit, aldrig till en inkorg hos oss. Amazon SES har kvar ett mejl med en länk, och därmed nyckeln och ditt namn, bara tills det har levererats. Om mottagarens mejlserver inte tar emot mejlet direkt försöker Amazon SES igen i högst 15 minuter och kastar det sedan. En adress som studsar för att den inte går att leverera hamnar på en lista som Amazon SES har för alla sina kunder, i upp till 14 dagar, så att ingen skickar fler mejl till den. Den listan kan vi inte stänga av.",
+        "Om du ber oss mejla en länk skickar din webbläsare mottagarens mejladress, länken med nyckeln och ditt namn till vår server. Nyckeln och ditt namn har vi bara tills mejlet har gått iväg. Adressen har vi i minnet medan din sida är öppen, så att vi kan mejla mottagaren en kod när länken öppnas. Vi har också den senaste koden och vilka flikar som har angett rätt kod. Vi loggar aldrig adressen och skriver den aldrig till disk. Vår mejltjänst levererar mejlen. Den sparar dem, och därmed nyckeln och ditt namn, så länge dess egna regler säger, och kan ha en lista över adresser som den inte kunde leverera till.",
       ],
       [
         "Antal mejl och koder",
@@ -1587,7 +1606,7 @@ export const sv: Messages = {
       ],
     ],
     keepHeading: "Vad vi sparar",
-    keep: "Vi har inga konton, ingen databas över personer eller överföringar, inga cookies och ingen spårning. När avsändarens sida har stängts sparas ingenting om dig, inom högst två minuter, förutom loggraderna nedan, en relälogg medan vi åtgärdar ett fel eller stoppar missbruk, antalet mejl och koder ovan, som finns kvar en timme, och mejltjänstens lista över adresser som studsat.",
+    keep: "Vi har inga konton, ingen databas över personer eller överföringar, inga cookies och ingen spårning. När avsändarens sida har stängts sparas ingenting om dig, inom högst två minuter, förutom loggraderna nedan, en relälogg medan vi åtgärdar ett fel eller stoppar missbruk, antalet mejl och koder ovan, som finns kvar en timme, och det som vår mejltjänst sparar enligt sina egna regler.",
     logFields,
     logRetention: "Loggraderna raderas efter 30 dagar.",
     relayLog:

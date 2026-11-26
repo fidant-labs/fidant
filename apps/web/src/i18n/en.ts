@@ -29,12 +29,18 @@ const logFields: Record<"event" | keyof LogFields, readonly [string, string]> = 
     "why a link, connection, email or code was refused",
     "To see why connections fail, so we can fix the cause.",
   ],
-  code: ["error codes", "To find bugs in the browser app or the server."],
+  code: [
+    "what was wrong with a message the server rejected",
+    "To find bugs in the browser app or the server.",
+  ],
   path: [
     "whether each connection was direct, went through our relay or failed",
     "To know how often connections need our relay, which tells us how big it must be.",
   ],
-  port: ["the port the server listens on", "To confirm the server started where it should."],
+  port: [
+    "where on its machine the server can be reached (its port number)",
+    "To confirm the server started where it should.",
+  ],
 };
 
 export type Nouns = Record<
@@ -133,7 +139,7 @@ export const en = {
     how: "Read how it works",
     noAccount: "No account. Nothing stored.",
     linkHeading: "The whole trick is in the link",
-    linkId: "Link ID. Our server sees this, only to connect the two browsers.",
+    linkId: "Link ID. Our server sees this and uses it to connect the two browsers.",
     linkKey: "Key. Browsers never send what comes after # to any server.",
     stepsHeading: "What happens",
     steps: [
@@ -146,7 +152,7 @@ export const en = {
     ] as ReadonlyArray<readonly [string, string]>,
     serverHeading: "What our server knows",
     neverHeading: "Our server never gets",
-    seesHeading: "Our server only sees",
+    seesHeading: "Our server sees",
     relayNote:
       "If the two browsers can't connect directly and our relay is available, the file passes through the relay instead, still encrypted. The relay then sees both IP addresses and roughly how big the file is, and can't unlock it.",
     caveat: "The catch: since nothing is stored, keep your tab open until the file has arrived.",
@@ -340,7 +346,7 @@ export const en = {
       "If we email a link, your name also goes in that email, marked as not verified. Our server puts it there and doesn't keep it.",
     allowRelay: "Use our relay if needed",
     allowRelayHint: (kind: Kind) =>
-      `Some networks block direct connections. Then it goes through our relay in Stockholm, still encrypted. The relay sees both IP addresses${kind === "file" ? " and roughly the size" : ""}, but can't open it.`,
+      `Some networks block direct connections. Then ${items[kind].the} goes through our relay in Stockholm, still encrypted. The relay sees both IP addresses${kind === "file" ? " and roughly the size" : ""}, but can't open ${items[kind].it}. If you untick this, our server stops giving out relay credentials for this send. The relay still sees each IP address, because each browser learns its public address from the relay.`,
     fromError: {
       unsafe:
         "Your name contains characters that can't be sent, or three or more spaces in a row. Remove them and try again.",
@@ -853,7 +859,7 @@ export const en = {
         heading: "How the file is protected",
         body: [
           "Your browser encrypts the file with AES-256-GCM before it leaves your computer. The key is in the part of the link after #, which browsers never send to a server. If you ask us to email a link, your browser gives that link's key to our server once, to put in the email. The server doesn't store or log the key.",
-          "The file goes directly between the two browsers. If a network blocks that and our relay is available, it passes through the relay instead, still encrypted. Our server only passes on a few small setup messages. They are encrypted, so the server can't read them, except for a link it emailed, whose key it had.",
+          "The file goes directly between the two browsers. If a network blocks that and our relay is available, it passes through the relay instead, still encrypted. Between the browsers, our server passes on a few small messages. Those that set up the connection are encrypted, so the server can't read them, except for a link it emailed, whose key it had.",
           "The recipient's browser checks the file's SHA-256 checksum, so a file that was changed or damaged on the way is not saved.",
         ],
         link: ["How it works, step by step", "/how"],
@@ -865,6 +871,7 @@ export const en = {
           "A link we email stays in the recipient's mailbox. Anyone who can read that mailbox can also get the code, and so the file. And our server had that link's key. So you have to trust us not to read the file on its way, unless you create the link with a safety number and compare it with the recipient. To avoid both, leave “Email the link for me” unticked and send the link yourself.",
           "The sender's name is typed by the sender and not verified.",
           "The two browsers see each other's IP address, the same as on a video call. When the file goes through our relay, the relay sees both IP addresses and roughly how big the file is.",
+          "Your browser runs the code our server sends it. A server that sent different code could read files, and could skip the safety number. The code is public, but browsers can't yet check that what they got matches it.",
           "A computer that is already compromised can read the file before it is encrypted or after it is unlocked.",
           "Fidant has not been independently audited yet.",
         ],
@@ -1596,11 +1603,11 @@ export const en = {
         "Not the names you give the people you send to. Your own name reaches us only if you ask us to email a link: it goes in that email, and we don't keep it.",
       ],
     ] as ReadonlyArray<readonly [string, string]>,
-    seesHeading: "What our server sees, and only to connect you or email a link",
+    seesHeading: "What our server sees",
     sees: [
       [
         "Your IP address and browser details",
-        "Like any website you visit, we see them, along with which page you open. That page's address names the language you chose. We use them only to show you this page and connect you. Our server never writes them to its logs. Our relay doesn't log them either, except while we fix a fault or stop abuse (see below).",
+        "Like any website you visit, we see them, along with which page you open. That page's address names the language you chose. We use them to show you this page, connect you and limit abuse. Our server never writes them to its logs. Our relay doesn't log them either, except while we fix a fault or stop abuse (see below).",
       ],
       [
         "A link ID",
@@ -1615,8 +1622,20 @@ export const en = {
         "Whether the sender allows our relay, so we only give recipients access to it when the sender does. We forget it within a minute after the sender's page closes, and never write it to our logs.",
       ],
       [
+        "How each connection went",
+        "The sender's page tells us whether each connection was direct, went through our relay or failed. We write it to our logs, to know how often connections need our relay.",
+      ],
+      [
+        "Why a recipient was turned away",
+        "When the sender's page turns a recipient away, it tells us why: the link was already used, another page is connected to it, the sender's page doesn't have that link, or the sender's page ended the attempt. So we can tell that a link was delivered if it is opened again. We write the reason to our logs.",
+      ],
+      [
+        "When each page connects and leaves",
+        "We see when each page connects to our server and when it leaves, so we can tell when someone opens a link. Our log lines note when a sender's page registers or changes its links and when it closes, and when a recipient joins or leaves.",
+      ],
+      [
         "If we email a link: the address, the link's key and your name",
-        "If you ask us to email a link, your browser sends our server the recipient's email address, the link with its key, and your name. We keep the key and your name only until the email has gone. We keep the address in memory while your page is open, so we can email the recipient a code when they open the link. We also keep the latest code and which browser tabs entered the right one. We never log the address or write it to disk. Our mail service, Amazon SES, delivers the emails, and bounces go only to it, never to a mailbox of ours. Amazon SES keeps an email with a link, and so the key and your name, only until it is delivered. If the recipient's mail server doesn't accept the email at once, Amazon SES tries again for at most 15 minutes and then drops it. An address that bounces as undeliverable goes on a list that Amazon SES keeps for all its customers, for up to 14 days, so that nobody sends it more mail. We can't turn that list off.",
+        "If you ask us to email a link, your browser sends our server the recipient's email address, the link with its key, and your name. We keep the key and your name only until the email has gone. We keep the address in memory while your page is open, so we can email the recipient a code when they open the link. We also keep the latest code and which browser tabs entered the right one. We never log the address or write it to disk. Our mail service delivers the emails. It keeps them, and so the key and your name, for as long as its own policy says, and may keep a list of addresses it couldn't deliver to.",
       ],
       [
         "Counts of emails and codes",
@@ -1624,7 +1643,7 @@ export const en = {
       ],
     ] as ReadonlyArray<readonly [string, string]>,
     keepHeading: "What we keep",
-    keep: "We have no accounts, no database of people or transfers, no cookies and no tracking. Once the sender's page is closed, nothing about you is kept, within 2 minutes at most, apart from the log lines below, a relay log while we fix a fault or stop abuse, the email and code counts above, which last an hour, and our mail service's list of bounced addresses.",
+    keep: "We have no accounts, no database of people or transfers, no cookies and no tracking. Once the sender's page is closed, nothing about you is kept, within 2 minutes at most, apart from the log lines below, a relay log while we fix a fault or stop abuse, the email and code counts above, which last an hour, and whatever our mail service keeps under its own policy.",
     logFields,
     logRetention: "Log lines are deleted after 30 days.",
     relayLog:
