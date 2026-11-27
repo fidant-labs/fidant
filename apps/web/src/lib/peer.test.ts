@@ -221,6 +221,7 @@ function resetFake(...fingerprints: string[]) {
   FakePeerConnection.localFingerprint = undefined;
   FakePeerConnection.throwOnConstruct = false;
   FakePeerConnection.stats = new Map();
+  FakePeerConnection.statsGate = undefined;
 }
 
 function fakeSdp(...lines: string[]): string {
@@ -242,6 +243,8 @@ class FakePeerConnection {
   static throwOnConstruct = false;
   /** What getStats returns. */
   static stats = new Map<string, object>();
+  /** When set, getStats waits for it. */
+  static statsGate: Promise<void> | undefined;
   static async generateCertificate(): Promise<FakeCert> {
     const value = FakePeerConnection.fingerprints.shift() ?? SENDER_FP;
     return { getFingerprints: () => [{ algorithm: "sha-256", value: value.toLowerCase() }] };
@@ -306,6 +309,7 @@ class FakePeerConnection {
     this.added.push(candidate);
   }
   async getStats() {
+    await FakePeerConnection.statsGate;
     return FakePeerConnection.stats;
   }
   close() {
@@ -605,6 +609,38 @@ test("the recipient closes on a signal that does not open, even after its answer
   await h.relay({ kind: "offer", sdp: fakeSdp(`a=fingerprint:sha-256 ${SENDER_FP}`), check: true });
   await h.peer.handleRelay("not a sealed signal");
   assert.equal(h.closes[0]?.reason, "bad-signal");
+});
+
+test("neither side describes itself before a getStats round trip", async () => {
+  for (const side of ["s", "r"] as const) {
+    resetFake(side === "s" ? SENDER_FP : RECIPIENT_FP);
+    let open = () => {};
+    FakePeerConnection.statsGate = new Promise((resolve) => {
+      open = resolve;
+    });
+    // Relayed signals wait behind setup, so they are not awaited until the gate opens.
+    const h = await harness(side, undefined, [], true, false);
+    const relayed = Promise.all([
+      h.relay(versionMarker(FRAME_VERSION)),
+      side === "s"
+        ? h.relay({ kind: "commit", hash: await commitFingerprint(RECIPIENT_FP) })
+        : h.relay({
+            kind: "offer",
+            sdp: fakeSdp(`a=fingerprint:sha-256 ${SENDER_FP}`),
+            check: false,
+          }),
+    ]);
+    // Long enough for the relayed signals to reach describe() without the barrier.
+    await new Promise((resolve) => realSetTimeout(resolve, 50));
+    const before = side === "s" ? [] : ["commit"];
+    assert.deepEqual(await kinds(h, before.length), before);
+    assert.equal(lastPc().localDescription, null);
+    open();
+    await relayed;
+    const described = side === "s" ? "offer" : "answer";
+    assert.deepEqual(await kinds(h, before.length + 1), [...before, described]);
+    assert.deepEqual(h.closes, []);
+  }
 });
 
 const stun = "stun:turn.example:3478";
