@@ -143,12 +143,12 @@ services:
     build: coturn
     user: ${FIDANT_E2E_UID:?}:${FIDANT_E2E_GID:?}
     # Replaces the image's default command, which looks up the external IP on the internet.
-    command: ["-c", "/etc/sigill/turnserver.conf"]
+    command: ["-c", "/etc/fidant/turnserver.conf"]
     # TURN over TLS on 443 without root. Namespaced, so the host keeps its own setting.
     sysctls:
       net.ipv4.ip_unprivileged_port_start: 0
     volumes:
-      - ${FIDANT_E2E_COTURN_DIR:?}:/etc/sigill:ro
+      - ${FIDANT_E2E_COTURN_DIR:?}:/etc/fidant:ro
       # At its host path, so the log-file path in turnserver.conf is the same on both sides.
       - ${FIDANT_E2E_RUN_DIR:?}:${FIDANT_E2E_RUN_DIR:?}
     networks:

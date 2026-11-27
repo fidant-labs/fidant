@@ -272,7 +272,7 @@ async function startNetworks(): Promise<RunningService> {
     type: "spki",
     format: "der",
   });
-  const tls = { port: 443, cert: "/etc/sigill/turn.crt", pkey: "/etc/sigill/turn.key" };
+  const tls = { port: 443, cert: "/etc/fidant/turn.crt", pkey: "/etc/fidant/turn.key" };
   const config = coturnConfig({ ip: turnIp, port: 3478, secret, stateDir: "/tmp", tls });
   await writeFile(join(dir, "turnserver.conf"), config, { mode: 0o600 });
   const boxDir = await mkdtemp(join(tmpdir(), "fidant-e2e-box-"));
