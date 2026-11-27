@@ -4,7 +4,7 @@
 - Date: 2026-11-27
 - Linear: FID-334
 
-This record amends 0001 (`0001-e2e-tests-and-leak-model.md`). Read it with the replacement under "Text typed after a command".
+This record amends 0001 (`0001-e2e-tests-and-leak-model.md`) and 0024 (`0024-safety-number-buttons.md`). Read 0001, from FID-335's merge, with the replacements under "Text typed after a command", and 0024, from FID-336's merge, with the replacement under "The page opened from a chat".
 
 ## Context
 
@@ -44,7 +44,7 @@ What the two services send and do, from their docs, read on 2026-11-27:
   - from the command line
   - by unpacking the bundle in the server's `plugins` directory, which the docs call "no longer recommended"
 
-  A server with `RequirePluginSignature` on installs only Marketplace plugins.
+  A server with `RequirePluginSignature` on installs plugins only through a Marketplace, and turns uploads off. It checks each plugin against Mattermost's key and any keys its admin adds in `config.json` (`SignaturePublicKeyFiles`), which the docs describe for pointing a server at a different Marketplace.
 - **Mattermost link previews.** Mattermost's server fetches a preview of the first link in a post by default, and admins can turn this off ([site configuration](https://docs.mattermost.com/administration-guide/configure/site-configuration-settings.html)). The docs don't say whether it does so for an ephemeral post, and name no way for one post to turn it off.
 - **Mattermost ephemeral posts.** Whether Mattermost stores them is not documented.
 
@@ -108,8 +108,8 @@ Option 1 in each of the first four tables. For the install, option 1 if a live t
 - **Where.** `POST https://fidant.se/slack/command`.
   - After the cutover, the edge function answers it on a new `FidantPages` behaviour for `/slack/command`, the only one that allows POST. The function returns the reply itself, so the request never reaches the origin.
   - Until the cutover, and on the local stack, `apps/server` answers the same path with the same bytes. It reads no body: it answers at once and closes the connection, so it needs no size cap, and it has no rate limit, like every page.
-  - FID-335 ships both, so the command works on whichever serves fidant.se, before and after the cutover. It checks on the distribution's CloudFront name, before the cutover, that the function answers a POST itself.
-  - A test fails when the two replies differ.
+  - FID-335 ships both, so the command works on whichever serves fidant.se, before and after the cutover. Before the cutover it checks that the function answers a POST itself, by sending one to the distribution as fidant.se (`curl --connect-to`), because the function answers any other host with a redirect.
+  - A test fails when the two replies differ, and when the reply stops being `ephemeral`, gains blocks or buttons, or links with a query string.
   - Neither writes a log line for it.
 - **No signature check.** The check protects nothing while all four of these hold:
   - the reply is fixed
@@ -119,7 +119,7 @@ Option 1 in each of the first four tables. For the install, option 1 if a live t
 
   A change that breaks any of them first adds the check, with the signing secret in the signaling container's secret store, and moves the endpoint there.
 - **The manifest.** The Slack app's manifest is committed to the repository. It asks for the `commands` scope only and declares the two commands. FID-337 adds the OAuth redirect URL. A test fails when the manifest gains anything on the list below.
-- **What the app never has.** Each of these would send our server more than the command. Items 2 and 4 would send it a link's key, and item 1 might:
+- **What the app never has.** Each of these would send our server more than the command, show the command to others, or need a token. Items 2 and 4 would send our server a link's key, and item 1 might:
   1. unfurl domains, which bring `link_shared`
   2. a message shortcut
   3. a bot user, or any message the app posts besides the ephemeral reply
@@ -129,7 +129,7 @@ Option 1 in each of the first four tables. For the install, option 1 if a live t
   7. Block Kit buttons, or an interactivity request URL
   8. a global shortcut, which can show nothing without a token
 - **The install.** A new public page, `/slack` (`/sv/slack`), explains the command, says what Slack and we see in the words of `/privacy`, and has an "Add to Slack" link for the `commands` scope. The OAuth redirect URL is `https://fidant.se/slack/installed`. Public distribution is on, with no Marketplace listing. FID-337 tests, with a second workspace, whether the install completes when the redirect page never exchanges the code.
-  - If it completes, `/slack/installed` is a static page that says the app is installed, and we hold no client secret and no token. Slack's redirect carries `code` and `state` in the query, which reach the CDN and go unused.
+  - If it completes, `/slack/installed` is a static page that says the app is installed, and we hold no client secret and no token. Slack's redirect carries `code` and `state` in the query, which reach the CDN (the box's Caddy and `apps/server` until the cutover) and go unused. A browser that the pre-paint script sends on to the Swedish page sends them a second time, to that address.
   - If it doesn't, the CDN passes `/slack/installed` on to the signaling container, as it does `/relay-secret/<id>`. The container exchanges the code using the client secret from its secret store, and drops the returned token without logging or storing it. This waits for FID-263.
 
 ### The page opened from a chat
@@ -138,7 +138,13 @@ Option 1 in each of the first four tables. For the install, option 1 if a live t
 - The router reads the part after `#` on the send page too, and the send page looks only for `#chat` there. The send page's own address never holds a key. "The link" in `docs/how-fidant-works.md` says so.
 - With the marker, the send page in secret mode:
   - makes "Create link with safety number" the first button, as it is for email in 0024
-  - makes each card's copy button copy the link together with one fixed line, in the page's language, that tells the recipient to open it now: it works once, and only while the sender's Fidant tab is open. For example: "Open this while I'm online: it works once, and only while my Fidant tab is open." The line names nobody, because whatever is copied stays in the conversation.
+  - makes each card's copy button, and its share button where the browser has one, pass on the link together with one fixed line, in the page's language, that tells the recipient to open it now: it works once, and only while the sender's Fidant tab is open. For example: "Open this while I'm online: it works once, and only while my Fidant tab is open." The line names nobody, because whatever is copied stays in the conversation.
+- 0024 is amended, not superseded, and stays Accepted. Read it with this replacement from FID-336's merge:
+
+| Where 0024 says                                                                                                                                                                                          | Read                                                                                                                        |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| "Who turns it on": "The first button, which Enter presses, makes a plain link the sender passes on themselves and a link with a safety number for a recipient Fidant emails: the same defaults as 0017." | The same, except on the send page opened with `#chat`, where the first button makes a link with a safety number either way. |
+
 - Without the marker, nothing changes. The line about keeping the tab open and the offer of the delivery notification show for every sender already.
 - Swedish and English, as every page.
 
@@ -149,10 +155,10 @@ Option 1 in each of the first four tables. For the install, option 1 if a live t
 - The pull request that ships the endpoint (FID-335) names the exception in both invariants, adds 0030 to the records that `AGENTS.md` says amend 0001, and qualifies every absolute the exception makes untrue, as `AGENTS.md` requires.
 - 0001 is amended, not superseded, and stays Accepted. Read it with these replacements from that pull request's merge:
 
-| Where 0001 says                                                                                | Read                                                                                                                                                                                                                                                                                                               |
-| ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Class C: "the plaintext bytes. Allowed nowhere outside the sender's and recipients' browsers." | The same, except text a person types after the Slack command, which may be a secret by mistake. It may appear only in Slack's request to `/slack/command`, in memory at our CDN, and, until the cutover and on the local stack, in memory in Caddy and `apps/server`. Never in a log, a response or anywhere else. |
-| Class K: "Allowed nowhere."                                                                    | The same, except a link a person pastes after the Slack command, key included. It may appear only where the row above allows typed text.                                                                                                                                                                           |
+| Where 0001 says                                                                                                                              | Read                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| -------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Class C: "the plaintext bytes. Allowed nowhere outside the sender's and recipients' browsers."                                               | The same, except text a person types after `/fidant` or `/secret` in Slack, which may be a secret by mistake. It may appear only in Slack's request to `/slack/command`, in memory at our CDN, in memory in Caddy and `apps/server` until the cutover, and in memory in `apps/server` on the local stack. Never in a log, a response or anywhere else. What Slack itself keeps is outside these lists (see Consequences). |
+| Class K: "the fragment secret, the full key, every derived key (signaling key, file and chunk keys), and the receipt salt. Allowed nowhere." | As 0012 reads it, and also except the fragment secret of a link a person pastes after `/fidant` or `/secret` in Slack. It may appear only where the row above allows typed text. Derived keys, the receipt salt and the ICE pwd stay allowed nowhere.                                                                                                                                                                     |
 
 - An end-to-end test on the local stack posts a request shaped like Slack's, with a canary secret and a link's key as the typed text, and checks that neither appears in any server log or response.
 
@@ -160,7 +166,7 @@ Option 1 in each of the first four tables. For the install, option 1 if a live t
 
 - **A server plugin.** It lives in this repository and is built after Slack works.
 - **What it does.** It registers `/fidant` and `/secret`, and answers inside the Mattermost server with an ephemeral reply that carries the same text and link as Slack's, in Mattermost's Markdown.
-- **What it never does.** It makes no network request, has no settings, reads no post, and implements no hook besides activating and answering its command. A hook that sees posts as they are written would see every link's key.
+- **What it never does.** It makes no network request, has no settings, reads neither the text typed after its command nor any post, writes no log line about a command, and implements no hook besides activating and answering its command. A hook that sees posts as they are written would see every link's key.
 - **How it ships.** A file attached to a GitHub release, which an admin installs by upload, from its URL or from the command line. A Marketplace listing is a later decision.
 - **Its link's preview.** The plugin issue tests, on a Mattermost server with link previews on, whether the server fetches a preview of the link in the plugin's ephemeral reply. If it does, each use shows our CDN the customer server's address and the time. The issue then looks for a reply that Mattermost won't preview, or this record is amended to say so.
 - **No custom slash command.** We don't offer or document setting up a custom slash command against fidant.se.
@@ -173,7 +179,7 @@ Option 1 in each of the first four tables. For the install, option 1 if a live t
   - the link the sender pastes, key included, which stays in the conversation after delivery, when it no longer works
 
   Slack's preview crawler requests `/r/<link ID>`, which never includes the part after `#`. The safety number catches someone who opens the link before the recipient does.
-- **What we get from Slack.** Each command reaches our CDN from Slack's servers, not from the user's browser, with the fields under Context: the IDs and names of the user, channel, team and enterprise, and the typed text. P-FID-7 says "IDs" and now says "IDs and names".
+- **What we get from Slack.** Each command reaches our CDN from Slack's servers, not from the user's browser, with the fields under Context: the IDs and names of the user, channel, team and enterprise, the typed text, `command`, `response_url` (a URL that posts a reply to the user), `trigger_id`, `api_app_id`, and any others Slack sends. P-FID-7 said "IDs" and now says "IDs and names".
   - The edge function answers without the body reaching it, and nothing logs it.
   - Until the cutover, the box's Caddy and `apps/server` hold the request in memory and log nothing.
 
@@ -184,6 +190,8 @@ Option 1 in each of the first four tables. For the install, option 1 if a live t
   - `docs/how-fidant-works.md` gains a section on starting from Slack or Mattermost, and its paragraph in "The link" on where the router reads the part after `#` gains the send page.
   - "Where traces are kept" gains rows for Slack's servers, for our CDN (and the box until the cutover) receiving a command, and for the customer's Mattermost server.
   - `/how/traces`, `/privacy` and the `technical` text in `apps/web/src/i18n/en.ts` and `sv.ts` follow, each in the pull request that ships the part it describes.
+  - So do the absolutes the exception makes untrue, in FID-335: the first lines of `AGENTS.md` and `docs/how-fidant-works.md`, the landing page's "Our server never gets", and the lines on `/how` and `/terms` that say we never see the key unless we email the link, in English and Swedish.
+  - 0023 says that methods other than GET and HEAD get CloudFront's 403. FID-335 changes that line for `/slack/command` when it adds the behaviour.
 
   No transfer path, signaling message or log event is added, so `packages/protocol/src/transfer-paths.test.ts` needs no change.
 - **Live only in a chat that often isn't.** Slack and Mattermost conversations are often answered hours later. A link opened after the sender closed the tab fails, and the recipient's first sight of Fidant is a link that didn't work. The copied line says so before the recipient clicks, and the delivery notification tells the sender when to close the tab. Storing a secret for later is outside this project (decided 2026-11-26).
@@ -193,7 +201,7 @@ Option 1 in each of the first four tables. For the install, option 1 if a live t
   - FID-335 builds the endpoint: a link instead of a button, the edge function and the server route, no log event, the manifest with its test, the canary test and the `AGENTS.md` exception.
   - FID-336 builds the `#chat` marker on the send page.
   - FID-337 builds `/slack`, `/slack/installed` and the install, and runs the live test.
-  - A new issue builds the Mattermost plugin.
-- **Approval from the other maintainer.** The `FidantPages` behaviour, `site.js` (with `/slack` and `/sv/slack` added to `PAGES`) and `AGENTS.md` are sensitive paths, so the pull requests that change them need it.
-- **The plugin's cost.** The first Go code in the repository, with its own build and tests in CI and a release file per version. A server that requires signed plugins can't install it until a Marketplace listing exists. One with uploads off needs them turned on in `config.json`, or the bundle unpacked by hand.
+  - FID-384 builds the Mattermost plugin.
+- **Approval from the other maintainer.** The `FidantPages` behaviour, `site.js` (with `/slack`, `/slack/installed` and their Swedish addresses added to `PAGES`) and `AGENTS.md` are sensitive paths, so the pull requests that change them need it.
+- **The plugin's cost.** The first Go code in the repository, with its own build and tests in CI and a release file per version. A server that requires signed plugins can't install it until a Marketplace carries it: Mattermost's, or one its admin points the server at and trusts the key of. Signing our releases is not decided here. One with uploads off needs them turned on in `config.json`, or the bundle unpacked by hand.
 - **Not decided here.** A Marketplace listing for either service, and files from Slack (FID-159).
