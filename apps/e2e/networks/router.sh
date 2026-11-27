@@ -1,6 +1,6 @@
 #!/bin/sh
 # NAT router between a site network (10.89.x.0/24) and the public network (198.51.100.0/24).
-# Usage: router.sh init | cone | symmetric | udp-blocked | tcp-443 | lossy
+# Usage: router.sh init | cone | symmetric | udp-blocked | tcp-443 | lossy | capture <file>
 set -eu
 
 # Docker does not keep eth0/eth1 in a stable order, so find each side by its subnet.
@@ -70,8 +70,13 @@ case "${1:-}" in
     tc qdisc add dev "$wan" root netem delay 80ms 20ms loss 2% rate 4mbit
     tc qdisc add dev "$lan" root netem delay 80ms 20ms loss 2% rate 4mbit
     ;;
+  capture)
+    # Every packet that crosses the site's edge, for a test that checks what left the site.
+    # --immediate-mode: without it libpcap holds up to a second of packets, which a stop drops.
+    exec tcpdump -i "$wan" --immediate-mode -U -w "$2"
+    ;;
   *)
-    echo "usage: router.sh init|cone|symmetric|udp-blocked|tcp-443|lossy" >&2
+    echo "usage: router.sh init|cone|symmetric|udp-blocked|tcp-443|lossy|capture <file>" >&2
     exit 2
     ;;
 esac

@@ -99,6 +99,43 @@ export async function sendToRelay(payload: Uint8Array): Promise<void> {
   await sending;
 }
 
+const edgePcap = "/tmp/edge.pcap";
+
+/**
+ * Starts capturing every packet on router-a's outside interface, site A's edge. The returned
+ * function stops the capture and prints the packets that match a tcpdump filter, one per line.
+ */
+export async function captureSiteA(): Promise<(filter: string) => Promise<string[]>> {
+  const inRouter = (...command: string[]) =>
+    run("docker", [...compose, "exec", "-T", "router-a", ...command]);
+  // A failed test leaves its capture running.
+  await inRouter("sh", "-c", `pkill tcpdump; rm -f ${edgePcap}`);
+  await run("docker", [
+    ...compose,
+    "exec",
+    "-d",
+    "router-a",
+    "/net/router.sh",
+    "capture",
+    edgePcap,
+  ]);
+  // tcpdump writes the file's header once it is capturing.
+  await inRouter(
+    "sh",
+    "-c",
+    `for i in $(seq 100); do test -s ${edgePcap} && exit 0; sleep 0.1; done; exit 1`,
+  );
+  return async (filter) => {
+    await inRouter(
+      "sh",
+      "-c",
+      "pkill -INT tcpdump; while pgrep tcpdump >/dev/null; do sleep 0.1; done",
+    );
+    const { stdout } = await inRouter("tcpdump", "-r", edgePcap, "-nn", filter);
+    return stdout.split("\n").filter(Boolean);
+  };
+}
+
 async function inService(service: "box" | "relay" | "signal", command: string[]): Promise<string> {
   const { stdout } = await run("docker", [...compose, "exec", "-T", service, ...command], {
     maxBuffer: 64 * 1024 * 1024,

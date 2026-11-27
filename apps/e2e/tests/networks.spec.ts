@@ -35,6 +35,7 @@ import {
   albIp,
   applyRelaySecret,
   boxOrigin,
+  captureSiteA,
   clientAddresses,
   inBox,
   inRelay,
@@ -52,6 +53,7 @@ import {
   signalClients,
   signalHost,
   signalLogs,
+  turnIp,
 } from "../src/stack/networks.ts";
 
 // Transfers between browsers in Docker networks behind NAT routers (networks/compose.yaml).
@@ -79,6 +81,8 @@ interface Scenario {
   progress?: true;
   /** Share a secret from /secret instead of a file. Not with `progress`. */
   secret?: true;
+  /** Both browsers are in site A: check that only signaling and STUN crossed its edge. */
+  staysInSite?: true;
 }
 
 const scenarios: Scenario[] = [
@@ -88,6 +92,7 @@ const scenarios: Scenario[] = [
     recipient: "a2",
     routerB: "cone",
     path: /^host\/(host|prflx) host\/(host|prflx)$/,
+    staysInSite: true,
   },
   {
     title: "home routers (cone)",
@@ -335,6 +340,7 @@ for (const row of scenarios) {
       // ponytail: 512 KiB: SCTP over this link moves about 50 KB/s, and it still shows 10 steps.
       const size = row.progress ? 512 * 1024 + 1 : 300_001;
       const name = makeName(leaks, canary, "Anna");
+      const edge = row.staysInSite ? await captureSiteA() : undefined;
 
       const sender = await actor("sender");
       await recordPeerConnections(sender.context);
@@ -400,6 +406,16 @@ for (const row of scenarios) {
       }
       await watchIcePasswords(leaks, "sender", sender.page);
       await watchIcePasswords(leaks, "recipient", recipient.page);
+
+      if (edge) {
+        // TLS to the server, and STUN to coturn: a UDP packet whose payload carries STUN's magic
+        // cookie at byte 4. DTLS, which would carry the file, never does.
+        const signaling = `tcp and host ${serverIp} and port 443`;
+        const stun = `udp and host ${turnIp} and port 3478 and udp[12:4] = 0x2112a442`;
+        expect(await edge(signaling), "signaling crossed the edge").not.toEqual([]);
+        expect(await edge(stun), "STUN crossed the edge").not.toEqual([]);
+        expect(await edge(`not arp and not (${signaling}) and not (${stun})`)).toEqual([]);
+      }
 
       await expectSignaling(observed, baseURL);
     });
