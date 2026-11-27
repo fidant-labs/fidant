@@ -13,7 +13,9 @@ import {
   markedVersion,
   type PeerCloseReason,
   type PeerOpenInfo,
+  type PeerOptions,
   parseSignalPayload,
+  RECOVERY_TIMEOUT_MS,
   RELAY_FALLBACK_MS,
   UNMARKED_VERSION,
   versionMarker,
@@ -218,6 +220,7 @@ function resetFake(...fingerprints: string[]) {
   FakePeerConnection.readBack = undefined;
   FakePeerConnection.localFingerprint = undefined;
   FakePeerConnection.throwOnConstruct = false;
+  FakePeerConnection.stats = new Map();
 }
 
 function fakeSdp(...lines: string[]): string {
@@ -237,6 +240,8 @@ class FakePeerConnection {
   static readBack: ((sdp: string) => string) | undefined;
   static localFingerprint: string | undefined;
   static throwOnConstruct = false;
+  /** What getStats returns. */
+  static stats = new Map<string, object>();
   static async generateCertificate(): Promise<FakeCert> {
     const value = FakePeerConnection.fingerprints.shift() ?? SENDER_FP;
     return { getFingerprints: () => [{ algorithm: "sha-256", value: value.toLowerCase() }] };
@@ -252,6 +257,7 @@ class FakePeerConnection {
   localDescription: { sdp: string } | null = null;
   remoteDescription: { type: string; sdp: string } | null = null;
   connectionState = "new";
+  signalingState = "stable";
   sctp = null;
   channel: { onopen: (() => void) | null } | undefined;
   onicecandidate = null;
@@ -283,12 +289,16 @@ class FakePeerConnection {
     this.restarts++;
   }
   async setLocalDescription() {
+    // An answer if an offer waits for one, else an offer, as WebRTC 1.0 section 4.4.2 says.
+    this.signalingState =
+      this.signalingState === "have-remote-offer" ? "stable" : "have-local-offer";
     const [fp] = this.certificate.getFingerprints();
     this.localDescription = {
       sdp: fakeSdp(`a=fingerprint:sha-256 ${FakePeerConnection.localFingerprint ?? fp?.value}`),
     };
   }
   async setRemoteDescription(description: { type: string; sdp: string }) {
+    this.signalingState = description.type === "offer" ? "have-remote-offer" : "stable";
     const read = FakePeerConnection.readBack;
     this.remoteDescription = read ? { ...description, sdp: read(description.sdp) } : description;
   }
@@ -296,7 +306,7 @@ class FakePeerConnection {
     this.added.push(candidate);
   }
   async getStats() {
-    return new Map();
+    return FakePeerConnection.stats;
   }
   close() {
     this.connectionState = "closed";
@@ -314,6 +324,7 @@ async function harness(
   iceServers: RTCIceServer[] = [],
   wait = true,
   marked = wait,
+  callbacks: Pick<PeerOptions, "onStalled" | "onPath"> = {},
 ) {
   const { linkId, secret } = createLink("https://localhost");
   const key = await deriveSignalKey(secret, linkId);
@@ -335,6 +346,7 @@ async function harness(
     signalKey: key,
     iceServers,
     ...(check === undefined ? {} : { check }),
+    ...callbacks,
     onOpen: (_channel: RTCDataChannel, info: PeerOpenInfo) => opens.push(info),
     onClose: (reason: PeerCloseReason, detail?: string) => closes.push({ reason, detail }),
   };
@@ -750,11 +762,12 @@ test("each side refuses the restart signal meant for the other", async (t) => {
 /** Brings the path up as `how` and returns the function that takes it down again. */
 function pathUp(pc: FakePeerConnection, how: "open" | "connected" | "completed") {
   if (how === "open") {
-    const channel = pc.channel ?? { label: "fidant", ordered: true, readyState: "", close() {} };
     if (!pc.channel) {
-      (pc.ondatachannel as unknown as (e: { channel: object }) => void)({ channel });
+      // The recipient's channel arrives through ondatachannel.
+      pc.channel = Object.assign({ onopen: null }, { label: "fidant", ordered: true, close() {} });
+      (pc.ondatachannel as unknown as (e: { channel: object }) => void)({ channel: pc.channel });
     }
-    Object.assign(channel, { readyState: "open" });
+    const channel = Object.assign(pc.channel, { readyState: "open" });
     return () => Object.assign(channel, { readyState: "closed" });
   }
   pc.iceConnectionState = how;
@@ -1022,5 +1035,437 @@ test("a recipient makes no answer for a sender of another version, once its mark
     assert.equal(recipient.peer.answered, false);
     assert.equal(lastPc().remoteDescription, null);
     assert.deepEqual(await recipient.signals(1), [await recipientCommit()]);
+  }
+});
+
+const freshServers: RTCIceServer[] = [
+  { urls: [stun, "turn:turn.example:3478?transport=udp"], username: "u2", credential: "c2" },
+];
+
+/** Opens the data channel, as the browser does once the connection is up. */
+function openChannel(pc: FakePeerConnection) {
+  pathUp(pc, "open");
+  pc.channel?.onopen?.();
+}
+
+function setState(pc: FakePeerConnection, state: string) {
+  pc.connectionState = state;
+  (pc.onconnectionstatechange as unknown as () => void)();
+}
+
+type Harness = Awaited<ReturnType<typeof harness>>;
+
+/** Calls rejoined and waits until the peer has handled it, behind a candidate it drops. */
+async function rejoin(h: Harness, servers: RTCIceServer[] = freshServers) {
+  h.peer.rejoined(servers);
+  await h.relay(ice("other"));
+}
+
+/** An open sender, or an open recipient that counts its onStalled calls and collects its onPath values. */
+async function openPeer(side: "s" | "r", servers = relayServers) {
+  resetFake(side === "s" ? SENDER_FP : RECIPIENT_FP);
+  const seen = { stalled: 0, paths: [] as string[] };
+  const h = await harness(side, undefined, servers, true, true, {
+    ...(side === "r" ? { onStalled: () => seen.stalled++ } : {}),
+    onPath: (path) => seen.paths.push(path),
+  });
+  if (side === "s") {
+    await h.relay({ kind: "commit", hash: await commitFingerprint(RECIPIENT_FP) });
+    await h.relay({ kind: "answer", sdp: sdpWith(RECIPIENT_FP, "r1") });
+  } else {
+    await h.relay({ kind: "offer", sdp: sdpWith(SENDER_FP, "s1"), check: false });
+  }
+  const pc = lastPc();
+  setState(pc, "connected");
+  openChannel(pc);
+  return { ...h, pc, seen };
+}
+
+test("a rejoined sender restarts ICE with the new STUN URLs, each time it is asked", async (t) => {
+  // A rejoined starts the deadline.
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const sender = await openPeer("s");
+  for (const round of [1, 2, 3]) {
+    await rejoin(sender);
+    assert.equal(sender.pc.restarts, round);
+    assert.deepEqual(sender.pc.configured.at(-1), [{ urls: [stun] }]);
+    const sent = (await sender.signals(1 + round)) as Array<{ kind: string; sdp: string }>;
+    assert.equal(sent.at(-1)?.kind, "restart-offer");
+    assert.match(sent.at(-1)?.sdp ?? "", new RegExp(SENDER_FP.toLowerCase()));
+    const answer = sdpWith(RECIPIENT_FP, `r${round + 1}`);
+    await sender.relay({ kind: "restart-answer", sdp: answer });
+    assert.equal(sender.pc.remoteDescription?.sdp, answer);
+    // A second answer to the same offer finds no offer waiting.
+    await sender.relay({ kind: "restart-answer", sdp: sdpWith(RECIPIENT_FP, "replay") });
+    assert.equal(sender.pc.remoteDescription?.sdp, answer);
+  }
+  assert.deepEqual(sender.closes, []);
+});
+
+test("rejoined does nothing before the channel opened", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const sender = await answeredSender(stunServers);
+  await rejoin(sender);
+  assert.equal(sender.pc.restarts, 0);
+  assert.deepEqual(sender.pc.configured, []);
+  assert.deepEqual(await kinds(sender, 1), ["offer"]);
+  // No deadline runs, and the fallback's rules still hold.
+  setState(sender.pc, "failed");
+  assert.deepEqual(sender.closes, [{ reason: "connection-failed", detail: undefined }]);
+
+  const early = await answeredSender(stunServers);
+  await rejoin(early);
+  await early.relay({ kind: "restart-answer", sdp: sdpWith(RECIPIENT_FP, "r2") });
+  assert.deepEqual(early.closes, [{ reason: "bad-signal", detail: "unexpected restart-answer" }]);
+});
+
+test("a recovery uses TURN only on a connection that had added the relay", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  for (const answerFirst of [true, false]) {
+    // The fallback's restart-offer is answered, or crosses the channel opening and is left unanswered.
+    const sender = await restartedSender(t);
+    if (answerFirst) {
+      await sender.relay({ kind: "restart-answer", sdp: sdpWith(RECIPIENT_FP, "r2") });
+    }
+    setState(sender.pc, "connected");
+    openChannel(sender.pc);
+    if (!answerFirst) {
+      await sender.relay({ kind: "restart-answer", sdp: sdpWith(RECIPIENT_FP, "late") });
+      assert.equal(sender.pc.signalingState, "have-local-offer");
+    }
+    await rejoin(sender);
+    assert.deepEqual(sender.pc.configured, [relayServers, freshServers], String(answerFirst));
+    assert.deepEqual(await kinds(sender, 3), ["offer", "restart-offer", "restart-offer"]);
+    await sender.relay({ kind: "restart-answer", sdp: sdpWith(RECIPIENT_FP, "r3") });
+    assert.equal(sender.pc.remoteDescription?.sdp, sdpWith(RECIPIENT_FP, "r3"));
+    assert.deepEqual(sender.closes, [], String(answerFirst));
+  }
+
+  const recipient = await answeredRecipient();
+  await recipient.relay({ kind: "restart-offer", sdp: sdpWith(SENDER_FP, "s2") });
+  openChannel(recipient.pc);
+  setState(recipient.pc, "disconnected");
+  await rejoin(recipient);
+  // Without onStalled the recipient never asked, so its servers stay.
+  assert.deepEqual(recipient.pc.configured, [relayServers]);
+});
+
+test("a rejoined sender whose browser refuses the new servers restarts with the old ones", async (t) => {
+  // A rejoined starts the deadline.
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const sender = await openPeer("s");
+  sender.pc.refuseConfiguration = true;
+  await rejoin(sender);
+  assert.equal(sender.pc.restarts, 1);
+  assert.deepEqual(await kinds(sender, 2), ["offer", "restart-offer"]);
+  assert.deepEqual(sender.closes, []);
+});
+
+test("a rejoined sender refuses a restart-answer with another certificate", async (t) => {
+  // A rejoined starts the deadline.
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const sender = await openPeer("s");
+  await rejoin(sender);
+  await sender.relay({ kind: "restart-answer", sdp: sdpWith(OTHER_FP, "r2") });
+  assert.deepEqual(sender.closes, [
+    { reason: "bad-signal", detail: "the restart names another certificate" },
+  ]);
+  assert.equal(sender.pc.remoteDescription?.sdp, sdpWith(RECIPIENT_FP, "r1"));
+});
+
+test("the recipient asks on each drop after its channel opened, and the sender never", async () => {
+  resetFake(RECIPIENT_FP);
+  let stalled = 0;
+  const before = await harness("r", undefined, [], true, true, { onStalled: () => stalled++ });
+  await before.relay({ kind: "offer", sdp: sdpWith(SENDER_FP, "s1"), check: false });
+  setState(lastPc(), "disconnected");
+  assert.equal(stalled, 0);
+
+  const recipient = await openPeer("r");
+  setState(recipient.pc, "disconnected");
+  assert.equal(recipient.seen.stalled, 1);
+  setState(recipient.pc, "connected");
+  setState(recipient.pc, "disconnected");
+  assert.equal(recipient.seen.stalled, 2);
+  assert.deepEqual(recipient.closes, []);
+
+  resetFake(SENDER_FP);
+  const sender = await harness("s", undefined, [], true, true, { onStalled: () => stalled++ });
+  await sender.relay({ kind: "commit", hash: await commitFingerprint(RECIPIENT_FP) });
+  await sender.relay({ kind: "answer", sdp: sdpWith(RECIPIENT_FP, "r1") });
+  openChannel(lastPc());
+  setState(lastPc(), "disconnected");
+  assert.equal(stalled, 0);
+});
+
+test("a recipient that has asked answers every restart-offer, with the new STUN URLs only", async (t) => {
+  // A rejoined starts the deadline.
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const recipient = await openPeer("r");
+  // Before it asks, a restart-offer and a rejoined change nothing.
+  await recipient.relay({ kind: "restart-offer", sdp: sdpWith(SENDER_FP, "s2") });
+  await rejoin(recipient);
+  await recipient.relay({ kind: "restart-offer", sdp: sdpWith(SENDER_FP, "s2") });
+  assert.equal(recipient.pc.remoteDescription?.sdp, sdpWith(SENDER_FP, "s1"));
+  assert.deepEqual(recipient.pc.configured, []);
+  assert.deepEqual(await kinds(recipient, 2), ["commit", "answer"]);
+
+  setState(recipient.pc, "disconnected");
+  await rejoin(recipient);
+  assert.deepEqual(recipient.pc.configured, [[{ urls: [stun] }]]);
+  for (const round of [1, 2, 3]) {
+    // Its ICE state doesn't matter once it has asked.
+    recipient.pc.iceConnectionState = round === 2 ? "connected" : "disconnected";
+    const offer = sdpWith(SENDER_FP, `s${round + 1}`);
+    await recipient.relay({ kind: "restart-offer", sdp: offer });
+    assert.equal(recipient.pc.remoteDescription?.sdp, offer);
+    const sent = await kinds(recipient, 2 + round);
+    assert.equal(sent.length, 2 + round);
+    assert.equal(sent.at(-1), "restart-answer");
+  }
+  assert.deepEqual(recipient.pc.configured, [[{ urls: [stun] }]]);
+  assert.equal(recipient.pc.restarts, 0);
+  assert.deepEqual(recipient.closes, []);
+
+  await recipient.relay({ kind: "restart-offer", sdp: sdpWith(OTHER_FP, "s9") });
+  assert.deepEqual(recipient.closes, [
+    { reason: "bad-signal", detail: "the restart names another certificate" },
+  ]);
+  assert.equal(recipient.pc.remoteDescription?.sdp, sdpWith(SENDER_FP, "s4"));
+});
+
+test("a recipient that took the fallback's restart-offer still answers a recovery's", async (t) => {
+  // A rejoined starts the deadline.
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  resetFake(RECIPIENT_FP);
+  let stalled = 0;
+  const recipient = await harness("r", undefined, relayServers, true, true, {
+    onStalled: () => stalled++,
+  });
+  await recipient.relay({ kind: "offer", sdp: sdpWith(SENDER_FP, "s1"), check: false });
+  await recipient.relay({ kind: "restart-offer", sdp: sdpWith(SENDER_FP, "s2") });
+  const pc = lastPc();
+  setState(pc, "connected");
+  openChannel(pc);
+  setState(pc, "failed");
+  assert.equal(stalled, 0, "failed with no deadline closes without asking");
+  assert.deepEqual(recipient.closes, [{ reason: "connection-failed", detail: undefined }]);
+
+  resetFake(RECIPIENT_FP);
+  const again = await harness("r", undefined, relayServers, true, true, {
+    onStalled: () => stalled++,
+  });
+  await again.relay({ kind: "offer", sdp: sdpWith(SENDER_FP, "s1"), check: false });
+  await again.relay({ kind: "restart-offer", sdp: sdpWith(SENDER_FP, "s2") });
+  const next = lastPc();
+  setState(next, "connected");
+  openChannel(next);
+  setState(next, "disconnected");
+  assert.equal(stalled, 1);
+  await rejoin(again);
+  // This connection had added the relay, so it takes the new TURN servers.
+  assert.deepEqual(next.configured, [relayServers, freshServers]);
+  await again.relay({ kind: "restart-offer", sdp: sdpWith(SENDER_FP, "s3") });
+  assert.equal(next.remoteDescription?.sdp, sdpWith(SENDER_FP, "s3"));
+  assert.deepEqual(next.configured, [relayServers, freshServers]);
+  assert.deepEqual(again.closes, []);
+});
+
+test("a second rejoined before the answer makes no second offer, and the answer is applied", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const sender = await openPeer("s");
+  await rejoin(sender);
+  await rejoin(sender);
+  // One restart, one offer: a second would change the credentials the answer was made for.
+  assert.equal(sender.pc.restarts, 1);
+  assert.deepEqual(await kinds(sender, 2), ["offer", "restart-offer"]);
+  const answer = sdpWith(RECIPIENT_FP, "r2");
+  await sender.relay({ kind: "restart-answer", sdp: answer });
+  assert.equal(sender.pc.signalingState, "stable");
+  assert.equal(sender.pc.remoteDescription?.sdp, answer);
+  // The next drop gets its own offer.
+  setState(sender.pc, "connected");
+  await rejoin(sender);
+  assert.equal(sender.pc.restarts, 2);
+  assert.deepEqual(sender.closes, []);
+});
+
+test("connected while the recovery's offer waits keeps it waiting, so a second drop makes no second offer", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const sender = await openPeer("s");
+  setState(sender.pc, "disconnected");
+  await rejoin(sender);
+  assert.equal(sender.pc.signalingState, "have-local-offer");
+  // The old route comes back before the answer, then drops again.
+  setState(sender.pc, "connected");
+  setState(sender.pc, "disconnected");
+  await rejoin(sender);
+  assert.equal(sender.pc.restarts, 1);
+  assert.deepEqual(await kinds(sender, 2), ["offer", "restart-offer"]);
+  const answer = sdpWith(RECIPIENT_FP, "r2");
+  await sender.relay({ kind: "restart-answer", sdp: answer });
+  assert.equal(sender.pc.remoteDescription?.sdp, answer);
+  assert.equal(sender.pc.signalingState, "stable");
+  assert.deepEqual(sender.closes, []);
+
+  // The same while the browser is still making the offer, before it leaves "stable".
+  const early = await openPeer("s");
+  const make = early.pc.setLocalDescription.bind(early.pc);
+  early.pc.setLocalDescription = async () => {
+    setState(early.pc, "connected");
+    await make();
+  };
+  setState(early.pc, "disconnected");
+  await rejoin(early);
+  setState(early.pc, "disconnected");
+  await rejoin(early);
+  assert.equal(early.pc.restarts, 1);
+});
+
+test("a deadline started while connected starts again in full when the connection drops", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  for (const side of ["s", "r"] as const) {
+    const h = await openPeer(side);
+    // The recipient's drop healed before the joined came; the sender never noticed one.
+    setState(h.pc, "disconnected");
+    setState(h.pc, "connected");
+    await rejoin(h);
+    t.mock.timers.tick(RECOVERY_TIMEOUT_MS / 2);
+    // A real drop, inside the first deadline.
+    setState(h.pc, "disconnected");
+    await rejoin(h);
+    setState(h.pc, "failed");
+    t.mock.timers.tick(RECOVERY_TIMEOUT_MS - 1);
+    assert.deepEqual(h.closes, [], side);
+    t.mock.timers.tick(1);
+    assert.deepEqual(h.closes, [{ reason: "connection-failed", detail: undefined }], side);
+  }
+});
+
+test("a path read that a newer one overtook reports nothing stale", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  resetFake(SENDER_FP);
+  const paths: string[] = [];
+  const h = await harness("s", undefined, relayServers, true, true, {
+    onPath: (path) => paths.push(path),
+  });
+  await h.relay({ kind: "commit", hash: await commitFingerprint(RECIPIENT_FP) });
+  await h.relay({ kind: "answer", sdp: sdpWith(RECIPIENT_FP, "r1") });
+  const pc = lastPc();
+  const settle = () => new Promise((resolve) => realSetTimeout(resolve, 10));
+  // The open's read and a connected's read both see "stun" and wait to read again.
+  FakePeerConnection.stats = statsWith("srflx", "host");
+  setState(pc, "connected");
+  openChannel(pc);
+  setState(pc, "disconnected");
+  setState(pc, "connected");
+  await settle();
+  // A newer connected reads "relay" at once.
+  FakePeerConnection.stats = statsWith("relay", "host");
+  setState(pc, "disconnected");
+  setState(pc, "connected");
+  await settle();
+  assert.deepEqual(paths, ["relay"]);
+  // The older reads now read "direct", too late.
+  FakePeerConnection.stats = new Map();
+  t.mock.timers.tick(1000);
+  await settle();
+  assert.deepEqual(paths, ["relay"]);
+  assert.equal(await h.opens[0]?.path, "relay");
+});
+
+test("both sides close with connection-failed 30 s after a rejoined that never connects", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  for (const side of ["s", "r"] as const) {
+    const h = await openPeer(side);
+    setState(h.pc, "disconnected");
+    await rejoin(h);
+    // The browser's own verdict doesn't end it while the deadline runs, and the recipient asks again.
+    setState(h.pc, "failed");
+    assert.equal(h.seen.stalled, side === "r" ? 2 : 0);
+    t.mock.timers.tick(RECOVERY_TIMEOUT_MS / 2);
+    // A second rejoined in the same drop doesn't move the deadline.
+    await rejoin(h);
+    t.mock.timers.tick(RECOVERY_TIMEOUT_MS / 2 - 1);
+    assert.deepEqual(h.closes, [], side);
+    t.mock.timers.tick(1);
+    assert.deepEqual(h.closes, [{ reason: "connection-failed", detail: undefined }], side);
+  }
+});
+
+test("failed with no rejoined closes at once", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  for (const side of ["s", "r"] as const) {
+    const h = await openPeer(side);
+    setState(h.pc, "disconnected");
+    assert.deepEqual(h.closes, [], side);
+    setState(h.pc, "failed");
+    assert.deepEqual(h.closes, [{ reason: "connection-failed", detail: undefined }], side);
+    assert.equal(h.seen.stalled, side === "r" ? 1 : 0);
+  }
+});
+
+test("connected ends the deadline, and the next drop gets its own", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  for (const side of ["s", "r"] as const) {
+    const h = await openPeer(side);
+    setState(h.pc, "disconnected");
+    await rejoin(h);
+    t.mock.timers.tick(RECOVERY_TIMEOUT_MS - 1);
+    setState(h.pc, "connected");
+    await h.relay(ice("other"));
+    assert.deepEqual(h.seen.paths, ["direct"], side);
+    setState(h.pc, "disconnected");
+    t.mock.timers.tick(RECOVERY_TIMEOUT_MS);
+    assert.deepEqual(h.closes, [], side);
+
+    await rejoin(h);
+    t.mock.timers.tick(RECOVERY_TIMEOUT_MS - 1);
+    assert.deepEqual(h.closes, [], side);
+    t.mock.timers.tick(1);
+    assert.deepEqual(h.closes, [{ reason: "connection-failed", detail: undefined }], side);
+  }
+
+  // With the deadline over, failed closes at once again.
+  const sender = await openPeer("s");
+  await rejoin(sender);
+  setState(sender.pc, "connected");
+  setState(sender.pc, "failed");
+  assert.deepEqual(sender.closes, [{ reason: "connection-failed", detail: undefined }]);
+});
+
+test("a deadline that runs out on a connected connection closes nothing", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const sender = await openPeer("s");
+  await rejoin(sender);
+  t.mock.timers.tick(RECOVERY_TIMEOUT_MS);
+  assert.deepEqual(sender.closes, []);
+  // It is over: failed closes at once.
+  setState(sender.pc, "failed");
+  assert.deepEqual(sender.closes, [{ reason: "connection-failed", detail: undefined }]);
+});
+
+test("no deadline outlives close() or a failure", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  for (const end of ["close", "fail"] as const) {
+    const sender = await openPeer("s");
+    await rejoin(sender);
+    if (end === "close") {
+      sender.peer.close();
+    } else {
+      await sender.relay({ kind: "restart-offer", sdp: sdpWith(RECIPIENT_FP, "r2") });
+      assert.equal(sender.closes[0]?.reason, "bad-signal");
+    }
+    // The deadline reads the state when it runs out; a cleared one never does.
+    let reads = 0;
+    Object.defineProperty(sender.pc, "connectionState", {
+      get() {
+        reads++;
+        return "disconnected";
+      },
+    });
+    t.mock.timers.tick(RECOVERY_TIMEOUT_MS);
+    assert.equal(reads, 0, end);
+    assert.equal(sender.closes.length, end === "close" ? 0 : 1);
   }
 });
