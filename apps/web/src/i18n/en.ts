@@ -286,6 +286,7 @@ export const en = {
   },
   common: {
     techDetails: "Technical details",
+    close: "Close",
     size: "Size",
     type: "Type",
     typeMissing: "Not given",
@@ -322,8 +323,9 @@ export const en = {
     continue: "Continue",
     title: "Send a file",
     lede: "Choose a file, then create a link for each person. Your file is sent from this browser to them. It's encrypted the whole way and never uploaded or stored.",
-    step: (n: number) => `Step ${n} of 2`,
+    step: (n: number) => `Step ${n} of 3`,
     peopleHeading: "Create a link for each person",
+    linksHeading: "Share the links",
     change: "Change",
     connectionOptions: "Connection options",
     addEmail: "Create and email link",

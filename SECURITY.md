@@ -9,7 +9,7 @@ Don't include real files, transfer links or personal data in a report.
 
 ## Supported versions
 
-Only the current `main` branch gets security fixes. [fidant.se](https://fidant.se) runs the `production` branch, which a maintainer moves forward to a commit on `main`'s first-parent history, so a fix reaches the site when it is promoted.
+Only the current `main` branch gets security fixes. [fidant.se](https://fidant.se) runs the `production` branch, which `.github/workflows/promote.yml` moves forward to each merge on `main`, so a fix reaches the site within minutes of its merge.
 
 ## Scope
 

@@ -92,17 +92,7 @@ import {
 import { addRelay, NO_RELAYS } from "../lib/server-facts.ts";
 import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
 import { MAX_TEXT_LENGTH, textFile, textFitsOneChunk } from "../lib/text-secret.ts";
-import {
-  field,
-  formRows,
-  Icon,
-  Link,
-  lede,
-  Page,
-  SECRET_HREF,
-  ServerPanel,
-  TechDetails,
-} from "../ui.tsx";
+import { field, formRows, Icon, Link, lede, Page, SECRET_HREF, ServerPanel } from "../ui.tsx";
 import { type CheckView, RecipientList } from "./RecipientList.tsx";
 
 type Hash =
@@ -133,7 +123,6 @@ type Connection = {
 // Errors are kept as keys and turned into text in render, so they follow a language switch.
 type ErrorOf<K extends "fromError" | "fileError" | "nameError"> = keyof Messages["send"][K] | "";
 
-const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 /** How long the server may stay unreachable before the page says so. */
 const LOST_AFTER_MS = 10_000;
 /** How long to wait before hosting again when the server still holds a link for our old socket. */
@@ -720,7 +709,8 @@ export function SendPage({
     }
     prepare(fits ? chosen : undefined);
     if (fits && chosen) {
-      goToRecipients();
+      // The name is the next field of this step; Continue leads on to the links.
+      requestAnimationFrame(() => document.getElementById(id("from"))?.focus());
     }
   };
 
@@ -807,7 +797,6 @@ export function SendPage({
     !text && (hash.status === "preparing" || hash.status === "failed") ? hash.status : undefined;
   const tooLong = textLength > MAX_TEXT_LENGTH;
   const full = sender.recipients.length >= MAX_LINKS;
-  const isLocalhost = typeof location !== "undefined" && LOCAL_HOSTS.has(location.hostname);
   // ponytail: counts by status, so it over-counts if a recipient's signaling drops mid-transfer; track joined/left if that matters
   const connected = sender.recipients.filter(isActive).length;
   const emailed = sender.recipients.filter(emailBound);
@@ -845,7 +834,7 @@ export function SendPage({
       if (target) {
         glideTo(target);
       }
-      document.getElementById(id("from"))?.focus({ preventScroll: true });
+      document.getElementById(id("recipient-name"))?.focus({ preventScroll: true });
     });
 
   return (
@@ -899,11 +888,6 @@ export function SendPage({
         </div>
         <p class={lede}>{text ? t.secret.lede : t.send.lede}</p>
 
-        {isLocalhost && (
-          <Alert role="note" className="my-4">
-            <AlertDescription>{t.send.localhost}</AlertDescription>
-          </Alert>
-        )}
         {text && (
           <div class={`my-4 ${field}`}>
             <Label htmlFor="secret-text">{t.secret.label}</Label>
@@ -935,20 +919,12 @@ export function SendPage({
               {tooLong && `${t.secret.count(textLength, MAX_TEXT_LENGTH)} `}
               <span role="status">{tooLong && t.secret.tooLong}</span>
             </p>
-            <Button
-              type="button"
-              className="mt-2 self-start"
-              disabled={!file || tooLong}
-              onClick={goToRecipients}
-            >
-              {t.send.continue}
-            </Button>
           </div>
         )}
         {!text && (file || !hasRecipients) && (
           // One box before and after the list locks the file, so nothing below it moves.
           <div
-            class={`group relative my-4 rounded-2xl border-2 ${file ? "border-solid" : "border-dashed"} border-border bg-card ${hasRecipients ? "" : "transition-colors focus-within:outline-3 focus-within:outline-offset-2 focus-within:outline-primary hover:border-foreground/40 hover:bg-muted/40"}`}
+            class={`group relative my-8 rounded-2xl border-2 ${file ? "border-solid" : "border-dashed"} border-border bg-card ${hasRecipients ? "" : "transition-colors focus-within:outline-3 focus-within:outline-offset-2 focus-within:outline-primary hover:border-foreground/40 hover:bg-muted/40"}`}
           >
             {!hasRecipients && (
               <input
@@ -994,63 +970,8 @@ export function SendPage({
             {t.send.fileError[fileError]}
           </p>
         )}
-        {file && !text && (
-          <TechDetails
-            rows={[
-              [t.common.size, t.format.bytes(file.size)],
-              [t.common.type, file.type || t.common.typeMissing],
-              ["SHA-256", hash.status === "ready" ? <code>{hash.hex}</code> : t.send.hashPending],
-            ]}
-          />
-        )}
-        {(file || text) && (
-          // One line that is always there: the file's status, then the lock's hint. Both share a
-          // grid cell and the hidden one keeps its space, so neither moves the page (see SwapLabel).
-          <p class={`grid ${hint}`}>
-            <span
-              class={`col-start-1 row-start-1 ${hasRecipients && !fileStatus ? "" : "invisible"}`}
-            >
-              {
-                (text ? t.secret : t.send)[
-                  sender.recipients.some((r) => r.status === "delivered")
-                    ? "lockedDelivered"
-                    : "locked"
-                ]
-              }
-            </span>
-            {fileStatus === "preparing" && (
-              <span class="col-start-1 row-start-1" role="status">
-                {t.send.preparing}
-              </span>
-            )}
-            {fileStatus === "failed" && (
-              <span class="col-start-1 row-start-1 text-destructive" role="alert">
-                {t.send.readFailed}
-              </span>
-            )}
-          </p>
-        )}
-      </section>
-
-      <section
-        id={id("recipients")}
-        class="mt-12 scroll-mt-24 border-t border-border pt-8"
-        aria-labelledby={id("recipients-heading")}
-      >
-        <p class={stepLabel}>{t.send.step(2)}</p>
-        <h2 id={id("recipients-heading")} class="m-0 text-[1.75rem] font-bold">
-          {t.send.peopleHeading}
-        </h2>
-        <p class="mt-1 mb-6 text-muted-foreground wrap-anywhere">
-          {text ? t.secret.label : file && `${file.name} · ${formatBytes(file.size, lang)}`}
-        </p>
-        {lostServer && (
-          <Alert variant="destructive" className="my-4">
-            <AlertDescription>{text ? t.secret.lostServer : t.send.lostServer}</AlertDescription>
-          </Alert>
-        )}
-
-        <div class={field}>
+        {/* The name locks with the file once a link exists, so it belongs to this step. */}
+        <div class={`mt-6 ${field}`}>
           <Label htmlFor={id("from")}>
             {t.send.fromLabel}{" "}
             <span class="font-normal text-muted-foreground">{t.send.optional}</span>
@@ -1081,8 +1002,55 @@ export function SendPage({
             {mail && ` ${t.send.fromHintEmail}`}
           </p>
         </div>
+        <Button type="button" className="mt-4" disabled={!file || tooLong} onClick={goToRecipients}>
+          {t.send.continue}
+        </Button>
+        {(file || text) && (
+          // One line that is always there: the file's status, then the lock's hint. Both share a
+          // grid cell and the hidden one keeps its space, so neither moves the page (see SwapLabel).
+          <p class={`mt-2 mb-0 grid ${hint}`}>
+            <span
+              class={`col-start-1 row-start-1 ${hasRecipients && !fileStatus ? "" : "invisible"}`}
+            >
+              {
+                (text ? t.secret : t.send)[
+                  sender.recipients.some((r) => r.status === "delivered")
+                    ? "lockedDelivered"
+                    : "locked"
+                ]
+              }
+            </span>
+            {fileStatus === "preparing" && (
+              <span class="col-start-1 row-start-1" role="status">
+                {t.send.preparing}
+              </span>
+            )}
+            {fileStatus === "failed" && (
+              <span class="col-start-1 row-start-1 text-destructive" role="alert">
+                {t.send.readFailed}
+              </span>
+            )}
+          </p>
+        )}
+      </section>
+
+      <section
+        id={id("recipients")}
+        class="mt-10 scroll-mt-24 border-t border-border pt-8"
+        aria-labelledby={id("recipients-heading")}
+      >
+        <p class={stepLabel}>{t.send.step(2)}</p>
+        <h2 id={id("recipients-heading")} class="mt-0 mb-6 text-[1.75rem] font-bold">
+          {t.send.peopleHeading}
+        </h2>
+        {lostServer && (
+          <Alert variant="destructive" className="my-4">
+            <AlertDescription>{text ? t.secret.lostServer : t.send.lostServer}</AlertDescription>
+          </Alert>
+        )}
+
         <form
-          class={`mt-6 ${formRows}`}
+          class={formRows}
           onSubmit={onAdd}
           // A held Enter that started on the last Remove button lands here and would submit an empty name.
           onKeyDown={(event) => {
@@ -1214,17 +1182,6 @@ export function SendPage({
               ? t.send.full(MAX_LINKS)
               : t.send.oneLinkEach}
         </p>
-        <RecipientList
-          recipients={sender.recipients}
-          fileSize={file?.size ?? 0}
-          statusText={text ? { ...t.send.status, ...t.secret.status } : t.send.status}
-          summary={(text ? t.secret : t.send).summary}
-          onRemove={onRemove}
-          checks={checks}
-          onCheck={onCheck}
-          onLater={onLater}
-          visible={shown}
-        />
         <details class="mt-6 text-[0.9rem]">
           <summary class="cursor-pointer text-muted-foreground">{t.send.connectionOptions}</summary>
           <div class="mt-4 flex items-start gap-2.5">
@@ -1253,7 +1210,37 @@ export function SendPage({
         </details>
       </section>
 
+      {hasRecipients && (
+        <section class="mt-12 border-t border-border pt-8" aria-labelledby={id("links-heading")}>
+          <p class={stepLabel}>{t.send.step(3)}</p>
+          <h2 id={id("links-heading")} class="m-0 text-[1.75rem] font-bold">
+            {t.send.linksHeading}
+          </h2>
+          <RecipientList
+            recipients={sender.recipients}
+            fileSize={file?.size ?? 0}
+            statusText={text ? { ...t.send.status, ...t.secret.status } : t.send.status}
+            summary={(text ? t.secret : t.send).summary}
+            onRemove={onRemove}
+            checks={checks}
+            onCheck={onCheck}
+            onLater={onLater}
+            visible={shown}
+          />
+        </section>
+      )}
+
       <ServerPanel
+        visible={shown}
+        details={
+          file && !text
+            ? [
+                [t.common.size, t.format.bytes(file.size)],
+                [t.common.type, file.type || t.common.typeMissing],
+                ["SHA-256", hash.status === "ready" ? <code>{hash.hex}</code> : t.send.hashPending],
+              ]
+            : []
+        }
         sees={t.server.seesSender}
         holds={t.server.senderHolds({
           online: !lostServer,

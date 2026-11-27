@@ -161,3 +161,18 @@ for (const [locale, lang, headings] of [
     });
   });
 }
+
+test("going back from /send with the details drawer open leaves the next page usable", async ({
+  page,
+}) => {
+  await page.goto("/privacy");
+  await nav(page).getByRole("link", { name: "Send" }).click();
+  await page.getByRole("button", { name: "Technical details" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.goBack();
+  await expect(page).toHaveURL(/\/privacy$/);
+  await expect(page.locator("dialog[open]")).toHaveCount(0);
+  // A modal dialog left open in the hidden page would make this page inert.
+  await nav(page).getByRole("link", { name: "Send" }).click();
+  await expect(page).toHaveURL(/\/send$/);
+});
