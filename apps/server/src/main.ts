@@ -75,16 +75,15 @@ const ice = chooseIce(relays, turn, site.stun);
 
 // Mail is optional too, and the SMTP password comes from a file for the same reason.
 // Emailed links point at PUBLIC_ORIGIN, never at whatever Host a request names.
+// Without MAIL_ENABLED=1 the mail settings are ignored, so a box that has them sends nothing.
 const mailUrl = process.env.MAIL_SMTP_URL;
 const mailFrom = process.env.MAIL_FROM;
 const mailPasswordFile = process.env.MAIL_PASSWORD_FILE;
 const publicOrigin = site.origin;
 let mail: { send: Mailer; origin: string } | undefined;
-if (mailUrl || mailFrom || mailPasswordFile) {
+if (site.mail) {
   if (!mailUrl || !mailFrom || !publicOrigin) {
-    console.error(
-      "Set MAIL_SMTP_URL and MAIL_FROM together with PUBLIC_ORIGIN, or neither and no MAIL_PASSWORD_FILE.",
-    );
+    console.error("MAIL_ENABLED=1 needs MAIL_SMTP_URL and MAIL_FROM together with PUBLIC_ORIGIN.");
     process.exit(1);
   }
   let password: string | undefined;
