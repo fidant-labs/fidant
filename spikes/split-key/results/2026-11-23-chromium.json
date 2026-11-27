@@ -1,5 +1,5 @@
 {
-  "bench": "sigill-split-key-runner",
+  "bench": "fidant-split-key-runner",
   "version": 1,
   "engine": "chromium",
   "browserVersion": "159.0.8154.6",

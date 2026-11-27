@@ -35,16 +35,16 @@ test("boxFiles builds every file the box container needs", () => {
     "/etc/caddy/Caddyfile",
     "/etc/coturn/turn.crt",
     "/etc/coturn/turn.key",
+    "/etc/fidant/turn-secret",
     "/etc/haproxy/haproxy.cfg",
-    "/etc/sigill/turn-secret",
     "/etc/systemd/journald.conf.d/zz-retention.conf",
     "/etc/systemd/system/coturn.service.d/online.conf",
-    "/etc/systemd/system/sigill.service",
-    "/etc/systemd/system/sigill.service.d/e2e.conf",
-    "/etc/systemd/system/sigill.service.d/turn.conf",
+    "/etc/systemd/system/fidant.service",
+    "/etc/systemd/system/fidant.service.d/e2e.conf",
+    "/etc/systemd/system/fidant.service.d/turn.conf",
     "/etc/turnserver.conf",
   ]);
-  assert.equal(files.get("/etc/sigill/turn-secret")?.mode, 0o600);
+  assert.equal(files.get("/etc/fidant/turn-secret")?.mode, 0o600);
   assert.equal(files.get("/etc/turnserver.conf")?.mode, 0o640);
   assert.equal(files.get("/etc/coturn/turn.key")?.content, "KEY");
   assert.equal(files.get("/etc/coturn/turn.key")?.mode, 0o600);
@@ -65,7 +65,7 @@ test("the Caddyfile differs from the rendered one only by Caddy's own CA", () =>
 
 test("turn.conf names the rendered TURN URLs and turnserver.conf the secret", () => {
   const files = boxFiles({ ip: "192.0.2.30", secret: "s3cret", turnCert });
-  const turn = files.get("/etc/systemd/system/sigill.service.d/turn.conf")?.content ?? "";
+  const turn = files.get("/etc/systemd/system/fidant.service.d/turn.conf")?.content ?? "";
   assert.match(turn, /^Environment=TURN_URLS=stun:turn\.fidant\.se:3478,turn:turn\.fidant\.se/m);
   assert.doesNotMatch(turn, /\$/);
   const conf = files.get("/etc/turnserver.conf")?.content ?? "";
@@ -75,7 +75,7 @@ test("turn.conf names the rendered TURN URLs and turnserver.conf the secret", ()
 
 test("e2e.conf turns the relay list off, so the box keeps its own coturn", () => {
   const files = boxFiles({ ip: "192.0.2.30", secret: "s3cret", turnCert });
-  const conf = files.get("/etc/systemd/system/sigill.service.d/e2e.conf")?.content ?? "";
+  const conf = files.get("/etc/systemd/system/fidant.service.d/e2e.conf")?.content ?? "";
   assert.match(conf, /^Environment=RELAYS_FILE=$/m);
 });
 

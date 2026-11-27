@@ -345,7 +345,7 @@ test("rejects hosting a link another socket already hosts but hosts the rest", a
   await joinAs(fresh, rival);
 });
 
-test("keeps a reconnecting sender's other links hosted when another socket took one (SIG-233)", async () => {
+test("keeps a reconnecting sender's other links hosted when another socket took one (FID-233)", async () => {
   const [taken, kept, third] = [linkId(), linkId(), linkId()];
   const sender = await hostFor(taken, kept, third);
   sender.socket.close();
@@ -1707,7 +1707,7 @@ test("never logs an emailed link's address, mark, code or token", async (t) => {
 
 // The tests below come from the security audit of 2026-11-25.
 
-test("closes a socket that never reads once the replies queued for it pass the limit (SIG-234)", {}, async (t) => {
+test("closes a socket that never reads once the replies queued for it pass the limit (FID-234)", {}, async (t) => {
   const relay = await bufferedRelay(t);
   relay.guest.pause();
   await relay.flood(500);
@@ -1814,7 +1814,7 @@ async function connectFrom(t: { after(fn: () => void): void }, url: string, addr
   };
 }
 
-test("bounds the notices one IPv6 /48 can send by moving between its /64s (SIG-221)", {}, async (t) => {
+test("bounds the notices one IPv6 /48 can send by moving between its /64s (FID-221)", {}, async (t) => {
   const { url, mails } = await mailServer(t);
   const [networks, each] = [3, 20];
   for (let network = 0; network < networks; network += 1) {
@@ -1833,7 +1833,7 @@ test("bounds the notices one IPv6 /48 can send by moving between its /64s (SIG-2
   assert.equal(mails.length, 50, `${mails.length} notices went out from one /48`);
 });
 
-test("sends a recipient their code although another client asked for codes on its own links to that address (SIG-223)", {}, async (t) => {
+test("sends a recipient their code although another client asked for codes on its own links to that address (FID-223)", {}, async (t) => {
   t.mock.timers.enable({ apis: ["Date"] });
   const { url } = await mailServer(t);
   const sender = await connectFrom(t, url, "192.0.2.1");

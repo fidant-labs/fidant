@@ -168,7 +168,8 @@ test("each page has its own tab title", async ({ page }) => {
   for (const [path, title] of [
     ["/", "Fidant: private file transfer"],
     ["/send", "Send a file – Fidant"],
-    ["/secret", "Share a secret – Fidant"],
+    ["/send/file", "Send a file – Fidant"],
+    ["/send/secret", "Share a secret – Fidant"],
     ["/privacy", "Privacy – Fidant"],
     ["/how", "How it works – Fidant"],
     ["/r/unknown", "Receive – Fidant"],

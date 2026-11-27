@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-11-25
-- Linear: SIG-239
+- Linear: FID-239
 
 This record amends 0006 and 0012. Read them with the replacements under Decision.
 
@@ -10,9 +10,9 @@ This record amends 0006 and 0012. Read them with the replacements under Decision
 
 The security audit of `main` at 880e783 (2026-11-25) found four limits that did not hold the way 0006 and 0012 say:
 
-- **Notices had no server-wide cap (SIG-221).** 0012 says the notice limits bound how much mail anyone can make Fidant send. They were per socket, per client address and per email address, and a client address was an IPv6 /64. Someone with a routed /48 holds 65,536 /64s, and a test sent 4,000 notices from 200 of them in under a second.
-- **A stranger could use up an address's code limit (SIG-223).** Codes were limited per link and per email address, not per client. Someone with nobody's link could register links of their own to a person's address and ask for codes on them, so the person's real code request got `wait` for an hour.
-- **Replies to a socket that stopped reading piled up (SIG-234).** 0006 says "a slow reader can't make the server buffer without bound". Only relays checked the queue. Every other reply, such as `error`, `joined` or `refused`, was queued however much already waited, so a client that never read could grow the server's memory for as long as it kept sending.
+- **Notices had no server-wide cap (FID-221).** 0012 says the notice limits bound how much mail anyone can make Fidant send. They were per socket, per client address and per email address, and a client address was an IPv6 /64. Someone with a routed /48 holds 65,536 /64s, and a test sent 4,000 notices from 200 of them in under a second.
+- **A stranger could use up an address's code limit (FID-223).** Codes were limited per link and per email address, not per client. Someone with nobody's link could register links of their own to a person's address and ask for codes on them, so the person's real code request got `wait` for an hour.
+- **Replies to a socket that stopped reading piled up (FID-234).** 0006 says "a slow reader can't make the server buffer without bound". Only relays checked the queue. Every other reply, such as `error`, `joined` or `refused`, was queued however much already waited, so a client that never read could grow the server's memory for as long as it kept sending.
 - **The per-address limits leak a count.** A sender who gets `limit` while under its own limits knows the address's notice limit was reached, so it can count notices others sent to that address in the last hour. 0012 did not say this.
 
 ## Options considered

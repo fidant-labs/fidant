@@ -1,4 +1,4 @@
-// Seeded, deterministic test data for the SIG-7 bench.
+// Seeded, deterministic test data for the FID-7 bench.
 //
 // The bench encrypts synthetic files instead of real ones, so no user content
 // is ever involved, and the runner can check a download by regenerating the

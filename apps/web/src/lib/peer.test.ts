@@ -438,7 +438,7 @@ test("the recipient answers an offer, keeps its check flag and refuses a commitm
   };
   const channel: { onopen: (() => void) | null } = { onopen: null };
   pc.ondatachannel({
-    channel: Object.assign(channel, { label: "sigill", ordered: true, close() {} }),
+    channel: Object.assign(channel, { label: "fidant", ordered: true, close() {} }),
   });
   channel.onopen?.();
   const [info] = h.opens;
@@ -750,7 +750,7 @@ test("each side refuses the restart signal meant for the other", async (t) => {
 /** Brings the path up as `how` and returns the function that takes it down again. */
 function pathUp(pc: FakePeerConnection, how: "open" | "connected" | "completed") {
   if (how === "open") {
-    const channel = pc.channel ?? { label: "sigill", ordered: true, readyState: "", close() {} };
+    const channel = pc.channel ?? { label: "fidant", ordered: true, readyState: "", close() {} };
     if (!pc.channel) {
       (pc.ondatachannel as unknown as (e: { channel: object }) => void)({ channel });
     }

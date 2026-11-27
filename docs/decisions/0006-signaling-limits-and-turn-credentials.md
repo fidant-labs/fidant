@@ -2,15 +2,15 @@
 
 - Status: Accepted
 - Date: 2026-11-24
-- Linear: SIG-51
+- Linear: FID-51
 
 ## Context
 
-- The signaling server at `/signal` is public. Before SIG-51 it had no cap on sockets, messages or bytes queued to a slow reader. One client could exhaust it.
+- The signaling server at `/signal` is public. Before FID-51 it had no cap on sockets, messages or bytes queued to a slow reader. One client could exhaust it.
 - `GET /ice-servers` handed TURN credentials to anyone who asked, valid for 12 hours. Anyone could use our relay.
 - Anyone can `host` any link ID, so a check on `host` alone proves nothing. Only a pairing (a host and a guest on one link) shows a transfer is about to start.
 - Sealed signals were bound to the link and direction, not to one join attempt. A server could replay an old attempt's signals into a new one, and a late `refuse` could hit the next attempt.
-- In production Caddy terminates TLS in front of Node (SIG-75), so the TCP peer is Caddy, not the client.
+- In production Caddy terminates TLS in front of Node (FID-75), so the TCP peer is Caddy, not the client.
 
 ## Options considered
 
@@ -49,7 +49,7 @@
 ### Per-attempt ID
 
 - The recipient makes a random 16-byte attempt ID for each join and each "Try again". It travels in `join`, `joined` and `refuse`.
-- The sealed-signal AAD is `sigill/v1/signal|<link>|<attempt>|<dir>`. Signals from one attempt don't open in another.
+- The sealed-signal AAD is `fidant/v1/signal|<link>|<attempt>|<dir>`. Signals from one attempt don't open in another.
 - The server ignores a `refuse` whose attempt doesn't match the bound guest's.
 - The attempt ID is never logged.
 
@@ -64,10 +64,10 @@
 
 - One address can no longer exhaust the server's sockets or memory, and a slow reader can't make the server buffer without bound.
 - A refused upgrade socket is destroyed after the response is written, and errors on it are ignored. A client that resets or never closes its side can neither crash the server nor hold the socket.
-- Accepted for the POC: 32 sources can still fill the global cap of 1000, after which upgrades get 503. A source is one IPv4 address, or one /64, so 32 /64s from a single IPv6 /48 is enough. The upgrade path is Caddy and coturn limits on the host (SIG-75, SIG-77) and a wider IPv6 prefix.
-- Deploy (SIG-75): Caddy and Node must run on the same host, and Caddy must set X-Forwarded-For. A proxy in a container or on another host reaches Node from a non-loopback address, and every client then shares one bucket of 32 sockets.
+- Accepted for the POC: 32 sources can still fill the global cap of 1000, after which upgrades get 503. A source is one IPv4 address, or one /64, so 32 /64s from a single IPv6 /48 is enough. The upgrade path is Caddy and coturn limits on the host (FID-75, FID-77) and a wider IPv6 prefix.
+- Deploy (FID-75): Caddy and Node must run on the same host, and Caddy must set X-Forwarded-For. A proxy in a container or on another host reaches Node from a non-loopback address, and every client then shares one bucket of 32 sockets.
 - A replayed signal from an old attempt fails to decrypt, and a stale `refuse` no longer unbinds the next guest. Accepted residue: a server that lies about the attempt in `joined` can break that one attempt, nothing more. The server can already drop any message.
-- Accepted for the POC: anyone can pair with themselves and get TURN credentials. The per-address caps and coturn quotas on the host (SIG-77) slow that down. Revisit with BankID-verified transfers.
+- Accepted for the POC: anyone can pair with themselves and get TURN credentials. The per-address caps and coturn quotas on the host (FID-77) slow that down. Revisit with BankID-verified transfers.
 - Accepted without a fix:
   - Total hosted links. They are bounded by sockets × 256 links per socket.
   - A Host header allowlist. TLS and Caddy already cover it.
