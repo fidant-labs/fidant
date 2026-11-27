@@ -135,7 +135,7 @@ export const sv: Messages = {
     neverHeading: "Vår server får aldrig",
     seesHeading: "Vår server ser",
     relayNote:
-      "Om de två webbläsarna inte kan ansluta direkt och vårt relä är tillgängligt går filen i stället via reläet, fortfarande krypterad. Reläet ser då båda IP-adresserna och ungefär hur stor filen är, men kan inte låsa upp den.",
+      "Om de två webbläsarna inte kan ansluta direkt och vårt relä är tillgängligt går filen i stället via reläet, fortfarande krypterad. Reläet ser då ungefär hur stor filen är, men kan inte låsa upp den. Hur filen än går frågar varje webbläsare reläet om sin offentliga adress, så reläet ser båda IP-adresserna och kan oftast se att de hör ihop.",
     caveat: "Haken: eftersom inget sparas måste fliken vara öppen tills filen har kommit fram.",
     tryHeading: "Prova på dig själv",
     tryBody:
@@ -166,7 +166,7 @@ export const sv: Messages = {
         heading: "De öppnar länken medan din sida är öppen",
         body: [
           "Inget sparas, så din sida måste vara öppen tills de har fått filen.",
-          "Vår server hjälper de två webbläsarna att hitta varandra. Den är som en telefonist som kopplar ett samtal. Den skickar vidare några små, låsta meddelanden som den inte kan läsa, om den inte har mejlat länken och därför haft nyckeln.",
+          "Vår server hjälper de två webbläsarna att hitta varandra. Den är som en telefonist som kopplar ett samtal. Den skickar vidare några små meddelanden. De som kopplar upp anslutningen är låsta, så den kan inte läsa dem, om den inte har mejlat länken och därför haft nyckeln.",
           "De ser filens namn och storlek och väljer om de vill ladda ner den.",
         ],
       },
@@ -468,7 +468,7 @@ export const sv: Messages = {
       from ? `${from} vill skicka en fil till dig` : "Du har fått en fil",
     unverified: "Namnet är skrivet av avsändaren och inte verifierat.",
     memoryWarning:
-      "Den här webbläsaren håller hela filen i minnet tills du sparar den, vilket kan göra fliken långsam eller få den att krascha. Chrome eller Edge sparar direkt till disk.",
+      "Den här webbläsaren håller hela filen i minnet tills du sparar den, vilket kan göra fliken långsam eller få den att krascha. Chrome eller Edge på en dator sparar direkt till disk.",
     download: "Ladda ner",
     decline: "Tacka nej",
     offerCaption: (from: string) =>
@@ -857,7 +857,7 @@ export const sv: Messages = {
           "Den som får tag på en länk kan öppna filen. En länk som vi mejlar kräver också en kod som vi skickar till samma adress. Skicka varje länk bara till personen den är avsedd för, på ett sätt du litar på.",
           "En länk som vi mejlar ligger kvar i mottagarens inkorg. Den som kan läsa inkorgen kan också få koden, och därmed filen. Och vår server har haft länkens nyckel. Därför måste du lita på att vi inte läser filen på vägen, om du inte skapar länken med kontrollnummer och jämför det med mottagaren. Vill du undvika båda, låt ”Mejla länken åt mig” vara urkryssad och skicka länken själv.",
           "Avsändarens namn skrivs av avsändaren och kontrolleras inte.",
-          "De två webbläsarna ser varandras IP-adress, precis som i ett videosamtal. När filen går via vårt relä ser reläet båda IP-adresserna och ungefär hur stor filen är.",
+          "De två webbläsarna ser varandras IP-adress, precis som i ett videosamtal. Varje webbläsare frågar vårt relä om sin offentliga adress, så reläet ser båda IP-adresserna och kan oftast se att de hör ihop, även när filen går direkt. När filen går via reläet ser det också ungefär hur stor filen är.",
           "Din webbläsare kör den kod vår server skickar. En server som skickade annan kod skulle kunna läsa filer, och hoppa över kontrollnumret. Koden är offentlig, men webbläsare kan ännu inte kontrollera att det de fick stämmer med den.",
           "En dator som redan är kapad kan läsa filen innan den krypteras eller efter att den låsts upp.",
           "Fidant har ännu inte granskats av någon oberoende part.",
@@ -1025,7 +1025,7 @@ export const sv: Messages = {
           "För en länk som vi mejlar har vår server, vår mejltjänst och mottagarens inkorg nyckeln. Vår server skulle kunna ställa sig mellan de två webbläsarna; med kontrollnumret på skulle du se det, eftersom de två numren skulle skilja sig.",
           "Din webbläsare kör den kod vår server skickar. En server som skickade annan kod skulle kunna läsa filer, och hoppa över kontrollnumret. Koden är offentlig, men webbläsare kan ännu inte kontrollera att det de fick stämmer med den.",
           "Avsändarens namn skrivs av avsändaren och kontrolleras inte.",
-          "Den andra webbläsaren ser din IP-adress. Nätverken på vägen, och vårt relä när det används, ser båda IP-adresserna, när överföringen sker och ungefär hur stor filen är. Vår server ser båda IP-adresserna, vilken mottagare som ansluter till vilken avsändare och när, och hur många mottagare en avsändare har. Om en överförings anslutning bryts och mottagarens sida frågar vår server igen ser servern det också, och när. För en länk som vi mejlar ser servern också mottagarens mejladress. Så den får veta vem som skickar till vem, men inte vad, om den inte ställer sig mitt i en länk som vi har mejlat utan kontrollnummer.",
+          "Den andra webbläsaren ser din IP-adress. Varje webbläsare frågar vårt relä om sin offentliga adress, så reläet ser båda IP-adresserna och kan oftast se att de hör ihop. Nätverken på vägen, och vårt relä när filen går via det, ser också när överföringen sker och ungefär hur stor filen är. Vår server ser båda IP-adresserna, vilken mottagare som ansluter till vilken avsändare och när, och hur många mottagare en avsändare har. Om en överförings anslutning bryts och mottagarens sida frågar vår server igen ser servern det också, och när. För en länk som vi mejlar ser servern också mottagarens mejladress. Så den får veta vem som skickar till vem, men inte vad, om den inte ställer sig mitt i en länk som vi har mejlat utan kontrollnummer.",
           "Skadlig kod på någon av datorerna kan läsa filen innan den krypteras eller efter att den dekrypterats.",
           "När mottagaren kopierar en delad hemlighet hamnar den i enhetens urklipp, där urklippshistorik, synkning av urklippet till andra enheter och andra appar kan läsa den. När en delad hemlighet väl har visats kan Fidant inte nå den: den går varken att ta tillbaka eller radera.",
           "Fidant har ännu inte granskats av någon oberoende part.",
@@ -1673,7 +1673,7 @@ export const sv: Messages = {
       "Den som har länken kan öppna filen. En länk vi mejlar kräver också en kod som vi skickar till samma adress, så den som kan läsa den inkorgen kan öppna länken. Skicka varje länk bara till personen den är avsedd för.",
       "Din webbläsare kör den kod vår server skickar. En server som skickade annan kod skulle kunna läsa filer, och hoppa över kontrollnumret. Koden är offentlig, men webbläsare kan ännu inte kontrollera att det de fick stämmer med den.",
       "Den andra webbläsaren ser din IP-adress, precis som i ett videosamtal. Vår server ser båda IP-adresserna, vilken mottagare som ansluter till vilken avsändare och när, och hur många mottagare en avsändare har. Så den får veta vem som skickar till vem, men inte vad, utom för en länk vi mejlat utan kontrollnummer.",
-      "Varje webbläsare frågar vårt relä om sin offentliga adress, så reläet ser varje IP-adress. Nätverken på vägen, och vårt relä när filen går via det, ser båda IP-adresserna, när överföringen sker och ungefär hur stor filen är.",
+      "Varje webbläsare frågar vårt relä om sin offentliga adress, så reläet ser varje IP-adress och kan oftast se vilka två som hör ihop. Nätverken på vägen, och vårt relä när filen går via det, ser båda IP-adresserna, när överföringen sker och ungefär hur stor filen är.",
     ],
     limitsLink: ["Varje risk, och vad Fidant gör åt den", "/how/protection"] as readonly [
       string,
