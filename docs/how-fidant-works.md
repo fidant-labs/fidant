@@ -422,7 +422,7 @@ On the relay box (see "The relay box"):
 
 The three choices under "Modes" give twelve paths: a file or a shared secret, a link the sender passes on or one Fidant emails, and a direct route with the relay allowed, the relay route, or a direct route with the relay refused. This section lists, for every path, each place that keeps a trace, what it keeps and for how long. The `/how/traces` explorer shows the same to readers (`apps/web/src/how/TraceExplorer.tsx`, its text in `technical.explorer` in `apps/web/src/i18n/en.ts` and `sv.ts`).
 
-Every pull request is checked against this section. The `Claude review` workflow walks every path against the diff, and `packages/protocol/src/transfer-paths.test.ts` fails when a signaling message, log event or log field has no entry below, or when a file this document names no longer exists.
+Pull requests are checked against this section. The `Claude review` workflow walks every path against the diff of each pull request that a maintainer opens from this repository, once it is not a draft. It walks the diff against the base branch's tip when the event that started the run arrived; a re-run walks the same diff, and changing a pull request's base branch starts no new run (`AGENTS.md`, Merging). `packages/protocol/src/transfer-paths.test.ts`, which `check` runs on every pull request, fails when a signaling message, log event or log field has no entry below, or when a file this document names no longer exists. Any other pull request may get no review, and only a maintainer merges it (`AGENTS.md`, Merging).
 
 ### Where traces are kept
 
