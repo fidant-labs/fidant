@@ -30,10 +30,7 @@ export class CiStack extends Stack {
         StringEquals: {
           [`${issuer}:aud`]: "sts.amazonaws.com",
           // GitHub's immutable subject format: owner and repository carry their numeric IDs.
-          [`${issuer}:sub`]: [
-            "repo:sigill-labs@360211033/sigill@1468787132:environment:production",
-            "repo:fidant-labs@360211033/fidant@1468787132:environment:production",
-          ],
+          [`${issuer}:sub`]: "repo:fidant-labs@360211033/fidant@1468787132:environment:production",
         },
       }),
     });
@@ -52,10 +49,7 @@ export class CiStack extends Stack {
         assumedBy: new iam.WebIdentityPrincipal(github.oidcProviderArn, {
           StringEquals: {
             [`${issuer}:aud`]: "sts.amazonaws.com",
-            [`${issuer}:sub`]: [
-              "repo:sigill-labs@360211033/sigill@1468787132:environment:app",
-              "repo:fidant-labs@360211033/fidant@1468787132:environment:app",
-            ],
+            [`${issuer}:sub`]: "repo:fidant-labs@360211033/fidant@1468787132:environment:app",
             [`${issuer}:job_workflow_ref`]: `${releaseWorkflow}@refs/heads/main`,
           },
         }),
