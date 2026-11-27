@@ -8,17 +8,17 @@
  */
 
 /** How long a channel that opened may read "connecting" before it counts as lost. */
-export const REOPEN_TIMEOUT_MS = 5000;
+const REOPEN_TIMEOUT_MS = 5000;
 
-export type OpenChannel = Pick<
-  RTCDataChannel,
-  "readyState" | "addEventListener" | "removeEventListener"
->;
+type OpenChannel = Pick<RTCDataChannel, "readyState" | "addEventListener" | "removeEventListener">;
 
 /**
- * Resolves at once while `channel` is open, and after its next open event while
- * it reads "connecting". Rejects when it is closing or closed, closes while
- * waiting, `signal` aborts or `timeoutMs` passes.
+ * Returns undefined while `channel` is open, so the caller can go on
+ * synchronously. While it reads "connecting" it returns a promise that resolves
+ * on the channel's next open event and rejects when the channel closes, `signal`
+ * aborts or `timeoutMs` passes while waiting. It throws, without returning a
+ * promise, when the channel is already closing or closed or `signal` has
+ * already aborted.
  */
 export function whenOpen(
   channel: OpenChannel,
