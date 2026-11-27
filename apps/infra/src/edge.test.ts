@@ -191,14 +191,14 @@ test("every other path gets the 404 page, the Swedish one under /sv", () => {
   }
 });
 
-test("a path past 256 characters gets 414 with the headers on every host, before any other rule", () => {
+test("a path past 128 characters gets 414 with the headers on every host, before any other rule", () => {
   const escapes = (count: number) => `/${"%41".repeat(count)}`;
-  assert.equal(onRequest(escapes(85)).uri, "/pages/404.html");
+  assert.equal(onRequest(`${escapes(42)}A`).uri, "/pages/404.html");
   for (const [target, host] of [
-    [`${escapes(85)}A`, "fidant.se"],
+    [`${escapes(42)}AB`, "fidant.se"],
     [escapes(2730), "fidant.se"],
     [escapes(2730), "www.fidant.se"],
-    [`/relay-secret/sto${"/".repeat(240)}`, "fidant.se"],
+    [`/relay-secret/sto${"/".repeat(112)}`, "fidant.se"],
   ] as const) {
     const answer = onRequest(target, { host });
     assert.equal(answer.statusCode, 414, `${target.length} ${host}`);
@@ -207,6 +207,15 @@ test("a path past 256 characters gets 414 with the headers on every host, before
   const response = onResponse(viewer(escapes(2730)), 414, {});
   assert.equal(response.statusCode, 414);
   assert.deepEqual(response.headers, {});
+  const atCap = onResponse(viewer(`${escapes(42)}A`), 200, {});
+  assert.equal(atCap.statusCode, 404);
+  assert.deepEqual(values(atCap.headers), {
+    ...securityHeaders,
+    "content-type": "text/html; charset=utf-8",
+  });
+  const pastCap = onResponse(viewer(`${escapes(42)}AB`), 200, {});
+  assert.equal(pastCap.statusCode, 200);
+  assert.deepEqual(pastCap.headers, {});
 });
 
 test("the function names no regex method, and every test runs it with a RegExp whose exec throws", () => {
