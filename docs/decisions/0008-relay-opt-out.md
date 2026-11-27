@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-11-24
-- Linear: SIG-101
+- Linear: FID-101
 
 ## Context
 

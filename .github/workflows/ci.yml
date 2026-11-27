@@ -50,7 +50,7 @@ jobs:
   # Uses the Chrome preinstalled on the runner. Reports stay on the runner and are
   # never uploaded: this repository's artifacts are public.
   lighthouse:
-    # Disabled until single-run scores stop failing at random (SIG-135).
+    # Disabled until single-run scores stop failing at random (FID-135).
     if: false
     runs-on: ubuntu-latest
     timeout-minutes: 15

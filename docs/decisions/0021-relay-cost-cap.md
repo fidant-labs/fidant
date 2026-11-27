@@ -2,18 +2,18 @@
 
 - Status: Accepted
 - Date: 2026-11-25
-- Linear: SIG-154 (part of SIG-151; answers SIG-148 question 3)
+- Linear: FID-154 (part of FID-151; answers FID-148 question 3)
 
 ## Context
 
 In this record, 0011 is `docs/decisions/0011-relay-monthly-cap.md`, 0013 is `docs/decisions/0013-relay-service.md` and 0015 is `docs/decisions/0015-relay-switch.md`.
 
-- 0011 closes the relay ports when the month's traffic reaches 1.8 TB, counting bytes in and bytes out. 0015 counts the app box and the relay box together against the same 1.8 TB, and leaves a cap by cost to SIG-154. SIG-148 question 3 asked whether the cap should count cost instead of bytes, and the answer was yes, with a budget of about 20 USD a month.
+- 0011 closes the relay ports when the month's traffic reaches 1.8 TB, counting bytes in and bytes out. 0015 counts the app box and the relay box together against the same 1.8 TB, and leaves a cap by cost to FID-154. FID-148 question 3 asked whether the cap should count cost instead of bytes, and the answer was yes, with a budget of about 20 USD a month.
 - Lightsail counts traffic in and out toward an instance's allowance, and bills only outbound traffic past it, at 0.09 USD/GB in eu-north-1. Inbound traffic past the allowance is free. Traffic over private IP addresses counts toward the allowance but is free too ([Data transfer in Lightsail](https://docs.aws.amazon.com/lightsail/latest/userguide/amazon-lightsail-faq-data-transfer-allowance.html)).
 - The allowance is pooled across instances of the same bundle in a Region. A `micro_3_0` box has 2 TB, so the app box and the relay box share 4 TB when both run for a full month. Of the guide's examples, only Example 2 says "for a full month". Example 3 gives a pool with no such condition. In Example 5, deleting every instance and creating new ones in the same month keeps the pool and what the month has used. No example says how much a box created during the month adds to a pool that isn't used up yet. In Example 6, an instance created after the pool is used up doesn't stop further outbound traffic from being billed.
 - The bill depends on the order of the traffic: outbound bytes are billed only once the pool is used up. In the guide's Example 1, a 1 TB pool, 500 GB goes out and 400 GB comes in, then 200 GB goes out: the bill is 100 GB. Another 200 GB that comes in after that costs nothing.
 - The cap's Lambda reads only sums: `NetworkIn` and `NetworkOut` per box, "the number of bytes received on all network interfaces" and sent ([GetInstanceMetricData](https://docs.aws.amazon.com/lightsail/2016-11-28/api-reference/API_GetInstanceMetricData.html)). Every 5 minutes it reads the hourly sums from the 1st (UTC) to now and adds them up, so it doesn't keep the order the bytes came in.
-- A byte cap counts inbound traffic. A flood sent to either box at 1 Gbit/s, about 450 GB an hour (0011), reaches 1.8 TB in about 4 hours and switches the relay off until the 1st, without costing anything (SIG-148). The 1.8 TB limit also stops the relay with most of the 4 TB pool unused (0015).
+- A byte cap counts inbound traffic. A flood sent to either box at 1 Gbit/s, about 450 GB an hour (0011), reaches 1.8 TB in about 4 hours and switches the relay off until the 1st, without costing anything (FID-148). The 1.8 TB limit also stops the relay with most of the 4 TB pool unused (0015).
 
 ## Options considered
 
@@ -43,7 +43,7 @@ The cap closes the relay ports when the month's estimated overage reaches 20 USD
   - (a) `A` is no larger than the real pool;
   - (b) the counted bytes are at least the metered bytes;
   - (c) no other `micro_3_0` instance in eu-north-1 draws on the pool.
-- (a) is unproven for a box created during the month. The relay box started in late November 2026, so November's pool may be smaller than 4 TB, and November's estimate may be below the bill. We accept that. From December both boxes run whole months, until SIG-264 (see Consequences).
+- (a) is unproven for a box created during the month. The relay box started in late November 2026, so November's pool may be smaller than 4 TB, and November's estimate may be below the bill. We accept that. From December both boxes run whole months, until FID-264 (see Consequences).
 - (b): the metrics count every network interface, so private traffic counts too, which errs high. That their sums equal AWS's meter is unverified: compare them with the month's bill. Whether AWS's GB is 10^9 or 2^30 bytes is unverified too. Dividing by 10^9 errs high if it is 2^30.
 - (c): the Lambda counts only the boxes in `BOXES` (0015).
 - Against AWS's examples:
@@ -57,7 +57,7 @@ The cap closes the relay ports when the month's estimated overage reaches 20 USD
 - **November's pool.** See (a).
 - **The site's own overage past the budget is still billed.** The cap closes only the relay ports. The site's traffic on the app box, and any other traffic on the ports each box keeps, still counts and is still billed once the pool is used up.
 - **Lag.** Lightsail's metrics lag, so the cap acts 10–15 minutes late at worst (0011). That is about 110 GB at 1 Gbit/s, so the bill can end about 10 USD past the budget.
-- **The app box's ports stay as in 0015.** The cap still closes the app box's coturn ports on 3478 and the UDP relay range. It doesn't close TURN over TLS there: the app box keeps 443 for the site, and HAProxy passes `turn.fidant.se` to coturn (0010, SIG-162). If the relay list is turned off while the cap is active, the server mints credentials for that coturn again (0015), so relayed traffic may still pass through the app box over TLS.
+- **The app box's ports stay as in 0015.** The cap still closes the app box's coturn ports on 3478 and the UDP relay range. It doesn't close TURN over TLS there: the app box keeps 443 for the site, and HAProxy passes `turn.fidant.se` to coturn (0010, FID-162). If the relay list is turned off while the cap is active, the server mints credentials for that coturn again (0015), so relayed traffic may still pass through the app box over TLS.
 
 ### Alarms
 
@@ -82,7 +82,7 @@ The cap closes the relay ports when the month's estimated overage reaches 20 USD
 - Each box gets its capped ports from 0015. The app box keeps TCP 80, 443 and 22. The relay box keeps TCP 22 from `lightsail-connect` and TCP 80. That closes STUN and TURN on 3478 and the UDP relay range on both boxes, and the relay box's TURN over TLS on 443.
 - Relayed transfers in progress stop within seconds (0011's live test).
 - STUN closes with the relay. The server's check of `sto` fails, so after two failed checks `sto` is down (0015), and pairings get only its `stun:` URL, which doesn't answer. Until the ports open again, new pairings get no public address from our STUN service. A new transfer then connects only where it can without STUN, for example on the same local network. Direct transfers already running keep running, and the site stays up.
-- The app box keeps 443, so its coturn's TLS listener stays reachable through HAProxy while the cap is active (0010, SIG-162). While the server has a relay list, it mints no credentials for that coturn (0015).
+- The app box keeps 443, so its coturn's TLS listener stays reachable through HAProxy while the cap is active (0010, FID-162). While the server has a relay list, it mints no credentials for that coturn (0015).
 
 ### Replacements to 0011, 0013 and 0015
 
@@ -106,12 +106,12 @@ This record amends 0011, 0013 and 0015. They are not superseded. Read them with 
 | 0011, Lift the cap: "Keep the limit under the bundle's allowance, or traffic past it is billed at 0.09 USD/GB."                                                                                                         | The budget is what the month's overage may cost by the estimate. Each USD more lets about 11 GB more go out past the pool.                                                                                                                                       |
 | 0011, Pause the cap: "To reopen them, raise the cap instead"                                                                                                                                                            | To reopen them, raise the budget instead                                                                                                                                                                                                                         |
 | 0013: "each with its own secret and cap"                                                                                                                                                                                | each with its own secret, and the boxes in `BOXES`, which share Lightsail's pooled allowance, under one cap (0015 and 0021)                                                                                                                                      |
-| 0013: "SIG-154 takes coturn, HAProxy and the relay ports off the app box."                                                                                                                                              | SIG-264, part of the hosting move SIG-259, takes coturn, HAProxy and the relay ports off the app box and deletes the app box.                                                                                                                                    |
-| 0015: "Kept until SIG-154 (chosen)" and "The app box's coturn stays, and the app uses it only without a relay list, until SIG-154."                                                                                     | "Kept until SIG-264 (chosen)" and "The app box's coturn stays, and the app uses it only without a relay list, until SIG-264."                                                                                                                                    |
+| 0013: "FID-154 takes coturn, HAProxy and the relay ports off the app box."                                                                                                                                              | FID-264, part of the hosting move FID-259, takes coturn, HAProxy and the relay ports off the app box and deletes the app box.                                                                                                                                    |
+| 0015: "Kept until FID-154 (chosen)" and "The app box's coturn stays, and the app uses it only without a relay list, until FID-154."                                                                                     | "Kept until FID-264 (chosen)" and "The app box's coturn stays, and the app uses it only without a relay list, until FID-264."                                                                                                                                    |
 | 0015: "It sums them for every box in `BOXES`: the app box and the relay box."                                                                                                                                           | It sums each of them separately for every box in `BOXES`, the app box and the relay box, so each box has its bytes in and its bytes out.                                                                                                                         |
 | 0015: "`/fidant/relay-cap` keeps each box's count, as in 0011." and "At or above the limit, every box gets its capped ports. On the first run below the limit after a capped run, every box gets its open ports again." | `/fidant/relay-cap` keeps each box's bytes in and bytes out. When the estimated overage is at or above the budget, every box gets its capped ports. On the first run with the estimate below the budget after a capped run, every box gets its open ports again. |
-| 0015: "The limit stays at 1.8 TB (`relayCapBytes`), now for both boxes together, and the warning at 1.44 TB. SIG-154 replaces the byte limit with a cost cap."                                                          | The cap closes the relay ports when the estimated overage of both boxes together reaches 20 USD. The warning is at 3.2 TB, 80 % of their 4 TB pool.                                                                                                              |
-| 0015: "The pool both boxes draw on is now counted whole, and 1.8 TB stays under one box's allowance. Until SIG-154, a month can stop the relays with most of the relay box's allowance unused."                         | The pool both boxes draw on is counted whole, and the cap uses all of it: with no inbound traffic, the relays stop after about 4.22 TB of outbound traffic in a month.                                                                                           |
+| 0015: "The limit stays at 1.8 TB (`relayCapBytes`), now for both boxes together, and the warning at 1.44 TB. FID-154 replaces the byte limit with a cost cap."                                                          | The cap closes the relay ports when the estimated overage of both boxes together reaches 20 USD. The warning is at 3.2 TB, 80 % of their 4 TB pool.                                                                                                              |
+| 0015: "The pool both boxes draw on is now counted whole, and 1.8 TB stays under one box's allowance. Until FID-154, a month can stop the relays with most of the relay box's allowance unused."                         | The pool both boxes draw on is counted whole, and the cap uses all of it: with no inbound traffic, the relays stop after about 4.22 TB of outbound traffic in a month.                                                                                           |
 | 0015, Live cap check: "Its value is `{"month":"YYYY-MM","boxes":{"<box name>":<bytes>},"capped":<true or false>}`."                                                                                                     | Its value is `{"month":"YYYY-MM","boxes":{"<box name>":{"in":<bytes>,"out":<bytes>}},"capped":<true or false>}`.                                                                                                                                                 |
 | 0015, Live cap check: "and the total was under the limit"                                                                                                                                                               | and the estimated overage was under the budget                                                                                                                                                                                                                   |
 
@@ -125,7 +125,7 @@ This record amends 0011, 0013 and 0015. They are not superseded. Read them with 
 - When the cap closes the relay, "Fidant relay sto unavailable" goes to ALARM too, because the server's check fails (0015). It returns to OK once the ports open again and a check passes.
 - Users still get no message in the app (0011).
 - One more custom metric, `RelayMonthOverageUsd`, costs 0.30 USD a month at list price ([Amazon CloudWatch pricing](https://aws.amazon.com/cloudwatch/pricing/)). The renamed alarms cost what the old ones did.
-- SIG-264, part of the hosting move SIG-259, deletes the app box. The app box then leaves `BOXES`, and `A` drops to 2 TB with it. From the next whole month, (a) holds. In the month of the deletion it is unproven, as in November: the guide doesn't say whether deleting a box shrinks that month's pool. The app box's bytes stay in the state until the 1st while `A` halves, so that deploy can raise the estimate by up to about 180 USD and close the relay at once. Read the month's totals before it, or make it early in a month.
+- FID-264, part of the hosting move FID-259, deletes the app box. The app box then leaves `BOXES`, and `A` drops to 2 TB with it. From the next whole month, (a) holds. In the month of the deletion it is unproven, as in November: the guide doesn't say whether deleting a box shrinks that month's pool. The app box's bytes stay in the state until the 1st while `A` halves, so that deploy can raise the estimate by up to about 180 USD and close the relay at once. Read the month's totals before it, or make it early in a month.
 
 ## Runbook
 
@@ -200,7 +200,7 @@ aws ssm get-parameter --name /fidant/relay-cap --query Parameter.Value --output 
 
 ### Lift the cap
 
-- Raise `relayOverageBudgetUsd` in `apps/infra/src/config.ts` and deploy `FidantApp`. A merge to main that touches `apps/infra/**` deploys it through `deploy-infra.yml`, and needs a `maintainers` approval. Or deploy by hand with `pnpm --filter @sigill/infra cdk deploy FidantApp --profile fidant-poc`. The stop alarm's threshold moves with the budget.
+- Raise `relayOverageBudgetUsd` in `apps/infra/src/config.ts` and deploy `FidantApp`. A merge to main that touches `apps/infra/**` deploys it through `deploy-infra.yml`, and needs a `maintainers` approval. Or deploy by hand with `pnpm --filter @fidant/infra cdk deploy FidantApp --profile fidant-poc`. The stop alarm's threshold moves with the budget.
 - Six minutes after the deploy:
 
 ```sh
@@ -212,7 +212,7 @@ aws ssm get-parameter --name /fidant/relay-cap --query Parameter.Value --output 
 
 ### Roll back to the byte cap
 
-1. Revert SIG-154's changes to `apps/infra/src/` in a pull request, and deploy `FidantApp`. The old code throws on the new shape, so every run fails and changes no ports until step 2. The deploy replaces both alarms again, so expect two OK emails.
+1. Revert FID-154's changes to `apps/infra/src/` in a pull request, and deploy `FidantApp`. The old code throws on the new shape, so every run fails and changes no ports until step 2. The deploy replaces both alarms again, so expect two OK emails.
 
 2. Once the deploy has finished, rewrite the state in 0011's shape:
 

@@ -73,7 +73,7 @@ test("leaving /send for Privacy and going back keeps the file and recipient", as
     page.getByRole("navigation", { name: "What to send" }).getByRole("button", { name: "Secret" }),
   ).toBeDisabled();
   await page.locator("footer").getByRole("link", { name: "Share a secret" }).click();
-  await expect(page).toHaveURL(/\/send$/);
+  await expect(page).toHaveURL(/\/send\/file$/);
   await expect(page.getByText(file.name, { exact: true })).toBeVisible();
   await expect(page.getByLabel("Your secret")).toBeHidden();
 });

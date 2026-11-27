@@ -388,7 +388,7 @@ test("the task runs the live image as node on a read-only root, with one writabl
     LinuxParameters: {
       Tmpfs: [
         {
-          ContainerPath: "/run/sigill",
+          ContainerPath: "/run/fidant",
           Size: 1,
           MountOptions: ["noexec", "nosuid", "nodev", "uid=1000", "gid=1000", "mode=700"],
         },
@@ -417,8 +417,8 @@ test("the container gets exactly the image's settings, and the relay master only
     { Name: "PUBLIC_ORIGIN", Value: "https://fidant.se" },
     { Name: "TRUSTED_PROXIES", Value: subnets.join(",") },
     { Name: "RELAYS_FILE", Value: "/app/apps/server/relays.json" },
-    { Name: "RELAY_MASTER_FILE", Value: "/run/sigill/relay-master" },
-    { Name: "CERT_DIR", Value: "/run/sigill/certs" },
+    { Name: "RELAY_MASTER_FILE", Value: "/run/fidant/relay-master" },
+    { Name: "CERT_DIR", Value: "/run/fidant/certs" },
     { Name: "STUN_URLS", Value: "stun:sto.relay.fidant.se:3478" },
     { Name: "HTTP_KEEP_ALIVE_MS", Value: "125000" },
   ]);
@@ -1331,14 +1331,14 @@ test("the app box runs coturn after the site is up, with a secret that stays on 
   const install = userData.indexOf(" install -y coturn\n");
   const conf = userData.indexOf("\ninstall -m 640 -g turnserver /dev/null /etc/turnserver.conf\n");
   const template = userData.indexOf("\ncat >>/etc/turnserver.conf <<'EOF'\n");
-  const secret = userData.indexOf("; cat /etc/sigill/turn-secret; } >>/etc/turnserver.conf\n");
+  const secret = userData.indexOf("; cat /etc/fidant/turn-secret; } >>/etc/turnserver.conf\n");
   const online = userData.indexOf(
     "\ncat >/etc/systemd/system/coturn.service.d/online.conf <<'EOF'\n[Unit]\nWants=network-online.target\nAfter=network-online.target\nEOF\n",
   );
   const unmask = userData.indexOf("\nsystemctl unmask coturn\n");
   const enable = userData.indexOf("\nsystemctl enable --now coturn\n");
   const active = userData.indexOf("\nif systemctl is-active --quiet coturn; then\n");
-  const dropIn = userData.indexOf("\n  install -d /etc/systemd/system/sigill.service.d\n");
+  const dropIn = userData.indexOf("\n  install -d /etc/systemd/system/fidant.service.d\n");
   const fi = userData.indexOf("\nfi\n", active);
   const order = [
     caddy,
@@ -1365,11 +1365,11 @@ test("the app box runs coturn after the site is up, with a secret that stays on 
   assert.doesNotMatch(userData.slice(0, caddy), /coturn|turn-secret/);
 
   assert.deepEqual(userData.match(/static-auth-secret=.*/g), [
-    'static-auth-secret=\' "$private_ip" "$private_ip"; cat /etc/sigill/turn-secret; } >>/etc/turnserver.conf',
+    'static-auth-secret=\' "$private_ip" "$private_ip"; cat /etc/fidant/turn-secret; } >>/etc/turnserver.conf',
   ]);
   assert.doesNotMatch(userData, /\$\(openssl/);
   assert.deepEqual(userData.match(/.*rand -hex.*/g), [
-    "(umask 077 && openssl rand -hex 32 >/etc/sigill/turn-secret)",
+    "(umask 077 && openssl rand -hex 32 >/etc/fidant/turn-secret)",
   ]);
 });
 
@@ -1439,7 +1439,7 @@ test("the app box routes 443 by SNI to Caddy and to coturn's TLS, and copies Cad
     haproxyStart,
     userData.indexOf("\nsystemctl restart haproxy\n"),
     userData.indexOf("\nsystemctl enable --now coturn\n"),
-    userData.indexOf("\nsystemctl enable --now sigill-turn-cert.timer\n"),
+    userData.indexOf("\nsystemctl enable --now fidant-turn-cert.timer\n"),
     userData.indexOf("\nif systemctl is-active --quiet coturn; then\n"),
   ];
   assert.ok(
@@ -1452,7 +1452,7 @@ test("the app box routes 443 by SNI to Caddy and to coturn's TLS, and copies Cad
   );
 
   assert.ok(userData.includes("\nOnActiveSec=1min\nOnUnitInactiveSec=5min\n"));
-  const syncStart = userData.indexOf("\ncat >/usr/local/sbin/sigill-turn-cert <<'EOF'\n");
+  const syncStart = userData.indexOf("\ncat >/usr/local/sbin/fidant-turn-cert <<'EOF'\n");
   const sync = userData.slice(syncStart, userData.indexOf("\nEOF\n", syncStart));
   assert.match(sync, /^set -eu$/m);
   assert.doesNotMatch(sync, /set -[a-z]*x/);
@@ -1778,7 +1778,7 @@ test("every relay address belongs to a relay in the config", () => {
 // Changing this name replaces the app box, and the site is down for 5–10 minutes.
 test("the app box keeps its name", () => {
   const [, instance] = instanceNamed(appBox(), "^fidant-app-");
-  assert.equal(instance?.Properties.InstanceName, "fidant-app-3760f705");
+  assert.equal(instance?.Properties.InstanceName, "fidant-app-0fca6d40");
 });
 
 test("the journal is the only place the box's services keep log lines", () => {
@@ -1810,7 +1810,7 @@ test("the journal is the only place the box's services keep log lines", () => {
 test("neither the app server nor Caddy, which terminates TLS, has its memory swapped", () => {
   const userData = renderUserData();
   for (const [path, section] of [
-    ["sigill.service", "\n[Service]\n"],
+    ["fidant.service", "\n[Service]\n"],
     ["caddy.service.d/no-swap.conf", "[Service]\n"],
   ] as const) {
     const start = userData.indexOf(`\ncat >/etc/systemd/system/${path} <<'EOF'\n`);
@@ -1827,14 +1827,14 @@ test("neither the app server nor Caddy, which terminates TLS, has its memory swa
 
 test("the box builds only a production commit that is on main, and checks it before installing", () => {
   const userData = renderUserData();
-  const start = userData.indexOf("\ncat >/usr/local/bin/sigill-deploy <<'EOF'\n");
+  const start = userData.indexOf("\ncat >/usr/local/bin/fidant-deploy <<'EOF'\n");
   const deploy = userData.slice(start, userData.indexOf("\nEOF\n", start));
   const order = [
     `\nsha=$(git ls-remote "$repo" refs/heads/production | awk '$2 == "refs/heads/production" {print $1}')\n[[ $sha =~ ^[0-9a-f]{40}$ ]] || { echo "no production branch" >&2; exit 1; }\ndir=`,
-    '\nas_sigill "rm -rf $dir && git clone --quiet --filter=blob:none --no-checkout $repo $dir"\n',
-    '\nlist=$(as_sigill "git -C $dir rev-list --first-parent refs/remotes/origin/main") || list=\nif [ -z "$list" ]; then\n  echo "could not check $sha against main" >&2\n  as_sigill "rm -rf $dir"\n  exit 1\nfi\n',
-    '\ncase "$list" in\n*"$sha"*) ;;\n*)\n  echo "refused $sha: not on main" >&2\n  touch "/opt/sigill/failed-$sha"\n  as_sigill "rm -rf $dir"\n  exit 1\n  ;;\nesac\n',
-    '\nas_sigill "cd $dir && git checkout --quiet $sha && pnpm install --frozen-lockfile"\n',
+    '\nas_fidant "rm -rf $dir && git clone --quiet --filter=blob:none --no-checkout $repo $dir"\n',
+    '\nlist=$(as_fidant "git -C $dir rev-list --first-parent refs/remotes/origin/main") || list=\nif [ -z "$list" ]; then\n  echo "could not check $sha against main" >&2\n  as_fidant "rm -rf $dir"\n  exit 1\nfi\n',
+    '\ncase "$list" in\n*"$sha"*) ;;\n*)\n  echo "refused $sha: not on main" >&2\n  touch "/opt/fidant/failed-$sha"\n  as_fidant "rm -rf $dir"\n  exit 1\n  ;;\nesac\n',
+    '\nas_fidant "cd $dir && git checkout --quiet $sha && pnpm install --frozen-lockfile"\n',
   ].map((text) => deploy.indexOf(text));
   assert.ok(start > 0 && order.every((index) => index > 0), order.join());
   assert.deepEqual(
@@ -1845,21 +1845,21 @@ test("the box builds only a production commit that is on main, and checks it bef
   assert.ok(userData.includes("\nDescription=Deploy the production branch\n"));
 });
 
-test("sigill-deploy refuses a commit off main's first-parent history, and retries a check that fails", () => {
-  const dir = mkdtempSync(join(tmpdir(), "sigill-deploy-"));
+test("fidant-deploy refuses a commit off main's first-parent history, and retries a check that fails", () => {
+  const dir = mkdtempSync(join(tmpdir(), "fidant-deploy-"));
   try {
     const userData = renderUserData();
-    const start = userData.indexOf("\ncat >/usr/local/bin/sigill-deploy <<'EOF'\n");
+    const start = userData.indexOf("\ncat >/usr/local/bin/fidant-deploy <<'EOF'\n");
     assert.ok(start > 0);
-    const script = join(dir, "sigill-deploy");
+    const script = join(dir, "fidant-deploy");
     const body = userData.slice(
       userData.indexOf("\n", start + 1) + 1,
       userData.indexOf("\nEOF\n", start) + 1,
     );
-    assert.ok(body.includes("https://github.com/sigill-labs/sigill.git"));
+    assert.ok(body.includes("https://github.com/fidant-labs/fidant.git"));
     const local = body
-      .replaceAll("https://github.com/sigill-labs/sigill.git", `file://${dir}/src`)
-      .replaceAll("/opt/sigill", `${dir}/opt`);
+      .replaceAll("https://github.com/fidant-labs/fidant.git", `file://${dir}/src`)
+      .replaceAll("/opt/fidant", `${dir}/opt`);
     assert.doesNotMatch(local, /github\.com/);
     writeFileSync(script, local);
     mkdirSync(join(dir, "opt", "releases"), { recursive: true });
@@ -1945,7 +1945,7 @@ test("sigill-deploy refuses a commit off main's first-parent history, and retrie
 
 function credentialHelper(): { helper: string; rest: string } {
   const userData = renderUserData();
-  const start = userData.indexOf("\ncat >/usr/local/bin/sigill-credential <<'EOF'\n");
+  const start = userData.indexOf("\ncat >/usr/local/bin/fidant-credential <<'EOF'\n");
   const end = userData.indexOf("\nEOF\n", start);
   assert.ok(start > 0 && end > start);
   return {
@@ -1957,8 +1957,8 @@ function credentialHelper(): { helper: string; rest: string } {
 test("the box's user data leaves mail off and installs only the helper that turns it on", () => {
   const { helper, rest } = credentialHelper();
   assert.doesNotMatch(rest, /mail|PUBLIC_ORIGIN/i);
-  assert.deepEqual(rest.match(/.*sigill-credential.*/g), [
-    "chmod 700 /usr/local/bin/sigill-credential",
+  assert.deepEqual(rest.match(/.*fidant-credential.*/g), [
+    "chmod 700 /usr/local/bin/fidant-credential",
   ]);
   assert.doesNotMatch(renderUserData(), /AKIA[A-Z0-9]{16}/);
   assert.equal(mailFrom, "noreply@notify.fidant.se");
@@ -1966,12 +1966,12 @@ test("the box's user data leaves mail off and installs only the helper that turn
   assert.ok(helper.includes("'Environment=PUBLIC_ORIGIN=https://fidant.se'"));
 });
 
-test("sigill-credential writes the mail drop-in only with its password file, and removes it first", () => {
-  const dir = mkdtempSync(join(tmpdir(), "sigill-credential-"));
+test("fidant-credential writes the mail drop-in only with its password file, and removes it first", () => {
+  const dir = mkdtempSync(join(tmpdir(), "fidant-credential-"));
   try {
-    const dropin = `${dir}/etc/systemd/system/sigill.service.d/mail.conf`;
-    const secret = `${dir}/etc/sigill/mail-password`;
-    const script = join(dir, "sigill-credential");
+    const dropin = `${dir}/etc/systemd/system/fidant.service.d/mail.conf`;
+    const secret = `${dir}/etc/fidant/mail-password`;
+    const script = join(dir, "fidant-credential");
     writeFileSync(script, credentialHelper().helper.replaceAll("/etc/", `${dir}/etc/`));
     const log = join(dir, "log");
     mkdirSync(join(dir, "bin"));
@@ -1996,7 +1996,7 @@ test("sigill-credential writes the mail drop-in only with its password file, and
 
     assert.deepEqual(run("on", `AKIAIOSFODNN7EXAMPLE\n${password}\n`), {
       status: 0,
-      calls: ["daemon-reload:DS", "try-restart sigill:DS"],
+      calls: ["daemon-reload:DS", "try-restart fidant:DS"],
     });
     assert.equal(
       readFileSync(dropin, "utf8"),
@@ -2015,7 +2015,7 @@ test("sigill-credential writes the mail drop-in only with its password file, and
 
     assert.deepEqual(run("off"), {
       status: 0,
-      calls: ["daemon-reload:S", "try-restart sigill:"],
+      calls: ["daemon-reload:S", "try-restart fidant:"],
     });
     assert.ok(!exists(dropin) && !exists(secret));
 
@@ -2028,10 +2028,10 @@ test("sigill-credential writes the mail drop-in only with its password file, and
   }
 });
 
-test("sigill-credential restores terminal echo when a signal ends it at the password prompt", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "sigill-credential-"));
+test("fidant-credential restores terminal echo when a signal ends it at the password prompt", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "fidant-credential-"));
   try {
-    const script = join(dir, "sigill-credential");
+    const script = join(dir, "fidant-credential");
     writeFileSync(script, credentialHelper().helper.replaceAll("/etc/", `${dir}/etc/`));
     const sttyLog = join(dir, "stty-log");
     mkdirSync(join(dir, "bin"));

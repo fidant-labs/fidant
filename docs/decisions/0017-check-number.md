@@ -2,11 +2,11 @@
 
 - Status: Accepted
 - Date: 2026-11-25
-- Linear: SIG-109
+- Linear: FID-109
 
 ## Context
 
-- 0012 lets Fidant email a link, key included (its option 3). With the key, our server can open that link's sealed setup messages, swap the DTLS fingerprints and sit in the middle of the peer-to-peer connection, or open the link itself and act as the recipient. 0012 accepted this ("Fidant can act as the recipient of an emailed link") and named check words (its option 6) as the fix, in SIG-109.
+- 0012 lets Fidant email a link, key included (its option 3). With the key, our server can open that link's sealed setup messages, swap the DTLS fingerprints and sit in the middle of the peer-to-peer connection, or open the link itself and act as the recipient. 0012 accepted this ("Fidant can act as the recipient of an emailed link") and named check words (its option 6) as the fix, in FID-109.
 - 0012 set two conditions for them. They come only from the DTLS certificate fingerprints that each browser's own connection used, never from the link secret. And the server must not be able to pick its certificate after it learns what they depend on: either a commitment first, or about 64 bits.
 - 0014 made emailing a link opt-in. Its notice on the send page, and the site copy that 0014 kept in body text, say that until check words exist our server could sit in the middle of an emailed link's transfer.
 - Our server also serves the page. A number on the page can show that nobody sat in the middle of the connection; it can't show that the page itself is honest.

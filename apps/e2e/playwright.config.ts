@@ -54,7 +54,7 @@ export default defineConfig({
     ignoreHTTPSErrors: true,
     // The app picks Swedish for a Swedish browser; the specs check the English text.
     locale: "en-US",
-    // Service-worker traffic is a routing blind spot for the recorder. Revisit if SIG-7 adds a worker.
+    // Service-worker traffic is a routing blind spot for the recorder. Revisit if FID-7 adds a worker.
     serviceWorkers: "block",
   },
   projects: picked([
