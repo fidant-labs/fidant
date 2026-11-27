@@ -5,7 +5,7 @@
 // (lib/sender-state.ts), so a state the reducer cannot reach cannot be shown.
 // A name keeps its link from state to state, so its card changes in place.
 
-import { CODE_RESULTS, MAX_LINKS } from "@sigill/protocol";
+import { CODE_RESULTS, MAX_LINKS } from "@fidant/protocol";
 import { en } from "../i18n/en.ts";
 import { createLink, type Link } from "../lib/link.ts";
 import {

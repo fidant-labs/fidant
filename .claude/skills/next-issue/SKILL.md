@@ -2,7 +2,7 @@
 
 name: next-issue
 description: Pick the next Linear issue that moves the Free version project toward its current milestone, implement it in its own git worktree with subagents, commit in reviewable chunks, and open a pull request. Use when asked to "take the next issue", "work on the next milestone", or given an issue key like SIG-21.
-argument-hint: "[SIG-<number>]"
+argument-hint: "[FID-<number>]"
 ---
 
 # Next issue
@@ -11,12 +11,12 @@ Takes one Linear issue from idea to pull request. One issue, one worktree, one b
 
 Read `AGENTS.md` first. Its conventions and invariants apply to every step and every subagent.
 
-If an argument like `SIG-21` was given, skip step 1 and use that issue.
+If an argument like `FID-21` (or an older `SIG-21`) was given, skip step 1 and use that issue.
 
 ## 1. Pick the issue
 
 1. List milestones of the project `Free version` (`P-SIG-1`) with `mcp__linear__list_milestones`. Order them by `sortOrder`. The current milestone is the first one with open issues.
-2. List the project's issues with `mcp__linear__list_issues` (team `SIG`, project `P-SIG-1`, fields `title`, `status`, `projectMilestone`, `priority`, `assignee`).
+2. List the project's issues with `mcp__linear__list_issues` (team `FID`, project `P-SIG-1`, fields `title`, `status`, `projectMilestone`, `priority`, `assignee`).
 3. Candidates are the current milestone's issues in `Backlog` or `Todo`. Skip `In Progress`, `Done`, `Canceled` and `Duplicate`.
 4. Read each candidate with `mcp__linear__get_issue` and its comments with `mcp__linear__list_comments`. Drop candidates that are blocked by an open issue, or whose description says they depend on work that is not done (milestone descriptions state such orderings too, for example "starts only after the first laptop-to-laptop transfer works").
 5. Rank what is left: issues that unblock others first, then priority (Urgent > High > Medium > Low > none), then milestone order in the description.
@@ -27,7 +27,7 @@ If no candidate is unblocked, say so, list what blocks each one, and stop.
 ## 2. Claim it
 
 - Set the issue to `In Progress` and assign it to `me` with `mcp__linear__save_issue`.
-- Branch name: `sig-<number>-<short-slug>`, slug of 2 to 5 words from the title (for example `sig-21-first-demo`). Do not use Linear's suggested `gitBranchName`; it has a user prefix.
+- Branch name: `fid-<number>-<short-slug>`, slug of 2 to 5 words from the title (for example `fid-21-first-demo`). Do not use Linear's suggested `gitBranchName`; it has a user prefix.
 
 ## 3. Create the worktree
 
@@ -84,8 +84,8 @@ After each subagent returns, check `git -C <worktree> log -1 --stat` yourself. I
 
 ```sh
 git -C <worktree> push -u origin <branch>
-cd <worktree> && gh pr create --repo sigill-labs/sigill --base main --head <branch> \
-  --title "SIG-<number>: <issue title>" --body-file <scratchpad>/pr-body.md
+cd <worktree> && gh pr create --repo fidant-labs/fidant --base main --head <branch> \
+  --title "FID-<number>: <issue title>" --body-file <scratchpad>/pr-body.md
 ```
 
 `<worktree>` must be the literal absolute path, because the review gate follows a literal `cd` and does not expand variables.
@@ -95,7 +95,7 @@ PR body: fill in the sections of `.github/pull_request_template.md` (Linear issu
 ```markdown
 ## Linear issue
 
-SIG-<number>
+FID-<number>
 
 ## What and why
 
@@ -119,7 +119,7 @@ If follow-up work came up, create Linear issues for it in the same project and m
 
 ## 8. Answer the bot review
 
-The `Claude review` workflow reviews every push and posts as `github-actions[bot]`: one review with the verdict, with findings on diff lines as inline comments and the rest in its body, or every finding in its body when GitHub refuses the inline comments. Read it before telling the user the PR is ready. Two things make it easy to miss:
+The `Claude review` workflow reviews every push to a pull request that a maintainer opened from this repository, once it is not a draft, and posts as `github-actions[bot]`: one review with the verdict, with findings on diff lines as inline comments and the rest in its body, or every finding in its body when GitHub refuses the inline comments. Read it before telling the user the PR is ready. Two things make it easy to miss:
 
 - Each run reviews the head commit from scratch. A later run can approve without repeating a blocker an earlier run raised, and that blocker may still hold.
 - The `review` check passes even when the verdict is request changes (SIG-52), so a green check says nothing about the verdict.
@@ -129,9 +129,9 @@ After opening the PR, and after every later push:
 1. Wait for the run on the PR's head commit:
 
    ```sh
-   sha=$(gh pr view <number> --repo sigill-labs/sigill --json headRefOid --jq .headRefOid)
-   gh run list --repo sigill-labs/sigill --workflow "Claude review" --commit "$sha" --json databaseId --jq '.[0].databaseId // empty'
-   gh run watch <run id> --repo sigill-labs/sigill --exit-status --compact --interval 30
+   sha=$(gh pr view <number> --repo fidant-labs/fidant --json headRefOid --jq .headRefOid)
+   gh run list --repo fidant-labs/fidant --workflow "Claude review" --commit "$sha" --json databaseId --jq '.[0].databaseId // empty'
+   gh run watch <run id> --repo fidant-labs/fidant --exit-status --compact --interval 30
    ```
 
    Run `gh run watch` in the background. If the list is empty, the run has not started yet; list again after a minute. If it is still empty after a few minutes, or the run ends failed, cancelled or skipped, stop and report: there is no verdict to read.
@@ -139,8 +139,8 @@ After opening the PR, and after every later push:
 2. Read every bot review and inline comment, on all commits, not only the head:
 
    ```sh
-   gh api --paginate repos/sigill-labs/sigill/pulls/<number>/reviews --jq '.[] | select(.user.login == "github-actions[bot]") | {commit: .commit_id, state, body}'
-   gh api --paginate repos/sigill-labs/sigill/pulls/<number>/comments --jq '.[] | select(.user.login == "github-actions[bot]") | {made_on: .original_commit_id, path, line: .original_line, body}'
+   gh api --paginate repos/fidant-labs/fidant/pulls/<number>/reviews --jq '.[] | select(.user.login == "github-actions[bot]") | {commit: .commit_id, state, body}'
+   gh api --paginate repos/fidant-labs/fidant/pulls/<number>/comments --jq '.[] | select(.user.login == "github-actions[bot]") | {made_on: .original_commit_id, path, line: .original_line, body}'
    ```
 
    `made_on` and `line` are where the comment was made. GitHub moves a comment's `commit_id` and `line` forward to later commits, so those would make an old comment look like a finding on the head.
@@ -152,7 +152,7 @@ After opening the PR, and after every later push:
    - Minor points and nits: fix them when the fix is small and objective. List the rest as step 7 says.
    - A point that does not hold: say why under Notes.
 
-4. Stop when the verdict on the head commit approves and no earlier blocking point is still open. The verdict is the latest bot review on the head with state `APPROVED` or `CHANGES_REQUESTED`; a `COMMENTED` review (older runs left them) is not a verdict. Any workflow in this repository can post as `github-actions[bot]`, so an approval counts only when its `commit_id` is the head SHA and the `Claude review` run on that SHA concluded `success` (`gh run view <run id> --repo sigill-labs/sigill --json conclusion`). This step never approves or merges. After 3 rounds, stop and report what is left; never call the PR ready with an open blocking point.
+4. Stop when the verdict on the head commit approves and no earlier blocking point is still open. The verdict is the latest bot review on the head with state `APPROVED` or `CHANGES_REQUESTED`; a `COMMENTED` review (older runs left them) is not a verdict. Any workflow in this repository can post as `github-actions[bot]`, so an approval counts only when its `commit_id` is the head SHA and the `Claude review` run on that SHA concluded `success` (`gh run view <run id> --repo fidant-labs/fidant --json conclusion`). This step never approves or merges. After 3 rounds, stop and report what is left; never call the PR ready with an open blocking point.
 
 ## 9. Report
 

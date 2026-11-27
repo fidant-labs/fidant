@@ -1,5 +1,5 @@
 import { BlockList, isIP } from "node:net";
-import { parseIceServers } from "@sigill/protocol";
+import { parseIceServers } from "@fidant/protocol";
 
 export type SiteSettings = {
   pages: boolean;

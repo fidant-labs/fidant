@@ -9,7 +9,7 @@ import { after, before, test } from "node:test";
 import { serveRelays, serveStatic } from "../../server/src/server.ts";
 import { type EdgeAnswer, edgeAnswer, edgePages, viewerRequest } from "./edge.ts";
 
-const root = mkdtempSync(join(tmpdir(), "sigill-edge-"));
+const root = mkdtempSync(join(tmpdir(), "fidant-edge-"));
 const files: Record<string, string> = {
   "index.html": "shell",
   "index.receive.en.html": "receive en",

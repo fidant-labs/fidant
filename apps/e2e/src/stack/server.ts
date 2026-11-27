@@ -24,7 +24,7 @@ const stopTimeoutMs = 5_000;
 const restartTimeoutMs = 20_000;
 const tailLines = 20;
 
-/** The Sigill server on a free port with a throwaway certificate. */
+/** The Fidant server on a free port with a throwaway certificate. */
 export const server: Service = { name: "server", start: (env) => startServer(env) };
 
 /** Runs the server elsewhere, such as in a container, and names the host it is reached at. */
@@ -38,7 +38,7 @@ export async function startServer(
   stackEnv: Readonly<Record<string, string>>,
   wrapper?: ServerWrapper,
 ): Promise<RunningService> {
-  const certDir = await mkdtemp(join(tmpdir(), "sigill-e2e-certs-"));
+  const certDir = await mkdtemp(join(tmpdir(), "fidant-e2e-certs-"));
   const stdoutLog = createWriteStream(serverStdoutLog);
   const stderrLog = createWriteStream(serverStderrLog);
   const [command, ...args] = [...(wrapper?.command(certDir) ?? [process.execPath]), serverMain];

@@ -14,8 +14,8 @@ jobs:
   review:
     if: >-
       github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.draft == false &&
-      github.event.pull_request.user.login != 'dependabot[bot]'
+      contains(fromJSON('[633855,12341157]'), github.event.pull_request.user.id) &&
+      github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:

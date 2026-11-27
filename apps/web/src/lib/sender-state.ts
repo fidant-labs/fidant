@@ -43,7 +43,7 @@
 //   itself; the sender is the authority either way.
 // - A join while a transfer is in progress that carries that transfer's own
 //   attempt ID is the same recipient asking again, because its open
-//   connection dropped (decision 0028). It is refused nothing and changes
+//   connection dropped (decision 0029). It is refused nothing and changes
 //   nothing but `turn`: the `restart` effect hands its ICE servers to the
 //   attempt's peer, which restarts ICE once its channel has opened and ignores
 //   them before. In every other status such a join is treated like any join:
@@ -177,7 +177,7 @@ import {
   type IceServer,
   MAX_LINKS,
   type RefuseReason,
-} from "@sigill/protocol";
+} from "@fidant/protocol";
 import type { Link } from "./link.ts";
 import type { OpenPath } from "./peer.ts";
 

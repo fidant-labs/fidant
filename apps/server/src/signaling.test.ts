@@ -15,7 +15,7 @@ import {
   REFUSED_REASONS,
   type ServerMessage,
   UPGRADE_REJECT_REASONS,
-} from "@sigill/protocol";
+} from "@fidant/protocol";
 import { WebSocket as WsClient } from "ws";
 import type { Mail, Mailer } from "./mail.ts";
 import { attachSignaling, clientAddress, HEARTBEAT_MS, LIMITS } from "./signaling.ts";
@@ -792,7 +792,7 @@ test("refuses a link's joins as busy past its pairings per window, so a guest ca
   assert.equal((await pair()).t, "joined");
 });
 
-test("answers a bound guest's repeated join with fresh ICE servers, charged as a pairing (0028)", async (t) => {
+test("answers a bound guest's repeated join with fresh ICE servers, charged as a pairing (0029)", async (t) => {
   const limited = createServer();
   t.mock.timers.enable({ apis: ["setInterval"] });
   const heartbeatMs = 1000;
@@ -1705,7 +1705,7 @@ test("lets a verified browser join its emailed link again, and no other link", a
   assert.equal(await gateOf(late, link, mark), "");
 });
 
-test("checks the token of a repeated join on an emailed link, as on a first join (0028)", async (t) => {
+test("checks the token of a repeated join on an emailed link, as on a first join (0029)", async (t) => {
   const { url, mails } = await mailServer(t);
   const link = linkId();
   const host = await mailHost(url, link);

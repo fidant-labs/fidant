@@ -4,9 +4,9 @@ import { canaryFile, canaryKey, SeededRandom } from "./canary.ts";
 import { buildNeedles, fileSecrets, keySecrets } from "./needles.ts";
 import { scan } from "./scan.ts";
 
-// Moderate sizes keep `pnpm check` fast. SIGILL_E2E_PERF_FULL=1 measures the 0001 bound instead:
+// Moderate sizes keep `pnpm check` fast. FIDANT_E2E_PERF_FULL=1 measures the 0001 bound instead:
 // a 4 MiB canary against a 10 MiB haystack.
-const full = process.env.SIGILL_E2E_PERF_FULL === "1";
+const full = process.env.FIDANT_E2E_PERF_FULL === "1";
 const MiB = 1024 * 1024;
 const canaryBytes = full ? 4 * MiB : 1 * MiB;
 const haystackBytes = full ? 10 * MiB : 2 * MiB;

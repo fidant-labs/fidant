@@ -60,7 +60,7 @@ export class PagesStack extends Stack {
           }),
         ),
         minimumProtocolVersion: cloudfront.SecurityPolicyProtocol.TLS_V1_2_2021,
-        enableIpv6: false,
+        enableIpv6: true,
         webAclId: firewall.attrArn,
         ...(site && { defaultRootObject: "pages/index.html" }),
         defaultBehavior: site

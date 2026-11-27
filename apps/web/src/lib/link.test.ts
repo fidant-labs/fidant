@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomBytes, randomInt } from "node:crypto";
 import { test } from "node:test";
-import { emailedFragment, isLinkId } from "@sigill/protocol";
+import { emailedFragment, isLinkId } from "@fidant/protocol";
 import { decodeBase64url, encodeBase64url } from "./base64url.ts";
 import { createLink, isSecret, parseRecipientLocation } from "./link.ts";
 

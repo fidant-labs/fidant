@@ -16,12 +16,12 @@ import { coturnLog, serverStderrLog, serverStdoutLog } from "../src/paths.ts";
 
 // Recipients may use only relay candidates, once over UDP and once over TCP; the leak check scans coturn's log.
 
-test.skip(!process.env.SIGILL_E2E_TURN_URLS, "coturn not found; brew install coturn");
+test.skip(!process.env.FIDANT_E2E_TURN_URLS, "coturn not found; brew install coturn");
 
 // The server checks each relay at startup, and again after every restart, so `loc` is up soon.
 test.beforeAll(async ({ playwright }) => {
   const request = await playwright.request.newContext({ ignoreHTTPSErrors: true });
-  const status = `${process.env.SIGILL_E2E_BASE_URL}/relay-status`;
+  const status = `${process.env.FIDANT_E2E_BASE_URL}/relay-status`;
   await expect
     .poll(async () => (await request.get(status)).json(), { timeout: 15_000 })
     .toContainEqual({ id: "loc", up: true });
@@ -34,7 +34,8 @@ const loopbackRelay =
   "Firefox pairs the local coturn's 127.0.0.1 relay candidates with no LAN candidate and ends ICE at once, before the sender falls back to the relay";
 
 const sha256Hex = (data: Uint8Array) => createHash("sha256").update(data).digest("hex");
-const panel = (page: Page) => page.getByRole("region", { name: "What our server has right now" });
+const panel = (page: Page) =>
+  page.getByRole("region", { name: "What our server has right now", includeHidden: true });
 const relayed =
   "None. The browsers couldn't connect directly, so the file passes encrypted through our relay instead.";
 
@@ -169,10 +170,13 @@ for (const transport of ["udp", "tcp"] as const) {
       await expect(panel(page)).not.toContainText("goes directly between browsers");
       // The panel and the Why? text also say "through our relay".
       await expect(page.getByText("Through our relay", { exact: true })).toBeVisible();
-      await page.getByText("Why?", { exact: true }).click();
-      await expect(
-        page.getByText("So the file goes through our relay in Stockholm."),
-      ).toBeVisible();
+      // The send page shows the link at once; the receive page explains under "Why?".
+      if (page === recipient) {
+        await page.getByText("Why?", { exact: true }).click();
+        await expect(
+          page.getByText("So the file goes through our relay in Stockholm."),
+        ).toBeVisible();
+      }
       await expect(page.getByRole("link", { name: /More about how it works/ })).toHaveAttribute(
         "href",
         "/how#relay",
@@ -180,7 +184,7 @@ for (const transport of ["udp", "tcp"] as const) {
       // The only ICE servers the page was given are the local coturn's.
       const urls = await peerList(page, "iceUrls");
       expect(urls?.length).toBeGreaterThan(0);
-      expect(new Set(urls)).toEqual(new Set(process.env.SIGILL_E2E_TURN_URLS?.split(",")));
+      expect(new Set(urls)).toEqual(new Set(process.env.FIDANT_E2E_TURN_URLS?.split(",")));
       // WebKit's stats name no protocol; watchPeers offers only this transport's TURN URLs.
       const path = browserName === "webkit" ? "relay/" : `relay/${transport}`;
       await expect.poll(() => peerList(page, "relayPaths")).toEqual([path]);
@@ -205,8 +209,8 @@ test("the relay list: the wrong secret is down, each relay gets its own sealed s
     { id: "loc", up: true },
   ]);
 
-  const master = (await readFile(process.env.SIGILL_E2E_RELAY_MASTER_FILE ?? "", "utf8")).trim();
-  const keys = dirname(process.env.SIGILL_E2E_RELAYS_FILE ?? "");
+  const master = (await readFile(process.env.FIDANT_E2E_RELAY_MASTER_FILE ?? "", "utf8")).trim();
+  const keys = dirname(process.env.FIDANT_E2E_RELAYS_FILE ?? "");
   const secrets: Record<string, string> = { master };
   for (const id of ["bad", "loc"]) {
     const response = await request.get(`/relay-secret/${id}`);
@@ -269,8 +273,7 @@ test("a sender who refuses the relay: no credentials, no bytes, plain words on b
     mimeType: file.mime,
     buffer: file.bytes,
   });
-  // The page glides after a file is chosen, here on the faked clock, so a pointer click can miss.
-  await sender.getByText("Connection options", { exact: true }).press("Enter");
+  await sender.getByText("Connection options", { exact: true }).click();
   const allowRelay = sender.getByLabel("Use our relay if needed");
   await allowRelay.uncheck();
   await sender.getByLabel("Who is it for?").fill("Anna");
@@ -357,7 +360,7 @@ test("a sender who refuses the relay and fails setup shows the refused relay", a
     mimeType: file.mime,
     buffer: file.bytes,
   });
-  await sender.getByText("Connection options", { exact: true }).press("Enter");
+  await sender.getByText("Connection options", { exact: true }).click();
   await sender.getByLabel("Use our relay if needed").uncheck();
   await sender.getByLabel("Who is it for?").fill("Anna");
   await sender.getByRole("button", { name: "Create link", exact: true }).click();

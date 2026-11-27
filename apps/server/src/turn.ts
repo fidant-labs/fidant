@@ -1,5 +1,5 @@
 import { createHmac } from "node:crypto";
-import type { IceServer } from "@sigill/protocol";
+import type { IceServer } from "@fidant/protocol";
 
 export type IceConfig = { urls: string[]; secret?: string };
 

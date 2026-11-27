@@ -148,7 +148,7 @@ export type HostMessage = { t: "host"; links: string[]; turn: boolean };
  * (same shape as a link ID) for this attempt, so a refusal can name the attempt it refuses. It is
  * not secret, but the server never logs it. `token`, the answer to a right code, is never logged.
  * A bound recipient sends the same message again, on the same socket, to get fresh ICE servers
- * when its open connection dropped (decision 0028).
+ * when its open connection dropped (decision 0029).
  */
 export type JoinMessage = { t: "join"; link: string; attempt: string; token?: string };
 /** An encrypted payload for the other end of a link. */

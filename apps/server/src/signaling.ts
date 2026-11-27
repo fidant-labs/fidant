@@ -29,7 +29,7 @@ import {
   SERVICE_RESTART,
   type ServerMessage,
   STARTING_MS,
-} from "@sigill/protocol";
+} from "@fidant/protocol";
 import { type RawData, WebSocket, WebSocketServer } from "ws";
 import type { Mailer } from "./mail.ts";
 
@@ -49,7 +49,7 @@ export const LIMITS = {
   messagesPerWindow: 1000,
   /**
    * Guests a link pairs per heartbeat window, a bound guest's repeated join included (decision
-   * 0028). Each pairing can cost the sender's socket a message (a guest without the secret gets a
+   * 0029). Each pairing can cost the sender's socket a message (a guest without the secret gets a
    * `refuse`), so without this one guest could spend the sender's message limit (SIG-235). An
    * honest recipient pairs at most 5 times per attempt.
    * ponytail: per link, so a guest holding ~100 of one sender's links could still spend it; count
@@ -453,7 +453,7 @@ export function attachSignaling(
       return;
     }
     // A bound socket may only repeat its own join, to get fresh ICE servers when its open
-    // connection dropped (decision 0028). The repeat passes every check below, as a first join.
+    // connection dropped (decision 0029). The repeat passes every check below, as a first join.
     if (peer.joined !== undefined && (peer.joined !== link || peer.attempt !== attempt)) {
       error(socket, "already-joined");
       return;

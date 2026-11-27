@@ -26,7 +26,7 @@
 //   consent runs out) and the drop is reported as the sender's page closing.
 // - If the connection drops after the data channel opened, the peer says so
 //   (onStalled) and the page sends the same `join` again on the same socket,
-//   with the same attempt ID and token (decision 0028). It doesn't once the
+//   with the same attempt ID and token (decision 0029). It doesn't once the
 //   attempt has ended, the transfer has stopped, the signaling socket is gone
 //   or `host-gone` came: joining the sender's new socket would be a new
 //   pairing. The `joined` that answers goes to the peer (rejoined), which
@@ -83,7 +83,7 @@
 // this demo). The file name and size, or the text, are shown, never logged or
 // sent anywhere.
 
-import { type CodeResult, isLinkId } from "@sigill/protocol";
+import { type CodeResult, isLinkId } from "@fidant/protocol";
 import { cn } from "cn";
 import { type ComponentChildren, Fragment, type VNode } from "preact";
 import { useEffect, useMemo, useReducer, useRef, useState } from "preact/hooks";
@@ -567,7 +567,7 @@ export function ReceivePage({
               onOpen(channel, info);
             },
             onPath: showPath,
-            // The same `join` again, token included (decision 0028). After `host-gone` it would
+            // The same `join` again, token included (decision 0029). After `host-gone` it would
             // be a new pairing with the sender's new socket, so then nothing is sent.
             onStalled: () => {
               if (current() && !attempt.hostGone && !attempt.abort.signal.aborted) {

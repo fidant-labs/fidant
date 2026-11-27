@@ -10,7 +10,7 @@
 // address, not the person, because whoever opens a link may not be the person
 // it was made for.
 
-import { maskAddress } from "@sigill/protocol";
+import { maskAddress } from "@fidant/protocol";
 import { useEffect, useId, useRef, useState } from "preact/hooks";
 import { Button } from "#components/ui/button";
 import { Card, CardContent } from "#components/ui/card";
@@ -364,7 +364,7 @@ function RecipientRow({ recipient, fileSize, statusText, onRemove, check, onComp
       <Card>
         {/* The least height fits every state a link passes through on its way to delivered, so the
             cards below never move. Only a
-            long error or an opened "Why?" makes a card taller. */}
+            long error makes a card taller. */}
         <CardContent className={`flex flex-col ${MIN_HEIGHT[email ? "email" : "plain"]}`}>
           <p class="m-0 text-[1.05rem] font-semibold wrap-anywhere">{name}</p>
           {/* Always under the name, so the card keeps its shape. Not for a link that must not be
@@ -429,7 +429,7 @@ function RecipientRow({ recipient, fileSize, statusText, onRemove, check, onComp
               {t.send.mail[lost ? "lost" : mail](maskAddress(email))}
             </p>
           )}
-          {path && <PathLine path={path} />}
+          {path && <PathLine path={path} plain />}
           {status === "checking" && (
             <p class="mt-2 mb-0 text-[0.9rem] text-muted-foreground empty:sr-only" role="status">
               {check?.said && t.send.check.waiting}

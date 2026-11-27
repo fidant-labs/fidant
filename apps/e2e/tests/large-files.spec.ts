@@ -6,8 +6,8 @@ import { writeLargeCanary } from "../src/leaks/canary.ts";
 import { sampleRss } from "../src/rss.ts";
 
 test.skip(
-  ({ browserName }) => process.env.SIGILL_E2E_LARGE !== "1" || browserName !== "chromium",
-  "Sends gigabytes, so it runs only with SIGILL_E2E_LARGE=1, in Chromium",
+  ({ browserName }) => process.env.FIDANT_E2E_LARGE !== "1" || browserName !== "chromium",
+  "Sends gigabytes, so it runs only with FIDANT_E2E_LARGE=1, in Chromium",
 );
 
 const GB = 1e9;
@@ -24,7 +24,7 @@ for (const { gb, minutes } of [
     canary,
   }) => {
     test.setTimeout(minutes * 60_000);
-    const dir = await mkdtemp(join(tmpdir(), "sigill-e2e-large-"));
+    const dir = await mkdtemp(join(tmpdir(), "fidant-e2e-large-"));
     try {
       const file = leaks.watch(
         await writeLargeCanary(canary.fork("file"), dir, { min: gb * GB, max: gb * GB + 1e7 }),
@@ -34,8 +34,10 @@ for (const { gb, minutes } of [
       const { page: sender } = await actor("sender");
       await sender.goto("/send");
       await chooseFile(sender, file.path);
-      await sender.getByText("Technical details").click();
+      await sender.getByRole("button", { name: "Technical details" }).click();
       await expect(sender.getByText(sha256)).toBeVisible({ timeout: gb * 2 * 60_000 });
+      // The drawer covers the page until it is closed.
+      await sender.getByRole("button", { name: "Close" }).click();
       const name = makeName(leaks, canary, "Anna");
       await sender.getByLabel("Who is it for?").fill(name);
       await sender.getByRole("button", { name: "Create link", exact: true }).click();

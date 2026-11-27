@@ -446,7 +446,7 @@ function watchConnections() {
 const connectionEvents = (page: Page) =>
   page.evaluate(() => (globalThis as WatchedGlobals).connectionEvents ?? []);
 
-// Decision 0028: a route that drops mid-transfer and comes back is recovered by an ICE restart on
+// Decision 0029: a route that drops mid-transfer and comes back is recovered by an ICE restart on
 // the same connection. The sender refuses the relay, so only the restored route can carry the file.
 test.describe("a route cut mid-transfer", () => {
   test.use({ remoteBrowsers: { sender: remoteBrowsers.a1, recipient: remoteBrowsers.b1 } });
@@ -690,7 +690,7 @@ test.describe("the box", () => {
 
     // Straight to rsyslog's socket: journald forwards nothing, so this proves rsyslog writes.
     const probe = randomBytes(8).toString("hex");
-    await inBox("logger", "-u", "/run/systemd/journal/syslog", "-t", "sigill-e2e-probe", probe);
+    await inBox("logger", "-u", "/run/systemd/journal/syslog", "-t", "fidant-e2e-probe", probe);
     let syslog = "";
     await expect
       .poll(async () => {
@@ -1331,7 +1331,7 @@ test.describe("the relay box", () => {
     test("takes its secret from the server's hand-out, which then finds it up", async () => {
       test.setTimeout(240_000);
       const master = await readFile(
-        join(process.env.SIGILL_E2E_COTURN_DIR ?? "", "relay-master"),
+        join(process.env.FIDANT_E2E_COTURN_DIR ?? "", "relay-master"),
         "utf8",
       );
       const derived = relaySecret(master.trim(), "sto");
@@ -1394,11 +1394,11 @@ test.describe("the relay box", () => {
 test.describe("the signaling image", () => {
   test.beforeAll(() => routerMode("router-b", "cone"));
   const origin = "https://fidant.se";
-  const agent = `sigill-e2e-${randomBytes(8).toString("hex")}`;
+  const agent = `fidant-e2e-${randomBytes(8).toString("hex")}`;
 
   test("runs read-only as node with the master only in its file", async ({ leaks }) => {
     const master = (
-      await readFile(join(process.env.SIGILL_E2E_COTURN_DIR ?? "", "relay-master"), "utf8")
+      await readFile(join(process.env.FIDANT_E2E_COTURN_DIR ?? "", "relay-master"), "utf8")
     ).trim();
     leaks.watchKey("relay master", master);
     const file = "/run/sigill/relay-master";

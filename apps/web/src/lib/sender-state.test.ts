@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type EmailStatus, MAX_LINKS } from "@sigill/protocol";
+import { type EmailStatus, MAX_LINKS } from "@fidant/protocol";
 import { createLink, type Link } from "./link.ts";
 import {
   CHECK_ATTEMPTS,

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { MAX_RELAY_DATA } from "@sigill/protocol";
+import { MAX_RELAY_DATA } from "@fidant/protocol";
 import {
   createTransferId,
   deriveFileKey,

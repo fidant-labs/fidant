@@ -1,6 +1,6 @@
 // Swedish text. Same keys as en.ts.
 
-import type { LogFields } from "@sigill/protocol";
+import type { LogFields } from "@fidant/protocol";
 import type { Kind, Tie } from "../lib/server-facts.ts";
 import type { Messages, Nouns, Section, Sections } from "./en.ts";
 
@@ -266,6 +266,7 @@ export const sv: Messages = {
   },
   common: {
     techDetails: "Tekniska detaljer",
+    close: "Stäng",
     size: "Storlek",
     type: "Typ",
     typeMissing: "Inte angiven",
@@ -302,8 +303,9 @@ export const sv: Messages = {
     continue: "Fortsätt",
     title: "Skicka en fil",
     lede: "Välj en fil och skapa sedan en länk till varje person. Din fil skickas från den här webbläsaren till dem. Den är krypterad hela vägen och laddas aldrig upp eller sparas.",
-    step: (n: number) => `Steg ${n} av 2`,
+    step: (n: number) => `Steg ${n} av 3`,
     peopleHeading: "Skapa en länk till varje person",
+    linksHeading: "Dela länkarna",
     change: "Byt",
     connectionOptions: "Anslutningsalternativ",
     addEmail: "Skapa och mejla länk",
@@ -795,14 +797,14 @@ export const sv: Messages = {
         body: [
           "All kod som kör den här webbplatsen är öppen under MIT-licensen. Allt som står på integritets- och säkerhetssidorna går att kontrollera mot den, och du kan köra en egen kopia.",
         ],
-        link: ["Koden på GitHub", "https://github.com/sigill-labs/sigill"],
+        link: ["Koden på GitHub", "https://github.com/fidant-labs/fidant"],
       },
       {
         heading: "Kontakt",
         body: [
           "Frågor, fel och idéer hör hemma i projektets ärendelista. Ärenden är offentliga, så skriv aldrig filer, länkar eller personuppgifter där. Följ säkerhetssidan om du vill rapportera ett säkerhetsproblem.",
         ],
-        link: ["Skapa ett ärende", "https://github.com/sigill-labs/sigill/issues"],
+        link: ["Skapa ett ärende", "https://github.com/fidant-labs/fidant/issues"],
       },
     ] as Sections,
   },
@@ -832,7 +834,7 @@ export const sv: Messages = {
       {
         heading: "Ändringar",
         body: ["Villkoren kan ändras. Varje ändring syns i projektets offentliga historik."],
-        link: ["Historiken för texten", "https://github.com/sigill-labs/sigill/commits/main"],
+        link: ["Historiken för texten", "https://github.com/fidant-labs/fidant/commits/main"],
       },
     ] as Sections,
   },
@@ -868,7 +870,7 @@ export const sv: Messages = {
         ],
         link: [
           "Rapportera privat på GitHub",
-          "https://github.com/sigill-labs/sigill/security/advisories/new",
+          "https://github.com/fidant-labs/fidant/security/advisories/new",
         ],
       },
     ] as Sections,
@@ -883,7 +885,7 @@ export const sv: Messages = {
           "Det finns inga konton, ingen fillagring och ingen databas över personer eller överföringar. Servern har det den vet om sidor och överföringar bara i minnet. På disk har servern egna hemligheter, bland dem den som reläets hemlighet kommer från. Reläet har sin nuvarande och sin förra hemlighet i en liten databasfil.",
           "Allt är öppen källkod, så varje påstående på den här sidan går att kontrollera mot koden.",
         ],
-        link: ["Koden på GitHub", "https://github.com/sigill-labs/sigill"],
+        link: ["Koden på GitHub", "https://github.com/fidant-labs/fidant"],
       },
       link: {
         heading: "Länken",
@@ -1037,7 +1039,7 @@ export const sv: Messages = {
         ],
         link: [
           "Designbesluten på GitHub",
-          "https://github.com/sigill-labs/sigill/tree/main/docs/decisions",
+          "https://github.com/fidant-labs/fidant/tree/main/docs/decisions",
         ],
       },
     } satisfies Record<string, Section>,
@@ -1683,7 +1685,7 @@ export const sv: Messages = {
     checkLinks: [
       ["Så fungerar det, steg för steg", "/how"],
       ["Det som ses och sparas i varje steg", "/how/traces"],
-      ["Koden på GitHub", "https://github.com/sigill-labs/sigill"],
+      ["Koden på GitHub", "https://github.com/fidant-labs/fidant"],
     ] as ReadonlyArray<readonly [string, string]>,
     contactHeading: "Kontakt",
     contact:

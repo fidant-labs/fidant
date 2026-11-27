@@ -10,7 +10,7 @@ import { assertDocker, dockerNetworks, dockerServer } from "./src/stack/networks
 import { sweepRun } from "./src/sweep.ts";
 
 export default async function globalSetup(): Promise<() => Promise<void>> {
-  const networks = Boolean(process.env.SIGILL_E2E_NETWORKS);
+  const networks = Boolean(process.env.FIDANT_E2E_NETWORKS);
   if (networks) {
     assertDocker();
   }
@@ -19,13 +19,13 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   }
   // Canaries come from this seed. It is not a key, so it is printed for replaying a failure.
   const seed = formatSeed(runSeed());
-  process.env.SIGILL_E2E_SEED = seed;
-  console.log(`Canary seed: ${seed} (set SIGILL_E2E_SEED to replay it)`);
+  process.env.FIDANT_E2E_SEED = seed;
+  console.log(`Canary seed: ${seed} (set FIDANT_E2E_SEED to replay it)`);
 
   await resetObservations();
   // The registry holds the secrets tests watch, so it stays out of observations/, which CI uploads.
-  const registry = await mkdtemp(join(tmpdir(), "sigill-e2e-registry-"));
-  process.env.SIGILL_E2E_REGISTRY = registry;
+  const registry = await mkdtemp(join(tmpdir(), "fidant-e2e-registry-"));
+  process.env.FIDANT_E2E_REGISTRY = registry;
   const removeRegistry = () => rmSync(registry, { recursive: true, force: true });
   // Backstop for a run that ends without global teardown. Only synchronous work runs on exit.
   process.once("exit", removeRegistry);
@@ -38,21 +38,21 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     throw error;
   }
   // Workers start after global setup and inherit this, so the config's use.baseURL sees it.
-  process.env.SIGILL_E2E_BASE_URL = stack.baseURL;
+  process.env.FIDANT_E2E_BASE_URL = stack.baseURL;
   // The recording fixture blocks every origin not in this comma-separated list.
-  process.env.SIGILL_E2E_STACK_ORIGINS = stack.origins.join(",");
+  process.env.FIDANT_E2E_STACK_ORIGINS = stack.origins.join(",");
   // Set only when coturn runs, so a relay spec can skip without it.
   if (stack.env.TURN_URLS) {
-    process.env.SIGILL_E2E_TURN_URLS = stack.env.TURN_URLS;
+    process.env.FIDANT_E2E_TURN_URLS = stack.env.TURN_URLS;
   }
   // Paths only, never the secrets: a restarted server inherits this environment.
   if (stack.env.RELAYS_FILE && stack.env.RELAY_MASTER_FILE) {
-    process.env.SIGILL_E2E_RELAYS_FILE = stack.env.RELAYS_FILE;
-    process.env.SIGILL_E2E_RELAY_MASTER_FILE = stack.env.RELAY_MASTER_FILE;
+    process.env.FIDANT_E2E_RELAYS_FILE = stack.env.RELAYS_FILE;
+    process.env.FIDANT_E2E_RELAY_MASTER_FILE = stack.env.RELAY_MASTER_FILE;
   }
   // Mailpit's API, set only when it runs, so an email spec can skip without it.
   if (stack.env.MAILPIT_API) {
-    process.env.SIGILL_E2E_MAILPIT = stack.env.MAILPIT_API;
+    process.env.FIDANT_E2E_MAILPIT = stack.env.MAILPIT_API;
   }
 
   return async () => {

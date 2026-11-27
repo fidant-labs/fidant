@@ -781,7 +781,7 @@ test("only the fidant.se distribution reads the bucket, over TLS, and the bucket
   ]);
 });
 
-test("each zone and its www get a distribution with their own certificate, function and web ACL, and no IPv6, logs or error pages", () => {
+test("each zone and its www get a distribution with their own certificate, function and web ACL, IPv6, and no logs or error pages", () => {
   const { pages } = pagesApp();
   for (const zone of zoneNames) {
     const name =
@@ -819,7 +819,7 @@ test("each zone and its www get a distribution with their own certificate, funct
         ...(site && { DefaultRootObject: "pages/index.html" }),
         Enabled: true,
         HttpVersion: "http2",
-        IPV6Enabled: false,
+        IPV6Enabled: true,
         Origins: undefined,
         ViewerCertificate: {
           AcmCertificateArn: {
@@ -1006,7 +1006,7 @@ test("only this repository's production environment can assume the CI role", () 
           StringEquals: {
             "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
             "token.actions.githubusercontent.com:sub":
-              "repo:sigill-labs@360211033/sigill@1468787132:environment:production",
+              "repo:fidant-labs@360211033/fidant@1468787132:environment:production",
           },
         },
       },
@@ -1028,7 +1028,7 @@ test("the CI role may only assume its own account's CDK bootstrap roles", () => 
   ]);
 });
 
-test("only the app environment can assume the release role, which only fidant-poc has", () => {
+test("only a job of release-jobs.yml on main, in the app environment, can assume the release role, which only fidant-poc has", () => {
   assert.doesNotMatch(JSON.stringify(ciTemplate(dnsAccount).toJSON()), /fidant-release|:app"/);
   const ci = ciTemplate(pocAccount);
   ci.resourceCountIs("AWS::IAM::ManagedPolicy", 0);
@@ -1048,7 +1048,9 @@ test("only the app environment can assume the release role, which only fidant-po
             StringEquals: {
               "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
               "token.actions.githubusercontent.com:sub":
-                "repo:sigill-labs@360211033/sigill@1468787132:environment:app",
+                "repo:fidant-labs@360211033/fidant@1468787132:environment:app",
+              "token.actions.githubusercontent.com:job_workflow_ref":
+                "fidant-labs/fidant/.github/workflows/release-jobs.yml@refs/heads/main",
             },
           },
         },

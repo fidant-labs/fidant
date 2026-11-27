@@ -11,7 +11,7 @@ const random = SeededRandom.fromLabel("registry test");
 let dir = "";
 
 before(async () => {
-  dir = await mkdtemp(join(tmpdir(), "sigill-registry-test-"));
+  dir = await mkdtemp(join(tmpdir(), "fidant-registry-test-"));
 });
 
 after(async () => {

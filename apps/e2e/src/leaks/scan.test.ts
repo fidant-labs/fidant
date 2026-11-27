@@ -189,11 +189,11 @@ test("reports one finding per secret and point, from the shallowest view", () =>
 test("shows the match with context", () => {
   const [finding] = findings(`GET /upload?name=${file.name} HTTP/1.1`);
   assert.ok(finding);
-  assert.equal(finding.offset, "GET /upload?name=sigill-".length);
+  assert.equal(finding.offset, "GET /upload?name=fidant-".length);
   assert.equal(finding.length, 16);
   assert.equal(
     finding.context,
-    `GET /upload?name=sigill-[[${file.token}]]-r\\xc3\\xa4ksm\\xc3\\xb6rg\\xc3\\xa5s.${file.name.slice(-3)} HTTP/1.1`,
+    `GET /upload?name=fidant-[[${file.token}]]-r\\xc3\\xa4ksm\\xc3\\xb6rg\\xc3\\xa5s.${file.name.slice(-3)} HTTP/1.1`,
   );
   assert.equal(
     formatFinding(finding),
@@ -281,7 +281,7 @@ test("finds a size in a path, query pair or snake_case name", () => {
     "?originalFileSize=1234567",
     "?original_file_size=1234567",
     "?upload_content_length=1234567",
-    "x-sigill-original-size=1234567",
+    "x-fidant-original-size=1234567",
     "SIZE_1234567_BYTES_UPLOADED",
     // Pin rule (b): a one-case run is no base64 blob, and glue on one side is not enough.
     "/api/transfers/chunk1234567x/next",

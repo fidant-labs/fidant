@@ -19,18 +19,18 @@ import type { RunningService, Service } from "./service.ts";
 
 const run = promisify(execFile);
 const compose = ["compose", "-f", join(e2eDir, "networks", "compose.yaml")];
-const serverName = "sigill-e2e-server";
+const serverName = "fidant-e2e-server";
 /** The server's address on the public network, where the browsers reach it. */
 export const serverIp = "198.51.100.10";
 export const turnIp = "198.51.100.20";
 /** coturn's name for TURN over TLS. Browsers resolve it to turnIp (playwright.config.ts). */
-export const turnHost = "turn.sigill.test";
+export const turnHost = "turn.fidant.test";
 /** The POC box container, which the browsers reach as fidant.se and turn.fidant.se. */
 export const boxIp = "198.51.100.30";
 export const boxOrigin = "https://fidant.se";
 /** The relay box container, set up by apps/infra/relay/install.sh. */
 export const relayIp = "198.51.100.40";
-export const relayHost = "sto.relay.sigill.test";
+export const relayHost = "sto.relay.fidant.test";
 export const albIp = "198.51.100.50";
 /** The pages CDN stand-in (networks/pages), which a test maps fidant.se to. */
 export const pagesIp = "198.51.100.60";
@@ -244,7 +244,7 @@ function down(): void {
 export const dockerNetworks: Service = { name: "networks", start: startNetworks };
 
 async function startNetworks(): Promise<RunningService> {
-  const dir = await mkdtemp(join(tmpdir(), "sigill-e2e-coturn-"));
+  const dir = await mkdtemp(join(tmpdir(), "fidant-e2e-coturn-"));
   // Made here: the server's mount is read-only, and coturn needs net's secret before it starts.
   const master = randomBytes(32).toString("hex");
   const masterFile = join(dir, "relay-master");
@@ -273,7 +273,7 @@ async function startNetworks(): Promise<RunningService> {
   // sites, and without the denial coturn closed allocations right after Chrome checked a private
   // peer through them ("reason: general"), and relayed rows failed at random.
   // A self-signed certificate for TURN over TLS on 443, made per run. Chrome checks it, so the
-  // browsers trust its public key alone (SIGILL_E2E_TURN_SPKI, read by playwright.config.ts).
+  // browsers trust its public key alone (FIDANT_E2E_TURN_SPKI, read by playwright.config.ts).
   await run("openssl", [
     ...["req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1", "-nodes"],
     ...["-days", "1", "-subj", `/CN=${turnHost}`],
@@ -288,10 +288,10 @@ async function startNetworks(): Promise<RunningService> {
     type: "spki",
     format: "der",
   });
-  const tls = { port: 443, cert: "/etc/sigill/turn.crt", pkey: "/etc/sigill/turn.key" };
+  const tls = { port: 443, cert: "/etc/fidant/turn.crt", pkey: "/etc/fidant/turn.key" };
   const config = coturnConfig({ ip: turnIp, port: 3478, secret, stateDir: "/tmp", tls });
   await writeFile(join(dir, "turnserver.conf"), config, { mode: 0o600 });
-  const boxDir = await mkdtemp(join(tmpdir(), "sigill-e2e-box-"));
+  const boxDir = await mkdtemp(join(tmpdir(), "fidant-e2e-box-"));
   const turnCert = {
     cert: await readFile(join(dir, "turn.crt"), "utf8"),
     key: await readFile(join(dir, "turn.key"), "utf8"),
@@ -306,7 +306,7 @@ async function startNetworks(): Promise<RunningService> {
     await writeFile(target, file.content, { mode: file.mode });
   }
   // The relay's install.sh inputs, and the run's TLS pair in place of a Let's Encrypt one.
-  const relayDir = await mkdtemp(join(tmpdir(), "sigill-e2e-relay-"));
+  const relayDir = await mkdtemp(join(tmpdir(), "fidant-e2e-relay-"));
   await writeFile(
     join(relayDir, "env"),
     `RELAY_ID=sto\nRELAY_NAME=${relayHost}\nAPP_URL=https://${serverIp}\n`,
@@ -315,21 +315,21 @@ async function startNetworks(): Promise<RunningService> {
   await writeFile(join(relayDir, "tls", "turn.crt"), turnCert.cert);
   await writeFile(join(relayDir, "tls", "turn.key"), turnCert.key, { mode: 0o600 });
 
-  const pagesDir = await mkdtemp(join(tmpdir(), "sigill-e2e-pages-"));
+  const pagesDir = await mkdtemp(join(tmpdir(), "fidant-e2e-pages-"));
   const playwright = join(e2eDir, "node_modules", "@playwright", "test", "package.json");
   // Every compose command needs these, including `exec` from the test workers, which inherit them.
   Object.assign(process.env, {
     PLAYWRIGHT_VERSION: JSON.parse(readFileSync(playwright, "utf8")).version,
-    SIGILL_E2E_REPO: repo,
-    SIGILL_E2E_RUN_DIR: runDir,
-    SIGILL_E2E_COTURN_DIR: dir,
-    SIGILL_E2E_BOX_DIR: boxDir,
-    SIGILL_E2E_RELAY_DIR: relayDir,
-    SIGILL_E2E_PAGES_DIR: pagesDir,
-    SIGILL_E2E_UID: String(process.getuid?.() ?? 1000),
-    SIGILL_E2E_GID: String(process.getgid?.() ?? 1000),
-    // Workers start after global setup and inherit it, like SIGILL_E2E_BASE_URL.
-    SIGILL_E2E_TURN_SPKI: createHash("sha256").update(spki).digest("base64"),
+    FIDANT_E2E_REPO: repo,
+    FIDANT_E2E_RUN_DIR: runDir,
+    FIDANT_E2E_COTURN_DIR: dir,
+    FIDANT_E2E_BOX_DIR: boxDir,
+    FIDANT_E2E_RELAY_DIR: relayDir,
+    FIDANT_E2E_PAGES_DIR: pagesDir,
+    FIDANT_E2E_UID: String(process.getuid?.() ?? 1000),
+    FIDANT_E2E_GID: String(process.getgid?.() ?? 1000),
+    // Workers start after global setup and inherit it, like FIDANT_E2E_BASE_URL.
+    FIDANT_E2E_TURN_SPKI: createHash("sha256").update(spki).digest("base64"),
   });
 
   const cleanUp = () => {
@@ -449,7 +449,7 @@ export const dockerServer: Service = {
           "--name",
           serverName,
           "--network",
-          "sigill-e2e-public",
+          "fidant-e2e-public",
           "--ip",
           serverIp,
           "--user",
