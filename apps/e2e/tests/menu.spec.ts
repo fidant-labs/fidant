@@ -183,3 +183,31 @@ test("going back from /send with the details drawer open leaves the next page us
   await nav(page).getByRole("link", { name: "Send" }).click();
   await expect(page).toHaveURL(/\/send$/);
 });
+
+test("scrolling over the details drawer leaves the page behind it where it was", async ({
+  page,
+}) => {
+  // Wide enough for the side drawer, short enough that both the page and the drawer scroll.
+  await page.setViewportSize({ width: 1000, height: 400 });
+  await page.goto("/send");
+  const button = page.getByRole("button", { name: "Technical details" });
+  await button.scrollIntoViewIfNeeded();
+  const before = await page.evaluate(() => window.scrollY);
+  expect(before).toBeGreaterThan(0);
+  await button.click();
+  const drawer = page.getByRole("dialog");
+  await expect(drawer).toBeVisible();
+  // Up past the drawer's top, then over the dimmed page: without the lock, both scroll the page.
+  await drawer.hover();
+  await page.mouse.wheel(0, -2000);
+  await page.mouse.move(100, 200);
+  await page.mouse.wheel(0, -2000);
+  // A wheel scroll lands a frame or so after the event: wait two before checking the page didn't move.
+  await page.evaluate(
+    () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+  );
+  expect(await page.evaluate(() => window.scrollY)).toBe(before);
+  await drawer.getByRole("button", { name: "Close" }).click();
+  await expect(drawer).toBeHidden();
+  expect(await page.evaluate(() => window.scrollY)).toBe(before);
+});

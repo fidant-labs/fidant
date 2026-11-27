@@ -115,6 +115,15 @@
   html {
     @apply font-sans;
   }
+  /* Scrolling in a modal dialog, or over its backdrop, never scrolls the page behind it, and the
+     page keeps its place. modern-web-guidance prefers overscroll-behavior on the dialog and its
+     backdrop, but only Chrome 144 and Firefox 150 honour it there, and Safari doesn't, so iPhones
+     would still scroll the page.
+     ponytail: removes the page scrollbar while open, so classic scrollbars shift the page; move to
+     the overscroll-behavior rules once Safari supports them. */
+  html:has(dialog:modal) {
+    overflow: hidden;
+  }
 }
 
 @theme {
