@@ -32,7 +32,7 @@
 // first onStalled the recipient answers every restart-offer, and from its
 // first rejoined the sender applies a restart-answer whenever an offer of its
 // own waits for one. While a recovery's offer waits, the sender makes no second
-// one, and "connected" ends that wait only with no offer pending. Both still
+// one; only its restart-answer ends that wait. Both still
 // refuse another fingerprint. A recovery uses the TURN URLs of the new servers
 // only if this connection had added the relay; otherwise only their STUN URLs.
 // The first rejoined of a drop starts a deadline of RECOVERY_TIMEOUT_MS, which
@@ -441,7 +441,12 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
   let relayAdded = false;
   /** Recipient: it called onStalled. Sender: it got a rejoined. The once-only restart rules end here. */
   let recovers = false;
-  /** Sender: a recovery's restart-offer waits for its answer. A later rejoined must not make a second offer: the answer would meet fresh credentials. */
+  /**
+   * Sender: a recovery's restart-offer waits for its answer, and only that answer ends the wait.
+   * A later rejoined must not make a second offer: the answer would meet fresh credentials.
+   * ponytail: a lost answer leaves this set, so later drops in the attempt end at the deadline;
+   * tag offers and answers with a counter if that matters.
+   */
   let recoveryOffered = false;
   /** Runs from the first rejoined of a drop until the connection is connected. */
   let recoveryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -840,8 +845,7 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
           // An old browser: the deadline ends it unless the route comes back by itself.
           return;
         }
-        // An offer lost here is left to the deadline. Set once the offer is
-        // made, so a "connected" before then can't clear it in "stable".
+        // An offer lost here is left to the deadline.
         await sendRestartOffer(false);
         recoveryOffered = true;
       })
@@ -893,10 +897,6 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
         clearTimeout(recoveryTimer);
         recoveryTimer = undefined;
         deadlineEarly = false;
-        // An offer that still waits keeps waiting: its answer is applied by restart-answer.
-        if (next.signalingState === "stable") {
-          recoveryOffered = false;
-        }
         if (opened && options.onPath) {
           // ponytail: a restart that never leaves "connected" reports no new path.
           const path = readPath();

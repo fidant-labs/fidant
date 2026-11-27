@@ -1322,22 +1322,6 @@ test("connected while the recovery's offer waits keeps it waiting, so a second d
   assert.equal(early.pc.restarts, 1);
 });
 
-test("connected with no offer pending ends the wait, so the next drop offers again", async (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
-  const sender = await openPeer("s");
-  await rejoin(sender);
-  assert.equal(sender.pc.restarts, 1);
-  // No answer came, and the browser no longer holds the offer (a rollback, say).
-  sender.pc.signalingState = "stable";
-  setState(sender.pc, "disconnected");
-  setState(sender.pc, "connected");
-  setState(sender.pc, "disconnected");
-  await rejoin(sender);
-  assert.equal(sender.pc.restarts, 2);
-  assert.deepEqual(await kinds(sender, 3), ["offer", "restart-offer", "restart-offer"]);
-  assert.deepEqual(sender.closes, []);
-});
-
 test("a deadline started while connected starts again in full when the connection drops", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   for (const side of ["s", "r"] as const) {
