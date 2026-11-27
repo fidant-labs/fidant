@@ -145,8 +145,9 @@ export type Route =
   | "security"
   | "notFound";
 
-/** The send page in secret mode. Without `mode`, or with `mode=file`, it sends a file. */
-export const SECRET_HREF = "/send?mode=secret";
+/** The send page in each mode. `/send` alone opens file mode too. */
+export const FILE_HREF = "/send/file";
+export const SECRET_HREF = "/send/secret";
 
 /** Changes the page without reloading it, so a transfer held in memory survives. */
 export function navigate(href: string) {

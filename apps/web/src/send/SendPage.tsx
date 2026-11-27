@@ -92,7 +92,17 @@ import {
 import { addRelay, NO_RELAYS } from "../lib/server-facts.ts";
 import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
 import { MAX_TEXT_LENGTH, textFile, textFitsOneChunk } from "../lib/text-secret.ts";
-import { field, formRows, Icon, Link, lede, Page, SECRET_HREF, ServerPanel } from "../ui.tsx";
+import {
+  FILE_HREF,
+  field,
+  formRows,
+  Icon,
+  Link,
+  lede,
+  Page,
+  SECRET_HREF,
+  ServerPanel,
+} from "../ui.tsx";
 import { type CheckView, RecipientList } from "./RecipientList.tsx";
 
 type Hash =
@@ -876,7 +886,7 @@ export function SendPage({
               ) : (
                 <Link
                   key={mode}
-                  href={mode === "secret" ? SECRET_HREF : "/send?mode=file"}
+                  href={mode === "secret" ? SECRET_HREF : FILE_HREF}
                   aria-current={current ? "page" : undefined}
                   class={look}
                 >

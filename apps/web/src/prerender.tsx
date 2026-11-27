@@ -10,7 +10,8 @@ import { type Lang, MESSAGES } from "./i18n/language.ts";
 export const PAGES: readonly string[] = [
   "/",
   "/send",
-  "/secret",
+  "/send/file",
+  "/send/secret",
   "/how",
   ...STEPS.map((step) => `/how/${step.slug}`),
   "/about",
