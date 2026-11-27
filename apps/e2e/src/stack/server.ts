@@ -1,4 +1,5 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import { createSocket } from "node:dgram";
 import { appendFileSync, createWriteStream, rmSync, writeFileSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { createServer } from "node:net";
@@ -223,14 +224,32 @@ export async function terminate(child: ChildProcess, closed: Promise<void>): Pro
   clearTimeout(timer);
 }
 
-/** A loopback port that was free a moment ago. ponytail: racy, but nothing else picks ports here. */
-export function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const probe = createServer();
-    probe.once("error", reject);
-    probe.listen(0, "127.0.0.1", () => {
-      const { port } = probe.address() as { port: number };
-      probe.close(() => resolve(port));
-    });
+/** Whether nothing holds the loopback UDP port. */
+export function udpFree(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const probe = createSocket("udp4");
+    probe.once("error", () => probe.close(() => resolve(false)));
+    probe.bind(port, "127.0.0.1", () => probe.close(() => resolve(true)));
   });
+}
+
+/**
+ * A loopback port that was free a moment ago, for TCP and UDP both: coturn listens on both, and
+ * browsers' ICE sockets and other relays take UDP ports from the same range (SIG-328).
+ * ponytail: racy, so coturn's start also checks that it answers on UDP (waitForStun).
+ */
+export async function freePort(): Promise<number> {
+  for (;;) {
+    const port = await new Promise<number>((resolve, reject) => {
+      const probe = createServer();
+      probe.once("error", reject);
+      probe.listen(0, "127.0.0.1", () => {
+        const { port } = probe.address() as { port: number };
+        probe.close(() => resolve(port));
+      });
+    });
+    if (await udpFree(port)) {
+      return port;
+    }
+  }
 }
