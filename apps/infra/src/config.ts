@@ -21,7 +21,7 @@ export const signalCluster = "fidant";
 export const signalService = "fidant-signal";
 export const releaseRoleName = "fidant-release";
 export const releaseSessionSeconds = 7200;
-// GitHub names the owner and repository here, not their IDs, so a rename needs FidantCi redeployed.
+// Names, not IDs: after a rename, swap the old name out in one FidantCi deploy and never trust both.
 export const releaseWorkflow = "fidant-labs/fidant/.github/workflows/release-jobs.yml";
 
 export function pagesBucket(account: string): string {
