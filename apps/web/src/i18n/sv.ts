@@ -899,7 +899,7 @@ export const sv: Messages = {
         body: [
           "Två nycklar tas fram ur hemligheten med HKDF-SHA-256. Båda är AES-256-GCM-nycklar som webbläsaren markerar som icke-exporterbara: sidan kan använda dem men inte läsa ut dem.",
           "Signalnyckeln krypterar meddelandena för uppkopplingen. Dess salt är länk-ID:t.",
-          "Filnyckeln krypterar varje ram mellan webbläsarna utom den första, INIT, som bara innehåller det slumpmässiga överförings-ID:t. Filnyckelns salt består av två slumpmässiga värden: det överförings-ID:t, som avsändaren väljer för varje försök, och ett försöks-ID som mottagarens sida väljer varje gång den ansluter. Därför använder varken en omstartad överföring eller en återuppspelad första ram samma nyckel och nonce två gånger.",
+          "Filnyckeln krypterar varje ram mellan webbläsarna utom den första, INIT, som bara innehåller det slumpmässiga överförings-ID:t. Filnyckelns salt består av två slumpmässiga värden: det överförings-ID:t, som avsändaren väljer för varje försök, och ett försöks-ID som mottagarens sida väljer för varje ny anslutning. Därför använder varken en omstartad överföring eller en återuppspelad första ram samma nyckel och nonce två gånger.",
         ],
       },
       signal: {
@@ -909,8 +909,9 @@ export const sv: Messages = {
           "Sedan sätter webbläsarna upp en WebRTC-anslutning. Erbjudandet, svaret och nätverkskandidaterna krypteras med signalnyckeln innan de når vår server. Varje meddelande är knutet till sin länk, sitt försök och sin riktning, så servern kan inte läsa eller ändra meddelandena. Servern kan inte heller skicka tillbaka ett meddelande till den sida som skickade det, flytta det till en annan länk eller spela upp det i ett annat försök. Att spela upp gamla meddelanden kan som mest få ett försök att misslyckas, vilket en server ändå kan åstadkomma genom att kasta dem.",
           "Det betyder mer än integritet: meddelandena innehåller fingeravtrycken för WebRTC:s egen DTLS-kryptering. Eftersom servern inte kan ändra dem kan den inte ställa sig mellan de två webbläsarna. Allt det här bygger på att vår server inte har nyckeln.",
           "Det är vad kontrollnumret är till för. Varje webbläsare gör ett nytt certifikat för varje anslutning. Mottagarens webbläsare skickar ett åtagande för sitt fingeravtryck, en hash, innan avsändarens webbläsare gör sitt erbjudande. Båda webbläsarna räknar sedan fram sex siffror ur de två fingeravtrycken i sin egen anslutning. Med någon emellan finns det två anslutningar, så de två skärmarna visar olika nummer. Tack vare åtagandet kan den som står emellan bara gissa: en chans på miljonen per anslutning. Numret visas bara på skärmen och skickas eller sparas aldrig.",
-          "Med kontrollnummer läser mottagaren upp sitt nummer och avsändaren jämför. Ingenting om filen skickas förrän båda har sagt att det stämmer, och ”Det skiljer sig” på någon av sidorna stoppar försöket. När mottagarens webbläsare har svarat på ett erbjudande ansluter den igen bara när mottagaren klickar på Försök igen. Avsändarens sida slutar erbjuda en länk efter 5 försök som tog slut innan båda bekräftat, vart och ett begränsat till 5 minuter. Ett försök som avsändarens sida stoppade för att de två sidorna kör olika versioner räknas inte: inget kontrollnummer visades. Kontrollen visar att ingen satt mellan de två webbläsarna. Den kan inte visa att själva sidans kod är ärlig.",
-          "Om anslutningen till vår server bryts försöker båda sidorna ansluta igen av sig själva. Avsändarens sida anmäler sina länkar på nytt. En mottagare som ännu höll på att ansluta försöker igen några gånger innan den ger upp. Under den första minuten efter att vår server har startat ber den en mottagare vars länk den ännu inte känner till att vänta. Då fortsätter mottagaren försöka medan avsändarens sida anmäler länken igen. En överföring som redan har börjat behöver inte vår server och fortsätter.",
+          "Med kontrollnummer, läser mottagaren upp sitt nummer och avsändaren jämför. Ingenting om filen skickas förrän båda har sagt att det stämmer, och ”Det skiljer sig” på någon av sidorna stoppar försöket. När mottagarens webbläsare har svarat på ett erbjudande gör den en ny anslutning bara när mottagaren klickar på Försök igen. När en bruten väg återställs, som beskrivs nedan, behålls samma anslutning och samma nummer. Avsändarens sida slutar erbjuda en länk efter 5 försök som tog slut innan båda bekräftat, vart och ett begränsat till 5 minuter. Ett försök som avsändarens sida stoppade för att de två sidorna kör olika versioner räknas inte: inget kontrollnummer visades. Kontrollen visar att ingen satt mellan de två webbläsarna. Den kan inte visa att själva sidans kod är ärlig.",
+          "Om anslutningen till vår server bryts försöker båda sidorna ansluta igen av sig själva. Avsändarens sida anmäler sina länkar på nytt. En mottagare som ännu höll på att ansluta försöker igen några gånger innan den ger upp. Under den första minuten efter att vår server har startat ber den en mottagare vars länk den ännu inte känner till att vänta. Då fortsätter mottagaren försöka medan avsändarens sida anmäler länken igen. En överföring som redan har börjat behöver inte vår server och fortsätter, så länge vägen mellan webbläsarna håller.",
+          "Om vägen mellan de två webbläsarna bryts medan deras anslutning är öppen försöker sidorna få tillbaka en väg utan att börja om. Mottagarens sida skickar sin anslutningsbegäran till vår server igen, och servern ger båda sidorna uppgifterna för uppkopplingen på nytt. Avsändarens webbläsare söker sedan en väg igen på samma anslutning, med ett nytt erbjudande och svar, krypterade precis som de första och kontrollerade mot samma två certifikat. Nycklarna och kontrollnumret är desamma, och överföringen fortsätter där den stannade, utan något klick. Det här lägger aldrig till reläet på en anslutning som inte redan använde det. Om ingen väg kommer tillbaka inom 30 sekunder slutar försöket som en bruten anslutning, och Försök igen fortsätter nedladdningen av en fil. Det fungerar bara så länge båda sidorna fortfarande är anslutna till vår server. Ett byte av nätverk som också bryter en sidas anslutning till vår server återställs inte på det här sättet, utan slutar också som en bruten anslutning. Den upprepade anslutningsbegäran visar vår server att överföringens anslutning bröts, och när. Vi har bara testat detta i Chromium, med en väg som var bruten i ungefär 6 till 8 sekunder. Firefox och Safari är otestade.",
           "Det första meddelandet som varje webbläsare skickar för uppkopplingen anger vilken version av överföringsformatet sidan använder. Om versionerna skiljer sig kopplas webbläsarna inte ihop och ingenting om filen skickas. Sidor som har den här kontrollen säger då vilken av dem som behöver laddas om. Alla sidor i samma utgåva skickar samma version, så versionen avslöjar ingenting om överföringen.",
         ],
       },
@@ -939,7 +940,7 @@ export const sv: Messages = {
         heading: "Kontrollen av filen",
         body: [
           "Mottagarens webbläsare räknar kontrollsumman medan filen kommer fram och kontrollerar storleken, antalet delar, utfyllnaden och kontrollsumman mot END. Filen blir färdig först när allt stämmer. En ram som inte går att dekryptera, en kontrollsumma som inte stämmer eller någon annan kontroll som inte går igenom kastar det som har skrivits.",
-          "En bruten anslutning är något annat. Om varje ram hittills har gått igenom kontrollerna behåller mottagarens sida det som har kommit fram, i minnet eller i filen som mottagaren valde att spara till, och Försök igen fortsätter därifrån. Försök igen gör en ny anslutning med en ny nyckel. Om avsändaren erbjuder samma fil igen, där namn, storlek, typ, delstorlek och avsändarens namn är desamma, visar sidan inte erbjudandet eller någon sparadialog igen. Den talar om för avsändaren hur mycket den redan har, så bara resten skickas. Med kontrollnumret på jämförs numret ändå först. Kontrollsumman gäller hela filen, så om resten inte hör ihop med det som redan har kommit fram går kontrollen inte igenom. Ett annat erbjudande börjar från början, och det gör också en delad hemlighet. Bara den fliken kan fortsätta nedladdningen, och sidan kastar det som har kommit fram om överföringen slutar på något annat sätt. När fliken stängs eller laddas om försvinner det som låg i minnet. Vad webbläsaren då gör med en ofärdig fil från sparadialogen har vi inte testat än.",
+          "En bruten anslutning som inte kommer tillbaka (se Så kopplas webbläsarna ihop) är något annat. Om varje ram hittills har gått igenom kontrollerna behåller mottagarens sida det som har kommit fram, i minnet eller i filen som mottagaren valde att spara till, och Försök igen fortsätter därifrån. Försök igen gör en ny anslutning med en ny nyckel. Om avsändaren erbjuder samma fil igen, där namn, storlek, typ, delstorlek och avsändarens namn är desamma, visar sidan inte erbjudandet eller någon sparadialog igen. Den talar om för avsändaren hur mycket den redan har, så bara resten skickas. Med kontrollnumret på jämförs numret ändå först. Kontrollsumman gäller hela filen, så om resten inte hör ihop med det som redan har kommit fram går kontrollen inte igenom. Ett annat erbjudande börjar från början, och det gör också en delad hemlighet. Bara den fliken kan fortsätta nedladdningen, och sidan kastar det som har kommit fram om överföringen slutar på något annat sätt. När fliken stängs eller laddas om försvinner det som låg i minnet. Vad webbläsaren då gör med en ofärdig fil från sparadialogen har vi inte testat än.",
           "Chromium-webbläsare på datorn, som Chrome och Edge, kan skriva filen direkt till en plats på disken som mottagaren väljer. Andra webbläsare samlar den i minnet och startar nedladdningen i slutet, och för en fil över 256 MiB varnas mottagaren först. Nedladdningen märks alltid som rena binärdata, vilken typ avsändaren än anger, så en fil kan inte köras som en webbsida på Fidants webbplats.",
           "Namn nekas om de innehåller styrtecken, radavgränsare, Unicodes styrtecken för textriktning, tomma utfyllnadstecken eller långa följder av mellanslag. Därför kan ett namn som slutar på .exe inte se ut att sluta på .pdf.",
         ],
@@ -966,7 +967,7 @@ export const sv: Messages = {
           "När ingen direkt väg fungerar, vilket är vanligt på mobildata och kontorsnätverk, går trafiken via vårt TURN-relä i Stockholm. Webbläsarna lägger till reläet bara om avsändaren tillåter det, om reläet är tillgängligt och om ingen anslutning har kommit till stånd 3 sekunder efter att mottagaren har svarat. En sida som öppnades innan vi började lägga till reläet på det här sättet reserverar fortfarande reläadresser från början, tills den laddas om.",
           "För att lägga till reläet börjar webbläsarna koppla upp på nytt, med ett nytt erbjudande och svar, krypterade precis som de första. En direkt väg kan fortfarande vinna efter det. En anslutning som behöver reläet kommer alltså i gång ungefär 3 sekunder senare. En direkt väg som ännu inte är uppkopplad 3 sekunder efter att mottagaren har svarat, till exempel på ett nätverk som tappar många paket, kan hamna på reläet.",
           "Reläet för vidare krypterade paket. Det kan inte dekryptera dem och sparar dem inte.",
-          "För att använda reläet behöver en webbläsare inloggningsuppgifter, som vår server skapar för varje ihopkoppling och bara ger till de två ihopkopplade sidorna. Med dem kan en reläanslutning starta i 5 minuter, och den kan sedan pågå längre. Vår server kontrollerar varje minut att reläet kan föra vidare trafik och erbjuder det när en kontroll lyckas. Servern slutar erbjuda det efter två misslyckade kontroller i rad. Reläet får hemligheten bakom inloggningsuppgifterna från vår server, förseglad så att bara reläet kan öppna den.",
+          "För att använda reläet behöver en webbläsare inloggningsuppgifter, som vår server skapar varje gång den kopplar ihop två sidor, och på nytt varje gång en mottagares sida frågar igen efter en bruten väg, och bara ger till de två ihopkopplade sidorna. Med dem kan en reläanslutning starta i 5 minuter, och den kan sedan pågå längre. Vår server kontrollerar varje minut att reläet kan föra vidare trafik och erbjuder det när en kontroll lyckas. Servern slutar erbjuda det efter två misslyckade kontroller i rad. Reläet får hemligheten bakom inloggningsuppgifterna från vår server, förseglad så att bara reläet kan öppna den.",
           "Webbläsare når reläet över UDP, eller över TLS på port 443 där ett nätverk bara släpper igenom webbtrafik. Reläet skickar bara vidare över UDP, och bara från sin egen adress. Det vägrar skicka till andra datorer på privata eller interna nätverk, med ett godtaget undantag: reläets egen server (se beslut 0007). Det begränsar också hur många anslutningar som går via det samtidigt.",
           "När den uppskattade kostnaden för vår trafik under månaden når vår budget stängs reläet och vår STUN-tjänst av. De förblir avstängda till månadens slut, om vi inte slår på dem igen tidigare, till exempel genom att höja budgeten. Till dess kan en ny överföring bara ansluta där den klarar sig utan dem, till exempel på samma lokala nätverk, och misslyckas ofta annars.",
         ],
@@ -982,7 +983,7 @@ export const sv: Messages = {
         heading: "Flera mottagare och engångslänkar",
         body: [
           "En sändning kan gå till upp till 256 personer. Var och en har en egen länk, nyckel, anslutning och överföring.",
-          "En länk räknas som använd först när mottagarens RECEIPT stämmer. Därefter nekas den. En länk som redan är ansluten i en flik nekas i en annan, och så gör en länk som har haft 10 anslutningsförsök under den pågående perioden på 30 sekunder.",
+          "En länk räknas som använd först när mottagarens RECEIPT stämmer. Därefter nekas den. En länk som redan är ansluten i en flik nekas i en annan, och så gör en länk som har haft 10 anslutningsförsök under den pågående perioden på 30 sekunder. En mottagares sida som frågar igen efter en bruten väg räknas som ett försök, men behåller sin anslutning om den nekas.",
           "Fram till dess kan länken öppnas igen: efter att mottagaren tackat nej, efter en bruten anslutning eller efter en misslyckad kontroll. Efter en bruten anslutning fortsätter Försök igen i samma flik en fils nedladdning där den avbröts, om det går. Varje nytt försök har ett nytt överförings-ID och ett nytt försöks-ID, och därmed en ny filnyckel. En länk med kontrollnummer slutar fungera efter 5 försök som tog slut innan båda hade bekräftat numret. Ett försök som avsändarens sida stoppade för att de två sidorna kör olika versioner räknas inte.",
           "Ingenting sparas, så en länk fungerar bara medan avsändarens sida är öppen. När den stängs glömmer vår server dess länkar inom en minut.",
         ],
@@ -1012,7 +1013,7 @@ export const sv: Messages = {
           "Länken är nyckeln. Den som får tag på en länk kan öppna filen eller den delade hemligheten bakom den tills länken har använts. Skicka varje länk bara till personen den är avsedd för, på ett sätt du litar på.",
           "Din webbläsare kör den kod vår server skickar. En server som skickade annan kod skulle kunna läsa filer, och hoppa över kontrollnumret. Koden är offentlig, men webbläsare kan ännu inte kontrollera att det de fick stämmer med den.",
           "Avsändarens namn skrivs av avsändaren och kontrolleras inte.",
-          "Den andra webbläsaren ser din IP-adress. Varje webbläsare frågar vårt relä om sin offentliga adress, så reläet ser båda IP-adresserna och kan oftast se att de hör ihop. Nätverken på vägen, och vårt relä när filen går via det, ser också när överföringen sker och ungefär hur stor filen är. Vår server ser båda IP-adresserna, vilken mottagare som ansluter till vilken avsändare och när, och hur många mottagare en avsändare har. Så den får veta vem som skickar till vem, men inte vad.",
+          "Den andra webbläsaren ser din IP-adress. Varje webbläsare frågar vårt relä om sin offentliga adress, så reläet ser båda IP-adresserna och kan oftast se att de hör ihop. Nätverken på vägen, och vårt relä när filen går via det, ser också när överföringen sker och ungefär hur stor filen är. Vår server ser båda IP-adresserna, vilken mottagare som ansluter till vilken avsändare och när, och hur många mottagare en avsändare har. Om en överförings anslutning bryts och mottagarens sida frågar vår server igen ser servern det också, och när. Så den får veta vem som skickar till vem, men inte vad.",
           "Skadlig kod på någon av datorerna kan läsa filen innan den krypteras eller efter att den dekrypterats.",
           "När mottagaren kopierar en delad hemlighet hamnar den i enhetens urklipp, där urklippshistorik, synkning av urklippet till andra enheter och andra appar kan läsa den. När en delad hemlighet väl har visats kan Fidant inte nå den: den går varken att ta tillbaka eller radera.",
           "Fidant har ännu inte granskats av någon oberoende part.",
@@ -1287,7 +1288,7 @@ export const sv: Messages = {
             ],
             [
               "direct,relay",
-              "Så länge vårt relä är tillgängligt skapar den inloggningsuppgifter till reläet för det här paret av webbläsare, som en reläanslutning kan starta med i 5 minuter, och skickar dem till båda sidorna utan att spara dem.",
+              "Så länge vårt relä är tillgängligt skapar den inloggningsuppgifter till reläet för det här paret av webbläsare, som en reläanslutning kan starta med i 5 minuter, och skickar dem till båda sidorna utan att spara dem. Den skapar nya varje gång mottagarens sida frågar igen efter en bruten väg.",
             ],
           ],
         },
@@ -1336,6 +1337,10 @@ export const sv: Messages = {
               "Om vårt relä är tillgängligt och webbläsarna fortfarande inte är anslutna 3 sekunder efter att mottagaren svarat, lägger de till reläet. Det ger rader för ytterligare ett dussintal uppkopplingsmeddelanden, som antyder att du tillät reläet.",
             ],
             ["norelay", "Om din sida ändå ser en anslutning via reläet: att den avslutade den."],
+            [
+              "",
+              "Om vägen mellan webbläsarna bryts under överföringen och mottagarens sida frågar vår server igen: ytterligare en rad om att en mottagare anslöt, eller om att den nekades som upptagen om länken hade haft 10 anslutningsförsök under den halvminuten, eller, om avsändaren just hade gett upp, en om att den anslöt och en om att avsändaren nekade den, och rader för de nya uppkopplingsmeddelandena. Tillsammans visar de att den här länkens anslutning bröts, och när. De visar inte varför, på vems sida eller om den kom tillbaka.",
+            ],
           ],
         },
         relay: {
@@ -1355,6 +1360,14 @@ export const sv: Messages = {
             [
               "relay",
               "Båda IP-adresserna, och den krypterade trafiken, som det skickar vidare och inte sparar.",
+            ],
+            [
+              "",
+              "Om vägen mellan webbläsarna bryts och de söker en ny kan var och en fråga efter sin publika IP-adress igen.",
+            ],
+            [
+              "direct,relay",
+              "Om vägen bryts efter att webbläsarna har lagt till reläet, och vårt relä fortfarande är tillgängligt, får de nya inloggningsuppgifter och kan reservera reläadresser igen. Webbläsare som aldrig lade till reläet lägger inte till det då heller.",
             ],
             ["relay file", "Filens storlek, bara ungefär."],
             ["relay secret", "Inte hemlighetens längd: varje hemlighet är lika stor på nätet."],
@@ -1485,10 +1498,10 @@ export const sv: Messages = {
         ],
         [
           "Filen eller hemligheten skickas",
-          "Ingenting av den. Din sida rapporterar vägen: direkt, STUN, relä eller misslyckad.",
+          "Ingenting av den. Din sida rapporterar vägen en gång, som den var när den öppnades: direkt, STUN, relä eller misslyckad. Om vägen bryts och mottagarens sida frågar igen: att den frågade, vilket visar att anslutningen bröts.",
           "Ingenting.",
-          "Vägen.",
-          "På vägen via reläet: de krypterade paketen, som det för vidare och inte sparar. Båda IP-adresserna så fort webbläsarna har lagt till reläet.",
+          "Vägen. Om mottagarens sida frågade igen efter en bruten väg: att en mottagare anslöt eller nekades som upptagen, eller, om avsändaren just hade gett upp, anslöt och sedan nekades av avsändaren, och storleken på varje nytt uppkopplingsmeddelande.",
+          "På vägen via reläet: de krypterade paketen, som det för vidare och inte sparar. Båda IP-adresserna så fort webbläsarna har lagt till reläet. Om vägen bryts kan varje webbläsare fråga efter sin offentliga adress igen, och webbläsare som hade lagt till reläet kan reservera reläadresser igen.",
         ],
         [
           "Mottagaren bekräftar leveransen",
@@ -1559,6 +1572,10 @@ export const sv: Messages = {
       [
         "När varje sida ansluter och kopplar ner",
         "Vi ser när varje sida ansluter till vår server och när den kopplar ner, så vi kan se när någon öppnar en länk. Våra loggrader noterar när en avsändares sida registrerar eller ändrar sina länkar och när den stängs, och när en mottagare ansluter eller kopplar ner.",
+      ],
+      [
+        "När en överförings anslutning bryts",
+        "Om anslutningen mellan de två webbläsarna bryts under en överföring ber mottagarens sida vår server att hjälpa dem hitta en väg igen. Då ser vi att den här överföringens anslutning bröts, och när. Vår logg noterar det som ytterligare en rad om att en mottagare anslöt eller nekades, och storleken på de nya uppkopplingsmeddelandena. Vi ser inte varför den bröts eller hur långt överföringen hade kommit.",
       ],
     ],
     keepHeading: "Vad vi sparar",

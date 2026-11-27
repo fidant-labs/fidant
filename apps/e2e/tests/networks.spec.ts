@@ -36,6 +36,7 @@ import {
   applyRelaySecret,
   boxOrigin,
   clientAddresses,
+  cutRoute,
   inBox,
   inRelay,
   inSignal,
@@ -45,6 +46,7 @@ import {
   relayHost,
   relayIp,
   remoteBrowsers,
+  restoreRoute,
   resumeRelay,
   routerMode,
   sendToRelay,
@@ -405,6 +407,136 @@ for (const row of scenarios) {
     });
   });
 }
+
+// Decision 0031: a route that drops mid-transfer and comes back is recovered by an ICE restart on
+// the same connection. The sender refuses the relay, so only the restored route can carry the file.
+test.describe("a route cut mid-transfer", () => {
+  test.use({ remoteBrowsers: { sender: remoteBrowsers.a1, recipient: remoteBrowsers.b1 } });
+
+  test("is recovered by an ICE restart, and the file arrives without starting over", async ({
+    actor,
+    observed,
+    leaks,
+    canary,
+    baseURL,
+  }) => {
+    await routerMode("router-b", "lossy");
+    const size = 1024 * 1024 + 1;
+    const file = leaks.watch(canaryFile(canary.fork("file"), { size }));
+    const name = makeName(leaks, canary, "Anna");
+
+    const sender = await actor("sender");
+    await recordPeerConnections(sender.context);
+    await sender.page.goto("/send");
+    await chooseFile(sender.page, { name: file.name, mimeType: file.mime, buffer: file.bytes });
+    await sender.page.getByText("Connection options", { exact: true }).press("Enter");
+    await sender.page.getByLabel("Use our relay if needed").uncheck();
+    await sender.page.getByLabel("Who is it for?").fill(name);
+    await sender.page.getByRole("button", { name: "Create link", exact: true }).click();
+    const link =
+      (await sender.page.getByLabel(`Link for ${name}`, { exact: true }).textContent()) ?? "";
+    leaks.watchKey("link secret", new URL(link).hash.slice(1));
+
+    const recipient = await actor("recipient");
+    await recordPeerConnections(recipient.context);
+    await recipient.page.goto(link);
+    const downloading = recipient.page.waitForEvent("download", { timeout: 60_000 });
+    const downloadButton = recipient.page.getByRole("button", { name: "Download" });
+    await expect(downloadButton).toBeVisible({ timeout: 45_000 });
+    await downloadButton.click();
+
+    const joins = async () =>
+      (await observed("recipient").records()).flatMap((record) =>
+        record.type === "frame-sent" && JSON.parse(record.payload).t === "join"
+          ? [record.payload]
+          : [],
+      );
+    const received = async () =>
+      (
+        await recipient.page
+          .getByLabel("Download progress", { exact: true })
+          .evaluateAll((els) => els.map((el) => (el as HTMLProgressElement).value))
+      )[0] ?? 0;
+    const verified = recipient.page.getByText(verifiedText);
+
+    // Samples until the recipient verified the file: its progress must never go back.
+    const progress = expectHonestProgress(sender.page, recipient.page, size, name);
+    // Awaited below, after the route is back.
+    progress.catch(() => {});
+    await expect.poll(received, { timeout: 30_000 }).toBeGreaterThan(0);
+    expect(await joins()).toHaveLength(1);
+    // The containers are shared across the run, so the route comes back whatever happens here.
+    let stalled = 0;
+    try {
+      await cutRoute();
+      // The recipient's browser reports the drop and its page joins again. Restored at once: the
+      // sender's page must get that `joined` before its own browser reports `failed`.
+      await expect
+        .poll(async () => (await joins()).length, { timeout: 30_000 })
+        .toBeGreaterThanOrEqual(2);
+      // The route is cut, so nothing more arrives: the level to beat once it is back.
+      stalled = await received();
+    } finally {
+      await restoreRoute();
+    }
+
+    // Connected again on the same connection.
+    await expect
+      .poll(
+        async () => {
+          const events = (await readPeerConnections(recipient.page))[0]?.events ?? [];
+          const dropped = events.findIndex((event) => event.state === "disconnected");
+          return dropped !== -1 && events.at(-1)?.state === "connected";
+        },
+        { timeout: 30_000 },
+      )
+      .toBe(true);
+    // The rest of the file arrives over the restored route, on top of what came before the cut.
+    // Not "still unfinished": that would race the transfer's own speed.
+    await expect.poll(received, { timeout: 30_000 }).toBeGreaterThan(stalled);
+
+    await progress;
+    await expect(verified).toBeVisible();
+    const download = await downloading;
+    expect(sha256Hex(await buffer(await download.createReadStream()))).toBe(sha256Hex(file.bytes));
+    await expect(
+      sender.page.getByText(`The transfer through ${name}'s link was interrupted`),
+    ).toHaveCount(0);
+
+    // One attempt: the same `join` again, never a new one.
+    const sentJoins = await joins();
+    expect(sentJoins.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(sentJoins).size, "every join is the first one again").toBe(1);
+
+    for (const [who, page] of [
+      ["sender", sender.page],
+      ["recipient", recipient.page],
+    ] as const) {
+      // One connection per page, which got a new ICE password: the restart, not a new attempt
+      // and not a route that came back by itself.
+      const connections = await readPeerConnections(page);
+      expect(connections.length, `${who} peer connections`).toBe(1);
+      const events = connections[0]?.events ?? [];
+      const before = events.find((event) => event.state === "connected")?.pwd;
+      const after = events.at(-1);
+      expect(before, `${who} ICE password before the cut`).toBeTruthy();
+      expect(after?.state, `${who} ends connected`).toBe("connected");
+      expect(after?.pwd, `${who} ICE password after the cut`).toBeTruthy();
+      expect(after?.pwd, `${who} ICE password after the cut`).not.toBe(before);
+      for (const pwd of new Set(events.map((event) => event.pwd))) {
+        if (pwd) {
+          leaks.watchKey(`${who} ICE pwd`, pwd);
+        }
+      }
+      const gathered = (await readPeerConnections(page)).flatMap((pc) => pc.gathered);
+      expect(gathered, `${who} gathered`).not.toContain("relay");
+    }
+    await expect
+      .poll(async () => `${await pathOf(sender.page)} ${await pathOf(recipient.page)}`)
+      .toMatch(/^srflx\/(srflx|prflx) srflx\/(srflx|prflx)$/);
+    await expectSignaling(observed, baseURL);
+  });
+});
 
 /**
  * One `journalctl -o json --all` entry. MESSAGE is a byte array when it is not valid UTF-8 text;

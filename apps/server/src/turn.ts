@@ -3,7 +3,7 @@ import type { IceServer } from "@fidant/protocol";
 
 export type IceConfig = { urls: string[]; secret?: string };
 
-// Credentials go only to paired sockets, minted per pairing. The expiry only
+// Credentials go only to paired sockets, minted for each `joined`. The expiry only
 // limits starting a relay: coturn 4.19 kept a relayed connection alive, and
 // accepted its refreshes, 11 minutes after the username had expired (tested
 // with a 20 s credential). So a few minutes to allocate is enough, and a
@@ -35,7 +35,7 @@ export function chooseIce(
 }
 
 /**
- * The ICE servers for one pairing: none without a config, TURN with fresh credentials if there is
+ * The ICE servers for one `joined`: none without a config, TURN with fresh credentials if there is
  * a secret and the sender allows it, else only the STUN URLs, with no credential minted.
  */
 export function iceServersFor(

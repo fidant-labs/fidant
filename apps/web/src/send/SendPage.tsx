@@ -15,7 +15,10 @@
 // - Server `joined` → reducer `joined`, whose `start` effect derives the
 //   link's signal key and creates a sender peer with the ICE servers from
 //   `joined`, without TURN entries when the relay checkbox or the server
-//   refused it. `relay` goes to that peer.
+//   refused it. `relay` goes to that peer. A `joined` with the attempt ID of
+//   a transfer in progress is that recipient asking again after its
+//   connection dropped (decision 0031): the reducer's `restart` effect hands
+//   the new ICE servers, filtered the same way, to that peer's `rejoined`.
 //   `left` → reducer `left`, which only matters before the channel opens, once
 //   the signals relayed before it were handled.
 // - When the data channel opens, sendFile runs the transfer and reports
@@ -34,7 +37,8 @@
 //   relay path on an active attempt whose relay the sender refused
 //   (refusesRelay) counts as failed too, and the reducer then ends the
 //   attempt. An open channel's path also goes to the reducer, for the
-//   recipient's card.
+//   recipient's card, and so does the path read again after a recovery
+//   (onPath), which is not reported to the server a second time.
 // - Effects run outside render: `close` tears the peer down, `refuse` tells
 //   the server to refuse the joiner.
 // - When the server's `hello` says it can send mail, the add form offers an
@@ -73,7 +77,7 @@ import { hasForbiddenCharacters, MAX_FROM_LENGTH, metaFits } from "../lib/frames
 import { deriveSignalKey } from "../lib/keys.ts";
 import { createLink } from "../lib/link.ts";
 import { askToNotify, notify, notifyPermission } from "../lib/notify.ts";
-import { createSenderPeer, type Peer } from "../lib/peer.ts";
+import { createSenderPeer, type OpenPath, type Peer } from "../lib/peer.ts";
 import { hashFile, sendFile } from "../lib/send-file.ts";
 import {
   CHECK_TIMEOUT_MS,
@@ -329,6 +333,20 @@ export function SendPage({
       return;
     }
 
+    // The path may come after a short transfer already closed the
+    // connection; send it while the link is still hosted.
+    const onPath = (path: OpenPath) => {
+      const latest = findRecipient(senderRef.current, linkId);
+      if (latest) {
+        const refused = refusesRelay(latest, attempt, path);
+        sendPath(linkId, connection, refused ? "failed" : path);
+        dispatch({ type: "path", linkId, attempt, path });
+        // ponytail: sticky for the page, since the relay's log lines stay after the transfer
+        if (path === "relay" && !refused) {
+          setViaRelay(true);
+        }
+      }
+    };
     connection.peer = createSenderPeer({
       signaling,
       linkId,
@@ -336,22 +354,10 @@ export function SendPage({
       signalKey,
       iceServers,
       check: recipient.check === true,
+      onPath,
       onOpen(channel, info) {
         clearTimeout(connection.deadline);
-        // The path may come after a short transfer already closed the
-        // connection; send it while the link is still hosted.
-        void info.path.then((path) => {
-          const latest = findRecipient(senderRef.current, linkId);
-          if (latest) {
-            const refused = refusesRelay(latest, attempt, path);
-            sendPath(linkId, connection, refused ? "failed" : path);
-            dispatch({ type: "path", linkId, attempt, path });
-            // ponytail: sticky for the page, since the relay's log lines stay after the transfer
-            if (path === "relay" && !refused) {
-              setViaRelay(true);
-            }
-          }
-        });
+        void info.path.then(onPath);
         // Judged by the longest text, so a refusal says nothing about this text's length.
         if (text && !textFitsOneChunk(info.maxMessageSize)) {
           dispatch({ type: "unsendable", linkId });
@@ -449,6 +455,9 @@ export function SendPage({
     switch (effect.type) {
       case "start":
         void startConnection(effect.linkId, effect.attempt, effect.iceServers);
+        break;
+      case "restart":
+        connectionsRef.current.get(effect.linkId)?.peer?.rejoined(effect.iceServers);
         break;
       case "close":
         closeConnection(effect.linkId);
