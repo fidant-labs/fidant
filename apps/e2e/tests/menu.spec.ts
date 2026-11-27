@@ -88,6 +88,10 @@ test("the menu's Send and the landing page's button open /send", async ({ page }
   await page.getByRole("main").getByRole("link", { name: "Send a file", exact: true }).click();
   await expect(page).toHaveURL(/\/send$/);
   await expect(page.getByLabel("Choose a file")).toBeAttached();
+  // The tab title follows in-app navigation and a language switch, neither of which reloads.
+  await expect(page).toHaveTitle("Send a file – Fidant");
+  await choose(page, "Language", "Svenska");
+  await expect(page).toHaveTitle("Skicka en fil – Fidant");
 });
 
 test("the language menu switches language and the choice survives a reload", async ({ page }) => {
