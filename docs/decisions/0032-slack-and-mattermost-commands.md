@@ -18,7 +18,7 @@ This record amends 0001 (`0001-e2e-tests-and-leak-model.md`) and 0024 (`0024-saf
 - A secret is shared from the send page in secret mode, `/send/secret` (`/sv/skicka/hemlighet`). The recipient's link carries the key after `#`, which browsers never send in a request (`docs/how-fidant-works.md`, "The link"). Every load of the page in secret mode already tells our server that it is in secret mode ("Sharing a secret").
 - On 2026-11-27 David decided that addresses carry no query parameters. FID-367 (merged that day) gave the two modes the paths `/send/file` and `/send/secret`, kept `/send` as file mode, and redirects the old `/secret` and `/sv/hemlighet` with a 301. The router reads the part after `#` only on `/how` and on the receive page (`apps/web/src/App.tsx`).
 - 0024 put the safety number on the button that creates the link. "Create link" comes first and "Create link with safety number" second, and the order flips once the sender chooses email.
-- Our CDN's edge function (`apps/infra/edge/site.js`, `FidantPages`) runs on viewer requests and already answers some itself, without contacting the origin: redirects, and the empty 404 under `/relay-secret/`. A CloudFront Function has no access to the request body ("Access to the request body | No", [choosing between CloudFront Functions and Lambda@Edge](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/edge-functions-choosing.html)). AWS's pages don't say whether one answers a POST itself the same way. `FidantPages` keeps no access logs, and all of its behaviours allow only GET and HEAD.
+- Our CDN's edge function (`apps/infra/edge/site.js`, `FidantPages`) runs on viewer requests and already answers some itself, without contacting the origin: redirects, and the empty 404 under `/relay-secret/`. A CloudFront Function has no access to the request body ("Access to the request body | No", [choosing between CloudFront Functions and Lambda@Edge](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/edge-functions-choosing.html)), so it can't check a signature over the body or read a field. `FidantPages` keeps no access logs, and all of its behaviours allow only GET and HEAD.
 - Until the cutover (FID-263), the app box serves fidant.se, and `apps/server` answers pages only for GET and HEAD.
 
 What the two services send and do, from their docs, read on 2026-11-27:
@@ -30,15 +30,16 @@ What the two services send and do, from their docs, read on 2026-11-27:
   - `command`, `response_url`, `trigger_id` and `api_app_id`
 
   The page calls these "some of the important fields", so the list may not be complete. None of them is the user's language, and the docs name no way to ask for it in the request. The reply may come in the HTTP response, and it is `ephemeral` by default, seen only by the user who ran the command ([implementing slash commands](https://docs.slack.dev/interactivity/implementing-slash-commands)). Slack returns a user's locale only to a Web API call with a token, such as `users.info` with `include_locale` and the `users:read` scope ([users.info](https://docs.slack.dev/reference/methods/users.info)).
+- **Replying later.** A command's `response_url` takes messages "up to 5 times within 30 minutes", ephemeral by default or `in_channel` for the whole conversation, and needs no token ([handling user interaction](https://docs.slack.dev/interactivity/handling-user-interaction)). The command itself must be acknowledged "within 3000 milliseconds", and an `in_channel` reply to it shares "both the response message and the initial slash command entered by the user" ([implementing slash commands](https://docs.slack.dev/interactivity/implementing-slash-commands)). The docs don't say whether a later `in_channel` message shows the command, whose name it carries, or whether it takes the unfurl fields. On 2026-11-27 `hooks.slack.com` answered a POST sent with another origin with `access-control-allow-origin: *`, and a preflight with a 404.
 - **Ephemeral messages.** Slack says they "do not persist across reloads" and "are not persisted". It says nothing about what its own servers keep ([chat.postEphemeral](https://docs.slack.dev/reference/methods/chat.postEphemeral)).
 - **Buttons.** A Block Kit button with a `url` still sends the app an interaction payload when clicked: "If you're using `url`, you'll still receive an interaction payload" ([button element](https://docs.slack.dev/reference/block-kit/block-elements/button-element)). That payload carries the user, team and channel. For an ephemeral message it leaves the message out ([messaging](https://docs.slack.dev/messaging)). A click on a button in a message the app posted carries that message ([block_actions](https://docs.slack.dev/reference/interaction-payloads/block_actions-payload)).
 - **Global shortcuts.** An acknowledgment alone shows the user nothing, and the only other answer is a modal opened with `views.open`, which takes a token ([handling user interaction](https://docs.slack.dev/interactivity/handling-user-interaction), [views.open](https://docs.slack.dev/reference/methods/views.open)).
 - **Unfurling and message shortcuts.** Slack sends `link_shared` for each posted link on a domain the app registers for unfurling ([link_shared](https://docs.slack.dev/reference/events/link_shared)). The docs don't say whether the part after `#` is kept. A message shortcut's payload carries the message it was used on ([implementing shortcuts](https://docs.slack.dev/interactivity/implementing-shortcuts)).
 - **Link previews.** Slack crawls posted links for a preview: "By default, we unfurl all links in messages posted by users and Slack apps", unless the message sets both `unfurl_links` and `unfurl_media` to `false` ([unfurling links](https://docs.slack.dev/messaging/unfurling-links-in-messages/)). The docs don't say whether a slash command's ephemeral reply is unfurled, or whether it honours those two fields.
-- **Signatures.** Slack signs each request, and the docs say the app "must" check it ([verifying requests](https://docs.slack.dev/authentication/verifying-requests-from-slack)). Nothing says Slack enforces that.
+- **Signatures.** Slack signs each request with HMAC-SHA256 over `v0:`, the request's timestamp, `:` and the raw body, keyed with the app's signing secret, and recommends refusing a timestamp more than five minutes from local time. The docs say the app "must" check it ([verifying requests](https://docs.slack.dev/authentication/verifying-requests-from-slack)). Nothing says Slack enforces that.
 - **Installs.** The docs don't say whether an OAuth v2 install completes when the app never exchanges the code with `oauth.v2.access` ([installing with OAuth](https://docs.slack.dev/authentication/installing-with-oauth)).
 - **Mattermost custom slash commands.** Someone on the team sets one up on each server. It posts IDs, names, the typed text and a per-command token to a URL that person typed in ([custom slash commands](https://docs.mattermost.com/developers/integrate/slash-commands/custom)).
-- **Mattermost server plugins.** A server plugin is a Go process that runs alongside the Mattermost server. `RegisterCommand` and the `ExecuteCommand` hook answer a command inside that server, and `GetUser` returns the record of the user who ran it ([server reference](https://docs.mattermost.com/developers/integrate/reference/server)), whose `Locale` is their language ([model.User](https://pkg.go.dev/github.com/mattermost/mattermost/server/public/model#User)). Admins install a plugin in one of these ways ([using and managing plugins](https://docs.mattermost.com/developers/integrate/plugins/using-and-managing-plugins)):
+- **Mattermost server plugins.** A server plugin is a Go process that runs alongside the Mattermost server. `RegisterCommand` and the `ExecuteCommand` hook answer a command inside that server, `ServeHTTP` serves the plugin's own pages under the server's address, `CreatePost` posts as a user, and `GetUser` returns the record of the user who ran it ([server reference](https://docs.mattermost.com/developers/integrate/reference/server)), whose `Locale` is their language ([model.User](https://pkg.go.dev/github.com/mattermost/mattermost/server/public/model#User)). Admins install a plugin in one of these ways ([using and managing plugins](https://docs.mattermost.com/developers/integrate/plugins/using-and-managing-plugins)):
   - from the Marketplace
   - by upload in the System Console, or from a URL. Uploads are off by default and "cannot be enabled via the System Console or REST API", only in `config.json`.
   - from the command line
@@ -52,10 +53,10 @@ What the two services send and do, from their docs, read on 2026-11-27:
 
 What Slack's command answers:
 
-| Option                                                        | For                                                                                                                                                  | Against                                                                                                                                                 |
-| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1. A fixed reply that uses nothing from the request           | A forged request gets only a public link, so no signing secret is needed. There is nothing to log or keep, and the edge function can give the reply. | The reply can't react to what the user typed. Neither option can follow the user's language, which the request doesn't carry.                           |
-| 2. A reply built from the request (its text, the user's name) | A reply that can say more.                                                                                                                           | Needs the signature check, so the signing secret in the signaling container's secret store, and code that reads the names and text that Slack sends us. |
+| Option                                                     | For                                                                                                                                                  | Against                                                                                                                                                 |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. A fixed reply that uses nothing from the request        | A forged request gets only a public link, so no signing secret is needed. There is nothing to log or keep, and the edge function can give the reply. | The reply can't react to what the user typed. Neither option can follow the user's language, which the request doesn't carry.                           |
+| 2. A reply built from the request (where to post the link) | The sender's browser can post the link into the conversation.                                                                                        | Needs the signature check, so the signing secret in the signaling container's secret store, and code that reads the names and text that Slack sends us. |
 
 Where it answers:
 
@@ -71,6 +72,15 @@ How the reply links to Fidant:
 | ----------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------- |
 | 1. A plain link in the reply's text | Clicking it sends the app nothing. | Looks plainer than a button.                                                                      |
 | 2. A Block Kit button with a `url`  | Looks like an app.                 | Every click reports the user, team and channel to an interactivity URL that we would have to run. |
+
+Who puts a recipient's link into the conversation:
+
+| Option                                                  | For                                                                 | Against                                                                                                                                              |
+| ------------------------------------------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. The sender copies it and pastes it                   | Nothing new reaches anyone.                                         | A trip from Slack to the page and back for every link, which David found a poor experience (2026-11-27).                                             |
+| 2. The sender's browser posts it through `response_url` | One click, and the link and its key never pass through our servers. | The endpoint must read the request, so it needs the signature check and its secret, and waits for the cutover. The page's `connect-src` gains Slack. |
+| 3. Our server posts it through `response_url`           | The page's `connect-src` stays as it is.                            | Our server would see every link's key.                                                                                                               |
+| 4. The app posts it with a bot token                    | Posts under the app's name anywhere it is invited.                  | A token kept per workspace, and our server would see every link's key.                                                                               |
 
 How Mattermost comes in:
 
@@ -89,61 +99,54 @@ How Slack's install ends:
 
 ## Decision
 
-Option 1 in each of the first four tables. For the install, option 1 if a live test shows that the install completes without the exchange, otherwise option 2.
+Option 2 in the first two tables, option 1 in the third, option 2 in the fourth and option 1 in the fifth. For the install, option 1 if a live test shows that the install completes without the exchange, otherwise option 2.
 
 ### Slack
 
 - **The commands.** `/fidant` and `/secret`. Slack doesn't namespace slash commands, and when two apps register the same name the one installed last wins, so help text always names `/fidant secret`.
-- **The reply.** One fixed reply, the same bytes for every request. It goes in the HTTP response body with `response_type` set to `ephemeral`, in Slack's `mrkdwn`:
+- **The flow.** The sender types the command and gets a reply that only they see, with a link to the send page. They write the secret there and create a link per recipient, and each recipient's card offers "Post in #channel". That button posts the recipient's link into the conversation the command came from, sent by the sender's own browser through the command's `response_url`, so the link and its key never pass through our servers. The sender's tab stays open until the recipient has it, as for any secret. Copying the link stays possible on every card. Decided by David on 2026-11-27, because pasting by hand made for a poor experience, and he accepted that the command then waits for the cutover (FID-263).
+- **Where.** `POST https://fidant.se/slack/command`. A new `FidantPages` behaviour for `/slack/command`, the only one that allows POST, passes it uncached to the signaling container, as `/relay-secret/<id>` is passed. On the local stack `apps/server` answers it. The box never answers it: the command ships after the cutover.
+- **The signature check.** The container checks Slack's signature before it reads any field: HMAC-SHA256 with the app's signing secret over `v0:` + `X-Slack-Request-Timestamp` + `:` + the raw body, compared in constant time with `X-Slack-Signature`, and a timestamp no more than five minutes from the container's clock. A request that fails gets a 401 and nothing else. The signing secret is in the container's secret store, placed there by a maintainer from the Slack app's settings; FID-335 has the runbook.
+- **What it reads.** After the check, the container reads three fields: `response_url`, `channel_name` and `team_domain`. It reads no other field, the typed text included, and logs nothing about the request.
+- **The reply.** An ephemeral reply in the HTTP response, within Slack's 3 seconds, in `mrkdwn`, with `unfurl_links` and `unfurl_media` set to `false`:
 
   ```
   Share a secret with Fidant:
-  https://fidant.se/send/secret#chat
+  https://fidant.se/send/secret#chat.<target>
 
   Never type a secret or a link after the command: Slack sends it to us.
   ```
 
-  The link is plain and shows its address. The reply is one fixed text in English (decided 2026-11-27, in place of one line in each language). A reply in the user's language would need their locale, which the request doesn't carry. The page opens in Swedish for a Swedish reader: its pre-paint script opens the Swedish twin, `/sv/skicka/hemlighet#chat`, when the stored language choice is Swedish, or nothing is stored and the browser's language is, and it keeps the part after `#` (`apps/web/src/prepaint.js`).
-
-  The reply sets `unfurl_links` and `unfurl_media` to `false`. If Slack previews the link anyway, its crawler requests `/send/secret`, which tells us no more than the command already did.
-
-  The endpoint reads no field of the request. `/fidant secret`, `/fidant` and `/fidant` followed by anything else all get the same reply, and so do Slack's `ssl_check` requests.
-
-  The link is a lasting contract once installed, above all in Mattermost plugin releases that admins upload and keep, so the send page keeps answering it.
-- **Where.** `POST https://fidant.se/slack/command`.
-  - After the cutover, the edge function answers it on a new `FidantPages` behaviour for `/slack/command`, the only one that allows POST. The function returns the reply itself, so the request never reaches the origin.
-  - Until the cutover, and on the local stack, `apps/server` answers the same path with the same bytes. It reads no body: it answers at once and closes the connection, so it needs no size cap, and it has no rate limit, like every page.
-  - FID-335 ships both, so the command works on whichever serves fidant.se, before and after the cutover. Before the cutover it checks that the function answers a POST itself, by sending one to the distribution as fidant.se (`curl --connect-to`), because the function answers any other host with a redirect.
-  - A test fails when the two replies differ, and when the reply stops being `ephemeral`, gains blocks or buttons, or links with a query string.
-  - Neither writes a log line for it.
-- **No signature check.** The check protects nothing while all four of these hold:
-  - the reply is fixed
-  - the endpoint reads nothing from the request
-  - it calls nobody: no `response_url` and no Slack API
-  - it logs nothing about the request
-
-  A change that breaks any of them first adds the check, with the signing secret in the signaling container's secret store, and moves the endpoint there.
+  `<target>` is the post target: the three fields and the time, signed by the container with a key of its own whose public half ships in the page, and encoded for the part after `#`. The link shows its address. The reply is in English, because a reply in the user's language would need their locale, which the request doesn't carry (decided 2026-11-27). The page opens in Swedish for a Swedish reader: its pre-paint script opens the Swedish twin, `/sv/skicka/hemlighet#chat.<target>`, when the stored language choice is Swedish, or nothing is stored and the browser's language is, and it keeps the part after `#` (`apps/web/src/prepaint.js`).
+- **The post.** "Post in #channel" sends `response_url` a JSON body with `response_type` set to `in_channel`, `replace_original` to `false`, both unfurl fields to `false`, and the recipient's link with the line from "The page opened from a chat". It goes as `text/plain`, because a JSON content type would need a preflight. Slack takes at most five posts within 30 minutes of the command; after that, or with a target that fails its signature or is older than 30 minutes, the card offers copying only. The page's `connect-src` gains `https://hooks.slack.com`, and the page posts only to a `response_url` on that origin.
+- **The live tests.** Slack's docs leave four things open, and FID-335 tests them in our workspace before anything ships:
+  - that Slack accepts the browser's `text/plain` post
+  - whether the posted message also shows the command and its typed text to the channel. Slack does so for an `in_channel` reply to the command itself. If the later post does too, a secret typed after the command by mistake reaches the channel, and FID-335 stops until this record is amended.
+  - whose name the post carries: the app's, the sender's, or both
+  - whether the unfurl fields stop a preview of the link
 - **The manifest.** The Slack app's manifest is committed to the repository. It asks for the `commands` scope only and declares the two commands. FID-337 adds the OAuth redirect URL. A test fails when the manifest gains anything on the list below.
-- **What the app never has.** Each of these would send our server more than the command, show the command to others, or need a token. Items 2 and 4 would send our server a link's key, and item 1 might:
+- **What the app never has.** Each of these would send our server more than the command, show the command to others, or need a token. Items 2, 4 and 9 would send our server a link's key, and item 1 might:
   1. unfurl domains, which bring `link_shared`
   2. a message shortcut
-  3. a bot user, or any message the app posts besides the ephemeral reply
+  3. a bot user or a bot token
   4. event subscriptions, or any scope beyond `commands`
-  5. an `in_channel` reply, which also shows the user's command to everyone in the channel
+  5. an `in_channel` reply to the command itself, which also shows the user's command to everyone in the channel
   6. a query string on the reply's link (anything the page needs goes after `#`)
   7. Block Kit buttons, or an interactivity request URL
   8. a global shortcut, which can show nothing without a token
+  9. a post or call to Slack from our servers: only the sender's browser uses `response_url`
 - **The install.** A new public page, `/slack` (`/sv/slack`), explains the command, says what Slack and we see in the words of `/privacy`, and has an "Add to Slack" link for the `commands` scope. The OAuth redirect URL is `https://fidant.se/slack/installed`. Public distribution is on, with no Marketplace listing. FID-337 tests, with a second workspace, whether the install completes when the redirect page never exchanges the code.
-  - If it completes, `/slack/installed` is a static page that says the app is installed, and we hold no client secret and no token. Slack's redirect carries `code` and `state` in the query, which reach the CDN (the box's Caddy and `apps/server` until the cutover) and go unused. A browser that the pre-paint script sends on to the Swedish page sends them a second time, to that address.
-  - If it doesn't, the CDN passes `/slack/installed` on to the signaling container, as it does `/relay-secret/<id>`. The container exchanges the code using the client secret from its secret store, and drops the returned token without logging or storing it. This waits for FID-263.
+  - If it completes, `/slack/installed` is a static page that says the app is installed, and we hold no client secret and no token. Slack's redirect carries `code` and `state` in the query, which reach the CDN and go unused. A browser that the pre-paint script sends on to the Swedish page sends them a second time, to that address.
+  - If it doesn't, the CDN passes `/slack/installed` on to the signaling container, as it does `/relay-secret/<id>`. The container exchanges the code using the client secret from its secret store, and drops the returned token without logging or storing it.
 
 ### The page opened from a chat
 
-- `#chat` after `/send/secret` (`/sv/skicka/hemlighet`) marks a page opened from Slack or Mattermost. One marker serves both, because the page does the same for each. It stays in the browser.
-- The router reads the part after `#` on the send page too, and the send page looks only for `#chat` there. The send page's own address never holds a key. "The link" in `docs/how-fidant-works.md` says so.
+- `#chat` after `/send/secret` (`/sv/skicka/hemlighet`) marks a page opened from Slack or Mattermost, and `#chat.<target>` adds where to post. It stays in the browser.
+- The router reads the part after `#` on the send page too, and the send page looks only for `#chat` and a target there. The send page's own address never holds a key. "The link" in `docs/how-fidant-works.md` says so.
 - With the marker, the send page in secret mode:
   - makes "Create link with safety number" the first button, as it is for email in 0024
-  - makes each card's copy button, and its share button where the browser has one, pass on the link together with one fixed line, in the page's language, that tells the recipient to open it now: it works once, and only while the sender's Fidant tab is open. For example: "Open this while I'm online: it works once, and only while my Fidant tab is open." The line names nobody, because whatever is copied stays in the conversation.
+  - gives each card a "Post in #channel" button when the target is valid (see "The post" for Slack and "What it does" for Mattermost), and shows where it posts
+  - makes the post, each card's copy button, and its share button where the browser has one, pass on the link together with one fixed line, in the page's language, that tells the recipient to open it now: it works once, and only while the sender's Fidant tab is open. For example: "Open this while I'm online: it works once, and only while my Fidant tab is open." The line names nobody, because whatever is posted or copied stays in the conversation.
 - 0024 is amended, not superseded, and stays Accepted. Read it with this replacement from FID-336's merge:
 
 | Where 0024 says                                                                                                                                                                                          | Read                                                                                                                        |
@@ -155,23 +158,23 @@ Option 1 in each of the first four tables. For the install, option 1 if a live t
 
 ### Text typed after a command
 
-- Slack posts whatever is typed after `/fidant` or `/secret`. Someone may type the secret itself there by mistake, or paste a Fidant link, key included. Either then reaches our CDN, or the box's Caddy and `apps/server` until the cutover, inside Slack's request. No code of ours reads it, logs it or answers with it.
+- Slack posts whatever is typed after `/fidant` or `/secret`. Someone may type the secret itself there by mistake, or paste a Fidant link, key included. Either then reaches our CDN, the load balancer and the signaling container, inside Slack's request. No code of ours reads it, logs it or answers with it.
 - This is a third exception to the first two invariants in `AGENTS.md`: to the one on content and keys, beside the BankID receipt text and an emailed link, and to the one on where keys live, beside the server-held key half and an emailed link.
 - The pull request that ships the endpoint (FID-335) names the exception in both invariants, adds 0032 to the records that `AGENTS.md` says amend 0001, and qualifies every absolute the exception makes untrue, as `AGENTS.md` requires.
 - 0001 is amended, not superseded, and stays Accepted. Read it with these replacements from that pull request's merge:
 
-| Where 0001 says                                                                                                                              | Read                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| -------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Class C: "the plaintext bytes. Allowed nowhere outside the sender's and recipients' browsers."                                               | The same, except text a person types after `/fidant` or `/secret` in Slack, which may be a secret by mistake. It may appear only in Slack's request to `/slack/command`, in memory at our CDN, in memory in Caddy and `apps/server` until the cutover, and in memory in `apps/server` on the local stack. Never in a log, a response or anywhere else. What Slack itself keeps is outside these lists (see Consequences). |
-| Class K: "the fragment secret, the full key, every derived key (signaling key, file and chunk keys), and the receipt salt. Allowed nowhere." | As 0012 reads it, and also except the fragment secret of a link a person pastes after `/fidant` or `/secret` in Slack. It may appear only where the row above allows typed text. Derived keys, the receipt salt and the ICE pwd stay allowed nowhere.                                                                                                                                                                     |
+| Where 0001 says                                                                                                                              | Read                                                                                                                                                                                                                                                                                                                                                                                                             |
+| -------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Class C: "the plaintext bytes. Allowed nowhere outside the sender's and recipients' browsers."                                               | The same, except text a person types after `/fidant` or `/secret` in Slack, which may be a secret by mistake. It may appear only in Slack's request to `/slack/command`, in memory at our CDN, the load balancer and the signaling container, and in memory in `apps/server` on the local stack. Never in a log, a response or anywhere else. What Slack itself keeps is outside these lists (see Consequences). |
+| Class K: "the fragment secret, the full key, every derived key (signaling key, file and chunk keys), and the receipt salt. Allowed nowhere." | As 0012 reads it, and also except the fragment secret of a link a person pastes after `/fidant` or `/secret` in Slack. It may appear only where the row above allows typed text. Derived keys, the receipt salt and the ICE pwd stay allowed nowhere.                                                                                                                                                            |
 
 - An end-to-end test on the local stack posts a request shaped like Slack's, with a canary secret and a link's key as the typed text, and checks that neither appears in any server log or response.
 
 ### Mattermost
 
 - **A server plugin.** It lives in this repository and is built after Slack works.
-- **What it does.** It registers `/fidant` and `/secret`, and answers inside the Mattermost server with an ephemeral reply in Mattermost's Markdown, with the same link as Slack's. The reply is in the user's Mattermost language, Swedish or otherwise English, which the plugin reads with `GetUser` inside that server. Its link is the same in both, one lasting address, and the page picks its own language as above. Its warning not to type a secret after the command doesn't say that the text reaches us, because it doesn't.
-- **What it never does.** It makes no network request, has no settings, reads neither the text typed after its command nor any post, uses nothing from the user's record but `Locale`, writes no log line about a command, and implements no hook besides activating and answering its command. A hook that sees posts as they are written would see every link's key.
+- **What it does.** It registers `/fidant` and `/secret`, and answers inside the Mattermost server with an ephemeral reply in Mattermost's Markdown, with a link to the send page whose target names the customer's server and a one-time token. "Post in Mattermost" on a card opens the plugin's own page on that server with the token and the recipient's link after `#`. That page runs signed in as the user, and has the plugin post the link and its line into the conversation the command came from, under the user's name. Nothing passes through our servers, and the send page's `connect-src` doesn't change. FID-384 designs the token, which serves one conversation and one user for at most 30 minutes, and the page. The reply is in the user's Mattermost language, Swedish or otherwise English, which the plugin reads with `GetUser` inside that server. Its link is the same in both, and the page picks its own language as above. Its warning not to type a secret after the command doesn't say that the text reaches us, because it doesn't.
+- **What it never does.** It makes no network request beyond its own server, has no settings, reads neither the text typed after its command nor any post, uses nothing from the user's record but `Locale`, writes no log line about a command or a link, posts nothing but a link and line its page hands it, once per token, and implements no hook besides activating, answering its command and serving its page. A hook that sees posts as they are written would see every link's key.
 - **How it ships.** A file attached to a GitHub release, which an admin installs by upload, from its URL or from the command line. A Marketplace listing is a later decision.
 - **Its link's preview.** The plugin issue tests, on a Mattermost server with link previews on, whether the server fetches a preview of the link in the plugin's ephemeral reply. If it does, each use shows our CDN the customer server's address and the time. The issue then looks for a reply that Mattermost won't preview, or this record is amended to say so.
 - **No custom slash command.** We don't offer or document setting up a custom slash command against fidant.se.
@@ -181,32 +184,35 @@ Option 1 in each of the first four tables. For the install, option 1 if a live t
 - **What Slack sees:**
   - who ran the command, where and when, and the text typed after it
   - the reply, which Slack says doesn't persist across reloads
-  - the link the sender pastes, key included, which stays in the conversation after delivery, when it no longer works
+  - the post with the recipient's link, key included, which stays in the conversation after delivery, when it no longer works
 
   Slack's preview crawler requests `/r/<link ID>`, which never includes the part after `#`. The safety number catches someone who opens the link before the recipient does.
-- **What we get from Slack.** Each command reaches our CDN from Slack's servers, not from the user's browser, with the fields under Context: the IDs and names of the user, channel, team and enterprise, the typed text, `command`, `response_url` (a URL that posts a reply to the user), `trigger_id`, `api_app_id`, and any others Slack sends. P-FID-7 said "IDs" and now says "IDs and names".
-  - The edge function answers without the body reaching it, and nothing logs it.
-  - Until the cutover, the box's Caddy and `apps/server` hold the request in memory and log nothing.
+- **What we get from Slack.** Each command reaches our CDN, the load balancer and the signaling container from Slack's servers, not from the user's browser, with the fields under Context: the IDs and names of the user, channel, team and enterprise, the typed text, `command`, `response_url` (a URL that posts a reply to the user), `trigger_id`, `api_app_id`, and any others Slack sends. P-FID-7 said "IDs" and now says "IDs and names".
+  - The container checks the signature and reads `response_url`, `channel_name` and `team_domain`, which go back to Slack only inside the reply's link, after `#` and signed. Nothing logs them.
+  - `response_url` lets whoever holds it post into that conversation, five times within 30 minutes. It is in the container's memory, the reply Slack shows the sender, and the sender's browser.
 
   The typed text may hold a secret by mistake (see "Text typed after a command"). The user's click then opens the send page like any other visit.
 - **What we get from Mattermost.** The plugin sends us nothing. Until its issue's test settles it, the customer's server may fetch a preview of the reply's link, which would show us that server's address and the time of each use (see "Its link's preview"). The user's click opens the send page like any other visit. The customer's Mattermost server keeps what it keeps about commands and posts, and fetches link previews unless its admins turn them off.
 - **The text that changes.**
   - `AGENTS.md` names the third exception in its first two invariants and lists 0032 among the records that amend 0001 (FID-335).
   - `docs/how-fidant-works.md` gains a section on starting from Slack or Mattermost, and its paragraph in "The link" on where the router reads the part after `#` gains the send page.
-  - "Where traces are kept" gains rows for Slack's servers, for our CDN (and the box until the cutover) receiving a command, and for the customer's Mattermost server.
+  - "Where traces are kept" gains rows for Slack's servers, for our CDN, the load balancer and the signaling container receiving a command, and for the customer's Mattermost server.
   - `/how/traces`, `/privacy` and the `technical` text in `apps/web/src/i18n/en.ts` and `sv.ts` follow, each in the pull request that ships the part it describes.
   - So do the absolutes the exception makes untrue, in FID-335: the first lines of `AGENTS.md` and `docs/how-fidant-works.md`, the landing page's "Our server never gets", and the lines on `/how` and `/terms` that say we never see the key unless we email the link, in English and Swedish.
   - 0023 says that methods other than GET and HEAD get CloudFront's 403. FID-335 changes that line for `/slack/command` when it adds the behaviour.
+  - The page's `connect-src` gains `https://hooks.slack.com`, which `docs/how-fidant-works.md` and `/security` describe, in FID-336.
 
   No transfer path, signaling message or log event is added, so `packages/protocol/src/transfer-paths.test.ts` needs no change.
-- **Live only in a chat that often isn't.** Slack and Mattermost conversations are often answered hours later. A link opened after the sender closed the tab fails, and the recipient's first sight of Fidant is a link that didn't work. The copied line says so before the recipient clicks, and the delivery notification tells the sender when to close the tab. Storing a secret for later is outside this project (decided 2026-11-26).
+- **Live only in a chat that often isn't.** Slack and Mattermost conversations are often answered hours later. A link opened after the sender closed the tab fails, and the recipient's first sight of Fidant is a link that didn't work. The posted or copied line says so before the recipient clicks, and the delivery notification tells the sender when to close the tab. Storing a secret for later is outside this project (decided 2026-11-26).
 - **Absolutes.** Copy that says our infrastructure never receives a secret, or receives nothing about one, is qualified for the typed text. The command's request also tells us that someone in a given workspace is about to share a secret.
 - **The issues.**
   - FID-367 gave the send page's modes their own addresses (merged).
-  - FID-335 builds the endpoint: a link instead of a button, the edge function and the server route, no log event, the manifest with its test, the canary test and the `AGENTS.md` exception.
-  - FID-336 builds the `#chat` marker on the send page.
+  - FID-335 builds the endpoint after the cutover: the `FidantPages` behaviour, the signature check, the signed post target and its key, the signing secret's runbook, no log event, the manifest with its test, the canary test, the live tests and the `AGENTS.md` exception.
+  - FID-336 builds the `#chat` marker, the target's check and the "Post in #channel" button on the send page, and the `connect-src` change.
   - FID-337 builds `/slack`, `/slack/installed` and the install, and runs the live test.
   - FID-384 builds the Mattermost plugin.
-- **Approval from the other maintainer.** The `FidantPages` behaviour, `site.js` (with `/slack`, `/slack/installed` and their Swedish addresses added to `PAGES`) and `AGENTS.md` are sensitive paths, so the pull requests that change them need it.
+- **The command waits for the cutover.** Nothing ships in Slack before FID-263, because the signing secret belongs in the container's secret store, not on the box.
+- **Two secrets in the container.** The signing secret and the key that signs post targets. With either, someone could make a target that names one channel and posts to another `response_url`; the safety number still catches a wrong person opening the link.
+- **Approval from the other maintainer.** The `FidantPages` behaviour, `FidantSignal`'s new secrets, `site.js` (with `/slack`, `/slack/installed` and their Swedish addresses added to `PAGES`) and `AGENTS.md` are sensitive paths, so the pull requests that change them need it.
 - **The plugin's cost.** The first Go code in the repository, with its own build and tests in CI and a release file per version. A server that requires signed plugins can't install it until a Marketplace carries it: Mattermost's, or one its admin points the server at and trusts the key of. Signing our releases is not decided here. One with uploads off needs them turned on in `config.json`, or the bundle unpacked by hand.
 - **Not decided here.** A Marketplace listing for either service, files from Slack (FID-159), and a Swedish Slack app. That would be a second app whose command posts to its own path, answered with a fixed Swedish reply, so a workspace chooses its language by the link it installs from and we keep no setting.
