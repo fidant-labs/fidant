@@ -3,6 +3,7 @@ import {
   canaryFile,
   choose,
   chooseFile,
+  continueToLinks,
   expect,
   makeName,
   recipientRow,
@@ -99,6 +100,7 @@ test("the footer links both ways to send, and a secret on its way keeps its page
   leaks.watchContent("text", text);
   await page.goto("/send/secret");
   await page.getByLabel("Your secret").fill(text);
+  await continueToLinks(page);
   await page.locator("#secret-recipient-name").fill(name);
   await page.getByRole("button", { name: "Create link", exact: true }).click();
   const link = await page.getByLabel(`Link for ${name}`, { exact: true }).textContent();
