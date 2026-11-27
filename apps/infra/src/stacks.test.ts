@@ -1218,7 +1218,7 @@ test("the relay keeps the app box's coturn hardening and peer denials, and no st
   const userData = renderRelayUserData({ id: "sto" });
   const start = userData.indexOf('\ncat >>"$tmp" <<EOF\n');
   assert.ok(start > 0);
-  assert.doesNotMatch(userData, /turnserver\.conf\.(?!XXXXXX)[A-Za-z]/);
+  assert.doesNotMatch(userData, /(turnserver\.conf|\$conf)\.(?!XXXXXX)[A-Za-z]/);
   const relay = userData.slice(start, userData.indexOf("\nEOF\n", start)).split("\n").slice(2);
   const box = readFileSync(new URL("../box/turnserver.conf", import.meta.url), "utf8").split("\n");
   assert.equal(deny(box).length, 13);
