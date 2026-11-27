@@ -89,8 +89,6 @@ jobs:
             getent -s files hosts "$name" >/dev/null || echo "127.0.1.1 $name" | sudo tee -a /etc/hosts
           done
           getent -s files hosts "${names[@]}"
-      - if: matrix.browser != 'firefox'
-        run: echo 'nameserver 192.0.2.53' | sudo tee -a /etc/resolv.conf
       # Some runners list a nameserver off loopback after the loopback ones, which a lookup refused on loopback falls through to.
       - name: Keep only the nameservers on loopback
         run: |
@@ -100,8 +98,6 @@ jobs:
           cmp -s /etc/resolv.conf "$RUNNER_TEMP/resolv.conf" && exit 0
           grep -q '^nameserver' "$RUNNER_TEMP/resolv.conf" || { echo "::error::/etc/resolv.conf names no nameserver on loopback"; exit 1; }
           sudo cp --remove-destination "$RUNNER_TEMP/resolv.conf" /etc/resolv.conf
-      - if: matrix.browser == 'firefox'
-        run: echo 'nameserver 192.0.2.53' | sudo tee -a /etc/resolv.conf
       - name: Let the test user reach loopback only
         id: egress
         run: |
