@@ -1424,7 +1424,7 @@ export const en = {
             ["norelay", "If your page sees a relayed connection anyway: that it ended it."],
             [
               "",
-              "If the route between the browsers drops during the transfer and the recipient's page asks our server again: one more line that a recipient joined, or that it was refused as busy if the link had 10 connection attempts in that half minute, and lines for the new setup messages. Together they show that this link's connection dropped, and when. They don't show why, on whose side or whether it came back.",
+              "If the route between the browsers drops during the transfer and the recipient's page asks our server again: one more line that a recipient joined, or that it was refused as busy if the link had 10 connection attempts in that half minute, or, if the sender had just given up, one that it joined and one that the sender refused it, and lines for the new setup messages. Together they show that this link's connection dropped, and when. They don't show why, on whose side or whether it came back.",
             ],
           ],
         },

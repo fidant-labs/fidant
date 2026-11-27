@@ -1386,7 +1386,7 @@ export const sv: Messages = {
             ["norelay", "Om din sida ändå ser en anslutning via reläet: att den avslutade den."],
             [
               "",
-              "Om vägen mellan webbläsarna bryts under överföringen och mottagarens sida frågar vår server igen: ytterligare en rad om att en mottagare anslöt, eller om att den nekades som upptagen om länken hade haft 10 anslutningsförsök under den halvminuten, och rader för de nya uppkopplingsmeddelandena. Tillsammans visar de att den här länkens anslutning bröts, och när. De visar inte varför, på vems sida eller om den kom tillbaka.",
+              "Om vägen mellan webbläsarna bryts under överföringen och mottagarens sida frågar vår server igen: ytterligare en rad om att en mottagare anslöt, eller om att den nekades som upptagen om länken hade haft 10 anslutningsförsök under den halvminuten, eller, om avsändaren just hade gett upp, en om att den anslöt och en om att avsändaren nekade den, och rader för de nya uppkopplingsmeddelandena. Tillsammans visar de att den här länkens anslutning bröts, och när. De visar inte varför, på vems sida eller om den kom tillbaka.",
             ],
           ],
         },
