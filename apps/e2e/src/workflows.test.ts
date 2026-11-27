@@ -16,7 +16,7 @@ const reviewCondition = [
   "github.event.pull_request.draft == false",
 ].join(" ");
 
-test("every workflow runs only on push, pull_request, schedule or workflow_dispatch", () => {
+test("every workflow runs only on push, pull_request, schedule or workflow_dispatch, except release-jobs.yml, which runs only when release.yml calls it", () => {
   const names = readdirSync(dir).filter((n) => /\.ya?ml$/.test(n));
   assert.ok(names.length > 0);
   for (const name of names) {
@@ -25,8 +25,15 @@ test("every workflow runs only on push, pull_request, schedule or workflow_dispa
       on && typeof on === "object" && !Array.isArray(on),
       `${name}: on is not a mapping of events`,
     );
+    if (name === "release-jobs.yml") {
+      assert.deepEqual(Object.keys(on), ["workflow_call"]);
+      continue;
+    }
     for (const event of Object.keys(on)) {
       assert.ok(safeEvents.includes(event), `${name}: ${event}`);
+    }
+    if (name !== "release.yml") {
+      assert.doesNotMatch(readFileSync(new URL(name, dir), "utf8"), /release-jobs\.yml/, name);
     }
   }
 });

@@ -1,0 +1,324 @@
+name: Release jobs
+
+on:
+  workflow_call:
+    secrets:
+      FIDANT_POC_ACCOUNT:
+        required: true
+
+permissions: {}
+
+# Runs as main's copy on the pushed commit's tree, which can be older (0023).
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      key: ${{ steps.key.outputs.key }}
+      digest: ${{ steps.save.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check the commit is on main
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          [[ $SHA =~ ^[0-9a-f]{40}$ ]] || { echo "::error::unexpected commit"; exit 1; }
+          list=$(git rev-list --first-parent refs/remotes/origin/main) || list=
+          if [ -z "$list" ]; then
+            echo "::error::could not check $SHA against main"
+            exit 1
+          fi
+          case "$list" in
+          *"$SHA"*) ;;
+          *)
+            echo "::error::refused $SHA: not on main"
+            exit 1
+            ;;
+          esac
+      - name: Key the image inputs
+        id: key
+        env:
+          IMAGE_INPUTS: apps/server packages/protocol package.json pnpm-lock.yaml pnpm-workspace.yaml
+        run: |
+          set -euo pipefail
+          read -ra inputs <<<"$IMAGE_INPUTS"
+          key=$(git rev-parse "${inputs[@]/#/HEAD:}" | sha256sum | cut -c1-64)
+          echo "key=$key" >>"$GITHUB_OUTPUT"
+      - name: Build the image
+        id: save
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # Without attestations ECR stores one image manifest, which put-image can tag again.
+          docker build -f apps/server/Dockerfile --build-arg REVISION="$SHA" --provenance=false --sbom=false -t fidant-signal:build .
+          docker save fidant-signal:build -o "$RUNNER_TEMP/image.tar"
+          digest=$(sha256sum "$RUNNER_TEMP/image.tar" | cut -c1-64)
+          echo "digest=$digest" >>"$GITHUB_OUTPUT"
+      # This repository's artifacts are public; the image holds only public code.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: image
+          path: ${{ runner.temp }}/image.tar
+          retention-days: 1
+          if-no-files-found: error
+
+  # Needs build so its first-parent check runs before this job installs anything.
+  web:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - run: pnpm install --frozen-lockfile
+      - name: Build the web client
+        env:
+          SIGNALS_FILE: signals.json
+        run: pnpm --filter @fidant/web build
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: web
+          path: apps/web/dist
+          retention-days: 1
+          if-no-files-found: error
+          include-hidden-files: true
+
+  # Holds AWS credentials, so it checks out nothing and runs only pinned actions, git (ls-remote, before it signs in), the aws CLI, docker and jq.
+  release:
+    needs: [build, web]
+    runs-on: ubuntu-latest
+    environment: app
+    # Above the release step's waits (20, 30 and 30 minutes) and below the role's 2-hour session.
+    timeout-minutes: 100
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: image
+          path: ${{ runner.temp }}/image
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: web
+          path: ${{ runner.temp }}/web
+      - name: Check the commit is production's tip
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          [[ $SHA =~ ^[0-9a-f]{40}$ ]] || { echo "::error::unexpected commit"; exit 1; }
+          tip=$(git ls-remote "https://github.com/$GITHUB_REPOSITORY" refs/heads/production | awk -F'\t' '$2 == "refs/heads/production" {print $1}') || tip=
+          [[ $tip =~ ^[0-9a-f]{40}$ ]] || { echo "::error::could not read production's tip"; exit 1; }
+          if [ "$tip" != "$SHA" ]; then
+            echo "::error::refused $SHA: production is at $tip, and only its newest release runs"
+            exit 1
+          fi
+      - name: Check the account secret arrived
+        env:
+          ACCOUNT: ${{ secrets.FIDANT_POC_ACCOUNT }}
+        run: |
+          set -euo pipefail
+          [[ $ACCOUNT =~ ^[0-9]{12}$ ]] || { echo "::error::FIDANT_POC_ACCOUNT is empty or not 12 digits, so the release does not sign in"; exit 1; }
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.FIDANT_POC_ACCOUNT }}:role/fidant-release
+          role-duration-seconds: 7200
+          aws-region: eu-north-1
+          mask-aws-account-id: true
+      - name: Push the image, move live and redeploy
+        env:
+          ACCOUNT: ${{ secrets.FIDANT_POC_ACCOUNT }}
+          SHA: ${{ github.sha }}
+          KEY: ${{ needs.build.outputs.key }}
+          IMAGE_SHA256: ${{ needs.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+          [[ $SHA =~ ^[0-9a-f]{40}$ && $KEY =~ ^[0-9a-f]{64}$ && $IMAGE_SHA256 =~ ^[0-9a-f]{64}$ && $ACCOUNT =~ ^[0-9]{12}$ ]] || { echo "::error::unexpected input"; exit 1; }
+          have=$(sha256sum "$RUNNER_TEMP/image/image.tar" | cut -c1-64)
+          [ "$have" = "$IMAGE_SHA256" ] || { echo "::error::the image artifact is not the one the build job saved"; exit 1; }
+          repo=fidant-signal
+          registry=$ACCOUNT.dkr.ecr.eu-north-1.amazonaws.com
+          err=$RUNNER_TEMP/err
+          image() { aws ecr batch-get-image --repository-name "$repo" --image-ids "$1" --output json; }
+          digest() { image "$1" | jq -r '.images[0].imageId.imageDigest // "none"'; }
+          tag() {
+            local json manifest type want have
+            json=$(image "$1")
+            manifest=$(jq -er '.images[0].imageManifest' <<<"$json")
+            type=$(jq -er '.images[0].imageManifestMediaType' <<<"$json")
+            aws ecr put-image --repository-name "$repo" --image-tag "$2" --image-manifest "$manifest" \
+              --image-manifest-media-type "$type" >/dev/null 2>"$err" && return
+            grep -q '(ImageAlreadyExistsException)' "$err" && return
+            if grep -q '(ImageTagAlreadyExistsException)' "$err"; then
+              want=$(jq -er '.images[0].imageId.imageDigest' <<<"$json")
+              have=$(digest "imageTag=$2")
+              [ "$have" = "$want" ] && return
+            fi
+            cat "$err" >&2
+            exit 1
+          }
+          services() { aws ecs describe-services --cluster fidant --services fidant-signal --output json; }
+          # One deployment, COMPLETED, so no deployment starts while the service rolls back.
+          settled() {
+            local deadline=$((SECONDS + $1)) json s
+            while :; do
+              json=$(services)
+              s=$(jq -r '[(.services[0].deployments | length), .services[0].deployments[0].rolloutState] | @tsv' <<<"$json")
+              if [ "$s" = $'1\tCOMPLETED' ]; then return 0; fi
+              if [ "$SECONDS" -ge "$deadline" ]; then
+                echo "::error::the service did not settle in time: $s"
+                exit 1
+              fi
+              sleep 15 & wait $!
+            done
+          }
+          safe=
+          restore() {
+            if [ -z "$safe" ]; then
+              echo "::error::the release stopped before the service was confirmed to run $d"
+              echo "moving live back to $previous"
+              if (tag "imageDigest=$previous" live); then
+                echo "live names $previous again"
+              else
+                echo "::error::could not move live back to $previous: it still names $d, so a release with these inputs ends without deploying until live moves. Move it back as Releasing in AGENTS.md says, then re-run the newest release run, the one for production's tip."
+              fi
+            fi
+          }
+
+          d=$(digest "imageTag=v2-inputs-$KEY")
+          if [ "$d" = none ]; then
+            s=$(digest "imageTag=v2-$SHA")
+            if [ "$s" = none ]; then
+              docker load -i "$RUNNER_TEMP/image/image.tar" >/dev/null
+              aws ecr get-login-password --region eu-north-1 | docker login --username AWS --password-stdin "$registry" >/dev/null
+              docker tag fidant-signal:build "$registry/$repo:v2-$SHA"
+              docker push --quiet "$registry/$repo:v2-$SHA" >/dev/null
+            fi
+            tag "imageTag=v2-$SHA" "v2-inputs-$KEY"
+            d=$(digest "imageTag=v2-inputs-$KEY")
+          fi
+          previous=$(digest imageTag=live)
+          if [ "$previous" = "$d" ]; then
+            echo "live already names $d"
+            exit 0
+          fi
+          f=$(digest "imageTag=v2-failed-$KEY")
+          if [ "$f" != none ]; then
+            echo "::warning::the server image for these inputs failed before and is not deployed: $f is tagged v2-failed-$KEY. To try it again, delete that tag as Releasing in AGENTS.md says, then re-run the newest release run, the one for production's tip, or promote a later commit."
+            exit 0
+          fi
+
+          if json=$(services 2>"$err"); then
+            state=$(jq -r '[.services[0].status // "None", .failures[0].reason // "None"] | @tsv' <<<"$json")
+          elif grep -q '(ClusterNotFoundException)' "$err"; then
+            state=$'None\tMISSING'
+          else
+            cat "$err" >&2
+            exit 1
+          fi
+          case "$state" in
+          $'None\tMISSING')
+            tag "imageDigest=$d" live
+            echo "No signaling service yet; live names $d"
+            exit 0
+            ;;
+          $'ACTIVE\tNone') ;;
+          *)
+            echo "::error::unexpected service state: $state"
+            exit 1
+            ;;
+          esac
+          if [ "$previous" = none ]; then
+            echo "::error::the service runs, but live names no image"
+            exit 1
+          fi
+
+          settled 1200
+          # An access error names the account, so its stderr goes nowhere.
+          if ! stack=$(aws cloudformation describe-stacks --stack-name FidantSignal --query 'Stacks[0].StackStatus' --output text 2>/dev/null); then
+            echo "::error::could not read FidantSignal's status"
+            exit 1
+          fi
+          case "$stack" in
+          *_IN_PROGRESS)
+            echo "::error::FidantSignal is $stack, so live does not move; re-run the newest release run, the one for production's tip, once the stack has settled"
+            exit 1
+            ;;
+          esac
+          trap restore EXIT
+          tag "imageDigest=$d" live
+          if ! json=$(aws ecs update-service --cluster fidant --service fidant-signal --force-new-deployment --output json); then
+            echo "::error::could not start a deployment"
+            exit 1
+          fi
+          dep=$(jq -r '[.service.deployments[] | select(.status == "PRIMARY") | .id][0] // "None"' <<<"$json")
+          [[ $dep =~ ^ecs-svc/[0-9]+$ ]] || { echo "::error::unexpected deployment: $dep"; exit 1; }
+          deadline=$((SECONDS + 1800))
+          while :; do
+            json=$(services)
+            s=$(jq -r --arg id "$dep" '[([.services[0].deployments[] | select(.id == $id) | .rolloutState][0] // "None"), (.services[0].deployments | length)] | @tsv' <<<"$json")
+            case "$s" in
+            $'COMPLETED\t1')
+              safe=1
+              echo "live names $d, and the service runs it"
+              exit 0
+              ;;
+            FAILED*)
+              echo "::error::the new task failed its health check; the service is going back to $previous"
+              settled 1800
+              tag "imageDigest=$previous" live
+              safe=1
+              echo "live names $previous again"
+              tag "imageDigest=$d" "v2-failed-$KEY"
+              echo "tagged $d v2-failed-$KEY"
+              exit 1
+              ;;
+            None*)
+              echo "::error::the deployment left the service's list before it finished; live goes back to $previous, and the next release with these inputs tries $d again"
+              exit 1
+              ;;
+            esac
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "::error::the deployment did not finish in time: $s"
+              exit 1
+            fi
+            sleep 15 & wait $!
+          done
+      - name: Upload the web client
+        env:
+          ACCOUNT: ${{ secrets.FIDANT_POC_ACCOUNT }}
+        run: |
+          set -euo pipefail
+          [[ $ACCOUNT =~ ^[0-9]{12}$ ]] || { echo "::error::unexpected input"; exit 1; }
+          # An access error names the account, so its stderr goes nowhere.
+          if ! stack=$(aws cloudformation describe-stacks --stack-name FidantPages --region us-east-1 --query 'Stacks[0].StackStatus' --output text 2>/dev/null); then
+            echo "::error::could not read the status of FidantPages, so nothing is uploaded"
+            exit 1
+          fi
+          case "$stack" in
+          *_IN_PROGRESS)
+            echo "::error::FidantPages is $stack, so nothing is uploaded; re-run the newest release run, the one for production's tip, once the stack has settled"
+            exit 1
+            ;;
+          esac
+          web=$RUNNER_TEMP/web
+          bucket=s3://fidant-pages-$ACCOUNT
+          aws s3 cp "$web/assets" "$bucket/assets" --recursive --no-follow-symlinks --cache-control "public, max-age=31536000, immutable" --region us-east-1 --only-show-errors
+          aws s3 cp "$web" "$bucket" --recursive --no-follow-symlinks --exclude "assets/*" --cache-control no-cache --region us-east-1 --only-show-errors
+          echo "uploaded the web client"
