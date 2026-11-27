@@ -17,6 +17,7 @@ import {
   Header,
   Link,
   LiveDot,
+  LocalhostBar,
   lede,
   Page,
   Problem,
@@ -246,6 +247,7 @@ export function App({
   }
   return (
     <div class="flex min-h-dvh flex-col has-[[data-bottom-bar]:not([hidden]_*)]:pb-24 has-[[data-page-bar]:not([hidden]_*)]:has-[[data-pill]]:pb-40 has-[[data-page-bar]:not([hidden]_*)]:[&_[data-pill-wrap]]:bottom-20">
+      <LocalhostBar />
       <Header current={route} open={{ send: sendOpen, secret: secretOpen }} />
       <div class="flex-1">
         {route === "landing" && <LandingPage />}

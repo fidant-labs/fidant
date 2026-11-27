@@ -253,6 +253,24 @@ function Choice<T extends string>({
   );
 }
 
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/**
+ * On localhost, a yellow bar at the top of the page saying the links won't work on other computers.
+ * It scrolls away with the page, so the header keeps its height and anchors still land below it.
+ */
+export function LocalhostBar() {
+  const { t } = useI18n();
+  if (typeof location === "undefined" || !LOCAL_HOSTS.has(location.hostname)) {
+    return null;
+  }
+  return (
+    <p role="note" class="m-0 bg-yellow-300 px-4 py-1.5 text-center text-sm text-black">
+      {t.send.localhost}
+    </p>
+  );
+}
+
 export function Header({
   current,
   open,
@@ -263,7 +281,9 @@ export function Header({
 }) {
   const { t } = useI18n();
   return (
-    <header class="fixed inset-x-0 top-0 z-50 border-b border-border/60 bg-background/70 backdrop-blur-xl backdrop-saturate-150">
+    // Sticky with its height taken back, so it lies over the page like a fixed header but starts
+    // below the localhost bar.
+    <header class="sticky top-0 z-50 -mb-[calc(4rem+1px)] border-b border-border/60 bg-background/70 backdrop-blur-xl backdrop-saturate-150">
       <div class="mx-auto flex h-16 max-w-6xl items-center justify-between gap-2 px-3 sm:gap-4 sm:px-4">
         <Link
           href="/"
@@ -378,7 +398,7 @@ export function Footer({ theme, onTheme }: { theme: Theme; onTheme(next: Theme):
   );
 }
 
-/** Page content under the fixed header. */
+/** Page content. The sticky header lies over its top padding, so the content starts under the header. */
 export function Page({
   children,
   tall,
@@ -473,11 +493,27 @@ export function TechDetails({
   );
 }
 
-/** How a connection runs, with a "Why?" that explains it. The summary holds the label too, so it makes sense on its own. */
-export function PathLine({ path }: { path: OpenPath }) {
+/**
+ * How a connection runs, with a "Why?" that explains it. The summary holds the label too, so it
+ * makes sense on its own. `plain`, on the send page, is one line with a link to /how and nothing to open.
+ */
+export function PathLine({ path, plain }: { path: OpenPath; plain?: boolean }) {
   const { t } = useI18n();
   const kind = path === "relay" ? "relay" : "direct";
   const { label, explain } = t.connection[kind];
+  if (plain) {
+    return (
+      <p class="mt-2 mb-0 text-[0.9rem]">
+        <span class="font-medium">{label}</span>{" "}
+        <Link
+          href={`/how#${kind}`}
+          class="rounded-sm text-muted-foreground underline underline-offset-4"
+        >
+          {t.connection.more}
+        </Link>
+      </p>
+    );
+  }
   return (
     <details class="mt-2 text-[0.9rem]">
       <summary class="cursor-pointer">
@@ -502,7 +538,13 @@ export function ServerPanel({
   viaRelay,
   emailed,
   kind,
+  details,
+  visible = true,
 }: {
+  /** False while the page is hidden. A hidden page closes the drawer, so a modal dialog never stays open in it. */
+  visible?: boolean;
+  /** The send page's file facts. When given, even empty, a "Technical details" button opens them and the panel in a drawer. */
+  details?: ReadonlyArray<readonly [string, ComponentChildren]>;
   kind: Kind;
   sees: string;
   holds: string;
@@ -515,6 +557,13 @@ export function ServerPanel({
 }) {
   const { t, lang } = useI18n();
   const headingId = useId();
+  const titleId = useId();
+  const drawer = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (!visible) {
+      drawer.current?.close();
+    }
+  }, [visible]);
   const rows: ReadonlyArray<readonly [string, string]> = [
     [t.server.seesLabel, sees],
     [t.server.holdsLabel, holds],
@@ -536,6 +585,58 @@ export function ServerPanel({
         ] as const)
       : []),
   ];
+  if (details) {
+    return (
+      <>
+        <p class="mt-10 mb-0 text-[0.9rem]">
+          <button
+            type="button"
+            class="cursor-pointer rounded-sm font-medium text-muted-foreground underline underline-offset-4"
+            onClick={() => drawer.current?.showModal()}
+          >
+            {t.common.techDetails}
+          </button>
+        </p>
+        {/* A native dialog, like the safety number's: it holds focus and dims the page without
+            injecting a style, which the CSP blocks. A drawer from the right; on a phone it covers
+            the screen. Its content stays rendered while closed. */}
+        {/* biome-ignore lint/a11y/useKeyWithClickEvents: the click is on the dimmed page; Escape and the Close button close it from the keyboard */}
+        <dialog
+          ref={drawer}
+          aria-labelledby={titleId}
+          class="m-0 ml-auto h-dvh max-h-none w-full max-w-none overflow-y-auto border-border bg-popover text-[0.9rem] text-popover-foreground shadow-xl backdrop:bg-black/50 open:animate-in open:slide-in-from-right motion-reduce:animate-none sm:w-[28rem] sm:border-l [&_code]:text-[0.85rem]"
+          // The padding is on the inner box, so a click on the dialog itself is a click on the dimmed page.
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              event.currentTarget.close();
+            }
+          }}
+        >
+          <div class="min-h-full p-6">
+            <div class="flex items-center justify-between gap-4">
+              <h2 id={titleId} class="m-0 text-[1.25rem] font-bold">
+                {t.common.techDetails}
+              </h2>
+              <button
+                type="button"
+                class={buttonVariants({ variant: "ghost", size: "sm" })}
+                onClick={() => drawer.current?.close()}
+              >
+                {t.common.close}
+              </button>
+            </div>
+            {details.length > 0 && <Facts rows={details} />}
+            <section class="mt-6" aria-labelledby={headingId}>
+              <h3 id={headingId} class="m-0 text-[length:inherit] font-semibold">
+                {t.server.heading}
+              </h3>
+              <Facts rows={rows} />
+            </section>
+          </div>
+        </dialog>
+      </>
+    );
+  }
   return (
     <section class="mt-10 text-[0.9rem]" aria-labelledby={headingId}>
       <details>

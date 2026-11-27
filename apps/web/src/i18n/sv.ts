@@ -266,6 +266,7 @@ export const sv: Messages = {
   },
   common: {
     techDetails: "Tekniska detaljer",
+    close: "Stäng",
     size: "Storlek",
     type: "Typ",
     typeMissing: "Inte angiven",
@@ -302,8 +303,9 @@ export const sv: Messages = {
     continue: "Fortsätt",
     title: "Skicka en fil",
     lede: "Välj en fil och skapa sedan en länk till varje person. Din fil skickas från den här webbläsaren till dem. Den är krypterad hela vägen och laddas aldrig upp eller sparas.",
-    step: (n: number) => `Steg ${n} av 2`,
+    step: (n: number) => `Steg ${n} av 3`,
     peopleHeading: "Skapa en länk till varje person",
+    linksHeading: "Dela länkarna",
     change: "Byt",
     connectionOptions: "Anslutningsalternativ",
     addEmail: "Skapa och mejla länk",
