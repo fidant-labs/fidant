@@ -245,6 +245,20 @@ async function expectHonestProgress(
 
 const sizeOf = async (file: string) => (await readFile(file).catch(() => Buffer.alloc(0))).length;
 
+/** Whether the server counts any relay as up. It checks them every 5 s here (RELAY_CHECK_MS), and a check of a relay that doesn't answer takes 5 s more. */
+const someRelayUp = async () =>
+  (
+    JSON.parse(
+      await inRelay("curl", "-sk", "--max-time", "10", `https://${serverIp}/relay-status`),
+    ) as { id: string; up: boolean }[]
+  ).some((relay) => relay.up);
+
+/** Resumes coturn and waits until the server offers a relay again, so the next test finds one. */
+const relayBack = async () => {
+  await resumeRelay();
+  await expect.poll(someRelayUp, { timeout: 30_000, intervals: [1_000] }).toBe(true);
+};
+
 test.describe.configure({ timeout: 90_000 });
 
 test("the leak scan sees what reaches coturn", async ({ leaks, canary }) => {
@@ -272,7 +286,7 @@ for (const row of scenarios) {
     const path = row.path;
     if (path === "none") {
       // Paused, not stopped: coturn keeps its address, so packets to it go unanswered.
-      test.afterEach(resumeRelay);
+      test.afterEach(relayBack);
 
       test("says it couldn't connect, and nothing goes another way", async ({
         actor,
@@ -282,7 +296,6 @@ for (const row of scenarios) {
         baseURL,
       }) => {
         await routerMode("router-b", row.routerB);
-        await pauseRelay();
         const stdoutStart = await sizeOf(serverStdoutLog);
         const file = leaks.watch(canaryFile(canary.fork("file"), { size: 300_001 }));
         const name = makeName(leaks, canary, "Anna");
@@ -306,7 +319,15 @@ for (const row of scenarios) {
         await recordPeerConnections(recipient.context);
         let downloads = 0;
         recipient.page.on("download", () => downloads++);
+        // Paused only now: the server still counts the relay as up when the recipient joins, so
+        // `joined` offers a relay that doesn't answer. Two failed checks, 10 s or more, take it down.
+        await pauseRelay();
         await recipient.page.goto(link);
+        // The sender's page makes its connection on `joined`.
+        await expect
+          .poll(async () => (await readPeerConnections(sender.page)).length, { timeout: 5_000 })
+          .toBeGreaterThan(0);
+        expect(await someRelayUp()).toBe(true);
         // Exact: "Couldn't connect" alone also matches the server panel.
         await expect(
           recipient.page.getByText("Couldn't connect to the sender's computer", { exact: true }),
@@ -434,8 +455,8 @@ for (const row of scenarios) {
   });
 }
 
-// No relay up: the server offers one only after its checks fail twice in a row, a minute apart,
-// so this waits for that and then waits for the checks to find coturn again.
+// No relay up: the server stops offering one only after its checks fail twice in a row, so this
+// waits for that and then for the checks to find coturn again.
 test.describe("no relay up", () => {
   test.use({
     remoteBrowsers: { sender: remoteBrowsers.a1, recipient: remoteBrowsers.b1 },
@@ -446,16 +467,11 @@ test.describe("no relay up", () => {
     leaks,
     canary,
   }) => {
-    test.setTimeout(360_000);
-    const status = async () =>
-      JSON.parse(
-        await inRelay("curl", "-sk", "--max-time", "10", `https://${serverIp}/relay-status`),
-      ) as { id: string; up: boolean }[];
-    const someUp = async () => (await status()).some((relay) => relay.up);
+    test.setTimeout(150_000);
     try {
       await routerMode("router-b", "symmetric");
       await pauseRelay();
-      await expect.poll(someUp, { timeout: 150_000, intervals: [5_000] }).toBe(false);
+      await expect.poll(someRelayUp, { timeout: 40_000, intervals: [1_000] }).toBe(false);
       const file = leaks.watch(canaryFile(canary.fork("file"), { size: 300_001 }));
       const name = makeName(leaks, canary, "Anna");
 
@@ -488,8 +504,7 @@ test.describe("no relay up", () => {
         recipient.page.getByText("Waiting for the sender to allow our relay."),
       ).toHaveCount(0);
     } finally {
-      await resumeRelay();
-      await expect.poll(someUp, { timeout: 120_000, intervals: [5_000] }).toBe(true);
+      await relayBack();
     }
   });
 });
@@ -1282,9 +1297,9 @@ test.describe("the relay box", () => {
         expect(await inRelay("sha256sum", "/var/lib/fidant-relay/current")).toBe(
           `${hash}  /var/lib/fidant-relay/current\n`,
         );
-        // The server checks each relay once a minute.
+        // The server checks each relay every 5 s here (RELAY_CHECK_MS).
         await expect
-          .poll(status, { timeout: 150_000, intervals: [5_000] })
+          .poll(status, { timeout: 30_000, intervals: [1_000] })
           .toContainEqual({ id: "sto", up: true });
 
         let lines: string[] = [];

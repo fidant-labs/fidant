@@ -28,11 +28,26 @@ if (site.pages) {
   }
 }
 
+// For tests only: how often the relays are checked (default 60 s, docs/decisions/0015-relay-switch.md),
+// so the networks suite needn't wait minutes for a relay to count as down and up again.
+const relayCheckEnv = process.env.RELAY_CHECK_MS;
+// At most 9 digits: setInterval runs a delay over 2^31 - 1 ms every millisecond instead.
+if (relayCheckEnv !== undefined && !/^[1-9]\d{3,8}$/.test(relayCheckEnv)) {
+  console.error("RELAY_CHECK_MS must be a whole number of milliseconds from 1000 to 999999999.");
+  process.exit(1);
+}
+
 // A relay list that isn't empty replaces TURN_URLS. The messages name no secret.
 let relays: Relays | undefined;
 try {
   const list = loadRelays(process.env, existsSync("/var/lib/sigill"));
-  relays = list && startRelays(list.relays, readOrCreateMaster(list.masterFile));
+  relays =
+    list &&
+    startRelays(
+      list.relays,
+      readOrCreateMaster(list.masterFile),
+      relayCheckEnv === undefined ? {} : { intervalMs: Number(relayCheckEnv) },
+    );
 } catch (error) {
   console.error((error as Error).message);
   process.exit(1);
