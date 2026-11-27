@@ -408,44 +408,6 @@ for (const row of scenarios) {
   });
 }
 
-/** One state change of a peer connection, with the ICE password of the local description in use. */
-interface ConnectionEvent {
-  at: number;
-  state: RTCPeerConnectionState;
-  pwd?: string | undefined;
-}
-
-type WatchedGlobals = typeof globalThis & { connectionEvents?: ConnectionEvent[][] };
-
-/**
- * Init script, so it may use nothing from this module: keeps, for every peer connection the page
- * makes, each change of its connection or signaling state. The password is that of
- * `currentLocalDescription`, which changes only when a restart's offer and answer are both set.
- */
-function watchConnections() {
-  const all: ConnectionEvent[][] = [];
-  (globalThis as WatchedGlobals).connectionEvents = all;
-  const Native = globalThis.RTCPeerConnection;
-  globalThis.RTCPeerConnection = class extends Native {
-    constructor(config?: RTCConfiguration) {
-      super(config);
-      const events: ConnectionEvent[] = [];
-      all.push(events);
-      const note = () =>
-        events.push({
-          at: Date.now(),
-          state: this.connectionState,
-          pwd: /^a=ice-pwd:(\S+)/m.exec(this.currentLocalDescription?.sdp ?? "")?.[1],
-        });
-      this.addEventListener("connectionstatechange", note);
-      this.addEventListener("signalingstatechange", note);
-    }
-  };
-}
-
-const connectionEvents = (page: Page) =>
-  page.evaluate(() => (globalThis as WatchedGlobals).connectionEvents ?? []);
-
 // Decision 0029: a route that drops mid-transfer and comes back is recovered by an ICE restart on
 // the same connection. The sender refuses the relay, so only the restored route can carry the file.
 test.describe("a route cut mid-transfer", () => {
@@ -459,14 +421,12 @@ test.describe("a route cut mid-transfer", () => {
     baseURL,
   }) => {
     await routerMode("router-b", "lossy");
-    // ponytail: 1 MiB at the lossy link's 50 KB/s leaves about 20 s to cut and restore in.
     const size = 1024 * 1024 + 1;
     const file = leaks.watch(canaryFile(canary.fork("file"), { size }));
     const name = makeName(leaks, canary, "Anna");
 
     const sender = await actor("sender");
     await recordPeerConnections(sender.context);
-    await sender.context.addInitScript(watchConnections);
     await sender.page.goto("/send");
     await chooseFile(sender.page, { name: file.name, mimeType: file.mime, buffer: file.bytes });
     await sender.page.getByText("Connection options", { exact: true }).press("Enter");
@@ -479,7 +439,6 @@ test.describe("a route cut mid-transfer", () => {
 
     const recipient = await actor("recipient");
     await recordPeerConnections(recipient.context);
-    await recipient.context.addInitScript(watchConnections);
     await recipient.page.goto(link);
     const downloading = recipient.page.waitForEvent("download", { timeout: 60_000 });
     const downloadButton = recipient.page.getByRole("button", { name: "Download" });
@@ -507,6 +466,7 @@ test.describe("a route cut mid-transfer", () => {
     await expect.poll(received, { timeout: 30_000 }).toBeGreaterThan(0);
     expect(await joins()).toHaveLength(1);
     // The containers are shared across the run, so the route comes back whatever happens here.
+    let stalled = 0;
     try {
       await cutRoute();
       // The recipient's browser reports the drop and its page joins again. Restored at once: the
@@ -514,23 +474,26 @@ test.describe("a route cut mid-transfer", () => {
       await expect
         .poll(async () => (await joins()).length, { timeout: 30_000 })
         .toBeGreaterThanOrEqual(2);
+      // The route is cut, so nothing more arrives: the level to beat once it is back.
+      stalled = await received();
     } finally {
       await restoreRoute();
     }
 
-    // Connected again while the file is still on its way, so the rest arrives on the new route.
+    // Connected again on the same connection.
     await expect
       .poll(
         async () => {
-          const events = (await connectionEvents(recipient.page))[0] ?? [];
+          const events = (await readPeerConnections(recipient.page))[0]?.events ?? [];
           const dropped = events.findIndex((event) => event.state === "disconnected");
           return dropped !== -1 && events.at(-1)?.state === "connected";
         },
         { timeout: 30_000 },
       )
       .toBe(true);
-    expect(await verified.isVisible(), "verified before the connection was back").toBe(false);
-    expect(await received()).toBeLessThan(size);
+    // The rest of the file arrives over the restored route, on top of what came before the cut.
+    // Not "still unfinished": that would race the transfer's own speed.
+    await expect.poll(received, { timeout: 30_000 }).toBeGreaterThan(stalled);
 
     await progress;
     await expect(verified).toBeVisible();
@@ -551,9 +514,9 @@ test.describe("a route cut mid-transfer", () => {
     ] as const) {
       // One connection per page, which got a new ICE password: the restart, not a new attempt
       // and not a route that came back by itself.
-      const connections = await connectionEvents(page);
+      const connections = await readPeerConnections(page);
       expect(connections.length, `${who} peer connections`).toBe(1);
-      const events = connections[0] ?? [];
+      const events = connections[0]?.events ?? [];
       const before = events.find((event) => event.state === "connected")?.pwd;
       const after = events.at(-1);
       expect(before, `${who} ICE password before the cut`).toBeTruthy();
