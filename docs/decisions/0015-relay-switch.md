@@ -2,15 +2,15 @@
 
 - Status: Accepted
 - Date: 2026-11-25
-- Linear: SIG-153
+- Linear: FID-153
 
 ## Context
 
 In this record, 0013 is `docs/decisions/0013-relay-service.md`.
 
-- 0013 built the Stockholm relay box, `fidant-relay-sto-<hash>`, from `apps/infra/relay/install.sh`. It asks `https://fidant.se/relay-secret/sto` for its secret every minute. Until SIG-153 nothing serves that path, so the relay box has no secret, answers STUN and refuses every TURN allocation. Every relayed transfer goes through the app box's coturn at `turn.fidant.se` (0007).
-- 0013 fixed the hand-out's contract: the body is the relay's secret, sealed to the relay's public key with RSA-OAEP. It left the app's side to SIG-153: where the trusted public keys live, where each relay's secret comes from, when the app offers a relay, and moving 0011's cap to the relay box.
-- The app box's user data sets the app's environment once, through the drop-in `turn.conf` (0007). A change to the user data replaces the box (0007, 0013). SIG-153 must replace neither box.
+- 0013 built the Stockholm relay box, `fidant-relay-sto-<hash>`, from `apps/infra/relay/install.sh`. It asks `https://fidant.se/relay-secret/sto` for its secret every minute. Until FID-153 nothing serves that path, so the relay box has no secret, answers STUN and refuses every TURN allocation. Every relayed transfer goes through the app box's coturn at `turn.fidant.se` (0007).
+- 0013 fixed the hand-out's contract: the body is the relay's secret, sealed to the relay's public key with RSA-OAEP. It left the app's side to FID-153: where the trusted public keys live, where each relay's secret comes from, when the app offers a relay, and moving 0011's cap to the relay box.
+- The app box's user data sets the app's environment once, through the drop-in `turn.conf` (0007). A change to the user data replaces the box (0007, 0013). FID-153 must replace neither box.
 - The `sensitive-paths` ruleset asks for a `maintainers` approval on `apps/infra/**`, but not on `apps/server/`. The infra deploy checks out only `apps/infra/` and a few root files, so the CDK app can't read a file in `apps/server/`.
 - Lightsail adds up the data transfer allowance of instances of the same bundle in a Region, and counts traffic in and out ([Data transfer in Lightsail](https://docs.aws.amazon.com/lightsail/latest/userguide/amazon-lightsail-faq-data-transfer-allowance.html)). Both boxes are `micro_3_0` in eu-north-1, so they draw on one pool. The guide's example gives the pool for instances that run "for a full month", and doesn't say what a box created during the month adds.
 
@@ -20,7 +20,7 @@ In this record, 0013 is `docs/decisions/0013-relay-service.md`.
 
 | Option                                                                                                    | For                                                     | Against                                                                                                  |
 | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| The release's `apps/server/relays.json` when `RELAYS_FILE` is unset and `/var/lib/sigill` exists (chosen) | No user-data change, so the merge replaces neither box. | An implicit rule: any machine with that directory uses the committed list, the networks suite's box too. |
+| The release's `apps/server/relays.json` when `RELAYS_FILE` is unset and `/var/lib/fidant` exists (chosen) | No user-data change, so the merge replaces neither box. | An implicit rule: any machine with that directory uses the committed list, the networks suite's box too. |
 | `RELAYS_FILE` in the app box's user data                                                                  | Explicit.                                               | Replaces the app box.                                                                                    |
 | The committed list wherever `TURN_SECRET_FILE` is set                                                     | Already set on the box.                                 | Ties two unrelated settings together.                                                                    |
 | The committed list everywhere                                                                             | The simplest.                                           | `pnpm start` and both e2e suites would check and offer `sto`.                                            |
@@ -43,7 +43,7 @@ In this record, 0013 is `docs/decisions/0013-relay-service.md`.
 
 | Option                                             | For                                                                           | Against                                                                                               |
 | -------------------------------------------------- | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| A file kept until the app box is replaced (chosen) | Secrets survive deploys and reboots, so the relays keep working through them. | On disk, readable by anything that runs as `sigill`.                                                  |
+| A file kept until the app box is replaced (chosen) | Secrets survive deploys and reboots, so the relays keep working through them. | On disk, readable by anything that runs as `fidant`.                                                  |
 | A new master at every start                        | Nothing on disk.                                                              | Every deploy changes every relay's secret, and pairings get no relay for about 2.5 minutes each time. |
 
 ### What `joined` carries when no relay is up
@@ -64,19 +64,19 @@ In this record, 0013 is `docs/decisions/0013-relay-service.md`.
 
 | Option                                  | For                                                                                   | Against                                                                     |
 | --------------------------------------- | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| 1.8 TB, summed over both boxes (chosen) | Stays under one box's 2 TB, whatever a box created during the month adds to the pool. | Leaves most of the relay box's allowance unused until SIG-154.              |
+| 1.8 TB, summed over both boxes (chosen) | Stays under one box's 2 TB, whatever a box created during the month adds to the pool. | Leaves most of the relay box's allowance unused until FID-154.              |
 | 3.8 TB                                  | Uses both boxes' allowance.                                                           | The guide doesn't say that a box created during the month adds a full 2 TB. |
 
 ### The app box's `TURN_URLS`
 
 | Option                      | For                                                                    | Against                                                                                 |
 | --------------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| Kept until SIG-154 (chosen) | Committing `[]` returns to the app box's coturn, with no infra deploy. | Two relays to keep running.                                                             |
+| Kept until FID-154 (chosen) | Committing `[]` returns to the app box's coturn, with no infra deploy. | Two relays to keep running.                                                             |
 | Removed now                 | One relay.                                                             | Changes the user data, which replaces the app box, and leaves no relay to roll back to. |
 
 ## Decision
 
-The app offers the relays in a committed relay list, `apps/server/relays.json`, today the Stockholm relay box. It derives each relay's secret from one master on the app box, hands it out sealed to the relay's public key, and offers a relay once a TURN allocation on it has succeeded, until two checks in a row fail. The app box's coturn stays, and the app uses it only without a relay list, until SIG-154.
+The app offers the relays in a committed relay list, `apps/server/relays.json`, today the Stockholm relay box. It derives each relay's secret from one master on the app box, hands it out sealed to the relay's public key, and offers a relay once a TURN allocation on it has succeeded, until two checks in a row fail. The app box's coturn stays, and the app uses it only without a relay list, until FID-154.
 
 ### The relay list
 
@@ -85,10 +85,10 @@ The app offers the relays in a committed relay list, `apps/server/relays.json`, 
   - `urls` are 1 to 4 `stun:`, `turn:` or `turns:` URLs that pass `parseIceServers` (0006). At least one is `turn:<host>:<port>?transport=udp`. The first such URL is what the check targets, and its host is a name or an IPv4 address.
   - `publicKey` is the relay's `/etc/fidant-relay/relay.pub`, an RSA key of at least 2048 bits in SPKI PEM.
 - `[]` means no relay list.
-- The server reads the list at startup. A list that doesn't parse stops the server, with a message that names the entry only by its position. `sigill-deploy` then keeps the old release and writes `/opt/sigill/failed-<sha>`. A unit test parses the committed list, so `pnpm check` keeps a bad one from merging.
+- The server reads the list at startup. A list that doesn't parse stops the server, with a message that names the entry only by its position. `fidant-deploy` then keeps the old release and writes `/opt/fidant/failed-<sha>`. A unit test parses the committed list, so `pnpm check` keeps a bad one from merging.
 - The committed list holds `sto`, with `stun:sto.relay.fidant.se:3478`, `turn:sto.relay.fidant.se:3478?transport=udp` and `turns:sto.relay.fidant.se:443?transport=tcp`, and the relay box's 3072-bit key. A test pins the key's SPKI SHA-256.
 - A name and a location are left out until something reads them.
-- In SIG-153's pull request the list stays `[]` until the commit that adds `sto`, so every commit before it leaves production unchanged.
+- In FID-153's pull request the list stays `[]` until the commit that adds `sto`, so every commit before it leaves production unchanged.
 - `apps/server/relays.json` is in the `sensitive-paths` ruleset, so a change to it needs an approval from the `maintainers` team (repository admins can bypass that rule), as 0013 asked before the first key. Agents never change rulesets, so a maintainer added the path.
 
 ### How the server finds the relay list
@@ -96,10 +96,10 @@ The app offers the relays in a committed relay list, `apps/server/relays.json`, 
 In this order:
 
 1. `RELAYS_FILE` is set and not empty: the list in that file.
-2. `RELAYS_FILE` is unset and `/var/lib/sigill` exists: the release's own `apps/server/relays.json`. `/var/lib/sigill` is the `sigill` user's home, which the app box and the networks suite's box have.
+2. `RELAYS_FILE` is unset and `/var/lib/fidant` exists: the release's own `apps/server/relays.json`. `/var/lib/fidant` is the `fidant` user's home, which the app box and the networks suite's box have.
 3. Otherwise, or when the list is `[]`, or when `RELAYS_FILE` is set but empty: no relay list. The server uses `TURN_URLS` and `TURN_SECRET_FILE` as before (0006, 0007), or hands out no ICE servers without them.
 
-- In 1 and 2 the master file is `RELAY_MASTER_FILE`, or `/var/lib/sigill/relay-master` when that is unset or empty.
+- In 1 and 2 the master file is `RELAY_MASTER_FILE`, or `/var/lib/fidant/relay-master` when that is unset or empty.
 - A relay list that isn't empty replaces `TURN_URLS` and `TURN_SECRET_FILE`. The server doesn't read them, and says nothing about it, because its stderr reaches the journal.
 - On the app box `RELAYS_FILE` is unset, so the merge needs no user-data change.
 
@@ -107,7 +107,7 @@ In this order:
 
 - The master is 32 random bytes, kept in the master file as 64 lowercase hex characters and a newline.
 - At startup the server creates the master file when it is missing, mode 0600, with an exclusive create, and otherwise reads it. A master file that doesn't hold 64 lowercase hex characters stops the server. No message quotes the file.
-- The master file is in `sigill`'s home, so it survives deploys and reboots. A replaced app box makes a new master.
+- The master file is in `fidant`'s home, so it survives deploys and reboots. A replaced app box makes a new master.
 - A relay's secret is HMAC-SHA256 with the master's 32 bytes as the key and the relay's `id` as the message, as 64 lowercase hex characters. A unit test checks it against openssl.
 - The server mints TURN credentials for a relay from that secret, as in 0006: per pairing, valid for 5 minutes, only in `joined`.
 
@@ -157,7 +157,7 @@ In this order:
   - the app box: the 6 ports of 0011, capped to TCP 80, 443 and 22;
   - the relay box: its 6 ports (0013), capped to TCP 22 from `lightsail-connect` and TCP 80, so certbot can still renew. That closes 443, 3478 and the UDP range.
 - `/fidant/relay-cap` keeps each box's count, as in 0011. The total is their sum. At or above the limit, every box gets its capped ports. On the first run below the limit after a capped run, every box gets its open ports again.
-- The limit stays at 1.8 TB (`relayCapBytes`), now for both boxes together, and the warning at 1.44 TB. SIG-154 replaces the byte limit with a cost cap.
+- The limit stays at 1.8 TB (`relayCapBytes`), now for both boxes together, and the warning at 1.44 TB. FID-154 replaces the byte limit with a cost cap.
 - The Lambda may call `lightsail:PutInstancePublicPorts` only on the two boxes' instance ARNs. The action takes the Instance resource type ([Actions, resources, and condition keys for Amazon Lightsail](https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazonlightsail.html)).
 
 ### Status metrics and alarms
@@ -196,10 +196,10 @@ This record amends 0006, 0007, 0008, 0009, 0011 and 0013. They are not supersede
 | 0007: "`TURN_URLS` is `stun:turn.fidant.se:3478`, … plus `stun:[<IPv6>]:3478` when the box has a global IPv6 address at first boot."                                                                                                             | The same for the app box's coturn. `sto` has three URLs and no IPv6 one (see Consequences).                                                                                                                      |
 | 0007: "A coturn failure after first boot doesn't change the app: it keeps handing out the URLs."                                                                                                                                                 | Still true of the app box's coturn without a relay list. A relay in the list is down after two failed checks, about 2 minutes, and the app then hands out only the first listed relay's `stun:` URLs.            |
 | 0007, Emergency stop: "The app still hands out the TURN URLs."                                                                                                                                                                                   | While the app has a relay list, it hands out no `turn.fidant.se` URLs, so stopping the app box's coturn ends only the relayed transfers that run through it.                                                     |
-| 0007: "If anything in the coturn part fails at first boot, the app runs without STUN or TURN, as before SIG-77."                                                                                                                                 | Without a relay list, still true. With one, the app hands out ICE servers from its relay list (see "Choosing a relay") whether or not `turn.conf` exists.                                                        |
+| 0007: "If anything in the coturn part fails at first boot, the app runs without STUN or TURN, as before FID-77."                                                                                                                                 | Without a relay list, still true. With one, the app hands out ICE servers from its relay list (see "Choosing a relay") whether or not `turn.conf` exists.                                                        |
 | 0007: "No `turn.conf` means coturn wasn't active at first boot, and the app hands out no STUN or TURN."                                                                                                                                          | Without a relay list, still true. With one, the app hands out ICE servers from its relay list (see "Choosing a relay") whether or not `turn.conf` exists.                                                        |
 | 0008: "Refused sends still use STUN on the relay box (`stun:turn.fidant.se`)."                                                                                                                                                                   | Without a relay list, still true. With one, refused sends use the `stun:` URL of the first relay that is up, or of the first listed relay when none is up, today `stun:sto.relay.fidant.se:3478`.                |
-| 0008: "Only our server can mint them"                                                                                                                                                                                                            | Without a relay list, still true. With one, anything running as the app's user `sigill` can read the master and mint credentials (see Consequences).                                                             |
+| 0008: "Only our server can mint them"                                                                                                                                                                                                            | Without a relay list, still true. With one, anything running as the app's user `fidant` can read the master and mint credentials (see Consequences).                                                             |
 | 0009: "Refused sends get only the `stun:` URLs in `TURN_URLS`."                                                                                                                                                                                  | Without a relay list, still true. With one, refused sends get the `stun:` URLs of the first relay that is up, or of the first listed relay when none is up.                                                      |
 | 0011: "It sums `NetworkIn` and `NetworkOut` for the box"                                                                                                                                                                                         | It sums them for every box in `BOXES`: the app box and the relay box.                                                                                                                                            |
 | 0011: "At or above the limit it calls `put-instance-public-ports` with TCP 80, 443 and 22 only." and "it puts the full list back"                                                                                                                | Each box gets its own capped ports, and then its own open ports (see "The cap").                                                                                                                                 |
@@ -207,16 +207,16 @@ This record amends 0006, 0007, 0008, 0009, 0011 and 0013. They are not supersede
 | 0011: "About 0.30 USD a month for the three alarms."                                                                                                                                                                                             | Plus the two alarms and two metrics of this record (see Consequences).                                                                                                                                           |
 | 0011, Pause the cap: "restore all six ports by hand with `put-instance-public-ports`"                                                                                                                                                            | Restore each box's open ports by hand: the app box's 6 ports in 0011 and the relay box's 6 ports in 0013.                                                                                                        |
 | 0013: "The app box doesn't change, and 0011's cap still watches only the app box."                                                                                                                                                               | The cap counts both boxes and closes both boxes' relay ports.                                                                                                                                                    |
-| 0013: "The app therefore keeps one secret per relay that survives app restarts and changes only when the app box is replaced (SIG-153)."                                                                                                         | The app derives each relay's secret from the master, which survives deploys and reboots. The secret changes when the app box is replaced, or when the master file is deleted and the app restarted.              |
-| 0013: "Lightsail pools the transfer allowance across the region's `micro_3_0` boxes, and 0011's cap counts only the app box's traffic. The relay box carries no relayed transfers until SIG-153, which moves the cap to it."                     | The relay box carries relayed transfers, and the cap counts it together with the app box.                                                                                                                        |
-| 0013, A leaked secret: "The app's secret for a relay changes only when the app box is replaced (see Consequences), so from SIG-153 on, step 0 is to replace the app box, which makes new secrets." and "later than when the new app box came up" | Step 0 is "New secrets for every relay" below, and the time to compare with is when its restart ran.                                                                                                             |
+| 0013: "The app therefore keeps one secret per relay that survives app restarts and changes only when the app box is replaced (FID-153)."                                                                                                         | The app derives each relay's secret from the master, which survives deploys and reboots. The secret changes when the app box is replaced, or when the master file is deleted and the app restarted.              |
+| 0013: "Lightsail pools the transfer allowance across the region's `micro_3_0` boxes, and 0011's cap counts only the app box's traffic. The relay box carries no relayed transfers until FID-153, which moves the cap to it."                     | The relay box carries relayed transfers, and the cap counts it together with the app box.                                                                                                                        |
+| 0013, A leaked secret: "The app's secret for a relay changes only when the app box is replaced (see Consequences), so from FID-153 on, step 0 is to replace the app box, which makes new secrets." and "later than when the new app box came up" | Step 0 is "New secrets for every relay" below, and the time to compare with is when its restart ran.                                                                                                             |
 
 ## Consequences
 
 - Neither box is replaced: nothing that `renderUserData()` or `renderRelayUserData()` reads changes, and `apps/infra/src/stacks.test.ts` pins both instance names.
 - Right after the merge, `sto` is down until the app box runs the new release, the relay box fetches its new secret (within about 80 seconds, 0013) and the next check passes (within 60 seconds). For about 2.5 minutes, new pairings get only `sto`'s `stun:` URL, so a transfer that needs a relay fails.
 - "Fidant relay status unreachable" may fire right after the merge. The infra deploy can put the new Lambda in place while the app box still runs the old release, which answers `/relay-status` with the site's page. It returns to OK once the new release runs.
-- Anything that runs as `sigill` on the app box can read the master: the server, and also the code that `sigill-deploy` runs at build time, because `pnpm install` and `pnpm build` run as `sigill` with `HOME=/var/lib/sigill`. A dependency's install script or build step can therefore read it. With the master, someone can derive every relay's secret and mint TURN credentials for every relay. That gives them use of the relays, not file content: a relay carries only DTLS and AES-GCM traffic (0007). The TURN secret of 0007 reaches the app only through `LoadCredential=`, so build-time code can't read that one.
+- Anything that runs as `fidant` on the app box can read the master: the server, and also the code that `fidant-deploy` runs at build time, because `pnpm install` and `pnpm build` run as `fidant` with `HOME=/var/lib/fidant`. A dependency's install script or build step can therefore read it. With the master, someone can derive every relay's secret and mint TURN credentials for every relay. That gives them use of the relays, not file content: a relay carries only DTLS and AES-GCM traffic (0007). The TURN secret of 0007 reaches the app only through `LoadCredential=`, so build-time code can't read that one.
 - A relay's secret changes only with the master. After a leak, "New secrets for every relay" below makes new ones, and 0013's runbook then removes the old one from the relay.
 - With a relay list, there is no fallback while the relays are down. A relay box that is off or refuses its check leaves pairings with its `stun:` URL only, which doesn't answer when coturn is stopped, so browsers then get no STUN either. The drop-in under Runbook brings back the app box's coturn.
 - A replaced relay box has a new key pair (0013). The app's hand-out is sealed to the old key, so the new box can't open it, fails its check and stays down until a pull request with its new key merges.
@@ -226,7 +226,7 @@ This record amends 0006, 0007, 0008, 0009, 0011 and 0013. They are not supersede
 - `/relay-status` is public, so anyone can see which relays exist and whether they are up.
 - Committing `[]` leaves the relay box running with its last secret. The app then mints no credentials for it, and answers its fetch with 404, which changes nothing on the relay (0013).
 - Two more standard alarms cost 0.10 USD per alarm metric a month, and `RelayStatusOk` and `RelayUp` for `sto` 0.30 USD per custom metric a month, at list price ([Amazon CloudWatch pricing](https://aws.amazon.com/cloudwatch/pricing/)). That is about 0.80 USD a month at most. Each further relay adds one alarm and one `RelayUp` metric.
-- The pool both boxes draw on is now counted whole, and 1.8 TB stays under one box's allowance. Until SIG-154, a month can stop the relays with most of the relay box's allowance unused.
+- The pool both boxes draw on is now counted whole, and 1.8 TB stays under one box's allowance. Until FID-154, a month can stop the relays with most of the relay box's allowance unused.
 
 ## Runbook
 
@@ -249,14 +249,14 @@ curl -s https://fidant.se/relay-status; echo
 For when the app must stop offering the relays before a pull request can merge. On the app box:
 
 ```sh
-mkdir -p /etc/systemd/system/sigill.service.d
-printf '[Service]\nEnvironment=RELAYS_FILE=\n' >/etc/systemd/system/sigill.service.d/relays-off.conf
-grep -qx 'Environment=RELAYS_FILE=' /etc/systemd/system/sigill.service.d/relays-off.conf && systemctl daemon-reload && systemctl restart sigill
+mkdir -p /etc/systemd/system/fidant.service.d
+printf '[Service]\nEnvironment=RELAYS_FILE=\n' >/etc/systemd/system/fidant.service.d/relays-off.conf
+grep -qx 'Environment=RELAYS_FILE=' /etc/systemd/system/fidant.service.d/relays-off.conf && systemctl daemon-reload && systemctl restart fidant
 ```
 
 - The reload and restart run only once the drop-in holds the line.
 - From any machine, a few seconds later, `curl -s https://fidant.se/relay-status; echo` must print exactly `[]`. That proves the relay list is off.
-- Pairings then get the `turn.fidant.se` URLs only if `turn.conf` exists (0007). On the app box, `test -s /etc/systemd/system/sigill.service.d/turn.conf && echo turn` must print `turn`. In Chrome, `chrome://webrtc-internals` on a page that has paired lists the ICE server URLs: they name `turn.fidant.se` and not `sto.relay.fidant.se`. Without `turn.conf` the app hands out no ICE servers.
+- Pairings then get the `turn.fidant.se` URLs only if `turn.conf` exists (0007). On the app box, `test -s /etc/systemd/system/fidant.service.d/turn.conf && echo turn` must print `turn`. In Chrome, `chrome://webrtc-internals` on a page that has paired lists the ICE server URLs: they name `turn.fidant.se` and not `sto.relay.fidant.se`. Without `turn.conf` the app hands out no ICE servers.
 - Relayed transfers in progress through `sto` keep running, because coturn keeps live allocations (0013).
 - The drop-in stays through deploys and reboots.
 - While the list is off, `/relay-status` lists no `sto`, which the Lambda counts as down. So "Fidant relay sto unavailable" goes to ALARM within about 10 minutes, and back to OK once the list is on and `sto` is up. That alarm is expected.
@@ -264,7 +264,7 @@ grep -qx 'Environment=RELAYS_FILE=' /etc/systemd/system/sigill.service.d/relays-
 To turn the relay list on again:
 
 ```sh
-rm /etc/systemd/system/sigill.service.d/relays-off.conf && systemctl daemon-reload && systemctl restart sigill
+rm /etc/systemd/system/fidant.service.d/relays-off.conf && systemctl daemon-reload && systemctl restart fidant
 ```
 
 - The master is unchanged, so `sto` still has its secret. `/relay-status` must print `[{"id":"sto","up":true}]` within about a minute.
@@ -280,7 +280,7 @@ rm /etc/systemd/system/sigill.service.d/relays-off.conf && systemctl daemon-relo
 This replaces step 0 of 0013's "A leaked secret". On the app box:
 
 ```sh
-test -s /var/lib/sigill/relay-master && rm /var/lib/sigill/relay-master && systemctl restart sigill
+test -s /var/lib/fidant/relay-master && rm /var/lib/fidant/relay-master && systemctl restart fidant
 ```
 
 - The server makes a new master at start, and with it a new secret for every relay. The restart is the same as a deploy's.
@@ -302,7 +302,7 @@ for i in $(seq 20); do date +%T; curl -s https://fidant.se/relay-status; echo; s
   - Or, once the app box runs the release with the new key, run the command below. It makes new secrets for every relay, and pairings get no relay for about 150 seconds, as under "New secrets for every relay". Run before that release, it would seal the new secret to the leaked key. Put the third line of the new `relay.pub` between the quotes, so the command restarts nothing until the running release holds the new key:
 
 ```sh
-grep -qF '<third line of the new relay.pub>' /opt/sigill/current/apps/server/relays.json && test -s /var/lib/sigill/relay-master && rm /var/lib/sigill/relay-master && systemctl restart sigill
+grep -qF '<third line of the new relay.pub>' /opt/fidant/current/apps/server/relays.json && test -s /var/lib/fidant/relay-master && rm /var/lib/fidant/relay-master && systemctl restart fidant
 ```
 
 - Then check the status as under "New secrets for every relay".

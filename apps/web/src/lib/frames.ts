@@ -421,7 +421,7 @@ function parseMeta(value: unknown): FileMeta | undefined {
  * is padded like a 1-byte file, to one full chunk, so it looks like any other
  * small file.
  *
- * Interim: SIG-7 owns the final padding function. Keep it this one exported
+ * Interim: FID-7 owns the final padding function. Keep it this one exported
  * function so the sender and the recipient always agree.
  */
 export function paddedLength(size: number, chunkSize: number = MAX_CHUNK_BYTES): number {

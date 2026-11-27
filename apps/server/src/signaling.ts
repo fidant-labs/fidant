@@ -50,7 +50,7 @@ export const LIMITS = {
   /**
    * Guests a link pairs per heartbeat window. Each pairing can cost the sender's socket a message
    * (a guest without the secret gets a `refuse`), so without this one guest could spend the
-   * sender's message limit (SIG-235). An honest recipient pairs at most 5 times per attempt.
+   * sender's message limit (FID-235). An honest recipient pairs at most 5 times per attempt.
    * ponytail: per link, so a guest holding ~100 of one sender's links could still spend it; count
    * pairings per host socket too if that ever matters.
    */

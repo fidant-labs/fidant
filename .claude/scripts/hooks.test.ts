@@ -50,7 +50,7 @@ before(() => {
   git("commit", "-q", "--allow-empty", "-m", "base");
   git("push", "-q", "-u", "origin", "main");
   git("remote", "set-head", "origin", "main");
-  git("checkout", "-q", "-b", "sig-12-thing");
+  git("checkout", "-q", "-b", "fid-12-thing");
   mkdirSync(join(repo, "sub"));
   execFileSync("bash", ["-c", "printf 'a\\nb\\n' > sub/f.txt"], { cwd: repo });
   git("add", ".");
@@ -119,8 +119,8 @@ describe("review gate", () => {
   test("passes after a mark, also with colour and relative diff config", () => {
     execFileSync("bash", [join(scripts, "review-gate.sh"), "mark"], { cwd: repo, env });
     assert.equal(gate(`cd ${repo} && gh pr create`).code, 0);
-    assert.equal(gate(`cd "${repo}" && gh pr create --head sig-12-thing`).code, 0);
-    assert.equal(gate("gh pr create -Hsig-12-thing", repo).code, 0);
+    assert.equal(gate(`cd "${repo}" && gh pr create --head fid-12-thing`).code, 0);
+    assert.equal(gate("gh pr create -Hfid-12-thing", repo).code, 0);
     git("config", "color.ui", "always");
     git("config", "diff.relative", "true");
     try {
@@ -136,7 +136,7 @@ describe("review gate", () => {
       "gh pr list --search new",
       "gh pr comment 5 --body 'new findings'",
       "git commit -m 'gh pr: create new flow'",
-      "gh pr create --title 'a b' --head sig-12-thing",
+      "gh pr create --title 'a b' --head fid-12-thing",
       "gh pr create --title x --body-file body.md",
     ]) {
       const r = gate(`cd ${repo} && ${c}`);
@@ -157,9 +157,9 @@ describe("review gate", () => {
   });
 
   test("blocks when --head names another branch", () => {
-    const r = gate(`cd ${repo} && gh pr create --base main --head sig-99-other`);
+    const r = gate(`cd ${repo} && gh pr create --base main --head fid-99-other`);
     assert.equal(r.code, 2);
-    assert.match(r.err, /--head 'sig-99-other' is not the checked-out branch/);
+    assert.match(r.err, /--head 'fid-99-other' is not the checked-out branch/);
   });
 
   test("blocks a --head that quoting, heredocs or continuations hide from the argument cut", () => {
@@ -173,11 +173,11 @@ describe("review gate", () => {
       "gh pr create -wHother",
       'gh pr create "--head" other',
       "gh pr create '-H' other",
-      "gh pr create --head sig-12-thing --head other",
+      "gh pr create --head fid-12-thing --head other",
       "gh pr create --title 'a b' --head other",
       "gh pr create --body 'x y' -H other --body 'p q'",
       "gh pr create --head",
-      "gh pr create --head me:sig-12-thing",
+      "gh pr create --head me:fid-12-thing",
       "gh pr create $'--head' other",
       "gh pr create {--head,other}",
       'gh pr "create" --head other',
@@ -275,7 +275,7 @@ describe("behind-main hook", () => {
     git("checkout", "-q", "main");
     git("commit", "-q", "--allow-empty", "-m", "newer");
     git("push", "-q", "origin", "main");
-    git("checkout", "-q", "sig-12-thing");
+    git("checkout", "-q", "fid-12-thing");
     for (const c of [`cd ${repo} && git push`, `git -C ${repo} push -u origin x`]) {
       assert.match(hook("behind-main.sh", c).out, /behind origin\/main/, c);
     }
@@ -316,8 +316,7 @@ describe("Linear reminder", () => {
   const remind = (command: string) => hook("linear-reminder.sh", command).out;
 
   test("names the issue of the branch the pull request is for", () => {
-    assert.match(remind(`cd ${repo} && gh pr create`), /SIG-12/);
-    assert.match(remind(`cd ${repo} && gh pr create --head sig-34-x`), /SIG-34/);
+    assert.match(remind(`cd ${repo} && gh pr create`), /FID-12/);
     assert.match(remind(`cd ${repo} && gh pr create --head fid-56-x`), /FID-56/);
   });
 
@@ -329,7 +328,7 @@ describe("Linear reminder", () => {
   });
 
   test("handles gh pr new, and gives no reminder for --disable-auto", () => {
-    assert.match(remind(`cd ${repo} && gh pr new`), /SIG-12/);
+    assert.match(remind(`cd ${repo} && gh pr new`), /FID-12/);
     assert.equal(remind("gh pr merge 5 --disable-auto"), "");
   });
 

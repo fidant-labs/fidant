@@ -2,19 +2,19 @@
 
 - Status: Accepted
 - Date: 2026-11-25
-- Linear: SIG-191
+- Linear: FID-191
 
 This record amends 0007, 0009 and 0015. Read them with the replacements under Decision.
 
 ## Context
 
 - The send page offers "Allow our relay if a direct connection isn't possible" (0008), and `docs/how-fidant-works.md` said the relay route is taken "when no direct route works".
-- When the sender allows the relay and a relay is up, `joined` carries its `stun:`, `turn:` and `turns:` URLs, with TURN credentials (0006, 0008, 0015). Until SIG-191 both browsers started their peer connection with all of them.
+- When the sender allows the relay and a relay is up, `joined` carries its `stun:`, `turn:` and `turns:` URLs, with TURN credentials (0006, 0008, 0015). Until FID-191 both browsers started their peer connection with all of them.
 - So on every pairing that allowed the relay while a relay was up, each browser reserved a relay address, even when a direct route won (0007). The relay saw both IP addresses on every such pairing.
 - ICE takes the first pair that works. In CI's networks suite, the "home routers (cone)" row ended on the relay although hole punching would have worked (runs 45648055551 and 45657096618). The TURN pair became writable before hole punching finished, Chrome selected it, and the sender's page itself reported the path `relay`. The promise of the checkbox didn't hold.
 - A peer refuses a second `offer` or `answer` in an attempt (`apps/web/src/lib/peer.ts`).
 - The sender ends an attempt whose data channel hasn't opened 20 s after the join (`SETUP_TIMEOUT_MS`).
-- On 2026-11-25, SIG-191 decided to make the relay a true fallback.
+- On 2026-11-25, FID-191 decided to make the relay a true fallback.
 
 ## Options considered
 
@@ -83,7 +83,7 @@ The browsers first try the direct routes without the relay. They add the relay o
 - When an honest `restart-offer` crosses the recipient's ICE connecting or its channel opening, the sender has already added the relay and restarted ICE. It gets no `restart-answer`, and it doesn't take the relay back out before the attempt ends, so its browser can keep a relay allocation until then. The relay can then learn both IP addresses, although the recipient added nothing. In manual runs on 2026-11-25 with Chromium 159, the sender's browser made one allocation and asked the relay to let the recipient's address through, and the connection stayed on its first route.
 - When an honest `restart-answer` crosses the sender's ICE connecting or its channel opening, the recipient has already added its relay and restarted ICE, and its browser can keep a relay allocation until the attempt ends. The sender's restart doesn't complete: it keeps its old remote description. Both browsers may then hold relay allocations. In a 60 s manual run on 2026-11-25 with Chromium 159, the connection stayed on its first route, the same host candidate pair, with messages flowing both ways. That run's TURN URL couldn't be reached, so it showed only that the route stayed among the host pairs, not what a reachable relay would do.
 - Safari and Firefox weren't tested for either crossing.
-- A direct route that drops after the sender skipped adding the relay isn't rescued by the relay, as it could be when the browsers gathered relay candidates from the start: neither browser has the relay, and nothing adds it later. Such a transfer fails. One that drops after a crossing may not be rescued either. Relay candidates may then exist on one side or both, but the restart completed on one side at most. That is untested. SIG-91 tracks recovering through an ICE restart on a network change.
+- A direct route that drops after the sender skipped adding the relay isn't rescued by the relay, as it could be when the browsers gathered relay candidates from the start: neither browser has the relay, and nothing adds it later. Such a transfer fails. One that drops after a crossing may not be rescued either. Relay candidates may then exist on one side or both, but the restart completed on one side at most. That is untested. FID-91 tracks recovering through an ICE restart on a network change.
 - The design relies on the browser not reporting ICE `failed` sooner than 3 s after the sender applies the recipient's answer, plus one signaling round trip. A page closes with `connection-failed` when its connection fails, so that would end the attempt before the relay could help. The end-to-end tests run only Chromium.
 - The ICE server list needs a `stun:` URL for direct routes through public addresses. The server doesn't check that today: `apps/server/src/relays.ts` and `TURN_URLS` (`apps/server/src/main.ts`) accept a list without one. With such a list, every pairing that needs a public address to connect directly would get the relay added 3 s after the sender applies the recipient's answer.
 - The relay box still sees each browser's IP address on every pairing that gets its `stun:` URL, from the STUN request. Once the relay is added it also sees both IP addresses from the allocations, even if a direct route then wins. When the recipient ignored `restart-offer`, it can see both from the sender's allocation alone, which names the recipient's address to let through.
