@@ -16,9 +16,9 @@ import {
   type ServerMessage,
   UPGRADE_REJECT_REASONS,
 } from "@fidant/protocol";
-import { WebSocket as WsClient } from "ws";
+import { type ClientOptions, WebSocket as WsClient } from "ws";
 import type { Mail, Mailer } from "./mail.ts";
-import { attachSignaling, clientAddress, HEARTBEAT_MS, LIMITS } from "./signaling.ts";
+import { attachSignaling, clientAddress, HEARTBEAT_MS, LIMITS, TAKEOVER_MS } from "./signaling.ts";
 
 const logLines: { event: string; fields: LogFields | undefined }[] = [];
 const RELAY = { urls: ["turn:relay.example:3478"], username: "1700000000", credential: "hmac" };
@@ -546,6 +546,10 @@ test("logs only allowlisted fields and never relay payloads", async () => {
   guest.send({ t: "relay", link, data: marker });
   assert.deepEqual(await host.next(), { t: "relay", link, data: marker });
   host.send({ t: "path", link, path: "stun" });
+  // The path report arms the attempt (0032), whose tokens must stay out of the log too.
+  const tokens = [await host.next(), await guest.next()].map((answer) =>
+    answer.t === "resume" ? answer.token : undefined,
+  );
   host.send({ t: "refuse", link, attempt: guest.attempt, reason: "busy" });
   assert.deepEqual(await guest.next(), { t: "refused", reason: "busy" });
   const bad = await connect();
@@ -568,6 +572,9 @@ test("logs only allowlisted fields and never relay payloads", async () => {
     assert.ok(!text.includes(marker), `payload leaked into the log: ${text}`);
     assert.ok(!text.includes(link), `full link ID leaked into the log: ${text}`);
     assert.ok(!text.includes(guest.attempt.slice(0, 6)), `attempt ID leaked into the log: ${text}`);
+    for (const token of tokens) {
+      assert.ok(token && !text.includes(token.slice(0, 6)), `resume token leaked: ${text}`);
+    }
     for (const [key, value] of Object.entries(line.fields ?? {})) {
       assert.ok(allowed.has(key), `field ${key} is not allowlisted`);
       if (key === "link") {
@@ -1877,6 +1884,14 @@ test("closes a socket that never reads once the replies queued for it pass the l
   relay.guest.pause();
   await relay.flood(500);
   assert.ok(relay.events.includes("relay-dropped"), "the guest's queue never reached the limit");
+  await starve(relay);
+});
+
+/**
+ * Makes a paused guest whose queue is at the relay limit send until the server ends it, and
+ * checks that the queue limit ended it, which tells the host it left.
+ */
+async function starve(relay: Awaited<ReturnType<typeof bufferedRelay>>): Promise<void> {
   // The queue is at the limit. Each message below earns the guest an `error` reply it never
   // reads, and unlike a relay those replies are queued whatever is already waiting.
   const count = (event: string) => relay.events.filter((e) => e === event).length;
@@ -1899,7 +1914,7 @@ test("closes a socket that never reads once the replies queued for it pass the l
     1,
     `the server queued ${count("error") - before} of ${asked} replies`,
   );
-});
+}
 
 // Guards the ws library's own limit (maxPendingAutoPongs), so a ws upgrade that drops it fails here.
 test("closes a client that floods pings and never reads the pongs", async (t) => {
@@ -1935,9 +1950,14 @@ test("closes a client that floods pings and never reads the pongs", async (t) =>
   assert.ok(accepted[0]?.destroyed, "the server kept queueing pongs");
 });
 
-/** Opens a socket to a mail server as a client at `address`, the way Caddy reports one. */
-async function connectFrom(t: { after(fn: () => void): void }, url: string, address: string) {
-  const socket = new WsClient(url, { headers: { "x-forwarded-for": address } });
+/** Opens a ws socket, with its options, checks its hello and queues the messages after it. */
+async function wsClient(
+  t: { after(fn: () => void): void },
+  url: string,
+  options: ClientOptions & { mail?: boolean } = {},
+) {
+  const { mail = false, ...clientOptions } = options;
+  const socket = new WsClient(url, clientOptions);
   t.after(() => socket.terminate());
   const queue: ServerMessage[] = [];
   const waiting: ((message: ServerMessage) => void)[] = [];
@@ -1971,12 +1991,18 @@ async function connectFrom(t: { after(fn: () => void): void }, url: string, addr
       });
     });
   };
-  assert.deepEqual(await next(), { t: "hello", mail: true });
+  assert.deepEqual(await next(), { t: "hello", mail });
   return {
+    socket,
     send: (message: unknown) => socket.send(JSON.stringify(message)),
     next,
     close: () => socket.close(),
   };
+}
+
+/** Opens a socket to a mail server as a client at `address`, the way Caddy reports one. */
+function connectFrom(t: { after(fn: () => void): void }, url: string, address: string) {
+  return wsClient(t, url, { headers: { "x-forwarded-for": address }, mail: true });
 }
 
 test("bounds the notices one IPv6 /48 can send by moving between its /64s (FID-221)", {}, async (t) => {
@@ -2074,4 +2100,361 @@ test("counts an IPv6 client's notices by its /48", async (t) => {
   other.send({ t: "host", links: [link], turn: false });
   other.send(emailMessage(link, { to: "r9@example.se" }));
   assert.equal(markIn(await other.next(), link).length, 22);
+});
+
+// The tests below hold an armed attempt when its socket drops (decision 0032).
+
+/** A signaling server for the hold tests, with its log lines. */
+async function holdServer(
+  t: { after(fn: () => void): void },
+  options: { takeoverMs?: number; heartbeatMs?: number } = {},
+) {
+  const lines: string[] = [];
+  const holding = createServer();
+  const holdingSignaling = attachSignaling(holding, {
+    log: (event, fields) => lines.push(JSON.stringify({ event, ...fields })),
+    startingMs: 0,
+    ...options,
+  });
+  t.after(() => {
+    holdingSignaling.close();
+    holding.close();
+  });
+  await new Promise<void>((done) => holding.listen(0, "127.0.0.1", done));
+  const url = `ws://127.0.0.1:${(holding.address() as AddressInfo).port}/signal`;
+  const has = (event: string) => lines.some((line) => JSON.parse(line).event === event);
+  return { url, lines, has };
+}
+
+type WsSide = Awaited<ReturnType<typeof wsClient>>;
+
+/** Checks the side was sent nothing more: its next message answers this round trip. */
+async function silent(side: WsSide): Promise<void> {
+  side.send({ t: "relay", link: linkId(), data: "sync" });
+  assert.deepEqual(await side.next(), { t: "error", code: "not-on-link" });
+}
+
+/**
+ * Waits until the server has read the side's answer to a ping it sent: the side answers on
+ * receipt, so its pong goes out before the second round trip's message.
+ */
+async function ponged(side: WsSide): Promise<void> {
+  await silent(side);
+  await silent(side);
+}
+
+/** Waits until `ready` holds, for the server's handling of a close that sends nothing. */
+async function until(ready: () => boolean, what: string): Promise<void> {
+  const deadline = Date.now() + NEXT_TIMEOUT_MS;
+  while (!ready()) {
+    assert.ok(Date.now() < deadline, `${what} never happened`);
+    await new Promise((done) => setTimeout(done, 5));
+  }
+}
+
+/**
+ * Pairs a host and a guest on a fresh link, has the host report `path`, and returns both with
+ * the attempt and, when it armed, each side's resume token.
+ */
+async function pairAndReport(
+  t: { after(fn: () => void): void },
+  url: string,
+  path: "direct" | "stun" | "relay" | "failed" = "direct",
+  options: { hostPong?: boolean } = {},
+) {
+  const link = linkId();
+  const host = await wsClient(t, url, { autoPong: options.hostPong ?? true });
+  host.send({ t: "host", links: [link], turn: false });
+  const guest = await wsClient(t, url);
+  const attempt = linkId();
+  guest.send({ t: "join", link, attempt });
+  const joined = { t: "joined", link, attempt, iceServers: [], turn: false };
+  assert.deepEqual(await guest.next(), joined);
+  assert.deepEqual(await host.next(), joined);
+  // Nothing is armed at joined.
+  await silent(guest);
+  host.send({ t: "path", link, path });
+  let hostToken: string | undefined;
+  let guestToken: string | undefined;
+  if (path !== "failed") {
+    const [toHost, toGuest] = [await host.next(), await guest.next()];
+    assert.ok(toHost.t === "resume" && toGuest.t === "resume", "the attempt was not armed");
+    for (const answer of [toHost, toGuest]) {
+      assert.equal(answer.link, link);
+      assert.equal(answer.attempt, attempt);
+    }
+    hostToken = toHost.token;
+    guestToken = toGuest.token;
+  }
+  return { link, attempt, host, guest, hostToken, guestToken };
+}
+
+test("arms an attempt at the sender's open path and gives each side its own token (0032)", async (t) => {
+  const { url, lines } = await holdServer(t);
+  for (const path of ["direct", "stun", "relay"] as const) {
+    const { host, guest, link, hostToken, guestToken } = await pairAndReport(t, url, path);
+    assert.match(hostToken ?? "", /^[A-Za-z0-9_-]{22}$/);
+    assert.match(guestToken ?? "", /^[A-Za-z0-9_-]{22}$/);
+    assert.notEqual(hostToken, guestToken);
+    // A second report for the same attempt makes no new tokens.
+    host.send({ t: "path", link, path });
+    await silent(host);
+    await silent(guest);
+    for (const line of lines) {
+      assert.ok(!line.includes(hostToken ?? "") && !line.includes(guestToken ?? ""), line);
+    }
+  }
+});
+
+test("arms nothing on a failed path or without a bound guest (0032)", async (t) => {
+  const { url } = await holdServer(t);
+  // A failed path: a guest that drops is gone at once, as before 0032.
+  const failed = await pairAndReport(t, url, "failed");
+  await silent(failed.host);
+  await silent(failed.guest);
+  failed.guest.socket.terminate();
+  assert.deepEqual(await failed.host.next(), { t: "left", link: failed.link });
+
+  // No guest: the report comes after a short transfer's guest already left.
+  const link = linkId();
+  const host = await wsClient(t, url);
+  host.send({ t: "host", links: [link], turn: false });
+  host.send({ t: "path", link, path: "direct" });
+  await silent(host);
+  const guest = await wsClient(t, url);
+  guest.send({ t: "join", link, attempt: linkId() });
+  assert.equal((await guest.next()).t, "joined");
+  assert.equal((await host.next()).t, "joined");
+  guest.socket.terminate();
+  assert.deepEqual(await host.next(), { t: "left", link });
+});
+
+test("holds a side after a 1001, 1006 or other close, and not after 1000 or a policy close (0032)", async (t) => {
+  const takeoverMs = 300;
+  const { url } = await holdServer(t, { takeoverMs });
+  const closes: [string, (side: WsSide) => void, boolean][] = [
+    ["1000", (side) => side.socket.close(1000), false],
+    ["1001", (side) => side.socket.close(1001), true],
+    ["4000", (side) => side.socket.close(4000), true],
+    ["1006", (side) => side.socket.terminate(), true],
+    // A message the server can't parse ends the socket with 1008.
+    ["1008", (side) => side.socket.send("not json"), false],
+  ];
+  for (const [code, close, held] of closes) {
+    for (const side of ["guest", "host"] as const) {
+      const pair = await pairAndReport(t, url);
+      const other = side === "guest" ? pair.host : pair.guest;
+      const gone = side === "guest" ? { t: "left", link: pair.link } : { t: "host-gone" };
+      const start = performance.now();
+      close(pair[side]);
+      assert.deepEqual(await other.next(), gone);
+      const elapsed = performance.now() - start;
+      if (held) {
+        assert.ok(elapsed >= takeoverMs - 10, `${side} ${code} was not held: ${elapsed} ms`);
+      } else {
+        assert.ok(elapsed < takeoverMs - 50, `${side} ${code} was held: ${elapsed} ms`);
+      }
+    }
+  }
+});
+
+test("frees an armed attempt at once when the server ends a socket for a missed ping (0032)", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const heartbeatMs = 1000;
+  const { url } = await holdServer(t, { heartbeatMs });
+  const link = linkId();
+  const host = await wsClient(t, url);
+  host.send({ t: "host", links: [link], turn: false });
+  const guest = await wsClient(t, url, { autoPong: false });
+  const attempt = linkId();
+  guest.send({ t: "join", link, attempt });
+  assert.equal((await host.next()).t, "joined");
+  host.send({ t: "path", link, path: "direct" });
+  assert.equal((await host.next()).t, "resume");
+  t.mock.timers.tick(heartbeatMs);
+  // The host answers its ping; the guest sends none.
+  await ponged(host);
+  t.mock.timers.tick(heartbeatMs);
+  // No later heartbeat and no takeover time: the server ended it, so nothing is held.
+  assert.deepEqual(await host.next(), { t: "left", link });
+});
+
+test("frees an armed attempt at once when the server ends a socket that stopped reading (0032)", {}, async (t) => {
+  const relay = await bufferedRelay(t);
+  relay.host.send({ t: "path", link: relay.link, path: "direct" });
+  assert.equal((await relay.host.next()).t, "resume");
+  relay.guest.pause();
+  await relay.flood(500);
+  assert.ok(relay.events.includes("relay-dropped"), "the guest's queue never reached the limit");
+  // The default hold is 30 s, so a `left` within starve()'s 10 s comes from no hold.
+  await starve(relay);
+});
+
+test("keeps a held sender's link from everyone else and its guest bound (0032)", async (t) => {
+  const { url, lines, has } = await holdServer(t);
+  const { link, attempt, host, guest } = await pairAndReport(t, url);
+  host.socket.close(1001);
+  await until(() => has("host-closed"), "the host's close");
+
+  // Another socket can't host the link, and no one else can join it.
+  const other = await wsClient(t, url);
+  other.send({ t: "host", links: [link], turn: false });
+  assert.deepEqual(await other.next(), { t: "error", code: "already-hosted" });
+  const stranger = await wsClient(t, url);
+  stranger.send({ t: "join", link, attempt: linkId() });
+  assert.deepEqual(await stranger.next(), { t: "refused", reason: "busy" });
+  stranger.send({ t: "join", link, attempt });
+  assert.deepEqual(await stranger.next(), { t: "refused", reason: "busy" });
+
+  // The guest's repeated join is refused as busy and it stays bound.
+  guest.send({ t: "join", link, attempt });
+  assert.deepEqual(await guest.next(), { t: "refused", reason: "busy" });
+  guest.send({ t: "join", link: linkId(), attempt });
+  assert.deepEqual(await guest.next(), { t: "error", code: "already-joined" });
+
+  // Its relays to the held sender are dropped.
+  guest.send({ t: "relay", link, data: "eA" });
+  await until(() => has("relay-dropped"), "a dropped relay");
+  await silent(guest);
+  assert.ok(!has("host-gone"), "the held sender's guest was told host-gone");
+  assert.deepEqual(
+    lines.filter((line) => line.includes("host-closed")),
+    [JSON.stringify({ event: "host-closed", links: 1 })],
+  );
+});
+
+test("keeps a held guest's link from everyone else and tells the sender nothing (0032)", async (t) => {
+  const { url, has } = await holdServer(t);
+  const { link, attempt, host, guest } = await pairAndReport(t, url);
+  guest.socket.close(1001);
+  // The server took the close once the sender's relays to the guest are dropped.
+  const dropped = () => {
+    host.send({ t: "relay", link, data: "eA" });
+    return has("relay-dropped");
+  };
+  await until(dropped, "a dropped relay");
+
+  const stranger = await wsClient(t, url);
+  stranger.send({ t: "join", link, attempt });
+  assert.deepEqual(await stranger.next(), { t: "refused", reason: "busy" });
+  // The relays sent while waiting never reached anyone, and no left came.
+  await silent(host);
+  assert.ok(!has("left"), "the held guest's sender was told left");
+});
+
+test("ends a hold that runs out with the messages and lines of the close before 0032", async (t) => {
+  const takeoverMs = 100;
+  const { url, lines } = await holdServer(t, { takeoverMs });
+  const sender = await pairAndReport(t, url);
+  const before = lines.length;
+  sender.host.socket.close(1001);
+  assert.deepEqual(await sender.guest.next(), { t: "host-gone" });
+  const short6 = sender.link.slice(0, 6);
+  assert.deepEqual(lines.slice(before), [
+    JSON.stringify({ event: "host-closed", links: 1 }),
+    JSON.stringify({ event: "host-gone", link: short6 }),
+  ]);
+  // The link is free: another socket hosts it, and the old guest joins it again as a first join.
+  const next = await wsClient(t, url);
+  next.send({ t: "host", links: [sender.link], turn: false });
+  await silent(next);
+  sender.guest.send({ t: "join", link: sender.link, attempt: sender.attempt });
+  assert.equal((await sender.guest.next()).t, "joined");
+  assert.equal((await next.next()).t, "joined");
+
+  const recipient = await pairAndReport(t, url);
+  const mark = lines.length;
+  recipient.guest.socket.close(1001);
+  assert.deepEqual(await recipient.host.next(), { t: "left", link: recipient.link });
+  assert.deepEqual(lines.slice(mark), [
+    JSON.stringify({ event: "left", link: recipient.link.slice(0, 6) }),
+  ]);
+  const newcomer = await wsClient(t, url);
+  newcomer.send({ t: "join", link: recipient.link, attempt: linkId() });
+  assert.equal((await newcomer.next()).t, "joined");
+});
+
+test("ends a hold early when the attempt ends on the other side (0032)", async (t) => {
+  const { url, lines } = await holdServer(t);
+  const count = (event: string) => lines.filter((line) => JSON.parse(line).event === event).length;
+  /** Pairs, closes the guest with 1001 and waits until the server holds it. */
+  const heldGuest = async () => {
+    const pair = await pairAndReport(t, url);
+    const dropped = count("relay-dropped");
+    pair.guest.socket.close(1001);
+    const held = () => {
+      pair.host.send({ t: "relay", link: pair.link, data: "eA" });
+      return count("relay-dropped") > dropped;
+    };
+    await until(held, "the guest's hold");
+    await silent(pair.host);
+    return pair;
+  };
+  /** Checks that another socket can host the link at once. */
+  const hostable = async (link: string) => {
+    const next = await wsClient(t, url);
+    next.send({ t: "host", links: [link], turn: false });
+    await silent(next);
+  };
+
+  // The sender refuses the held guest's attempt: the guest leaves as at its close.
+  const refused = await heldGuest();
+  refused.host.send({ t: "refuse", link: refused.link, attempt: refused.attempt, reason: "used" });
+  assert.deepEqual(await refused.host.next(), { t: "left", link: refused.link });
+  const after = await wsClient(t, url);
+  after.send({ t: "join", link: refused.link, attempt: linkId() });
+  assert.equal((await after.next()).t, "joined");
+
+  // The sender stops hosting the link.
+  const unhosted = await heldGuest();
+  unhosted.host.send({ t: "host", links: [], turn: false });
+  assert.deepEqual(await unhosted.host.next(), { t: "left", link: unhosted.link });
+  await hostable(unhosted.link);
+
+  // The sender's page leaves with 1000.
+  const closed = await heldGuest();
+  const left = count("left");
+  closed.host.socket.close(1000);
+  await until(() => count("left") > left, "the held guest's release");
+  await hostable(closed.link);
+
+  // The guest's page leaves with 1000 while the sender's side is held.
+  const sender = await pairAndReport(t, url);
+  const hostClosed = count("host-closed");
+  sender.host.socket.close(1001);
+  await until(() => count("host-closed") > hostClosed, "the sender's close");
+  const guestLeft = count("left");
+  sender.guest.socket.close(1000);
+  await until(() => count("left") > guestLeft, "the guest's close");
+  await hostable(sender.link);
+});
+
+test("never holds a side past the heartbeat that would have ended its socket (0032)", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const heartbeatMs = 1000;
+  // The hold itself would last far longer than the heartbeats below.
+  const { url, lines } = await holdServer(t, { heartbeatMs, takeoverMs: 60 * heartbeatMs });
+  const count = (event: string) => lines.filter((line) => JSON.parse(line).event === event).length;
+
+  // A page that answered its last ping is ended at the second heartbeat, as an open socket is.
+  const answered = await pairAndReport(t, url);
+  answered.host.socket.close(1001);
+  await until(() => count("host-closed") === 1, "the host's close");
+  t.mock.timers.tick(heartbeatMs);
+  await ponged(answered.guest);
+  t.mock.timers.tick(heartbeatMs);
+  assert.deepEqual(await answered.guest.next(), { t: "host-gone" });
+
+  // A page that left the last ping unanswered is ended at the next heartbeat.
+  const quiet = await pairAndReport(t, url, "direct", { hostPong: false });
+  t.mock.timers.tick(heartbeatMs);
+  // The guest answers its ping, so only the host is behind.
+  await ponged(quiet.guest);
+  quiet.host.socket.close(1001);
+  await until(() => count("host-closed") === 2, "the host's close");
+  t.mock.timers.tick(heartbeatMs);
+  assert.deepEqual(await quiet.guest.next(), { t: "host-gone" });
+
+  // So a held side is forgotten within two heartbeats of its page's last sign of life.
+  assert.ok(2 * HEARTBEAT_MS <= 60_000 && TAKEOVER_MS <= 2 * HEARTBEAT_MS);
 });
