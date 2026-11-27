@@ -26,7 +26,7 @@ const logFields: Record<"event" | keyof LogFields, readonly [string, string]> = 
   ],
   bytes: ["message sizes", "To spot oversized or broken messages and to size the server."],
   reason: [
-    "why a link, connection, email or code was refused",
+    "why a link or connection was refused",
     "To see why connections fail, so we can fix the cause.",
   ],
   code: [
@@ -809,7 +809,7 @@ export const en = {
         Object.entries(logFields)
           .filter(([field]) => field !== "event")
           .map(([, [what]]) => what),
-      )}. Never names, email addresses, emailed codes, keys, ${items[kind].data} or IP addresses.`,
+      )}. Never names, keys, ${items[kind].data} or IP addresses.`,
   },
   footer: {
     label: "Site",

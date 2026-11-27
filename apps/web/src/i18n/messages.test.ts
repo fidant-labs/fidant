@@ -39,11 +39,11 @@ test("pickLanguage prefers the stored choice, then a Swedish browser", () => {
 test("server.logs lists every log field and what the server never logs", () => {
   assert.equal(
     en.server.logs("file"),
-    "What happened, like a link being opened, with the first 6 characters of a link ID, how many links a sender has, message sizes, why a link, connection, email or code was refused, what was wrong with a message the server rejected, whether each connection was direct, went through our relay or failed, and where on its machine the server can be reached (its port number). Never names, email addresses, emailed codes, keys, file data or IP addresses.",
+    "What happened, like a link being opened, with the first 6 characters of a link ID, how many links a sender has, message sizes, why a link or connection was refused, what was wrong with a message the server rejected, whether each connection was direct, went through our relay or failed, and where on its machine the server can be reached (its port number). Never names, keys, file data or IP addresses.",
   );
   assert.equal(
     sv.server.logs("file"),
-    "Vad som hände, till exempel att en länk öppnades, med de 6 första tecknen i ett länk-ID, hur många länkar en avsändare har, meddelandens storlek, varför en länk, en anslutning, ett mejl eller en kod nekades, vad som var fel med ett meddelande som servern avvisade, om varje anslutning gick direkt, via vårt relä eller misslyckades och platsen på datorn där servern kan nås (dess portnummer). Aldrig namn, e-postadresser, mejlade koder, nycklar, filinnehåll eller IP-adresser.",
+    "Vad som hände, till exempel att en länk öppnades, med de 6 första tecknen i ett länk-ID, hur många länkar en avsändare har, meddelandens storlek, varför en länk eller en anslutning nekades, vad som var fel med ett meddelande som servern avvisade, om varje anslutning gick direkt, via vårt relä eller misslyckades och platsen på datorn där servern kan nås (dess portnummer). Aldrig namn, nycklar, filinnehåll eller IP-adresser.",
   );
 });
 
@@ -62,10 +62,9 @@ test("index.html's noscript text is the English noscript message", () => {
 // The send and receive strings stay, because they render only while mail is on.
 test("the public pages don't mention emailed links", () => {
   const banned =
-    /emailed|we email|us to email|emails it|email the link|mailbox|our mail service|mejlad|mejlar|mejla länk|vår mejltjänst|inkorg|brevlåd/i;
+    /emailed|we email|us to email|emails it|email the link|mailbox|our mail service|mejlad|mejlar|mejla länk|email or code|mejl eller en kod|emailed codes|mejlade koder|vår mejltjänst|inkorg|brevlåd/i;
   for (const messages of [en, sv]) {
-    const { landing, how, terms, security, technical } = messages;
-    const { logFields: _kept, ...privacy } = messages.privacy;
+    const { landing, how, terms, security, technical, privacy } = messages;
     const text = JSON.stringify({ landing, how, terms, security, technical, privacy });
     assert.doesNotMatch(text, banned);
   }

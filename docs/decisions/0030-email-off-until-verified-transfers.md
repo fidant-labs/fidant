@@ -4,7 +4,7 @@
 - Date: 2026-11-27
 - Linear: FID-376
 
-This record amends 0012. Read it with the decision below: everything 0012 describes holds only while `MAIL_ENABLED=1`, which no deployment sets.
+This record amends 0012 and 0014, and through 0012 the leak model in 0001. Read them with the decision below: everything they describe about emailed links and the send page's email choice holds only while `MAIL_ENABLED=1`, which no deployment sets.
 
 ## Context
 
@@ -22,11 +22,11 @@ This record amends 0012. Read it with the decision below: everything 0012 descri
 
 - The server sends mail only when `MAIL_ENABLED` is `1` and the three mail settings are set. Any other value of `MAIL_ENABLED` stops it at start. Without the switch it ignores the mail settings, so a box that has them still starts and sends nothing.
 - No deployment sets `MAIL_ENABLED`. `pnpm e2e` sets it with Mailpit, so the email tests keep running.
-- The public pages (`/how`, `/how/traces`, `/privacy`, `/security`, `/terms`) don't describe emailed links. Text that only the email flow renders stays with the code. The removal is one commit, so FID-380 can revert it.
+- The public pages (`/how`, `/how/traces`, `/privacy`, `/security`, `/terms`) don't describe emailed links. Text that only the email flow renders stays with the code. The log description on `/privacy` and the send page no longer names email or codes, because without the switch no email or code is sent. Only a client that ignores `hello` can still make the server log an `email` or `code` refusal, with reason `failed`, which that text leaves out. The removal is one commit, so FID-380 can revert it.
 - `docs/how-fidant-works.md` keeps describing the email code, because it describes the code on `main` and `packages/protocol/src/transfer-paths.test.ts` checks it, and says that email is off.
 
 ## Consequences
 
 - fidant.se sends no mail and its link secrets never leave the browser, unless a deployment sets `MAIL_ENABLED=1`.
 - The invariants' email exceptions in `AGENTS.md` stay, because the code exists, and say that email is off.
-- Turning email back on (FID-380) takes the switch on the box, which changes `apps/infra/box/user-data.sh` or what it renders and so replaces the box, and a revert of the page text, brought up to date with what changed since.
+- Turning email back on (FID-380) takes the switch and the mail settings wherever the server runs (on the app box a change to `apps/infra/box/user-data.sh` replaces the box; `FidantSignal` passes no SMTP settings yet), and a revert of the page text, brought up to date with what changed since.

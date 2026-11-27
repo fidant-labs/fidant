@@ -362,7 +362,7 @@ recipient → server     join {link, attempt, token}
 - The server sends mail over SMTP with nodemailer only when `MAIL_ENABLED` is `1` and `MAIL_SMTP_URL`, `MAIL_FROM` and `PUBLIC_ORIGIN` are all set (`apps/server/src/main.ts`). Without `MAIL_ENABLED=1` it ignores the other three, and `MAIL_ENABLED=1` without them stops it at start. Without mail `hello` says `mail: false` and every `email` gets `failed`. An SMTP password comes only from the file named by `MAIL_PASSWORD_FILE`, never from the URL. `smtps://` uses TLS from the start, and `smtp://` requires STARTTLS whenever a password is set and for every host except loopback (localhost, 127.0.0.0/8, ::1), and never falls back to plain text. Certificate verification stays on.
 - Mail service errors can quote the address, so the server keeps none of them and logs only the outcome.
 - Locally, `pnpm e2e` runs Mailpit, which catches every mail and never sends it on, and sets `MAIL_ENABLED=1`. `pnpm start` sends no mail unless those variables are set.
-- In production the mail service will be Amazon SES in eu-north-1 (planned, SIG-108). Until then the box sets no mail variables, so fidant.se offers no email field.
+- In production the mail service is Amazon SES in eu-north-1. The box can hold mail settings, but no deployment sets `MAIL_ENABLED=1`, so the server ignores them and fidant.se offers no email field (0030).
 - SES stops all sending when the account's bounce rate reaches 2 % or its complaint rate 0.05 %, below the rates at which AWS reviews the account. Every `email` and code then gets `failed` until a maintainer turns sending back on. The alarms read only these rates, never a bounce or complaint itself.
 
 ### Who can read an emailed link's key

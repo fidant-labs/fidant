@@ -59,7 +59,7 @@ const logFields: Record<"event" | keyof LogFields, readonly [string, string]> = 
     "För att upptäcka för stora eller trasiga meddelanden och dimensionera servern.",
   ],
   reason: [
-    "varför en länk, en anslutning, ett mejl eller en kod nekades",
+    "varför en länk eller en anslutning nekades",
     "För att se varför anslutningar misslyckas, så att vi kan åtgärda orsaken.",
   ],
   code: [
@@ -765,7 +765,7 @@ export const sv: Messages = {
         Object.entries(logFields)
           .filter(([field]) => field !== "event")
           .map(([, [what]]) => what),
-      )}. Aldrig namn, e-postadresser, mejlade koder, nycklar, ${items[kind].data} eller IP-adresser.`,
+      )}. Aldrig namn, nycklar, ${items[kind].data} eller IP-adresser.`,
   },
   footer: {
     label: "Webbplats",
