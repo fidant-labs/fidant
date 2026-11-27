@@ -148,7 +148,7 @@ export type HostMessage = { t: "host"; links: string[]; turn: boolean };
  * (same shape as a link ID) for this attempt, so a refusal can name the attempt it refuses. It is
  * not secret, but the server never logs it. `token`, the answer to a right code, is never logged.
  * A bound recipient sends the same message again, on the same socket, to get fresh ICE servers
- * when its open connection dropped (decision 0029).
+ * when its open connection dropped (decision 0031).
  */
 export type JoinMessage = { t: "join"; link: string; attempt: string; token?: string };
 /** An encrypted payload for the other end of a link. */
@@ -218,7 +218,7 @@ export type JoinedMessage = {
 export type LeftMessage = { t: "left"; link: string };
 /**
  * Tells a recipient why it cannot connect. A `busy` that answers a bound recipient's repeated
- * `join` (over the pairings cap) leaves it bound to the link (0029).
+ * `join` (over the pairings cap) leaves it bound to the link (0031).
  */
 export type RefusedMessage = { t: "refused"; reason: RefusedReason };
 /** Tells a recipient that the sender went away. */
@@ -236,7 +236,7 @@ export type EmailStatusMessage = { t: "email"; link: string; status: EmailStatus
 /**
  * Tells a recipient where a link's code goes: a masked address, or "" if it needs no code. A
  * `gate` that answers a bound recipient's repeated `join` (missing or wrong token) leaves it
- * bound to the link (0029).
+ * bound to the link (0031).
  */
 export type GateAnswerMessage = { t: "gate"; link: string; to: string };
 /** Answers a recipient's `send-code` or `code`. */

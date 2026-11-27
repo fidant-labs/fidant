@@ -748,7 +748,7 @@ test("dropping the END frame in transit is detected as truncation", async () => 
 });
 
 // From the security audit of 2026-11-25.
-test("META refuses a chunk size no honest sender uses (SIG-232)", () => {
+test("META refuses a chunk size no honest sender uses (FID-232)", () => {
   // An honest sender's chunk is at least 986 bytes, because its META frame must fit one message.
   for (const chunkSize of [1, 4, 985]) {
     assert.throws(
@@ -758,7 +758,7 @@ test("META refuses a chunk size no honest sender uses (SIG-232)", () => {
   }
 });
 
-test("META refuses blank characters that push a name's real ending out of sight (SIG-238)", () => {
+test("META refuses blank characters that push a name's real ending out of sight (FID-238)", () => {
   // Braille blank, Hangul filler, no-break space and ideographic space.
   for (const code of [0x2800, 0x3164, 0x00a0, 0x3000]) {
     const label = `U+${code.toString(16).padStart(4, "0")}`;

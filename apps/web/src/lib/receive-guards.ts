@@ -1,6 +1,6 @@
 import type { RefusedReason } from "@fidant/protocol";
 
-// The recipient page's answers to a repeated `join` (decision 0029). Once the data channel is
+// The recipient page's answers to a repeated `join` (decision 0031). Once the data channel is
 // open, these keep the server's answers from ending a transfer that goes on without it.
 
 /** The same `join` again after the peer stalled: never after `host-gone`, which would pair with the sender's new socket. */

@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-11-25
-- Linear: SIG-178
+- Linear: FID-178
 
 ## Context
 

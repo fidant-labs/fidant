@@ -450,7 +450,7 @@ test("the recipient answers an offer, keeps its check flag and refuses a commitm
   };
   const channel: { onopen: (() => void) | null } = { onopen: null };
   pc.ondatachannel({
-    channel: Object.assign(channel, { label: "sigill", ordered: true, close() {} }),
+    channel: Object.assign(channel, { label: "fidant", ordered: true, close() {} }),
   });
   channel.onopen?.();
   const [info] = h.opens;
@@ -764,7 +764,7 @@ function pathUp(pc: FakePeerConnection, how: "open" | "connected" | "completed")
   if (how === "open") {
     if (!pc.channel) {
       // The recipient's channel arrives through ondatachannel.
-      pc.channel = Object.assign({ onopen: null }, { label: "sigill", ordered: true, close() {} });
+      pc.channel = Object.assign({ onopen: null }, { label: "fidant", ordered: true, close() {} });
       (pc.ondatachannel as unknown as (e: { channel: object }) => void)({ channel: pc.channel });
     }
     const channel = Object.assign(pc.channel, { readyState: "open" });

@@ -12,7 +12,7 @@
 //   right code for a token. Before the channel opens, a `gate` answer to a
 //   `join` is a refusal: the token is dropped and an emailed link asks `gate`
 //   again; a plain link is email-bound and ends as `unbound`. Once it is open,
-//   a `gate` can only answer a repeated `join` and is ignored (decision 0029).
+//   a `gate` can only answer a repeated `join` and is ignored (decision 0031).
 // - The server answers `join` with `joined`, carrying this pairing's ICE
 //   servers, before it tells the sender; the recipient peer is created
 //   synchronously on it, so the sender's offer, which comes later on the same
@@ -21,7 +21,7 @@
 //   end this one.
 // - `relay` goes to the peer. `refused` ends the attempt with the matching
 //   message, except a `busy`, or any refusal after `host-gone`, once the
-//   channel is open (decision 0029). `host-gone` ends it until the file starts
+//   channel is open (decision 0031). `host-gone` ends it until the file starts
 //   arriving. A transfer under way needs the server only to recover a dropped
 //   route, not to go on (the sender may only have
 //   lost its signaling connection), so then `host-gone` is only remembered: if
@@ -29,7 +29,7 @@
 //   consent runs out) and the drop is reported as the sender's page closing.
 // - If the connection drops after the data channel opened, the peer says so
 //   (onStalled) and the page sends the same `join` again on the same socket,
-//   with the same attempt ID and token (decision 0029). It doesn't once the
+//   with the same attempt ID and token (decision 0031). It doesn't once the
 //   attempt has ended, the transfer has stopped, the signaling socket is gone
 //   or `host-gone` came: joining the sender's new socket would be a new
 //   pairing. The `joined` that answers goes to the peer (rejoined), which
@@ -53,7 +53,7 @@
 //   `join` re-arms the connect timeout, so the server decides when waiting
 //   ends (decision 0018). `refused: unknown` always ends the attempt. Once the
 //   channel is open the transfer needs the server only to recover a dropped
-//   route (decision 0029), so a drop then closes the signaling client, and the
+//   route (decision 0031), so a drop then closes the signaling client, and the
 //   page can no longer restart ICE after a dropped route.
 //   Reaching the code step resets the rejoin count (a token holder's rejoins
 //   do not), and the code field survives a rejoin. A `failed` or `expired`
@@ -578,7 +578,7 @@ export function ReceivePage({
               onOpen(channel, info);
             },
             onPath: showPath,
-            // The same `join` again, token included (decision 0029). After `host-gone` it would
+            // The same `join` again, token included (decision 0031). After `host-gone` it would
             // be a new pairing with the sender's new socket, so then nothing is sent.
             onStalled: () => {
               if (

@@ -310,7 +310,7 @@ export class Needles {
         secret,
         ...base64Secrets(secret),
         // The text is case-insensitive, its base64 is not: uppercase text encodes differently.
-        // Mixed case stays unwatched in base64 (see SIG-275).
+        // Mixed case stays unwatched in base64 (see FID-275).
         ...(secret.caseInsensitive
           ? base64Secrets({ ...secret, bytes: asciiUpper(secret.bytes) })
           : []),

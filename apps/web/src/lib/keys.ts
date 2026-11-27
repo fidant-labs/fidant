@@ -1,8 +1,8 @@
 // Keys derived from a link secret, and sealing of relayed signaling messages.
 //
-// Signal key = HKDF-SHA256(secret, salt = linkId bytes,  info "sigill/v1/signal")
+// Signal key = HKDF-SHA256(secret, salt = linkId bytes,  info "fidant/v1/signal")
 // File key   = HKDF-SHA256(secret, salt = transferId || attempt bytes,
-//                          info "sigill/v2/file")
+//                          info "fidant/v2/file")
 // Both are AES-GCM-256 CryptoKeys, non-extractable, used only for encrypt and
 // decrypt. The salt holds a value each side picks: the sender's fresh 16-byte
 // transferId (sent in clear in INIT) and the recipient's attempt ID for this
@@ -11,11 +11,11 @@
 // needs a key it has never used before: a sender restarting a transfer gets
 // one from its new transferId, and a recipient shown a replayed INIT gets one
 // from its new attempt ID, so neither ever reuses a (file key, nonce) pair.
-// The info changed from "sigill/v1/file" (salt = transferId alone), so a key
+// The info changed from "fidant/v1/file" (salt = transferId alone), so a key
 // made the old way never equals one made this way.
 //
 // Sealed signal = base64url(iv(12 random) || AES-GCM ciphertext with 16-byte tag)
-// over the UTF-8 JSON payload, AAD "sigill/v1/signal|<linkId>|<attempt>|<dir>".
+// over the UTF-8 JSON payload, AAD "fidant/v1/signal|<linkId>|<attempt>|<dir>".
 // The direction in the AAD stops the server from reflecting a message back to
 // the side that sent it. The attempt is the recipient's random ID for one attempt
 // (fresh per page load and per "Try again"), so the server cannot replay
@@ -66,7 +66,7 @@ export function deriveSignalKey(secret: string, linkId: string): Promise<CryptoK
   if (!salt) {
     return Promise.reject(new Error("invalid link ID"));
   }
-  return deriveKey(secret, salt, "sigill/v1/signal");
+  return deriveKey(secret, salt, "fidant/v1/signal");
 }
 
 /**
@@ -88,7 +88,7 @@ export function deriveFileKey(
   const salt = new Uint8Array(TRANSFER_ID_BYTES + attemptBytes.length);
   salt.set(transferId);
   salt.set(attemptBytes, TRANSFER_ID_BYTES);
-  return deriveKey(secret, salt, "sigill/v2/file");
+  return deriveKey(secret, salt, "fidant/v2/file");
 }
 
 /** Makes a fresh random transferId. */
@@ -97,7 +97,7 @@ export function createTransferId(): Uint8Array<ArrayBuffer> {
 }
 
 function signalAad(linkId: string, attempt: string, dir: Direction): Uint8Array<ArrayBuffer> {
-  return encoder.encode(`sigill/v1/signal|${linkId}|${attempt}|${dir}`);
+  return encoder.encode(`fidant/v1/signal|${linkId}|${attempt}|${dir}`);
 }
 
 /** Encrypts a JSON-serialisable payload into a relay `data` string. */

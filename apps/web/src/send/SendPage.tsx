@@ -17,7 +17,7 @@
 //   `joined`, without TURN entries when the relay checkbox or the server
 //   refused it. `relay` goes to that peer. A `joined` with the attempt ID of
 //   a transfer in progress is that recipient asking again after its
-//   connection dropped (decision 0029): the reducer's `restart` effect hands
+//   connection dropped (decision 0031): the reducer's `restart` effect hands
 //   the new ICE servers, filtered the same way, to that peer's `rejoined`.
 //   `left` → reducer `left`, which only matters before the channel opens, once
 //   the signals relayed before it were handled.
@@ -96,7 +96,17 @@ import {
 import { addRelay, NO_RELAYS } from "../lib/server-facts.ts";
 import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
 import { MAX_TEXT_LENGTH, textFile, textFitsOneChunk } from "../lib/text-secret.ts";
-import { field, formRows, Icon, Link, lede, Page, SECRET_HREF, ServerPanel } from "../ui.tsx";
+import {
+  FILE_HREF,
+  field,
+  formRows,
+  Icon,
+  Link,
+  lede,
+  Page,
+  SECRET_HREF,
+  ServerPanel,
+} from "../ui.tsx";
 import { type CheckView, RecipientList } from "./RecipientList.tsx";
 
 type Hash =
@@ -885,7 +895,7 @@ export function SendPage({
               ) : (
                 <Link
                   key={mode}
-                  href={mode === "secret" ? SECRET_HREF : "/send?mode=file"}
+                  href={mode === "secret" ? SECRET_HREF : FILE_HREF}
                   aria-current={current ? "page" : undefined}
                   class={look}
                 >

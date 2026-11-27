@@ -45,7 +45,7 @@
 //   itself; the sender is the authority either way.
 // - A join while a transfer is in progress that carries that transfer's own
 //   attempt ID is the same recipient asking again, because its open
-//   connection dropped (decision 0029). It is refused nothing and changes
+//   connection dropped (decision 0031). It is refused nothing and changes
 //   nothing but `turn`: the `restart` effect hands its ICE servers to the
 //   attempt's peer, which restarts ICE once its channel has opened and ignores
 //   them before. After delivery or a lock such a join is refused with "used".

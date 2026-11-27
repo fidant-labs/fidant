@@ -21,8 +21,8 @@ const sequence = (length: number, start: number) =>
 const F = sequence(32, 0x00);
 const S = sequence(32, 0x20);
 const TRANSFER_ID = sequence(16, 0xa0);
-const META_HEX = "057aa86fb2d1c74b6fa929eb0e3e75d33494ca426bf11bf573bf0204572d1981";
-const CONTENT_HEX = "9a3cf4e63fcf3e627be40595b7b707e2984d5394b63765269668db679818b00e";
+const META_HEX = "bcc895ec913722fba399196ae4e1f6e16ad7a6b92fd623a2a7b64101cf540f6e";
+const CONTENT_HEX = "bd4f8462ec4684ab2cf1b39f098425f7a1a30156ffd5ec50bc06848ac2868844";
 
 function flipBit(bytes: Uint8Array, index: number): Uint8Array {
   const copy = new Uint8Array(bytes);

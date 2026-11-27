@@ -79,7 +79,7 @@ interface Scenario {
   path: RegExp | "none";
   /** Send a larger file and check that both sides report progress honestly along the way. */
   progress?: true;
-  /** Share a secret from /secret instead of a file. Not with `progress`. */
+  /** Share a secret from /send/secret instead of a file. Not with `progress`. */
   secret?: true;
 }
 
@@ -345,7 +345,7 @@ for (const row of scenarios) {
       if (row.secret) {
         sent = base32Token(canary.fork("text"), 64);
         leaks.watchContent("text", sent);
-        await sender.page.goto("/secret");
+        await sender.page.goto("/send/secret");
         await sender.page.getByLabel("Your secret").fill(sent);
       } else {
         const file = leaks.watch(canaryFile(canary.fork("file"), { size }));
@@ -408,7 +408,7 @@ for (const row of scenarios) {
   });
 }
 
-// Decision 0029: a route that drops mid-transfer and comes back is recovered by an ICE restart on
+// Decision 0031: a route that drops mid-transfer and comes back is recovered by an ICE restart on
 // the same connection. The sender refuses the relay, so only the restored route can carry the file.
 test.describe("a route cut mid-transfer", () => {
   test.use({ remoteBrowsers: { sender: remoteBrowsers.a1, recipient: remoteBrowsers.b1 } });
@@ -622,14 +622,14 @@ test.describe("the box", () => {
         .split("\n")
         .filter(Boolean)
         .map((line) => JSON.parse(line) as JournalEntry);
-    const sigillLines = () =>
+    const fidantLines = () =>
       entries()
-        .filter((entry) => entry._SYSTEMD_UNIT === "sigill.service")
+        .filter((entry) => entry._SYSTEMD_UNIT === "fidant.service")
         .map(messageOf);
     await expect
       .poll(async () => {
         journal = await inBox(
-          ..."journalctl -o json --all --no-pager -u sigill -u haproxy -u caddy -u coturn".split(
+          ..."journalctl -o json --all --no-pager -u fidant -u haproxy -u caddy -u coturn".split(
             " ",
           ),
         );
@@ -647,7 +647,7 @@ test.describe("the box", () => {
             )
             .join("\n")}\n`,
         );
-        return sigillLines().some((line) => line.startsWith('{"event":"path"'));
+        return fidantLines().some((line) => line.startsWith('{"event":"path"'));
       })
       .toBe(true);
 
@@ -664,7 +664,7 @@ test.describe("the box", () => {
       .toBe(true);
 
     const services =
-      /\s(node|haproxy|caddy|turnserver|coturn)(\[\d+\])?:|(sigill|haproxy|caddy|coturn)\.service/;
+      /\s(node|haproxy|caddy|turnserver|coturn)(\[\d+\])?:|(fidant|haproxy|caddy|coturn)\.service/;
     expect(syslog.split("\n").filter((line) => services.test(line))).toEqual([]);
 
     const { files, settings } = winningJournald(
@@ -683,7 +683,7 @@ test.describe("the box", () => {
     });
 
     // Every line of the app server is an allowlisted JSON object; the banner goes only to a TTY.
-    const lines = sigillLines();
+    const lines = fidantLines();
     expect(checkServerLog(lines, serverLogAllowlist)).toEqual([]);
     const events = new Set(lines.map((line) => (JSON.parse(line) as { event: string }).event));
     expect([...events]).toEqual(expect.arrayContaining(["joined", "path"]));
@@ -765,7 +765,7 @@ async function relayedChannel(
   // Each callback runs in a page, so it repeats the helpers it needs.
   // Each connection gets a certificate made beforehand, which WebRTC applies in the constructor.
   // Without one, Chromium makes it asynchronously, and in CI an offer was once set before the
-  // certificate reached the transport: "Fingerprint provided but no identity available" (SIG-274).
+  // certificate reached the transport: "Fingerprint provided but no identity available" (FID-274).
   const offer = await sender.evaluate(async (config) => {
     const certificates = [
       await RTCPeerConnection.generateCertificate({
@@ -1364,7 +1364,7 @@ test.describe("the signaling image", () => {
       await readFile(join(process.env.FIDANT_E2E_COTURN_DIR ?? "", "relay-master"), "utf8")
     ).trim();
     leaks.watchKey("relay master", master);
-    const file = "/run/sigill/relay-master";
+    const file = "/run/fidant/relay-master";
     expect(await inSignal("stat", "-c", "%a %U", file)).toBe("600 node\n");
     const hash = createHash("sha256").update(`${master}\n`).digest("hex");
     expect(await inSignal("sha256sum", file)).toBe(`${hash}  ${file}\n`);

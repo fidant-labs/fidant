@@ -49,11 +49,11 @@ export const LIMITS = {
   messagesPerWindow: 1000,
   /**
    * Guests a link pairs per heartbeat window, a bound guest's repeated join included (decision
-   * 0029). Each pairing can cost the sender's socket a message (a guest without the secret gets a
-   * `refuse`), so without this one guest could spend the sender's message limit (SIG-235). An
+   * 0031). Each pairing can cost the sender's socket a message (a guest without the secret gets a
+   * `refuse`), so without this one guest could spend the sender's message limit (FID-235). An
    * honest recipient pairs at most 5 times to open an attempt (the first join and the page's 4
    * rejoins before the channel opens), then once or twice per route that drops after it: on
-   * `disconnected`, and on `failed` while a deadline runs (0029).
+   * `disconnected`, and on `failed` while a deadline runs (0031).
    * ponytail: per link, so a guest holding many of one sender's links could still spend the
    * sender's message limit. Each repeated `joined` costs that socket more than one `refuse`: a
    * `restart-offer` plus new candidates, roughly 5-10 messages (an estimate). So recipients
@@ -459,7 +459,7 @@ export function attachSignaling(
       return;
     }
     // A bound socket may only repeat its own join, to get fresh ICE servers when its open
-    // connection dropped (decision 0029). The repeat passes every check below, as a first join.
+    // connection dropped (decision 0031). The repeat passes every check below, as a first join.
     if (peer.joined !== undefined && (peer.joined !== link || peer.attempt !== attempt)) {
       error(socket, "already-joined");
       return;

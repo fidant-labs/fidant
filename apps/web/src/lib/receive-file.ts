@@ -98,7 +98,7 @@ export type ReceiveFileOptions = {
   secret: string;
   /**
    * The attempt ID this attempt sent in `join`. Must be fresh for every attempt. A `join` sent
-   * again on the same socket (decision 0029) carries the same ID and keeps the same file key on
+   * again on the same socket (decision 0031) carries the same ID and keeps the same file key on
    * purpose: the frames go on from the next sequence number, so no nonce repeats.
    */
   attempt: string;

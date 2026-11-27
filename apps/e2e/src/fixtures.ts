@@ -376,7 +376,7 @@ function logPeerFailures() {
   const channelProto = RTCDataChannel.prototype;
   const listen = channelProto.addEventListener;
   const watched = new WeakSet<RTCDataChannel>();
-  // SIG-194: a second reader on one channel would explain a transfer that fails after it
+  // FID-194: a second reader on one channel would explain a transfer that fails after it
   // accepted, so log each open and each message listener added or removed, with how many are live.
   // A per-page counter tags each channel, so the lines of several channels can be told apart.
   const tags = new WeakMap<RTCDataChannel, string>();

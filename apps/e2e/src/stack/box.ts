@@ -16,7 +16,7 @@ export function heredocs(text: string): Map<string, string> {
  * The files the box container needs, built from the rendered user data, with the modes the
  * user data gives them. Differences from production: Caddy uses its own CA (offline), coturn
  * has no external-ip and relays from `ip` (the container sits on the public network itself), coturn's TLS pair is the
- * run's own certificate (`turnCert`) in place of the one sigill-turn-cert copies from Caddy, and
+ * run's own certificate (`turnCert`) in place of the one fidant-turn-cert copies from Caddy, and
  * two test-only files.
  */
 export function boxFiles({
@@ -53,7 +53,7 @@ export function boxFiles({
   if (certPath === undefined || keyPath === undefined) {
     throw new Error("The box's turnserver.conf names no cert or pkey");
   }
-  const unit = "/etc/systemd/system/sigill.service";
+  const unit = "/etc/systemd/system/fidant.service";
   return new Map([
     [
       "/etc/systemd/journald.conf.d/zz-retention.conf",
@@ -77,7 +77,7 @@ export function boxFiles({
       },
     ],
     ["/etc/haproxy/haproxy.cfg", { content: doc("/etc/haproxy/haproxy.cfg"), mode: 0o644 }],
-    // ponytail: the pair is in place from boot, as if sigill-turn-cert had run, so its script and
+    // ponytail: the pair is in place from boot, as if fidant-turn-cert had run, so its script and
     // timer are left out. A test that waits for the timer to copy Caddy's local-CA certificate,
     // with Chrome trusting that CA, would exercise them. The Dockerfile gives the key to turnserver.
     [certPath, { content: turnCert.cert, mode: 0o644 }],
@@ -90,13 +90,13 @@ export function boxFiles({
       `${unit}.d/turn.conf`,
       { content: doc(`${unit}.d/turn.conf`).replaceAll("$turn_urls", turnUrls), mode: 0o644 },
     ],
-    ["/etc/sigill/turn-secret", { content: `${secret}\n`, mode: 0o600 }],
+    ["/etc/fidant/turn-secret", { content: `${secret}\n`, mode: 0o600 }],
     // RELAYS_FILE set but empty keeps the box on its own coturn, whatever relays.json lists.
     [
       `${unit}.d/e2e.conf`,
       {
         content:
-          "[Service]\nEnvironment=CERT_DIR=/var/lib/sigill/certs\nEnvironment=RELAYS_FILE=\n",
+          "[Service]\nEnvironment=CERT_DIR=/var/lib/fidant/certs\nEnvironment=RELAYS_FILE=\n",
         mode: 0o644,
       },
     ],

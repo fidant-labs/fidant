@@ -1,11 +1,11 @@
-// Split-key derivation for the SIG-7 spike.
+// Split-key derivation for the FID-7 spike.
 //
 // F = fragment half, 32 random bytes carried in the link fragment.
 // S = server half, 32 random bytes generated in the sender's browser and held
 //     by the server until the receipt is signed.
 //
-// Meta key    = HKDF-SHA256(F,     salt = transferId, info "sigill/v2/meta")
-// Content key = HKDF-SHA256(F ‖ S, salt = transferId, info "sigill/v2/content")
+// Meta key    = HKDF-SHA256(F,     salt = transferId, info "fidant/v2/meta")
+// Content key = HKDF-SHA256(F ‖ S, salt = transferId, info "fidant/v2/content")
 //
 // The meta key opens only the META frame, so the recipient can see what is
 // offered before signing. Everything else needs the content key, and so both
@@ -17,8 +17,8 @@ import { decodeBase64url, encodeBase64url } from "../../../apps/web/src/lib/base
 
 export const HALF_BYTES = 32;
 export const TRANSFER_ID_BYTES = 16;
-export const META_INFO = "sigill/v2/meta";
-export const CONTENT_INFO = "sigill/v2/content";
+export const META_INFO = "fidant/v2/meta";
+export const CONTENT_INFO = "fidant/v2/content";
 
 /** Length of F as base64url without padding. */
 export const FRAGMENT_HALF_CHARS = 43;

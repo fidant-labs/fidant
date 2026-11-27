@@ -305,10 +305,10 @@ async function startNetworks(): Promise<RunningService> {
   };
   for (const [path, file] of boxFiles({ ip: boxIp, secret, turnCert })) {
     const target = join(boxDir, path);
-    // The user data makes /etc/sigill with mode 700; the other directories are the default 755.
+    // The user data makes /etc/fidant with mode 700; the other directories are the default 755.
     await mkdir(dirname(target), {
       recursive: true,
-      mode: path.startsWith("/etc/sigill/") ? 0o700 : 0o755,
+      mode: path.startsWith("/etc/fidant/") ? 0o700 : 0o755,
     });
     await writeFile(target, file.content, { mode: file.mode });
   }

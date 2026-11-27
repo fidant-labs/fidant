@@ -1715,7 +1715,7 @@ test.describe("through a server restart", () => {
         ),
       )
       .toContain("starting");
-    // Just over the 15 s that recipients used to wait before calling the link inactive (SIG-88).
+    // Just over the 15 s that recipients used to wait before calling the link inactive (FID-88).
     await opener.waitForTimeout(16_000 - (Date.now() - restarted));
     for (const page of [waiting, opener]) {
       await expect(connecting(page)).toBeVisible();
@@ -2096,7 +2096,7 @@ test.describe("emailed links", () => {
     await expect(sender.getByRole("button", { name: `Copy link for ${plainName}` })).toBeVisible();
   });
 
-  test("a text from /secret can be emailed and shows after the code", async ({
+  test("a text from /send/secret can be emailed and shows after the code", async ({
     demo,
     leaks,
     canary,
@@ -2104,7 +2104,7 @@ test.describe("emailed links", () => {
     const text = `${base32Token(canary.fork("text"), 40)} åäö`;
     leaks.watchContent("text", text);
     const sender = await demo.open("sender");
-    await sender.goto("/secret");
+    await sender.goto("/send/secret");
     await sender.getByLabel("Your secret").fill(text);
     await sender.getByLabel("Email the link for me (less private)").check();
     const email = sender.getByLabel("Their email address");

@@ -1,4 +1,4 @@
-// Length padding for the SIG-7 spike.
+// Length padding for the FID-7 spike.
 //
 // Everything that crosses infrastructure is padded so an observer learns only
 // paddedLength(size, chunkSize), never the exact size. The size is first
