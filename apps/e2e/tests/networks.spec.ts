@@ -417,7 +417,12 @@ for (const row of scenarios) {
           const stun = `udp and host ${turnIp} and port 3478 and udp[12:4] = 0x2112a442 and udp[8:2] & 0x3eef = 0x0001`;
           expect(await edge.read(signaling), "signaling crossed the edge").not.toEqual([]);
           expect(await edge.read(stun), "STUN crossed the edge").not.toEqual([]);
-          expect(await edge.read(`not arp and not (${signaling}) and not (${stun})`)).toEqual([]);
+          // ARP and link-scope IPv6 multicast (ff02::/16, such as router
+          // solicitations on CI's runners) stay on the link and carry no peer traffic.
+          const link = "arp or (ip6 and dst net ff02::/16)";
+          expect(await edge.read(`not (${link}) and not (${signaling}) and not (${stun})`)).toEqual(
+            [],
+          );
         }
       } finally {
         await edge?.stop();
