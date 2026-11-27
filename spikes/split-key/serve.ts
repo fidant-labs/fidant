@@ -113,7 +113,7 @@ function listen(server: Server, port: number, host: string): Promise<void> {
 try {
   await stat(join(root, "index.html"));
 } catch {
-  console.error("The bench is not built. Run `pnpm --filter @sigill/spike-split-key bench`.");
+  console.error("The bench is not built. Run `pnpm --filter @fidant/spike-split-key bench`.");
   process.exit(1);
 }
 

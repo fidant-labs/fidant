@@ -195,7 +195,7 @@ test.describe("the detector catches", () => {
 });
 
 test.describe("an emailed link", () => {
-  test.skip(!process.env.SIGILL_E2E_MAILPIT, "needs Mailpit");
+  test.skip(!process.env.FIDANT_E2E_MAILPIT, "needs Mailpit");
 
   test("may carry its secrets in its two carriers, and in any other mail they are caught", async ({
     page,

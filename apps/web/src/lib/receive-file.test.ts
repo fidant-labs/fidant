@@ -1141,12 +1141,12 @@ function generatedFile(size: number, start = 0, end = size): SendFileOptions["fi
   } as unknown as SendFileOptions["file"];
 }
 
-// Moderate sizes keep `pnpm check` fast. SIGILL_FLOW_FULL=1 sends 1 GiB through
+// Moderate sizes keep `pnpm check` fast. FIDANT_FLOW_FULL=1 sends 1 GiB through
 // a slow sink and checks memory stays bounded by the credit window.
-const full = process.env.SIGILL_FLOW_FULL === "1";
+const full = process.env.FIDANT_FLOW_FULL === "1";
 
 test("1 GiB through a slow sink keeps memory bounded", {
-  skip: full ? false : "set SIGILL_FLOW_FULL=1 to run",
+  skip: full ? false : "set FIDANT_FLOW_FULL=1 to run",
 }, async () => {
   const size = 1024 ** 3;
   // One reused buffer, so hashing leaves no garbage to skew the samples below.

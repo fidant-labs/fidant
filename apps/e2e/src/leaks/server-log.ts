@@ -6,7 +6,7 @@ import {
   type LogFields,
   REFUSED_REASONS,
   UPGRADE_REJECT_REASONS,
-} from "@sigill/protocol";
+} from "@fidant/protocol";
 
 /**
  * The values server stdout may carry (0001, "Server stdout"). Every field is an enum value, a
@@ -47,12 +47,12 @@ export interface LogViolation {
 }
 
 /**
- * The allowlist for today's server. Events, reasons, codes and paths come from @sigill/protocol, so a
+ * The allowlist for today's server. Events, reasons, codes and paths come from @fidant/protocol, so a
  * new enum value there is allowed here too.
  */
 export const serverLogAllowlist: LogAllowlist = {
   events: new Set<string>(LOG_EVENTS),
-  // LogReason in @sigill/protocol.
+  // LogReason in @fidant/protocol.
   reasons: new Set<string>([
     ...REFUSED_REASONS,
     ...UPGRADE_REJECT_REASONS,

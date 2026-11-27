@@ -3,7 +3,7 @@ import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 
 // The stack's Mailpit API. Read on each call: global setup sets it after this module loads.
-const api = () => process.env.SIGILL_E2E_MAILPIT;
+const api = () => process.env.FIDANT_E2E_MAILPIT;
 
 async function call(path: string, init?: RequestInit): Promise<Response> {
   const response = await fetch(`${api()}${path}`, init);

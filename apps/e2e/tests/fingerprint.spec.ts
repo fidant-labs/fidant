@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
+import { maskAddress } from "@fidant/protocol";
 import type { Page } from "@playwright/test";
-import { maskAddress } from "@sigill/protocol";
 import {
   canaryFile,
   chooseFile,
@@ -17,7 +17,7 @@ import { mailTo } from "../src/mail.ts";
 
 // Firefox connects to the certificate a variant spelling names, which Chromium and WebKit refuse.
 
-test.skip(!process.env.SIGILL_E2E_MAILPIT, "needs Mailpit");
+test.skip(!process.env.FIDANT_E2E_MAILPIT, "needs Mailpit");
 
 /** Adds `name` with the address `to` and a safety number, waits for the notice and returns the emailed link, with its secrets watched where decision 0012 lets them appear. */
 async function addEmailed(leaks: Leaks, sender: Page, name: string, to: string): Promise<string> {
@@ -125,10 +125,10 @@ for (const variant of ["a=Fingerprint:sha-256", "a=fingerprint sha-256"]) {
       .toBe(true);
     await expect
       .poll(warnings, { timeout: 10_000 })
-      .toContain("sigill: sender dropped a connection: bad-signal");
+      .toContain("fidant: sender dropped a connection: bad-signal");
     await expect
       .poll(warnings, { timeout: 10_000 })
-      .toContain("sigill-e2e: error built: no single sha-256 fingerprint");
+      .toContain("fidant-e2e: error built: no single sha-256 fingerprint");
     await expect(recipient.getByText("Couldn't connect to the sender's computer")).toBeVisible({
       timeout: 10_000,
     });

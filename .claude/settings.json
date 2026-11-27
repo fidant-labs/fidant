@@ -59,15 +59,15 @@
   },
   "enabledPlugins": {
     "superpowers@claude-plugins-official": true,
-    "ponytail@sigill-tools": true,
+    "ponytail@fidant-tools": true,
     "ponytail@ponytail": false
   },
   "extraKnownMarketplaces": {
-    "sigill-tools": {
+    "fidant-tools": {
       "source": {
         "source": "settings",
-        "name": "sigill-tools",
-        "owner": { "name": "Sigill" },
+        "name": "fidant-tools",
+        "owner": { "name": "Fidant" },
         "plugins": [
           {
             "name": "ponytail",

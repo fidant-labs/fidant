@@ -1,5 +1,5 @@
 {
-  "name": "@sigill/protocol",
+  "name": "@fidant/protocol",
   "private": true,
   "type": "module",
   "exports": {

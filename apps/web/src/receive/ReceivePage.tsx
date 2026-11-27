@@ -70,7 +70,7 @@
 // this demo). The file name and size, or the text, are shown, never logged or
 // sent anywhere.
 
-import { type CodeResult, isLinkId } from "@sigill/protocol";
+import { type CodeResult, isLinkId } from "@fidant/protocol";
 import { cn } from "cn";
 import { type ComponentChildren, Fragment, type VNode } from "preact";
 import { useEffect, useMemo, useReducer, useRef, useState } from "preact/hooks";

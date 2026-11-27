@@ -181,7 +181,7 @@ export function ensureCert(dir: string, hosts: string[]): { key: Buffer; cert: B
         "-days",
         "825",
         "-subj",
-        "/CN=Sigill local",
+        "/CN=Fidant local",
         "-addext",
         `subjectAltName=${san}`,
         "-keyout",

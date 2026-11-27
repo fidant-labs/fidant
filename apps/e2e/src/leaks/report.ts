@@ -38,7 +38,7 @@ export function formatLeakReport(
       `${violations.length} server stdout violation(s).`,
   ];
   if (seed) {
-    parts.push(`Replay the canaries with SIGILL_E2E_SEED=${seed}.`);
+    parts.push(`Replay the canaries with FIDANT_E2E_SEED=${seed}.`);
   }
   if (findings.length > 0) {
     // The context shows bytes of throwaway test canaries, never of a real secret.

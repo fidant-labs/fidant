@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
-import { RETRY_MAX_MS } from "@sigill/protocol";
+import { RETRY_MAX_MS } from "@fidant/protocol";
 import { connectSignaling, retryDelay } from "./signaling-client.ts";
 
 const STABLE = 10_000;

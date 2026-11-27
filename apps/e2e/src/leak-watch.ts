@@ -187,7 +187,7 @@ export class LeakWatch implements Leaks {
     const { captures, limits, stdout } = await this.#observe();
     const findings = this.#expectLeaks ? [] : [...limits, ...this.#found(captures)];
     const violations = logViolations(point(serverStdoutLog), stdout);
-    return formatLeakReport(findings, violations, process.env.SIGILL_E2E_SEED);
+    return formatLeakReport(findings, violations, process.env.FIDANT_E2E_SEED);
   }
 
   #add(secrets: Secret[]): void {
