@@ -154,7 +154,7 @@ export const en = {
     neverHeading: "Our server never gets",
     seesHeading: "Our server sees",
     relayNote:
-      "If the two browsers can't connect directly and our relay is available, the file passes through the relay instead, still encrypted. The relay then sees both IP addresses and roughly how big the file is, and can't unlock it.",
+      "If the two browsers can't connect directly and our relay is available, the file passes through the relay instead, still encrypted. The relay then sees roughly how big the file is, and can't unlock it. Either way, each browser asks the relay for its public address, so the relay sees both IP addresses and can usually tell that they belong together.",
     caveat: "The catch: since nothing is stored, keep your tab open until the file has arrived.",
     tryHeading: "Try it on yourself",
     tryBody:
@@ -185,7 +185,7 @@ export const en = {
         heading: "They open the link while your page is open",
         body: [
           "Nothing is stored, so your page must stay open until they have the file.",
-          "Our server helps the two browsers find each other, like an operator connecting a phone call. It passes on a few small locked messages that it can't read, unless it emailed the link and so had the key.",
+          "Our server helps the two browsers find each other, like an operator connecting a phone call. It passes on a few small messages. Those that set up the connection are locked, so it can't read them, unless it emailed the link and so had the key.",
           "They see the file's name and size and choose whether to download it.",
         ],
       },
@@ -491,7 +491,7 @@ export const en = {
       from ? `${from} wants to send you a file` : "You've been sent a file",
     unverified: "Name typed by the sender, not verified.",
     memoryWarning:
-      "This browser keeps the whole file in memory until you save it, which can slow down or crash the tab. Chrome or Edge saves straight to disk.",
+      "This browser keeps the whole file in memory until you save it, which can slow down or crash the tab. Chrome or Edge on a computer saves straight to disk.",
     download: "Download",
     decline: "Decline",
     offerCaption: (from: string) =>
@@ -901,7 +901,7 @@ export const en = {
           "Anyone who gets hold of a link can open the file. A link we email also needs a code we send to the same address. Send each link only to the person it is for, over a channel you trust.",
           "A link we email stays in the recipient's mailbox. Anyone who can read that mailbox can also get the code, and so the file. And our server had that link's key. So you have to trust us not to read the file on its way, unless you create the link with a safety number and compare it with the recipient. To avoid both, leave “Email the link for me” unticked and send the link yourself.",
           "The sender's name is typed by the sender and not verified.",
-          "The two browsers see each other's IP address, the same as on a video call. When the file goes through our relay, the relay sees both IP addresses and roughly how big the file is.",
+          "The two browsers see each other's IP address, the same as on a video call. Each browser asks our relay for its public address, so the relay sees both IP addresses and can usually tell that they belong together, even when the file goes directly. When the file goes through the relay, it also sees roughly how big the file is.",
           "Your browser runs the code our server sends it. A server that sent different code could read files, and could skip the safety number. The code is public, but browsers can't yet check that what they got matches it.",
           "A computer that is already compromised can read the file before it is encrypted or after it is unlocked.",
           "Fidant has not been independently audited yet.",
