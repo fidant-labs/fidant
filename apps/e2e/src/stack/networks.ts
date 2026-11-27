@@ -300,7 +300,8 @@ export function assertDocker(): void {
 export const projectName = "fidant-e2e";
 
 /**
- * The compose file of the networks run whose containers are up, when it is not `ownFile`.
+ * The compose file of the networks run that has containers, running or stopped, when it is not
+ * `ownFile`.
  * `projects` is `docker compose ls --all --format json`. The server container needs no check of
  * its own: it starts after the project is up and stops before it.
  */
@@ -317,23 +318,24 @@ export function otherRun(
 }
 
 /**
- * Fails when another checkout's networks run has containers up. Runs can't overlap: they share
- * container and network names, subnets and host ports, and setup removes what it finds, which
- * would kill the other run. This checkout's own leftovers are a killed run's, and setup removes
- * them. A run still building its images has no containers yet, so two runs started together can
- * still both pass.
+ * Fails when another checkout's networks run has containers, running or stopped. Runs can't
+ * overlap: they share container and network names, subnets and host ports, and setup removes what
+ * it finds, which would kill the other run. This checkout's own leftovers are a killed run's, and
+ * setup removes them. A run still building its images has no containers yet, so two runs started
+ * together can still both pass.
  */
 export function assertNoOtherRun(): void {
-  const projects = JSON.parse(
-    execFileSync("docker", ["compose", "ls", "--all", "--format", "json"], {
-      encoding: "utf8",
-      timeout: 15_000,
-    }) || "[]",
-  );
+  const projects =
+    JSON.parse(
+      execFileSync("docker", ["compose", "ls", "--all", "--format", "json"], {
+        encoding: "utf8",
+        timeout: 15_000,
+      }) || "[]",
+    ) ?? [];
   const other = otherRun(projects, composeFile);
   if (other) {
     throw new Error(
-      `Another pnpm e2e:networks run, from ${other}, has containers up, and runs on one machine can't overlap. Wait for it to end. If it no longer runs, remove its containers with \`docker rm -f ${serverName}; docker compose -p ${projectName} down --remove-orphans\`.`,
+      `Another pnpm e2e:networks run, from ${other}, has containers, running or stopped, and runs on one machine can't overlap. Wait for it to end. If it no longer runs, remove its containers with \`docker rm -f ${serverName}; docker compose -p ${projectName} down --remove-orphans\`.`,
     );
   }
 }
