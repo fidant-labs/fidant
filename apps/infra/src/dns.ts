@@ -125,9 +125,10 @@ export class DnsStack extends Stack {
         const recordName = `turn.${zoneName}`;
         new route53.ARecord(zone, `${recordName} A`, { zone, recordName, target });
         for (const [id, address] of Object.entries(props.relayAddresses)) {
-          new route53.ARecord(zone, `${relayName(id)} A`, {
+          const name = relayName(id);
+          new route53.ARecord(zone, `${name} A`, {
             zone,
-            recordName: relayName(id),
+            recordName: name,
             target: route53.RecordTarget.fromIpAddresses(address),
           });
         }
