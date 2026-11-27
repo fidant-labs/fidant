@@ -126,6 +126,12 @@ jobs:
             echo "::error::refused $SHA: production is at $tip, and only its newest release runs"
             exit 1
           fi
+      - name: Check the account secret arrived
+        env:
+          ACCOUNT: ${{ secrets.FIDANT_POC_ACCOUNT }}
+        run: |
+          set -euo pipefail
+          [[ $ACCOUNT =~ ^[0-9]{12}$ ]] || { echo "::error::FIDANT_POC_ACCOUNT is empty or not 12 digits, so the release does not sign in"; exit 1; }
       - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
           role-to-assume: arn:aws:iam::${{ secrets.FIDANT_POC_ACCOUNT }}:role/fidant-release

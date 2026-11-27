@@ -265,6 +265,27 @@ test("the release job refuses a run that is not production's tip before it gets 
   assert.ok(timeout < session);
 });
 
+test("the release job stops before it signs in when the account secret is missing, and never prints it", () => {
+  const release = workflow.slice(workflow.indexOf("\n  release:\n"));
+  const check = release.indexOf("- name: Check the account secret arrived\n");
+  const credentials = release.indexOf("uses: aws-actions/configure-aws-credentials@");
+  assert.ok(check > 0 && check < credentials);
+  withDir((dir) => {
+    for (const account of ["123456789012", "", "12345678901", "1234567890123", "12345678901a"]) {
+      const ran = bash(run("Check the account secret arrived"), dir, { ACCOUNT: account });
+      const ok = account === "123456789012";
+      assert.equal(ran.status === 0, ok, account);
+      assert.equal(
+        ran.stdout,
+        ok
+          ? ""
+          : "::error::FIDANT_POC_ACCOUNT is empty or not 12 digits, so the release does not sign in\n",
+      );
+      assert.equal(ran.stderr, "");
+    }
+  });
+});
+
 function tipCheck(sha: string, remote: string) {
   let result: { status: number | null; stdout: string } | undefined;
   withDir((dir) => {
@@ -544,6 +565,7 @@ test("the release job runs each step only after every step before it succeeded, 
     releaseSteps.map(({ name }) => name),
     [
       "Check the commit is production's tip",
+      "Check the account secret arrived",
       "Push the image, move live and redeploy",
       "Upload the web client",
     ],
