@@ -10,6 +10,7 @@
 // | from                           | event          | to         | effect             |
 // |--------------------------------|----------------|------------|--------------------|
 // | waiting, declined, failed      | joined         | connecting | start              |
+// | connecting ... receiving (2)   | joined (3)     | (same)     | restart            |
 // | connecting ... receiving (2)   | joined         | (same)     | refuse busy        |
 // | delivered, or locked           | joined         | (same)     | refuse used        |
 // | connecting                     | channel-open   | offered, or checking with check |  |
@@ -32,6 +33,7 @@
 //
 // (1) For the current attempt, when its `joined` said the sender refused the relay.
 // (2) connecting, checking, offered or receiving: the active statuses.
+// (3) With the attempt ID of the attempt in progress: the server's answer to that recipient joining again.
 //
 // Rules:
 // - A link is used only once the recipient's RECEIPT matches (delivered).
@@ -39,6 +41,14 @@
 // - A join while a transfer is in progress (connecting, offered, receiving)
 //   is refused with "busy". The server normally refuses a second joiner
 //   itself; the sender is the authority either way.
+// - A join while a transfer is in progress that carries that transfer's own
+//   attempt ID is the same recipient asking again, because its open
+//   connection dropped (decision 0028). It is refused nothing and changes
+//   nothing but `turn`: the `restart` effect hands its ICE servers to the
+//   attempt's peer, which restarts ICE once its channel has opened and ignores
+//   them before. In every other status such a join is treated like any join:
+//   refused with "used" after delivery or a lock, and a new start otherwise,
+//   since an attempt that ended left no attempt ID to match.
 // - A join for a link ID not on the list is refused with "unknown".
 // - `left` (the server says the recipient's signaling socket closed) ends an
 //   attempt only while it is still connecting. Once the data channel is open
@@ -102,7 +112,9 @@
 //   it (`turn`): the `turn` its `joined` carried, and the sender's own
 //   choice at that moment (`allowRelay`), so a server that ignores the
 //   choice can't override it. Under `turn` false the start effect gets only
-//   the `stun:` URLs, with no credential. An attempt that ends while
+//   the `stun:` URLs, with no credential. A join that restarts the attempt
+//   sets `turn` again the same way and filters its effect's servers by it, so
+//   the refusal that counts is the one at the latest `joined`. An attempt that ends while
 //   still connecting (dropped, timeout, left) under `turn` false returns to
 //   "waiting" with `noRelay`, because a refused relay is the likely reason it
 //   never connected. The next join clears it. Under `turn` true it returns
@@ -155,7 +167,7 @@
 //   every later join refused with "used", and `hostedLinks` leaves it out.
 //
 // Effects carry only link IDs, attempt IDs, refusal reasons and the ICE servers from the
-// server's `joined`. Recipient
+// server's `joined`, which hold TURN credentials: pass them to the peer, never log or keep them. Recipient
 // names never leave this module through an effect, so nothing built from
 // effects can send a name to the network.
 
@@ -255,6 +267,8 @@ export type SenderAction =
 
 export type SenderEffect =
   | { type: "start"; linkId: string; attempt: string; iceServers: IceServer[] }
+  /** The active recipient joined again: its peer restarts ICE with these servers. */
+  | { type: "restart"; linkId: string; iceServers: IceServer[] }
   | { type: "refuse"; linkId: string; attempt: string; reason: RefuseReason }
   | { type: "close"; linkId: string };
 
@@ -395,7 +409,7 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
       if (current.status === "delivered" || current.locked) {
         return { state, effects: [{ type: "refuse", linkId, attempt, reason: "used" }] };
       }
-      if (isActive(current)) {
+      if (isActive(current) && attempt !== current.attempt) {
         return { state, effects: [{ type: "refuse", linkId, attempt, reason: "busy" }] };
       }
       // Keep only the `stun:` URLs, without credentials, as the server does for a refused relay.
@@ -405,6 +419,12 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
             const urls = server.urls.filter((url) => url.startsWith("stun:"));
             return urls.length > 0 ? [{ urls }] : [];
           });
+      if (isActive(current)) {
+        return {
+          state: turn === current.turn ? state : replace(state, { ...current, turn }),
+          effects: [{ type: "restart", linkId, iceServers: allowed }],
+        };
+      }
       return {
         state: replace(state, { ...reset(current, "connecting"), attempt, turn }),
         effects: [{ type: "start", linkId, attempt, iceServers: allowed }],
