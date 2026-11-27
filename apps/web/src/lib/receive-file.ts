@@ -194,17 +194,28 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
   let saidDiffers = false;
   let lastWrite: Promise<void> = Promise.resolve();
 
+  // A channel that won't open again is a lost connection, not bad data from the
+  // sender: aborting makes classify() say so, which keeps a part for "Try again".
+  const lost = (error: unknown): never => {
+    abort.abort(error);
+    throw error;
+  };
+
   try {
     // Only a channel that reads "connecting" after open waits; an open one goes on at once.
-    const reopened = whenOpen(channel, signal);
-    if (reopened) {
-      await reopened;
+    try {
+      const reopened = whenOpen(channel, signal);
+      if (reopened) {
+        await reopened;
+      }
+    } catch (error) {
+      lost(error);
     }
 
     const send = (frame: Uint8Array<ArrayBuffer>) => {
       signal.throwIfAborted();
       assertFrameFits(maxMessageSize, frame.byteLength);
-      return sendWhenOpen(channel, frame, signal);
+      return sendWhenOpen(channel, frame, signal).catch(lost);
     };
 
     const transferId = decodeInit(await inbox.takeRaw());
@@ -323,7 +334,10 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
           // Discard the file first, then tell the sender what arrived.
           part = undefined;
           await sink.abort().catch(() => {});
-          await send(await writer.encrypt(RecipientKind.RECEIPT, error.actual));
+          // The mismatch is the outcome even if this RECEIPT can't go out.
+          try {
+            await send(await writer.encrypt(RecipientKind.RECEIPT, error.actual));
+          } catch {}
           throw new ReceiveError("checksum", error.message, { cause: error });
         }
       } else {

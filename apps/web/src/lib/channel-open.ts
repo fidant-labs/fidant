@@ -63,8 +63,9 @@ export function whenOpen(
 
 /**
  * Sends `frame` on `channel`, waiting first while the channel reads
- * "connecting" (see above). While the channel is open it sends synchronously,
- * so frames go out in call order.
+ * "connecting" (see above). While the channel is open it sends synchronously.
+ * Frames keep their order only while each send is awaited before the next one
+ * starts: a frame that waited goes out in a microtask after the open event.
  */
 export async function sendWhenOpen(
   channel: OpenChannel & { send(data: Uint8Array<ArrayBuffer>): void },

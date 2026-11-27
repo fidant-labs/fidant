@@ -305,6 +305,45 @@ test("a channel that closes while it reads connecting fails the transfer", async
   await assert.rejects(r.sending);
 });
 
+test("a channel that stays connecting counts as a lost connection and keeps the part", async (t) => {
+  const pair = channelPair();
+  const sink = new RecordingSink();
+  // whenOpen listens for "open" right after it sets its timer, so tick only once it has.
+  let waiting = () => {};
+  const listening = new Promise<void>((resolve) => {
+    waiting = resolve;
+  });
+  const listen = pair.recipient.addEventListener;
+  pair.recipient.addEventListener = ((...args: Parameters<FrameChannel["addEventListener"]>) => {
+    if (args[0] === "open") {
+      waiting();
+    }
+    listen(...args);
+  }) as FrameChannel["addEventListener"];
+  const r = run({
+    bytes: new Uint8Array(randomBytes(100_001)),
+    pair,
+    sink,
+    onOffer: async () => {
+      pair.flap();
+      t.mock.timers.enable({ apis: ["setTimeout"] });
+      return sink;
+    },
+  });
+  await listening;
+  t.mock.timers.tick(5000);
+  const error = await r.receiving.then(
+    () => undefined,
+    (e: unknown) => e,
+  );
+  t.mock.timers.reset();
+  pair.close();
+  assert.ok(error instanceof ReceiveError);
+  assert.equal(error.reason, "connection");
+  assert.ok(error.resumable, "the part is kept for Try again");
+  await error.resumable.sink.abort();
+});
+
 test("receives an empty file", async () => {
   const r = run({ bytes: new Uint8Array() });
   const result = await r.receiving;
@@ -482,6 +521,23 @@ test("a checksum mismatch discards the file and tells the sender", async () => {
   assert.equal(sink.aborted, true);
   assert.equal(sink.closed, false);
   assert.deepEqual(await r.sending, { type: "receipt", match: false });
+});
+
+test("a checksum mismatch stays one when the channel closes before its receipt", async () => {
+  const pair = channelPair();
+  const sink = new (class extends RecordingSink {
+    override async abort(): Promise<void> {
+      pair.close();
+      await super.abort();
+    }
+  })();
+  const bytes = new Uint8Array(randomBytes(100_000));
+  const wrong = sha256(bytes);
+  wrong[0] = (wrong[0] as number) ^ 1;
+  const r = run({ bytes, sink, pair, senderSha256: wrong });
+  await assert.rejects(r.receiving, failedWith("checksum"));
+  assert.equal(sink.aborted, true);
+  await assert.rejects(r.sending);
 });
 
 test("failures say whether the sender, the connection or the sink failed", async () => {
