@@ -410,10 +410,11 @@ for (const row of scenarios) {
 
         if (edge) {
           await edge.stop();
-          // TLS to the server, and STUN to coturn: a UDP packet whose payload carries STUN's magic
-          // cookie at byte 4. DTLS, which would carry the file, never does.
+          // TLS to the server, and STUN Binding to coturn: a UDP payload with STUN's magic cookie at
+          // byte 4 and the Binding method in its type, whatever the class. DTLS never has the cookie,
+          // and TURN messages, whose Send and Data indications carry peer data, have other methods.
           const signaling = `tcp and host ${serverIp} and port 443`;
-          const stun = `udp and host ${turnIp} and port 3478 and udp[12:4] = 0x2112a442`;
+          const stun = `udp and host ${turnIp} and port 3478 and udp[12:4] = 0x2112a442 and udp[8:2] & 0x3eef = 0x0001`;
           expect(await edge.read(signaling), "signaling crossed the edge").not.toEqual([]);
           expect(await edge.read(stun), "STUN crossed the edge").not.toEqual([]);
           expect(await edge.read(`not arp and not (${signaling}) and not (${stun})`)).toEqual([]);
