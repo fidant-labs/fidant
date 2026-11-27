@@ -1,0 +1,41 @@
+# Layer cache for the built images in GitHub Actions' cache, added on top of compose.yaml only
+# when FIDANT_E2E_GHA_CACHE is set (CI's e2e-networks job). One scope per image, because images
+# that share a scope overwrite each other's cache. The fidant-e2e-net services all get the same
+# settings, so their builds stay identical and compose still builds the image once. A failed cache
+# export (ignore-error) does not fail the build.
+x-net-cache: &net-cache
+  build:
+    cache_from: ["type=gha,scope=fidant-e2e-net"]
+    cache_to: ["type=gha,scope=fidant-e2e-net,mode=max,ignore-error=true"]
+
+services:
+  router-a: *net-cache
+  router-b: *net-cache
+  net-a1: *net-cache
+  net-a2: *net-cache
+  net-b1: *net-cache
+  pcap: *net-cache
+  alb:
+    build:
+      cache_from: ["type=gha,scope=fidant-e2e-alb"]
+      cache_to: ["type=gha,scope=fidant-e2e-alb,mode=max,ignore-error=true"]
+  box:
+    build:
+      cache_from: ["type=gha,scope=fidant-e2e-box"]
+      cache_to: ["type=gha,scope=fidant-e2e-box,mode=max,ignore-error=true"]
+  coturn:
+    build:
+      cache_from: ["type=gha,scope=fidant-e2e-coturn"]
+      cache_to: ["type=gha,scope=fidant-e2e-coturn,mode=max,ignore-error=true"]
+  relay:
+    build:
+      cache_from: ["type=gha,scope=fidant-e2e-relay"]
+      cache_to: ["type=gha,scope=fidant-e2e-relay,mode=max,ignore-error=true"]
+  signal:
+    build:
+      cache_from: ["type=gha,scope=fidant-e2e-signal"]
+      cache_to: ["type=gha,scope=fidant-e2e-signal,mode=max,ignore-error=true"]
+  pages:
+    build:
+      cache_from: ["type=gha,scope=fidant-e2e-node"]
+      cache_to: ["type=gha,scope=fidant-e2e-node,mode=max,ignore-error=true"]
