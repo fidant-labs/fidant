@@ -191,7 +191,7 @@ export const sv: Messages = {
         heading: "Det här lämnas kvar",
         body: [
           "Vi ser aldrig din fil, dess namn eller nyckeln som låser upp den, om du inte ber oss mejla länken. Vårt relä ser aldrig nyckeln alls.",
-          "Vår server och vårt relä har det de ser i minnet eller i korta loggar, förutom månadens trafiksummor. Några spår finns också kvar i de två webbläsarna, och mottagaren har filen.",
+          "Vår server och vårt relä har det de ser i minnet eller i korta loggar, förutom månatliga trafiksummor. Några spår finns också kvar i de två webbläsarna, och mottagaren har filen.",
         ],
       },
       encryption: {
@@ -1663,7 +1663,7 @@ export const sv: Messages = {
       ],
     ],
     keepHeading: "Vad vi sparar",
-    keep: "Vi har inga konton, ingen databas över personer eller överföringar, inga cookies och ingen spårning. När avsändarens sida har stängts sparas ingenting om dig, inom högst två minuter, förutom loggraderna nedan, en relälogg medan vi åtgärdar ett fel eller stoppar missbruk, antalet mejl och koder ovan, som finns kvar en timme, våra månatliga trafiksummor och det som vår mejltjänst sparar enligt sina egna regler. Trafiksummorna räknar ihop all trafik in och ut genom vår server och vårt relä, och vi sparar dem i upp till 15 månader. De pekar inte ut någon överföring, men på ett lugnt relä kan steget mellan två summor, sparade med 5 minuters mellanrum, motsvara en överförings storlek och tid.",
+    keep: "Vi har inga konton, ingen databas över personer eller överföringar, inga cookies och ingen spårning. När avsändarens sida har stängts sparas ingenting om dig, inom högst två minuter, förutom loggraderna nedan, en relälogg medan vi åtgärdar ett fel eller stoppar missbruk, våra månatliga trafiksummor, antalet mejl och koder ovan, som finns kvar en timme, och det som vår mejltjänst sparar enligt sina egna regler. Summorna räknar ihop all trafik in och ut genom vår server och vårt relä, och vi sparar dem i upp till 15 månader. De pekar inte ut någon överföring. Men vi sparar en ny summa var 5:e minut, så på ett lugnt relä kan skillnaden mellan två summor visa en överförings storlek och när den skedde.",
     logFields,
     logRetention: "Loggraderna raderas efter 30 dagar.",
     relayLog:
