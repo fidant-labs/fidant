@@ -1152,7 +1152,7 @@ export const en = {
       ],
       ice: [
         "Candidates",
-        "The addresses at which a browser might be reached: on the local network, its public address, or an address on a relay. The two browsers swap candidates and try pairs of them until one works.",
+        "The addresses at which a browser might be reached: on the local network, its public address, or an address on a relay. The two browsers swap candidates and try pairs of them until one works. WebRTC calls this process ICE.",
       ],
       stun: [
         "STUN",
