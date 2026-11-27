@@ -768,6 +768,7 @@ export const sv: Messages = {
       )}. Aldrig namn, nycklar, ${items[kind].data} eller IP-adresser.`,
   },
   footer: {
+    file: "Skicka en fil",
     label: "Webbplats",
     tagline: "Filer krypteras i din webbläsare. Bara länken kan låsa upp dem.",
     about: "Om Fidant",
