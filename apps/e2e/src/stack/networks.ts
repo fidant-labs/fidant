@@ -18,7 +18,14 @@ import type { RunningService, Service } from "./service.ts";
 // The simulated networks of networks/compose.yaml, and the server on their public network.
 
 const run = promisify(execFile);
-const compose = ["compose", "-f", join(e2eDir, "networks", "compose.yaml")];
+const compose = [
+  "compose",
+  "-f",
+  join(e2eDir, "networks", "compose.yaml"),
+  ...(process.env.FIDANT_E2E_GHA_CACHE
+    ? ["-f", join(e2eDir, "networks", "compose.gha-cache.yaml")]
+    : []),
+];
 const serverName = "fidant-e2e-server";
 /** The server's address on the public network, where the browsers reach it. */
 export const serverIp = "198.51.100.10";
