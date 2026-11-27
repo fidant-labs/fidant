@@ -15,7 +15,7 @@
 //   both directions      relay seal({kind:"ice", candidate})   (trickle; null = end)
 //   sender → recipient   relay seal_s({kind:"restart-offer", sdp})   (TURN fallback, at most once)
 //   recipient → sender   relay seal_r({kind:"restart-answer", sdp})   both keep the first fingerprints
-//   sender ⇄ recipient   data channel "sigill" opens → onOpen(channel, info)
+//   sender ⇄ recipient   data channel "fidant" opens → onOpen(channel, info)
 //
 // The version marker is an `ice` signal whose empty candidate has the username
 // fragment "fidant-v<FRAME_VERSION>". The sender reads the recipient's before the
@@ -57,7 +57,7 @@ import { FRAME_VERSION } from "./frames.ts";
 import { type Direction, openSignal, sealSignal } from "./keys.ts";
 
 /** The data channel label. Fixed and neutral: never a file or recipient name. */
-export const CHANNEL_LABEL = "sigill";
+export const CHANNEL_LABEL = "fidant";
 
 /**
  * SCTP max message size to assume if the browser does not report one. RFC 8841
