@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
+import { createSocket } from "node:dgram";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { coturnLog, repoRoot } from "../paths.ts";
-import { configLines, coturnConfig, keyOf } from "./coturn.ts";
+import { configLines, coturnConfig, keyOf, waitForStun } from "./coturn.ts";
+import { freePort, udpFree } from "./server.ts";
 
 const production = configLines(
   readFileSync(join(repoRoot, "apps", "infra", "box", "turnserver.conf"), "utf8"),
@@ -72,4 +74,47 @@ test("the TLS option replaces production's TLS listener and certificate", () => 
     lines.filter((line) => tlsKeys.includes(keyOf(line))),
     ["tls-listening-port=443", "cert=/etc/sigill/turn.crt", "pkey=/etc/sigill/turn.key"],
   );
+});
+
+/** A loopback UDP socket on a free port that handles each datagram with `reply`. */
+async function udpSocket(reply: (message: Buffer) => Buffer | undefined = () => undefined) {
+  const socket = createSocket("udp4");
+  const port = await freePort();
+  socket.on("message", (message, from) => {
+    const answer = reply(message);
+    if (answer) {
+      socket.send(answer, from.port, from.address);
+    }
+  });
+  await new Promise<void>((resolve) => socket.bind(port, "127.0.0.1", resolve));
+  return { port, close: () => new Promise<void>((resolve) => socket.close(() => resolve())) };
+}
+
+test("udpFree is false only while a socket holds the port", async () => {
+  const held = await udpSocket();
+  assert.equal(await udpFree(held.port), false);
+  await held.close();
+  assert.equal(await udpFree(held.port), true);
+});
+
+test("waitForStun returns once the port answers a binding request", async () => {
+  // A binding success response: the request with its type changed.
+  const server = await udpSocket((message) =>
+    Buffer.concat([Buffer.from("0101", "hex"), message.subarray(2)]),
+  );
+  await waitForStun(server.port, () => false, "coturn", 2000);
+  await server.close();
+});
+
+test("waitForStun fails when the port holder is no STUN server, or the service exited", async () => {
+  const other = await udpSocket((message) => Buffer.from(message).fill(0));
+  await assert.rejects(
+    waitForStun(other.port, () => false, "coturn", 300),
+    /coturn did not answer STUN on UDP port \d+ within 300 ms/,
+  );
+  await assert.rejects(
+    waitForStun(other.port, () => true, "coturn", 300),
+    /coturn exited before answering/,
+  );
+  await other.close();
 });

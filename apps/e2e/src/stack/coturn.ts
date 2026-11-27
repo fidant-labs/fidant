@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { generateKeyPairSync, randomBytes } from "node:crypto";
+import { createSocket } from "node:dgram";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { connect } from "node:net";
@@ -88,12 +89,11 @@ async function startCoturn(): Promise<RunningService> {
     return stopped;
   };
 
+  const exited = () => failed || child.exitCode !== null || child.signalCode !== null;
   try {
-    await waitForListening(
-      port,
-      () => failed || child.exitCode !== null || child.signalCode !== null,
-      "coturn",
-    );
+    await waitForListening(port, exited, "coturn");
+    // coturn keeps running when it can't bind its UDP port, and every transfer then fails later.
+    await waitForStun(port, exited, "coturn");
   } catch (error) {
     await stop();
     throw new Error(`${(error as Error).message} See ${coturnLog}.`);
@@ -221,4 +221,46 @@ export async function waitForListening(
     await sleep(100);
   }
   throw new Error(`${name} did not listen on port ${port} within ${startTimeoutMs} ms.`);
+}
+
+/**
+ * Polls until a STUN binding request to the UDP port is answered. waitForListening only shows the
+ * TCP listener, and coturn without its UDP port serves no `stun:` or `turn:...?transport=udp` URL.
+ */
+export async function waitForStun(
+  port: number,
+  exited: () => boolean,
+  name: string,
+  timeoutMs = startTimeoutMs,
+): Promise<void> {
+  // RFC 8489 section 5: type Binding request, length 0, the magic cookie, a transaction ID.
+  const request = Buffer.concat([Buffer.from("000100002112a442", "hex"), randomBytes(12)]);
+  const socket = createSocket("udp4");
+  // A failed send is one more unanswered request.
+  socket.on("error", () => {});
+  const answered = new Promise<true>((resolve) => {
+    socket.on("message", (message) => {
+      // Any response that echoes the cookie and transaction ID came from a STUN server.
+      if (message.subarray(4, 20).equals(request.subarray(4, 20))) {
+        resolve(true);
+      }
+    });
+  });
+  try {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (exited()) {
+        throw new Error(`${name} exited before answering on UDP port ${port}.`);
+      }
+      socket.send(request, port, host);
+      if (await Promise.race([answered, sleep(100)])) {
+        return;
+      }
+    }
+    throw new Error(
+      `${name} did not answer STUN on UDP port ${port} within ${timeoutMs} ms, so it could not bind the port or another process holds it.`,
+    );
+  } finally {
+    socket.close();
+  }
 }
