@@ -13,6 +13,7 @@
 // | connecting ... receiving (2)   | joined (3)     | (same)     | restart            |
 // | connecting ... receiving (2)   | joined         | (same)     | refuse busy        |
 // | delivered, or locked           | joined         | (same)     | refuse used        |
+// | (its attempt just ended) (4)   | joined         | (same)     | refuse drop        |
 // | connecting                     | channel-open   | offered, or checking with check |  |
 // | checking                       | checked        | offered    |                    |
 // | checking                       | check-differs  | waiting    | refuse drop, close |
@@ -34,6 +35,7 @@
 // (1) For the current attempt, when its `joined` said the sender refused the relay.
 // (2) connecting, checking, offered or receiving: the active statuses.
 // (3) With the attempt ID of the attempt in progress: the server's answer to that recipient joining again.
+// (4) With the attempt ID of the recipient's last attempt that ended (`ended`).
 //
 // Rules:
 // - A link is used only once the recipient's RECEIPT matches (delivered).
@@ -46,9 +48,14 @@
 //   connection dropped (decision 0029). It is refused nothing and changes
 //   nothing but `turn`: the `restart` effect hands its ICE servers to the
 //   attempt's peer, which restarts ICE once its channel has opened and ignores
-//   them before. In every other status such a join is treated like any join:
-//   refused with "used" after delivery or a lock, and a new start otherwise,
-//   since an attempt that ended left no attempt ID to match.
+//   them before. After delivery or a lock such a join is refused with "used".
+//   After any other end it is refused with "drop" and changes nothing: the
+//   join crossed the sender's refusal on the wire and reached a server that had
+//   already unbound the attempt, so it paired as a first join, but the
+//   recipient's peer for it is gone on this side and starting a new one would
+//   only time out, and for a `check` recipient cost one of its CHECK_ATTEMPTS.
+//   The reducer remembers only the last ended attempt (`ended`); a new attempt
+//   always joins with a new random ID (see ReceivePage), so it starts as usual.
 // - A join for a link ID not on the list is refused with "unknown".
 // - `left` (the server says the recipient's signaling socket closed) ends an
 //   attempt only while it is still connecting. Once the data channel is open
@@ -201,6 +208,8 @@ export type Recipient = {
   readonly error?: RecipientError;
   /** The attempt ID of the join that started the current connection. */
   readonly attempt?: string;
+  /** The attempt ID of the last attempt that ended: a join carrying it is refused with "drop". */
+  readonly ended?: string;
   /** How the current attempt's connection runs, once its data channel opened. */
   readonly path?: OpenPath;
   /** Whether our relay was allowed for the current attempt: the server's `turn` and the sender's own choice when it joined. */
@@ -408,6 +417,9 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
       const turn = action.turn && action.allowRelay;
       if (current.status === "delivered" || current.locked) {
         return { state, effects: [{ type: "refuse", linkId, attempt, reason: "used" }] };
+      }
+      if (attempt === current.ended) {
+        return { state, effects: [{ type: "refuse", linkId, attempt, reason: "drop" }] };
       }
       if (isActive(current) && attempt !== current.attempt) {
         return { state, effects: [{ type: "refuse", linkId, attempt, reason: "busy" }] };
@@ -638,18 +650,21 @@ function waiting(recipient: Recipient, blocked: boolean): Recipient {
   return recipient.turn === false ? { ...next, noRelay: true } : { ...next, noConnect: true };
 }
 
-/** The recipient with a new status, no progress, error, attempt, path, relay choice, noRelay or noConnect. */
+/**
+ * The recipient with a new status, no progress, error, attempt, path, relay choice, noRelay or
+ * noConnect. Its attempt, if any, becomes `ended`.
+ */
 function reset(recipient: Recipient, status: RecipientStatus): Recipient {
   const {
     error: _error,
-    attempt: _attempt,
+    attempt,
     path: _path,
     turn: _turn,
     noRelay: _noRelay,
     noConnect: _noConnect,
     ...rest
   } = recipient;
-  return { ...rest, status, bytesSent: 0 };
+  return { ...rest, ...(attempt === undefined ? {} : { ended: attempt }), status, bytesSent: 0 };
 }
 
 function replace(state: SenderState, recipient: Recipient): SenderState {
