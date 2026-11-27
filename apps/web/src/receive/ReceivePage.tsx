@@ -9,9 +9,10 @@
 //   masked address, the mark no longer matches a binding and the page joins
 //   nothing (`unbound`). Otherwise it joins with this tab's token from
 //   sessionStorage, or first asks the server to email a code and trades the
-//   right code for a token. A `gate` answer to a `join` is a refusal: the
-//   token is dropped and an emailed link asks `gate` again; a plain link is
-//   email-bound and ends as `unbound`.
+//   right code for a token. Before the channel opens, a `gate` answer to a
+//   `join` is a refusal: the token is dropped and an emailed link asks `gate`
+//   again; a plain link is email-bound and ends as `unbound`. Once it is open,
+//   a `gate` can only answer a repeated `join` and is ignored (decision 0031).
 // - The server answers `join` with `joined`, carrying this pairing's ICE
 //   servers, before it tells the sender; the recipient peer is created
 //   synchronously on it, so the sender's offer, which comes later on the same
@@ -19,11 +20,26 @@
 //   random attempt ID, so a sender's late refusal of an earlier attempt cannot
 //   end this one.
 // - `relay` goes to the peer. `refused` ends the attempt with the matching
-//   message, and so does `host-gone` until the file starts arriving. A
-//   transfer under way no longer needs the server (the sender may only have
+//   message, except a `busy`, or any refusal after `host-gone`, once the
+//   channel is open (decision 0031). `host-gone` ends it until the file starts
+//   arriving. A transfer under way needs the server only to recover a dropped
+//   route, not to go on (the sender may only have
 //   lost its signaling connection), so then `host-gone` is only remembered: if
 //   the sender's tab really closed, the peer drops too (at the latest when ICE
 //   consent runs out) and the drop is reported as the sender's page closing.
+// - If the connection drops after the data channel opened, the peer says so
+//   (onStalled) and the page sends the same `join` again on the same socket,
+//   with the same attempt ID and token (decision 0031). It doesn't once the
+//   attempt has ended, the transfer has stopped, the signaling socket is gone
+//   or `host-gone` came: joining the sender's new socket would be a new
+//   pairing. The `joined` that answers goes to the peer (rejoined), which
+//   restarts ICE with the sender on the same connection; its ICE servers are
+//   kept nowhere else. The path shown follows the peer (onPath). Once the
+//   channel is open, the answers a repeated `join` can get instead never end
+//   the transfer: `refused` with `busy` (the server's cap, or an older
+//   sender's page), any `refused` after `host-gone`, a `gate`, and an older
+//   server's `error`. The page shows nothing new; the progress stops until the
+//   connection is back, or the peer gives up and the attempt ends as lost.
 // - If the signaling socket drops before the data channel opens, a new
 //   attempt starts (new socket, new attempt ID), unless this page already
 //   answered the sender's offer: the answer gave anyone in the middle this
@@ -36,8 +52,9 @@
 //   the same `join` again on the same socket after STARTING_RETRY_MS, and each
 //   `join` re-arms the connect timeout, so the server decides when waiting
 //   ends (decision 0018). `refused: unknown` always ends the attempt. Once the
-//   channel is open the transfer no longer needs the server, so a drop then
-//   only closes the signaling client.
+//   channel is open the transfer needs the server only to recover a dropped
+//   route (decision 0031), so a drop then closes the signaling client, and the
+//   page can no longer restart ICE after a dropped route.
 //   Reaching the code step resets the rejoin count (a token holder's rejoins
 //   do not), and the code field survives a rejoin. A `failed` or `expired`
 //   code result asks the gate again, so a binding that is gone ends as "no
@@ -95,6 +112,7 @@ import { LINK_ID_BYTES, parseRecipientLocation } from "../lib/link.ts";
 import { createRecipientPeer, type OpenPath, type Peer, type PeerOpenInfo } from "../lib/peer.ts";
 import type { FileOffer, Resumable } from "../lib/receive-file.ts";
 import { ReceiveError, receiveFile } from "../lib/receive-file.ts";
+import { joinedAction, joinsAgain, takesGate, takesRefusal } from "../lib/receive-guards.ts";
 import { keepsPart, peerLostProblem, refusedProblem } from "../lib/receive-problem.ts";
 import { addRelay, type Kind, NO_RELAYS, type Tie } from "../lib/server-facts.ts";
 import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
@@ -365,6 +383,16 @@ export function ReceivePage({
         setTimeout(() => finish({ s: "failed", problem: lostMessage() }), HOST_GONE_GRACE_MS),
       );
     };
+    // A short transfer can end before the path resolves, so this checks the attempt, not current().
+    const showPath = (resolved: OpenPath) => {
+      if (attemptRef.current !== attempt) {
+        return;
+      }
+      setPath(resolved);
+      if (resolved === "relay") {
+        setViaRelay(true);
+      }
+    };
     const outdated = (reason: "outdated" | "peer-outdated") =>
       finish({ s: "refused", problem: reason === "outdated" ? "outdated" : "senderOutdated" });
     // Without it, a sender whose signals never arrive leaves "Connecting…" up for good.
@@ -454,7 +482,14 @@ export function ReceivePage({
     signaling.subscribe((message) => {
       switch (message.t) {
         case "gate": {
-          if (!current() || message.link !== linkId) {
+          // Once the channel is open, a `gate` can only answer a repeated `join`, and the transfer goes on without it.
+          if (
+            !takesGate({
+              current: current(),
+              ourLink: message.link === linkId,
+              channelOpen: attempt.channelOpen,
+            })
+          ) {
             break;
           }
           if (joinSent) {
@@ -516,14 +551,18 @@ export function ReceivePage({
           setView({ s: "connecting" });
           join(message.token);
           break;
-        case "joined":
-          if (
-            !current() ||
-            attempt.peer ||
-            !signalKey ||
-            message.link !== linkId ||
-            message.attempt !== attemptId
-          ) {
+        case "joined": {
+          const action = joinedAction({
+            current: current(),
+            ours: message.link === linkId && message.attempt === attemptId,
+            hasPeer: attempt.peer !== undefined,
+          });
+          if (action === "ignore" || !signalKey) {
+            break;
+          }
+          if (action === "rejoin" && attempt.peer) {
+            // The answer to a repeated `join`. The peer ignores one it never asked for.
+            attempt.peer.rejoined(message.iceServers);
             break;
           }
           setTie("paired");
@@ -535,17 +574,22 @@ export function ReceivePage({
             signalKey,
             iceServers: message.iceServers,
             onOpen: (channel, info) => {
-              // A short transfer can end before the path resolves, so this checks the attempt, not current().
-              void info.path.then((resolved) => {
-                if (attemptRef.current !== attempt) {
-                  return;
-                }
-                setPath(resolved);
-                if (resolved === "relay") {
-                  setViaRelay(true);
-                }
-              });
+              void info.path.then(showPath);
               onOpen(channel, info);
+            },
+            onPath: showPath,
+            // The same `join` again, token included (decision 0031). After `host-gone` it would
+            // be a new pairing with the sender's new socket, so then nothing is sent.
+            onStalled: () => {
+              if (
+                joinsAgain({
+                  current: current(),
+                  hostGone: attempt.hostGone,
+                  aborted: attempt.abort.signal.aborted,
+                })
+              ) {
+                join(joinToken);
+              }
             },
             onClose: (reason) =>
               reason === "unsupported"
@@ -555,6 +599,7 @@ export function ReceivePage({
                   : lost(),
           });
           break;
+        }
         case "relay":
           attempt.heardSender = true;
           void attempt.peer?.handleRelay(message.data);
@@ -563,6 +608,13 @@ export function ReceivePage({
           // A refusal after the sender's first signal means the sender gave up
           // on this attempt (its peer failed or never connected), not that the
           // link is in use or used: the sender only signals a join it took.
+          // Once the channel is open, `busy` answers a repeated `join` (the server's cap, or
+          // an older sender's page), and so does any refusal after `host-gone`: the sender's
+          // socket is gone, so it is the server's answer to a `join` that crossed it. The
+          // transfer goes on without the server.
+          if (!takesRefusal(attempt, message.reason)) {
+            break;
+          }
           if (attempt.saidDiffers) {
             finish({ s: "failed", problem: "differed" });
           } else if (attempt.heardSender) {

@@ -48,11 +48,18 @@ export const LIMITS = {
   /** Messages one socket may send per heartbeat window, counting ones that fail to parse. */
   messagesPerWindow: 1000,
   /**
-   * Guests a link pairs per heartbeat window. Each pairing can cost the sender's socket a message
-   * (a guest without the secret gets a `refuse`), so without this one guest could spend the
-   * sender's message limit (FID-235). An honest recipient pairs at most 5 times per attempt.
-   * ponytail: per link, so a guest holding ~100 of one sender's links could still spend it; count
-   * pairings per host socket too if that ever matters.
+   * Guests a link pairs per heartbeat window, a bound guest's repeated join included (decision
+   * 0031). Each pairing can cost the sender's socket a message (a guest without the secret gets a
+   * `refuse`), so without this one guest could spend the sender's message limit (FID-235). An
+   * honest recipient pairs at most 5 times to open an attempt (the first join and the page's 4
+   * rejoins before the channel opens), then once or twice per route that drops after it: on
+   * `disconnected`, and on `failed` while a deadline runs (0031).
+   * ponytail: per link, so a guest holding many of one sender's links could still spend the
+   * sender's message limit. Each repeated `joined` costs that socket more than one `refuse`: a
+   * `restart-offer` plus new candidates, roughly 5-10 messages (an estimate). So recipients
+   * connected on roughly 7-20 of one sender's links could push it over `messagesPerWindow`,
+   * versus about 100 before. It needs a recipient holding each link's secret. Count pairings per
+   * host socket if that ever matters.
    */
   pairingsPerLink: 10,
   /**
@@ -225,7 +232,7 @@ export function attachSignaling(
     /** How long after start a join for a link nobody hosts is refused as `starting`, not `unknown`. */
     startingMs?: number | undefined;
     limits?: Partial<typeof LIMITS>;
-    /** Minted once per pairing, so TURN credentials are fresh. Never logged. */
+    /** Minted once per `joined`, so TURN credentials are fresh. Never logged. */
     iceServers?: (turn: boolean) => IceServer[];
     /** Sends notices that link to `${origin}/r/<link>#e.<mark>.<secret>`. Without it, no mail goes out. */
     mail?: { send: Mailer; origin: string } | undefined;
@@ -451,7 +458,9 @@ export function attachSignaling(
       error(socket, "wrong-role");
       return;
     }
-    if (peer.joined !== undefined) {
+    // A bound socket may only repeat its own join, to get fresh ICE servers when its open
+    // connection dropped (decision 0031). The repeat passes every check below, as a first join.
+    if (peer.joined !== undefined && (peer.joined !== link || peer.attempt !== attempt)) {
       error(socket, "already-joined");
       return;
     }
@@ -465,7 +474,9 @@ export function attachSignaling(
     }
     const hostSocket = hosts.get(link);
     const paired = pairings.get(link) ?? 0;
-    if (!hostSocket || guests.has(link) || paired >= limits.pairingsPerLink) {
+    const bound = guests.get(link);
+    // A repeated join that is refused here keeps its binding.
+    if (!hostSocket || (bound && bound !== socket) || paired >= limits.pairingsPerLink) {
       // Just after a start, senders may not have re-hosted yet, so the link may not be dead.
       const reason: RefusedReason = hostSocket
         ? "busy"
