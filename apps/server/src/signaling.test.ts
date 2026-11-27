@@ -2107,7 +2107,11 @@ test("counts an IPv6 client's notices by its /48", async (t) => {
 /** A signaling server for the hold tests, with its log lines. */
 async function holdServer(
   t: { after(fn: () => void): void },
-  options: { takeoverMs?: number; heartbeatMs?: number } = {},
+  options: {
+    takeoverMs?: number;
+    heartbeatMs?: number;
+    limits?: { pairingsPerLink?: number };
+  } = {},
 ) {
   const lines: string[] = [];
   const holding = createServer();
@@ -2160,15 +2164,16 @@ async function pairAndReport(
   t: { after(fn: () => void): void },
   url: string,
   path: "direct" | "stun" | "relay" | "failed" = "direct",
-  options: { hostPong?: boolean } = {},
+  options: { hostPong?: boolean; turn?: boolean } = {},
 ) {
   const link = linkId();
+  const turn = options.turn ?? false;
   const host = await wsClient(t, url, { autoPong: options.hostPong ?? true });
-  host.send({ t: "host", links: [link], turn: false });
+  host.send({ t: "host", links: [link], turn });
   const guest = await wsClient(t, url);
   const attempt = linkId();
   guest.send({ t: "join", link, attempt });
-  const joined = { t: "joined", link, attempt, iceServers: [], turn: false };
+  const joined = { t: "joined", link, attempt, iceServers: [], turn };
   assert.deepEqual(await guest.next(), joined);
   assert.deepEqual(await host.next(), joined);
   // Nothing is armed at joined.
@@ -2457,4 +2462,273 @@ test("never holds a side past the heartbeat that would have ended its socket (00
 
   // So a held side is forgotten within two heartbeats of its page's last sign of life.
   assert.ok(2 * HEARTBEAT_MS <= 60_000 && TAKEOVER_MS <= 2 * HEARTBEAT_MS);
+});
+
+// The tests below take an armed attempt over with its resume token (decision 0032).
+
+/** Sends `resume` and returns the new token, or fails if the server refused it. */
+async function resumeWith(
+  side: Pick<WsSide, "send" | "next">,
+  link: string,
+  attempt: string,
+  token: string | undefined,
+): Promise<string> {
+  side.send({ t: "resume", link, attempt, token });
+  const answer = await side.next();
+  assert.ok(answer.t === "resume" && answer.link === link && answer.attempt === attempt);
+  assert.ok(answer.token, "the resume was refused");
+  assert.match(answer.token, /^[A-Za-z0-9_-]{22}$/);
+  assert.notEqual(answer.token, token);
+  return answer.token;
+}
+
+/** Sends `resume` and checks the server refused it with nothing but the link and attempt. */
+async function refusedWith(
+  side: Pick<WsSide, "send" | "next">,
+  link: string,
+  attempt: string,
+  token: string | undefined,
+): Promise<void> {
+  side.send({ t: "resume", link, attempt, token });
+  assert.deepEqual(await side.next(), { t: "resume", link, attempt });
+}
+
+/** Closes a pair's side with 1001 and waits until the server holds it. */
+async function holdSide(
+  pair: Awaited<ReturnType<typeof pairAndReport>>,
+  side: "host" | "guest",
+  lines: string[],
+): Promise<void> {
+  const count = (event: string) => lines.filter((line) => JSON.parse(line).event === event).length;
+  const [event, other] =
+    side === "host" ? ["host-closed", pair.guest] : ["relay-dropped", pair.host];
+  const before = count(event);
+  pair[side].socket.close(1001);
+  // A host's close is logged; a guest's shows once relays to it are dropped.
+  await until(() => {
+    if (side === "guest") {
+      other.send({ t: "relay", link: pair.link, data: "eA" });
+    }
+    return count(event) > before;
+  }, `the ${side}'s hold`);
+  await silent(other);
+}
+
+test("lets a new socket take the recipient's side back, once per token (0032)", async (t) => {
+  const takeoverMs = 200;
+  const { url, lines, has } = await holdServer(t, { takeoverMs });
+  const pair = await pairAndReport(t, url);
+  await holdSide(pair, "guest", lines);
+  const back = await wsClient(t, url);
+  const token = await resumeWith(back, pair.link, pair.attempt, pair.guestToken);
+  // No joined on a recipient's takeover, and the binding works both ways.
+  await silent(back);
+  await silent(pair.host);
+  pair.host.send({ t: "relay", link: pair.link, data: "b2ZmZXI" });
+  assert.deepEqual(await back.next(), { t: "relay", link: pair.link, data: "b2ZmZXI" });
+  back.send({ t: "relay", link: pair.link, data: "YW5zd2Vy" });
+  assert.deepEqual(await pair.host.next(), { t: "relay", link: pair.link, data: "YW5zd2Vy" });
+  // The used token is spent; the new one takes the side again.
+  const third = await wsClient(t, url);
+  await refusedWith(third, pair.link, pair.attempt, pair.guestToken);
+  await resumeWith(third, pair.link, pair.attempt, token);
+  // The still-open socket that had the side is ended, and gets no left or host-gone.
+  assert.equal(await new Promise((done) => back.socket.once("close", done)), 1006);
+  // The hold's time passes with no left.
+  await new Promise((done) => setTimeout(done, 2 * takeoverMs));
+  await silent(pair.host);
+  assert.ok(!has("left") && !has("host-gone"), lines.join("\n"));
+  assert.equal(lines.filter((line) => line.includes('"resumed"')).length, 2);
+  for (const line of lines) {
+    assert.ok(!line.includes(pair.attempt) && !line.includes(token), line);
+  }
+});
+
+test("lets a new socket take the sender's side back and restarts only when the recipient asked (0032)", async (t) => {
+  const takeoverMs = 200;
+  const { url, lines, has } = await holdServer(t, { takeoverMs });
+  const { link, attempt, guest, ...pair } = await pairAndReport(t, url, "direct", { turn: true });
+  await holdSide({ link, attempt, guest, ...pair }, "host", lines);
+  const back = await wsClient(t, url);
+  const token = await resumeWith(back, link, attempt, pair.hostToken);
+  // The recipient didn't ask, so nobody hears anything more.
+  await silent(back);
+  await silent(guest);
+  guest.send({ t: "relay", link, data: "eA" });
+  assert.deepEqual(await back.next(), { t: "relay", link, data: "eA" });
+  // Until the new socket sends host, the attempt keeps the old socket's relay choice.
+  const joined = (turn: boolean) => ({ t: "joined", link, attempt, iceServers: [], turn });
+  guest.send({ t: "join", link, attempt });
+  assert.deepEqual(await guest.next(), joined(true));
+  assert.deepEqual(await back.next(), joined(true));
+  back.send({ t: "host", links: [link], turn: false });
+  guest.send({ t: "join", link, attempt });
+  assert.deepEqual(await guest.next(), joined(false));
+  assert.deepEqual(await back.next(), joined(false));
+
+  // Held again, the recipient asks; the takeover then restarts with joined to both.
+  back.socket.close(1001);
+  await until(() => lines.filter((line) => line.includes("host-closed")).length === 2, "close");
+  guest.send({ t: "join", link, attempt });
+  assert.deepEqual(await guest.next(), { t: "refused", reason: "busy" });
+  const again = await wsClient(t, url);
+  await resumeWith(again, link, attempt, token);
+  assert.deepEqual(await guest.next(), joined(false));
+  assert.deepEqual(await again.next(), joined(false));
+  await new Promise((done) => setTimeout(done, 2 * takeoverMs));
+  await silent(guest);
+  assert.ok(!has("host-gone") && !has("left"), lines.join("\n"));
+});
+
+test("takes over a still-open sender socket at once, freeing its idle links and holding its others (0032)", async (t) => {
+  // The heartbeat would take a minute; the takeover must not wait for it.
+  const { url, lines } = await holdServer(t, { heartbeatMs: HEARTBEAT_MS });
+  const [link, idle, other] = [linkId(), linkId(), linkId()];
+  // A sender whose network went: its socket stays open on the server and answers nothing.
+  const old = await wsClient(t, url, { autoPong: false });
+  old.send({ t: "host", links: [link, idle, other], turn: false });
+  const tokens = new Map<string, string>();
+  const guests = new Map<string, WsSide>();
+  for (const each of [link, other]) {
+    const guest = await wsClient(t, url);
+    guest.send({ t: "join", link: each, attempt: each });
+    assert.equal((await guest.next()).t, "joined");
+    assert.equal((await old.next()).t, "joined");
+    old.send({ t: "path", link: each, path: "direct" });
+    const answer = await old.next();
+    assert.ok(answer.t === "resume" && answer.token);
+    tokens.set(each, answer.token);
+    assert.equal((await guest.next()).t, "resume");
+    guests.set(each, guest);
+  }
+  const closed = new Promise<number>((done) => old.socket.once("close", done));
+  const started = performance.now();
+  const back = await wsClient(t, url);
+  await resumeWith(back, link, link, tokens.get(link));
+  assert.equal(await closed, 1006);
+  assert.ok(performance.now() - started < 1000, "the takeover waited");
+  // The old socket's idle link is free at once; its other armed attempt is held.
+  const third = await wsClient(t, url);
+  third.send({ t: "host", links: [idle], turn: false });
+  await silent(third);
+  third.send({ t: "host", links: [idle, other], turn: false });
+  assert.deepEqual(await third.next(), { t: "error", code: "already-hosted" });
+  await silent(guests.get(other) as WsSide);
+  await silent(guests.get(link) as WsSide);
+  assert.ok(!lines.some((line) => line.includes("host-gone")), lines.join("\n"));
+  // And that held attempt can be taken over too, by a socket that already hosts other links.
+  await resumeWith(back, other, other, tokens.get(other));
+});
+
+test("refuses a resume that may not take a side and changes nothing (0032)", async (t) => {
+  const takeoverMs = 150;
+  const { url, lines } = await holdServer(t, { takeoverMs });
+  const pair = await pairAndReport(t, url);
+  const elsewhere = await pairAndReport(t, url);
+  const { link, attempt } = pair;
+  const stranger = await wsClient(t, url);
+  // A wrong token, another link's token, the right token for another link or another attempt.
+  await refusedWith(stranger, link, attempt, linkId());
+  await refusedWith(stranger, link, attempt, elsewhere.guestToken);
+  await refusedWith(stranger, elsewhere.link, elsewhere.attempt, pair.guestToken);
+  await refusedWith(stranger, link, linkId(), pair.guestToken);
+  // The side's own socket, a hosting socket on the recipient's side, a recipient on the sender's.
+  await refusedWith(pair.guest, link, attempt, pair.guestToken);
+  await refusedWith(pair.host, link, attempt, pair.hostToken);
+  await refusedWith(pair.host, link, attempt, pair.guestToken);
+  await refusedWith(pair.guest, link, attempt, pair.hostToken);
+  await refusedWith(elsewhere.host, link, attempt, pair.guestToken);
+  // A socket bound as a recipient to another link, on either side.
+  await refusedWith(elsewhere.guest, link, attempt, pair.guestToken);
+  await refusedWith(elsewhere.guest, link, attempt, pair.hostToken);
+  // A socket that hosts only other links can't take the recipient's side.
+  const hosting = await wsClient(t, url);
+  hosting.send({ t: "host", links: [linkId()], turn: false });
+  await refusedWith(hosting, link, attempt, pair.guestToken);
+
+  // An attempt never armed.
+  const plain = linkId();
+  const plainHost = await wsClient(t, url);
+  plainHost.send({ t: "host", links: [plain], turn: false });
+  const plainGuest = await wsClient(t, url);
+  plainGuest.send({ t: "join", link: plain, attempt: plain });
+  assert.equal((await plainGuest.next()).t, "joined");
+  await refusedWith(stranger, plain, plain, pair.guestToken);
+
+  // Nothing changed: both sides still talk, and the genuine tokens still work.
+  pair.host.send({ t: "relay", link, data: "eA" });
+  assert.deepEqual(await pair.guest.next(), { t: "relay", link, data: "eA" });
+  await holdSide(pair, "guest", lines);
+  const back = await wsClient(t, url);
+  await resumeWith(back, link, attempt, pair.guestToken);
+
+  // An attempt that ended: the sender refused it.
+  pair.host.send({ t: "refuse", link, attempt, reason: "used" });
+  assert.deepEqual(await back.next(), { t: "refused", reason: "used" });
+  await refusedWith(await wsClient(t, url), link, attempt, pair.hostToken);
+
+  // A hold that ran out.
+  const expired = await pairAndReport(t, url);
+  await holdSide(expired, "host", lines);
+  assert.deepEqual(await expired.guest.next(), { t: "host-gone" });
+  await refusedWith(await wsClient(t, url), expired.link, expired.attempt, expired.hostToken);
+
+  const refusals = lines.filter((line) => line.includes("resume-refused"));
+  assert.equal(refusals.length, 15);
+  for (const line of refusals) {
+    assert.match(line, /^\{"event":"resume-refused","link":"[A-Za-z0-9_-]{6}"\}$/);
+  }
+});
+
+test("charges the restart after a takeover to the link's pairings (0032)", async (t) => {
+  const { url, lines } = await holdServer(t, { limits: { pairingsPerLink: 2 } });
+  const pair = await pairAndReport(t, url);
+  const { link, attempt, guest } = pair;
+  const joined = { t: "joined", link, attempt, iceServers: [], turn: false };
+  /** Holds the sender's side, has the recipient ask, and takes the side over with `token`. */
+  const takeOver = async (side: WsSide, token: string | undefined) => {
+    await holdSide({ ...pair, host: side }, "host", lines);
+    guest.send({ t: "join", link, attempt });
+    assert.deepEqual(await guest.next(), { t: "refused", reason: "busy" });
+    const back = await wsClient(t, url);
+    return { back, token: await resumeWith(back, link, attempt, token) };
+  };
+  // The first join and this restart use the window's two pairings.
+  const first = await takeOver(pair.host, pair.hostToken);
+  assert.deepEqual(await guest.next(), joined);
+  assert.deepEqual(await first.back.next(), joined);
+  // The next restart is over the cap: the recipient hears busy and stays bound.
+  const second = await takeOver(first.back, first.token);
+  assert.deepEqual(await guest.next(), { t: "refused", reason: "busy" });
+  await silent(second.back);
+  guest.send({ t: "relay", link, data: "eA" });
+  assert.deepEqual(await second.back.next(), { t: "relay", link, data: "eA" });
+});
+
+test("keeps an emailed link's binding through the sender's takeover (0032)", async (t) => {
+  const { url, mails, lines } = await mailServer(t);
+  const link = linkId();
+  const host = await mailHost(url, link);
+  const mark = await emailLink(host, link);
+  const guest = await connect(url, true);
+  const token = await tokenFor(guest, host, link, mails, mark);
+  const attempt = await mailJoin(guest, host, link, token);
+  host.send({ t: "path", link, path: "direct" });
+  const armed = await host.next();
+  assert.ok(armed.t === "resume" && armed.token);
+  assert.equal((await guest.next()).t, "resume");
+  host.socket.close(4000);
+  await until(() => lines.some((line) => line.includes("host-closed")), "the host's close");
+  const back = await connectFrom(t, url, "192.0.2.9");
+  await resumeWith(back, link, attempt, armed.token);
+  back.send({ t: "host", links: [link], turn: true });
+  // The recipient's repeated join still needs, and takes, its email token.
+  guest.send({ t: "join", link, attempt });
+  assert.deepEqual(await guest.next(), { t: "gate", link, to: "" });
+  guest.send({ t: "join", link, attempt, token });
+  const joined = { t: "joined", link, attempt, iceServers: [], turn: true };
+  assert.deepEqual(await guest.next(), joined);
+  assert.deepEqual(await back.next(), joined);
+  assert.notEqual(await gateOf(await connect(url, true), link, mark), "");
+  assert.ok(!lines.some((line) => line.includes("host-gone")));
 });

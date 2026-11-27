@@ -438,9 +438,7 @@ export function attachSignaling(
         checkCode(socket, peer, message.link, message.code, message.mark);
         return;
       case "resume":
-        // ponytail: no takeover yet, so every resume is refused as for an attempt never armed.
-        log("resume-refused", { link: short(message.link) });
-        send(socket, { t: "resume", link: message.link, attempt: message.attempt });
+        resume(socket, peer, message.link, message.attempt, message.token);
         return;
     }
   }
@@ -476,6 +474,11 @@ export function attachSignaling(
     }
     for (const link of next) {
       hosts.set(link, socket);
+      // A sender that took its attempt over sets its relay choice for it from here on (0032).
+      const record = armed.get(link);
+      if (record) {
+        record.turn = turn;
+      }
     }
     peer.hosted = next;
     // A re-host with the same links only changes `turn`, which must leave no trace in the log.
@@ -576,9 +579,23 @@ export function attachSignaling(
     peer.joined = link;
     peer.attempt = attempt;
     log("joined", { link: short(link) });
-    // The guest's ack goes first, so its peer exists before the host's offer can arrive on the
-    // same ordered socket.
-    const turn = peers.get(hostSocket)?.turn ?? false;
+    // An armed attempt keeps the relay choice of the socket that hosted it until a new socket
+    // that took it over sends `host` (0032).
+    const turn = record?.turn ?? peers.get(hostSocket)?.turn ?? false;
+    pair(link, attempt, turn, socket, hostSocket);
+  }
+
+  /**
+   * Sends `joined` to the guest first, so its peer exists before the host's offer can arrive on
+   * the same ordered socket.
+   */
+  function pair(
+    link: string,
+    attempt: string,
+    turn: boolean,
+    guest: WebSocket,
+    hostSocket: WebSocket,
+  ): void {
     const joined: ServerMessage = {
       t: "joined",
       link,
@@ -586,8 +603,92 @@ export function attachSignaling(
       iceServers: iceServers(turn),
       turn,
     };
-    send(socket, joined);
+    send(guest, joined);
     send(hostSocket, joined);
+  }
+
+  /** True when `token` is `expected`, compared in constant time. */
+  function sameToken(token: string, expected: string): boolean {
+    const [a, b] = [Buffer.from(token), Buffer.from(expected)];
+    return a.length === b.length && timingSafeEqual(a, b);
+  }
+
+  /**
+   * Lets a new socket take one side of an armed attempt with that side's current token (decision
+   * 0032). Every refusal looks the same, so it tells nothing about which check failed.
+   */
+  function resume(
+    socket: WebSocket,
+    peer: Peer,
+    link: string,
+    attempt: string,
+    token: string,
+  ): void {
+    const record = armed.get(link);
+    const side =
+      record === undefined || record.attempt !== attempt
+        ? undefined
+        : sameToken(token, record.hostToken)
+          ? "host"
+          : sameToken(token, record.guestToken)
+            ? "guest"
+            : undefined;
+    const old = side === "host" ? hosts.get(link) : side === "guest" ? guests.get(link) : undefined;
+    // The recipient's side takes a socket bound to no link that hosts nothing; the sender's side
+    // a socket that is no recipient. The socket that holds the side has nothing to take.
+    const allowed =
+      side === "guest"
+        ? peer.role !== "host" && peer.joined === undefined
+        : side === "host" && peer.role !== "guest";
+    if (!record || !side || !old || old === socket || !allowed) {
+      log("resume-refused", { link: short(link) });
+      send(socket, { t: "resume", link, attempt });
+      return;
+    }
+    const oldPeer = peers.get(old);
+    const fresh = randomBytes(16).toString("base64url");
+    if (side === "host") {
+      clearTimeout(record.hostHeld?.timer);
+      record.hostHeld = undefined;
+      oldPeer?.hosted.delete(link);
+      hosts.set(link, socket);
+      peer.role = "host";
+      peer.hosted.add(link);
+      record.hostToken = fresh;
+    } else {
+      clearTimeout(record.guestHeld?.timer);
+      record.guestHeld = undefined;
+      if (oldPeer) {
+        oldPeer.joined = undefined;
+        oldPeer.attempt = undefined;
+      }
+      guests.set(link, socket);
+      peer.role = "guest";
+      peer.joined = link;
+      peer.attempt = attempt;
+      record.guestToken = fresh;
+    }
+    log("resumed", { link: short(link) });
+    send(socket, { t: "resume", link, attempt, token: fresh });
+    // The old socket is still open on the server: it is ended as a close other than 1000, so its
+    // idle links are unhosted and its other armed attempts held, not as one the server ended.
+    if (oldPeer) {
+      old.terminate();
+    }
+    // The recipient asked while the sender's side was held: the sender restarts ICE (0031).
+    const guest = guests.get(link);
+    if (side === "host" && record.asked && guest && peers.has(guest)) {
+      record.asked = false;
+      const paired = pairings.get(link) ?? 0;
+      if (paired >= limits.pairingsPerLink) {
+        log("refused", { link: short(link), reason: "busy" });
+        send(guest, { t: "refused", reason: "busy" });
+        return;
+      }
+      pairings.set(link, paired + 1);
+      log("joined", { link: short(link) });
+      pair(link, attempt, record.turn, guest, socket);
+    }
   }
 
   function relay(socket: WebSocket, peer: Peer, link: string, data: string): void {
