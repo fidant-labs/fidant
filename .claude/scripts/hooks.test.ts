@@ -337,3 +337,30 @@ describe("Linear reminder", () => {
     assert.equal(remind('git commit -m "gh pr merge later"'), "");
   });
 });
+
+describe("session-title.sh", () => {
+  const titles = () => join(root, ".claude", "session-titles");
+  const run = (session_id: string) => {
+    const r = spawnSync("bash", [join(scripts, "session-title.sh")], {
+      input: JSON.stringify({ session_id, prompt: "hi" }),
+      env,
+    });
+    return { code: r.status, out: r.stdout.toString() };
+  };
+
+  test("applies a queued title once, then removes it", () => {
+    mkdirSync(titles(), { recursive: true });
+    writeFileSync(join(titles(), "abc-123"), "FID 82 - A title");
+    const first = run("abc-123");
+    assert.equal(first.code, 0);
+    assert.equal(JSON.parse(first.out).hookSpecificOutput.sessionTitle, "FID 82 - A title");
+    assert.equal(existsSync(join(titles(), "abc-123")), false);
+    assert.deepEqual(run("abc-123"), { code: 0, out: "" });
+  });
+
+  test("ignores a session id that would leave the titles directory", () => {
+    writeFileSync(join(root, ".claude", "x"), "outside");
+    assert.deepEqual(run("../x"), { code: 0, out: "" });
+    assert.equal(existsSync(join(root, ".claude", "x")), true);
+  });
+});
