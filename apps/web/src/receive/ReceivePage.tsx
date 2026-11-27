@@ -106,6 +106,7 @@ import { createRecipientPeer, type OpenPath, type Peer, type PeerOpenInfo } from
 import type { FileOffer, Resumable } from "../lib/receive-file.ts";
 import { ReceiveError, receiveFile } from "../lib/receive-file.ts";
 import {
+  keepsDeadPeer,
   keepsPart,
   peerLostProblem,
   refusedProblem,
@@ -373,7 +374,7 @@ export function ReceivePage({
     // it; wait for it so the message says why.
     const lost = () => {
       // While asking, the dead peer is kept until the sender answers or goes away.
-      if (!current() || attempt.asking) {
+      if (!current() || keepsDeadPeer(attempt)) {
         return;
       }
       if (attempt.saidDiffers) {
@@ -667,6 +668,10 @@ export function ReceivePage({
         attempt.resuming = true;
       }
       attempt.channelOpen = true;
+      if (attempt.asking) {
+        // ICE connected after the waiting view went up: drop the waiting text.
+        setView({ s: "connecting" });
+      }
       let offered: Offer | undefined;
       let timeLeft: ReturnType<typeof etaTracker> | undefined;
       const offerOf = (received: FileOffer): Offer => {

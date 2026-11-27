@@ -250,6 +250,50 @@ test("the relay list: the wrong secret is down, each relay gets its own sealed s
   }
 });
 
+type Alerts = {
+  beeps: number[];
+  notes: { title: string; body?: string; requireInteraction?: boolean; closed: boolean }[];
+};
+/** Records the page's beeps (oscillator starts per gain node) and notifications; the page is "unfocused" and may notify. */
+function recordAlerts() {
+  const alerts: Alerts = { beeps: [], notes: [] };
+  Object.assign(window, { alerts });
+  document.hasFocus = () => false;
+  class FakeAudio {
+    state = "running";
+    currentTime = 0;
+    destination = {};
+    resume = async () => {};
+    createGain = () => {
+      alerts.beeps.push(0);
+      return { gain: { value: 0 }, connect() {} };
+    };
+    createOscillator = () => ({
+      frequency: { value: 0 },
+      connect() {},
+      start: () => {
+        alerts.beeps.push((alerts.beeps.pop() ?? 0) + 1);
+      },
+      stop() {},
+    });
+  }
+  class FakeNotification {
+    static permission = "granted";
+    onclick: unknown;
+    note: Alerts["notes"][number];
+    constructor(title: string, options: { body?: string; requireInteraction?: boolean } = {}) {
+      this.note = { title, ...options, closed: false };
+      alerts.notes.push(this.note);
+    }
+    close() {
+      this.note.closed = true;
+    }
+  }
+  Object.assign(window, { AudioContext: FakeAudio, Notification: FakeNotification });
+}
+const alertsOf = (page: Page) =>
+  page.evaluate(() => (window as unknown as { alerts: Alerts }).alerts);
+
 test("a sender who is asked and allows the relay: no credentials before, the relay after", async ({
   actor,
   observed,
@@ -264,6 +308,7 @@ test("a sender who is asked and allows the relay: no credentials before, the rel
 
   const { context, page: sender } = await actor("sender");
   await context.addInitScript(watchPeers, null);
+  await context.addInitScript(recordAlerts);
   await sender.clock.install();
   await sender.goto("/send");
   await chooseFile(sender, {
@@ -306,6 +351,21 @@ test("a sender who is asked and allows the relay: no credentials before, the rel
   ).toBeVisible();
   await expect(allow).not.toBeFocused();
 
+  // The alerts: one beep now, two a minute later, three five minutes after the ask, with fixed text.
+  const fixed = {
+    title: "A link is waiting for you",
+    body: "It couldn't connect directly. Open Fidant to allow our relay.",
+  };
+  await expect.poll(async () => (await alertsOf(sender)).beeps).toEqual([1]);
+  await sender.clock.fastForward(60_000);
+  await expect.poll(async () => (await alertsOf(sender)).beeps).toEqual([1, 2]);
+  await sender.clock.fastForward(240_000);
+  await expect.poll(async () => (await alertsOf(sender)).beeps).toEqual([1, 2, 3]);
+  const { notes } = await alertsOf(sender);
+  expect(notes.map(({ title, body }) => ({ title, body }))).toEqual([fixed, fixed, fixed]);
+  expect(notes.map((note) => note.requireInteraction)).toEqual([false, false, true]);
+  expect(notes.map((note) => note.closed)).toEqual([true, true, false]);
+
   await expect(recipient.getByRole("button", { name: "Download" })).toHaveCount(0);
   for (const page of [sender, recipient]) {
     const states = await peerList(page, "peerStates");
@@ -338,6 +398,8 @@ test("a sender who is asked and allows the relay: no credentials before, the rel
 
   await allow.click();
   await expect(allow).toHaveCount(0);
+  // Allowing ends the alerts: the open notification closes.
+  await expect.poll(async () => (await alertsOf(sender)).notes[2]?.closed).toBe(true);
   // The grant goes out on `host` before the refusal that ends the waiting attempt.
   const linkId = (await hosts()).at(-1)?.links;
   await expect.poll(async () => (await hosts()).at(-1)?.turnLinks).toEqual(linkId);

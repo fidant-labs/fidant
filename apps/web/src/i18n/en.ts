@@ -1139,11 +1139,11 @@ export const en = {
           },
           relay: {
             heading: "Through our relay",
-            body: "When nothing has connected 3 seconds after the recipient answers and the relay is available, the browsers add our TURN relay in Stockholm. Unless a direct route still wins, the encrypted traffic then goes through the relay, over UDP or over TLS on port 443. The relay forwards packets it can't decrypt and doesn't store them.",
+            body: "When the sender allowed it, the relay is available and nothing has connected 3 seconds after the recipient answers, the browsers add our TURN relay in Stockholm. Unless a direct route still wins, the encrypted traffic then goes through the relay, over UDP or over TLS on port 443. The relay forwards packets it can't decrypt and doesn't store them.",
           },
           norelay: {
-            heading: "Relay refused",
-            body: "The sender can refuse our relay for a send. Our server then gives no relay credentials, and a connection with no direct route fails.",
+            heading: "Relay not allowed",
+            body: "The relay is off unless the sender allows it, for the whole send or for one link when asked. Until then our server gives no relay credentials. A connection with no direct route then waits for the sender to allow the relay if it is available, and fails if not.",
           },
         },
       },
@@ -1302,7 +1302,7 @@ export const en = {
           options: {
             direct: "Directly, with our relay allowed",
             relay: "Through our relay",
-            norelay: "Directly, with our relay refused",
+            norelay: "Directly, with our relay not allowed",
           },
         },
       },

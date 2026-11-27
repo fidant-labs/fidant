@@ -80,6 +80,8 @@ interface Scenario {
   progress?: true;
   /** Share a secret from /secret instead of a file. Not with `progress`. */
   secret?: true;
+  /** Leave the relay unticked: the pages ask, the sender allows, and the recipient joins again alone. */
+  ask?: true;
 }
 
 const scenarios: Scenario[] = [
@@ -103,6 +105,14 @@ const scenarios: Scenario[] = [
     recipient: "b1",
     routerB: "symmetric",
     path: /relay/,
+  },
+  {
+    title: "symmetric NAT, relay off until the sender allows it",
+    sender: "a1",
+    recipient: "b1",
+    routerB: "symmetric",
+    path: /relay/,
+    ask: true,
   },
   {
     title: "UDP blocked",
@@ -357,7 +367,9 @@ for (const row of scenarios) {
           buffer: file.bytes,
         });
       }
-      await allowRelay(sender.page);
+      if (!row.ask) {
+        await allowRelay(sender.page);
+      }
       await sender.page.getByLabel("Who is it for?").fill(name);
       await sender.page.getByRole("button", { name: "Create link", exact: true }).click();
       const link =
@@ -367,6 +379,19 @@ for (const row of scenarios) {
       const recipient = await actor("recipient");
       await recordPeerConnections(recipient.context);
       await recipient.page.goto(link);
+      if (row.ask) {
+        // Real timers: both pages give up on a direct path 3 s after the answer.
+        await expect(
+          recipient.page.getByText(
+            "Couldn't connect directly. Waiting for the sender to allow our relay.",
+          ),
+        ).toBeVisible({ timeout: 30_000 });
+        await expect(recipient.page.getByRole("button", { name: "Try again" })).toHaveCount(0);
+        await sender.page
+          .getByRole("button", { name: `Allow our relay for ${name}`, exact: true })
+          .click({ timeout: 30_000 });
+        // From here the recipient presses nothing before Download.
+      }
       if (row.secret) {
         const show = recipient.page.getByRole("button", { name: "Show", exact: true });
         await expect(show).toBeVisible({ timeout: 45_000 });
@@ -408,6 +433,66 @@ for (const row of scenarios) {
     });
   });
 }
+
+// No relay up: the server offers one only after its checks fail twice in a row, a minute apart,
+// so this waits for that and then waits for the checks to find coturn again.
+test.describe("no relay up", () => {
+  test.use({
+    remoteBrowsers: { sender: remoteBrowsers.a1, recipient: remoteBrowsers.b1 },
+  });
+
+  test("shows no ask, and both pages say the relay wasn't used", async ({
+    actor,
+    leaks,
+    canary,
+  }) => {
+    test.setTimeout(360_000);
+    const status = async () =>
+      JSON.parse(
+        await inRelay("curl", "-sk", "--max-time", "10", `https://${serverIp}/relay-status`),
+      ) as { id: string; up: boolean }[];
+    const someUp = async () => (await status()).some((relay) => relay.up);
+    try {
+      await routerMode("router-b", "symmetric");
+      await pauseRelay();
+      await expect.poll(someUp, { timeout: 150_000, intervals: [5_000] }).toBe(false);
+      const file = leaks.watch(canaryFile(canary.fork("file"), { size: 300_001 }));
+      const name = makeName(leaks, canary, "Anna");
+
+      const sender = await actor("sender");
+      await sender.page.goto("/send");
+      await chooseFile(sender.page, { name: file.name, mimeType: file.mime, buffer: file.bytes });
+      await sender.page.getByLabel("Who is it for?").fill(name);
+      await sender.page.getByRole("button", { name: "Create link", exact: true }).click();
+      const link =
+        (await sender.page.getByLabel(`Link for ${name}`, { exact: true }).textContent()) ?? "";
+      leaks.watchKey("link secret", new URL(link).hash.slice(1));
+
+      const recipient = await actor("recipient");
+      await recipient.page.goto(link);
+      // The sender's 20 s setup timeout ends the attempt.
+      await expect(
+        sender.page
+          .getByRole("list", { name: "Recipients" })
+          .getByText(
+            `${name}'s link was opened but couldn't connect directly, and our relay isn't available right now.`,
+          ),
+      ).toBeVisible({ timeout: 45_000 });
+      await expect(
+        recipient.page.getByText("Couldn't connect directly to the sender", { exact: true }),
+      ).toBeVisible({ timeout: 30_000 });
+      await expect(
+        sender.page.getByRole("button", { name: `Allow our relay for ${name}`, exact: true }),
+      ).toHaveCount(0);
+      await expect(
+        recipient.page.getByText("Waiting for the sender to allow our relay."),
+      ).toHaveCount(0);
+    } finally {
+      await resumeRelay();
+      await expect.poll(someUp, { timeout: 120_000, intervals: [5_000] }).toBe(true);
+    }
+  });
+});
 
 /**
  * One `journalctl -o json --all` entry. MESSAGE is a byte array when it is not valid UTF-8 text;

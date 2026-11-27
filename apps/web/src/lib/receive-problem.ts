@@ -35,6 +35,14 @@ export function waitsForRelay(attempt: {
   return attempt.relayUp === true && !attempt.channelOpen;
 }
 
+/** Whether a dead peer is kept while the sender is asked: only before the channel opens, since a late ICE connect leaves `asking` set (decision 0028). */
+export function keepsDeadPeer(attempt: {
+  asking?: boolean | undefined;
+  channelOpen: boolean;
+}): boolean {
+  return attempt.asking === true && !attempt.channelOpen;
+}
+
 /**
  * What `refused` with `turn` does: nothing once the channel is open, else a new attempt, and after
  * `max` such restarts the failure view. Our server forwards the message and so can forge it, which

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  keepsDeadPeer,
   keepsPart,
   peerLostProblem,
   refusedProblem,
@@ -102,4 +103,10 @@ test("turnRefused restarts a bounded number of times and never once the channel 
   assert.equal(turnRefused({ channelOpen: false }, 4, 4), "fail");
   assert.equal(turnRefused({ channelOpen: true }, 0, 4), "ignore");
   assert.equal(turnRefused({ channelOpen: true }, 4, 4), "ignore");
+});
+
+test("keepsDeadPeer holds only while asking and the channel never opened", () => {
+  assert.equal(keepsDeadPeer({ asking: true, channelOpen: false }), true);
+  assert.equal(keepsDeadPeer({ asking: true, channelOpen: true }), false);
+  assert.equal(keepsDeadPeer({ channelOpen: false }), false);
 });

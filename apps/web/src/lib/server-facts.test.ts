@@ -115,7 +115,7 @@ test("senderHolds names the links the sender allowed our relay for", () => {
   );
   assert.equal(
     sv.server.senderHolds({ ...asked, granted: 2 }),
-    "ID:na för dina 3 länkar, aldrig den del som låser upp filen. Ditt val att inte tillåta vårt relä. De 2 länkar du tillät det för.",
+    "ID:na för dina 3 länkar, aldrig den del som låser upp filen. Ditt val att inte tillåta vårt relä. De 2 länkarna du tillät det för.",
   );
 });
 

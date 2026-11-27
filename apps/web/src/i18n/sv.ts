@@ -697,7 +697,7 @@ export const sv: Messages = {
           ? ""
           : granted === 1
             ? " Länken du tillät det för."
-            : ` De ${granted} länkar du tillät det för.`;
+            : ` De ${granted} länkarna du tillät det för.`;
       const choice = `${relay ? "Ditt val att tillåta vårt relä." : "Ditt val att inte tillåta vårt relä."}${grants}`;
       const counts = mailed
         ? " Antalet mejl den skickade åt dig, i förvrängd form, i upp till en timme."
@@ -1092,11 +1092,11 @@ export const sv: Messages = {
           },
           relay: {
             heading: "Via vårt relä",
-            body: "När ingen anslutning har kommit till stånd 3 sekunder efter att mottagaren har svarat och reläet är tillgängligt, lägger webbläsarna till vårt TURN-relä i Stockholm. Om inte en direkt väg ändå vinner går den krypterade trafiken sedan via reläet, över UDP eller över TLS på port 443. Reläet för vidare paket som det inte kan dekryptera och sparar dem inte.",
+            body: "När avsändaren har tillåtit det, reläet är tillgängligt och ingen anslutning har kommit till stånd 3 sekunder efter att mottagaren har svarat, lägger webbläsarna till vårt TURN-relä i Stockholm. Om inte en direkt väg ändå vinner går den krypterade trafiken sedan via reläet, över UDP eller över TLS på port 443. Reläet för vidare paket som det inte kan dekryptera och sparar dem inte.",
           },
           norelay: {
-            heading: "Reläet nekat",
-            body: "Avsändaren kan neka vårt relä för en sändning. Vår server ger då inga inloggningsuppgifter till reläet, och en anslutning utan direkt väg misslyckas.",
+            heading: "Reläet inte tillåtet",
+            body: "Reläet är avstängt tills avsändaren tillåter det, för hela sändningen eller för en länk när avsändaren tillfrågas. Till dess ger vår server inga inloggningsuppgifter till reläet. En anslutning utan direkt väg väntar då på att avsändaren tillåter reläet om det är tillgängligt, och misslyckas annars.",
           },
         },
       },
@@ -1255,7 +1255,7 @@ export const sv: Messages = {
           options: {
             direct: "Direkt, med vårt relä tillåtet",
             relay: "Via vårt relä",
-            norelay: "Direkt, med vårt relä avböjt",
+            norelay: "Direkt, med vårt relä inte tillåtet",
           },
         },
       },
