@@ -215,7 +215,7 @@ test("release.yml and deploy-infra.yml queue in one group without cancelling", (
   assert.doesNotMatch(workflow, /concurrency:/);
 });
 
-test("release.yml only calls release-jobs.yml on main by its full path, the one file the release role trusts, and passes it only the account", () => {
+test("release.yml only calls release-jobs.yml on the branch main by its full path and passes it only the account", () => {
   const doc = load(caller) as Record<string, unknown>;
   assert.deepEqual(doc.on, { push: { branches: ["production"] } });
   assert.deepEqual(doc.permissions, {});
