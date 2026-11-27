@@ -24,6 +24,19 @@
 //   lost its signaling connection), so then `host-gone` is only remembered: if
 //   the sender's tab really closed, the peer drops too (at the latest when ICE
 //   consent runs out) and the drop is reported as the sender's page closing.
+// - If the connection drops after the data channel opened, the peer says so
+//   (onStalled) and the page sends the same `join` again on the same socket,
+//   with the same attempt ID and token (decision 0028). It doesn't once the
+//   attempt has ended, the transfer has stopped, the signaling socket is gone
+//   or `host-gone` came: joining the sender's new socket would be a new
+//   pairing. The `joined` that answers goes to the peer (rejoined), which
+//   restarts ICE with the sender on the same connection; its ICE servers are
+//   kept nowhere else. The path shown follows the peer (onPath). Once the
+//   channel is open, the answers a repeated `join` can get instead never end
+//   the transfer: `refused` with `busy` (the server's cap, or an older
+//   sender's page), any `refused` after `host-gone`, a `gate`, and an older
+//   server's `error`. The page shows nothing new; the progress stops until the
+//   connection is back, or the peer gives up and the attempt ends as lost.
 // - If the signaling socket drops before the data channel opens, a new
 //   attempt starts (new socket, new attempt ID), unless this page already
 //   answered the sender's offer: the answer gave anyone in the middle this
@@ -365,6 +378,16 @@ export function ReceivePage({
         setTimeout(() => finish({ s: "failed", problem: lostMessage() }), HOST_GONE_GRACE_MS),
       );
     };
+    // A short transfer can end before the path resolves, so this checks the attempt, not current().
+    const showPath = (resolved: OpenPath) => {
+      if (attemptRef.current !== attempt) {
+        return;
+      }
+      setPath(resolved);
+      if (resolved === "relay") {
+        setViaRelay(true);
+      }
+    };
     const outdated = (reason: "outdated" | "peer-outdated") =>
       finish({ s: "refused", problem: reason === "outdated" ? "outdated" : "senderOutdated" });
     // Without it, a sender whose signals never arrive leaves "Connecting…" up for good.
@@ -454,7 +477,8 @@ export function ReceivePage({
     signaling.subscribe((message) => {
       switch (message.t) {
         case "gate": {
-          if (!current() || message.link !== linkId) {
+          // Once the channel is open, a `gate` can only answer a repeated `join`, and the transfer goes on without it.
+          if (!current() || message.link !== linkId || attempt.channelOpen) {
             break;
           }
           if (joinSent) {
@@ -519,11 +543,15 @@ export function ReceivePage({
         case "joined":
           if (
             !current() ||
-            attempt.peer ||
             !signalKey ||
             message.link !== linkId ||
             message.attempt !== attemptId
           ) {
+            break;
+          }
+          if (attempt.peer) {
+            // The answer to a repeated `join`. The peer ignores one it never asked for.
+            attempt.peer.rejoined(message.iceServers);
             break;
           }
           setTie("paired");
@@ -535,17 +563,16 @@ export function ReceivePage({
             signalKey,
             iceServers: message.iceServers,
             onOpen: (channel, info) => {
-              // A short transfer can end before the path resolves, so this checks the attempt, not current().
-              void info.path.then((resolved) => {
-                if (attemptRef.current !== attempt) {
-                  return;
-                }
-                setPath(resolved);
-                if (resolved === "relay") {
-                  setViaRelay(true);
-                }
-              });
+              void info.path.then(showPath);
               onOpen(channel, info);
+            },
+            onPath: showPath,
+            // The same `join` again, token included (decision 0028). After `host-gone` it would
+            // be a new pairing with the sender's new socket, so then nothing is sent.
+            onStalled: () => {
+              if (current() && !attempt.hostGone && !attempt.abort.signal.aborted) {
+                join(joinToken);
+              }
             },
             onClose: (reason) =>
               reason === "unsupported"
@@ -563,6 +590,13 @@ export function ReceivePage({
           // A refusal after the sender's first signal means the sender gave up
           // on this attempt (its peer failed or never connected), not that the
           // link is in use or used: the sender only signals a join it took.
+          // Once the channel is open, `busy` answers a repeated `join` (the server's cap, or
+          // an older sender's page), and so does any refusal after `host-gone`: the sender's
+          // socket is gone, so it is the server's answer to a `join` that crossed it. The
+          // transfer goes on without the server.
+          if (attempt.channelOpen && (message.reason === "busy" || attempt.hostGone)) {
+            break;
+          }
           if (attempt.saidDiffers) {
             finish({ s: "failed", problem: "differed" });
           } else if (attempt.heardSender) {
