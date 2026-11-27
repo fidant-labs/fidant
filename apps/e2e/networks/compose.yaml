@@ -9,18 +9,18 @@
 # Each browser-xx shares the network namespace of net-xx, whose default route is its site's
 # router. The routers NAT onto public, which has no way out, so nothing reaches the internet.
 #
-# Environment: PLAYWRIGHT_VERSION, SIGILL_E2E_REPO (repo path on the host),
-# SIGILL_E2E_RUN_DIR (observations/run), SIGILL_E2E_COTURN_DIR (holds turnserver.conf and the TLS certificate,
+# Environment: PLAYWRIGHT_VERSION, FIDANT_E2E_REPO (repo path on the host),
+# FIDANT_E2E_RUN_DIR (observations/run), FIDANT_E2E_COTURN_DIR (holds turnserver.conf and the TLS certificate,
 # and signal.env and signal-relays.json for signal),
-# SIGILL_E2E_BOX_DIR (the box's config files at their paths under /),
-# SIGILL_E2E_RELAY_DIR (the relay's install.sh inputs in env, and its TLS pair in tls/),
-# SIGILL_E2E_PAGES_DIR (the web build made with SIGNALS_FILE, as the release uploads it),
-# SIGILL_E2E_UID and SIGILL_E2E_GID (the host user, so files in the run dir stay theirs).
-name: sigill-e2e
+# FIDANT_E2E_BOX_DIR (the box's config files at their paths under /),
+# FIDANT_E2E_RELAY_DIR (the relay's install.sh inputs in env, and its TLS pair in tls/),
+# FIDANT_E2E_PAGES_DIR (the web build made with SIGNALS_FILE, as the release uploads it),
+# FIDANT_E2E_UID and FIDANT_E2E_GID (the host user, so files in the run dir stay theirs).
+name: fidant-e2e
 
 networks:
   public:
-    name: sigill-e2e-public
+    name: fidant-e2e-public
     internal: true
     ipam:
       config:
@@ -37,14 +37,14 @@ networks:
       config:
         - subnet: 10.89.2.0/24
   lb:
-    name: sigill-e2e-lb
+    name: fidant-e2e-lb
     internal: true
     ipam:
       config:
         - subnet: 10.89.3.0/24
 
 x-tools: &tools
-  image: sigill-e2e-net
+  image: fidant-e2e-net
   build: .
   cap_add: [NET_ADMIN]
   init: true
@@ -77,8 +77,8 @@ x-browser: &browser
   init: true
   shm_size: 1gb
   volumes:
-    - ${SIGILL_E2E_REPO:?}:${SIGILL_E2E_REPO:?}:ro
-  working_dir: ${SIGILL_E2E_REPO:?}
+    - ${FIDANT_E2E_REPO:?}:${FIDANT_E2E_REPO:?}:ro
+  working_dir: ${FIDANT_E2E_REPO:?}
   # --unsafe keeps the launch args the tests send, such as --host-resolver-rules.
   command:
     - node
@@ -139,18 +139,18 @@ services:
     network_mode: service:net-b1
 
   coturn:
-    image: sigill-e2e-coturn
+    image: fidant-e2e-coturn
     build: coturn
-    user: ${SIGILL_E2E_UID:?}:${SIGILL_E2E_GID:?}
+    user: ${FIDANT_E2E_UID:?}:${FIDANT_E2E_GID:?}
     # Replaces the image's default command, which looks up the external IP on the internet.
     command: ["-c", "/etc/sigill/turnserver.conf"]
     # TURN over TLS on 443 without root. Namespaced, so the host keeps its own setting.
     sysctls:
       net.ipv4.ip_unprivileged_port_start: 0
     volumes:
-      - ${SIGILL_E2E_COTURN_DIR:?}:/etc/sigill:ro
+      - ${FIDANT_E2E_COTURN_DIR:?}:/etc/sigill:ro
       # At its host path, so the log-file path in turnserver.conf is the same on both sides.
-      - ${SIGILL_E2E_RUN_DIR:?}:${SIGILL_E2E_RUN_DIR:?}
+      - ${FIDANT_E2E_RUN_DIR:?}:${FIDANT_E2E_RUN_DIR:?}
     networks:
       public: { ipv4_address: 198.51.100.20 }
 
@@ -163,10 +163,10 @@ services:
     cap_add: [NET_RAW, NET_ADMIN]
     network_mode: service:coturn
     environment:
-      PCAP: ${SIGILL_E2E_RUN_DIR:?}/coturn.pcap
-      OWNER: ${SIGILL_E2E_UID:?}:${SIGILL_E2E_GID:?}
+      PCAP: ${FIDANT_E2E_RUN_DIR:?}/coturn.pcap
+      OWNER: ${FIDANT_E2E_UID:?}:${FIDANT_E2E_GID:?}
     volumes:
-      - ${SIGILL_E2E_RUN_DIR:?}:${SIGILL_E2E_RUN_DIR:?}
+      - ${FIDANT_E2E_RUN_DIR:?}:${FIDANT_E2E_RUN_DIR:?}
     command:
       - sh
       - -c
@@ -180,14 +180,14 @@ services:
   # The POC box: systemd with the app server, HAProxy, Caddy, coturn and rsyslog, configured from the
   # rendered user data (box/Dockerfile). The browsers reach it as fidant.se and turn.fidant.se.
   box:
-    image: sigill-e2e-box
+    image: fidant-e2e-box
     build: box
     privileged: true
     tmpfs: [/run, /run/lock]
     volumes:
       # sigill.service's WorkingDirectory, as the release symlink is on the box.
-      - ${SIGILL_E2E_REPO:?}:/opt/sigill/current:ro
-      - ${SIGILL_E2E_BOX_DIR:?}:/box:ro
+      - ${FIDANT_E2E_REPO:?}:/opt/sigill/current:ro
+      - ${FIDANT_E2E_BOX_DIR:?}:/box:ro
     networks:
       public: { ipv4_address: 198.51.100.30 }
     healthcheck:
@@ -201,13 +201,13 @@ services:
 
   # The relay box: a new Ubuntu server that runs apps/infra/relay/install.sh at boot (relay/Dockerfile).
   relay:
-    image: sigill-e2e-relay
+    image: fidant-e2e-relay
     build: relay
     privileged: true
     tmpfs: [/run, /run/lock]
     volumes:
-      - ${SIGILL_E2E_REPO:?}/apps/infra/relay/install.sh:/relay/install.sh:ro
-      - ${SIGILL_E2E_RELAY_DIR:?}:/relay-config:ro
+      - ${FIDANT_E2E_REPO:?}/apps/infra/relay/install.sh:/relay/install.sh:ro
+      - ${FIDANT_E2E_RELAY_DIR:?}:/relay-config:ro
     networks:
       public: { ipv4_address: 198.51.100.40 }
     healthcheck:
@@ -218,15 +218,15 @@ services:
       retries: 90
 
   signal:
-    image: sigill-e2e-signal
+    image: fidant-e2e-signal
     build:
-      context: ${SIGILL_E2E_REPO:?}
+      context: ${FIDANT_E2E_REPO:?}
       dockerfile: apps/server/Dockerfile
     read_only: true
     # Docker Desktop makes a bare tmpfs root's, and the server then can't write to it.
     tmpfs: ["/run/sigill:uid=1000,gid=1000,mode=700"]
     # No healthcheck: its exec would inherit RELAY_MASTER, which this file holds.
-    env_file: ${SIGILL_E2E_COTURN_DIR:?}/signal.env
+    env_file: ${FIDANT_E2E_COTURN_DIR:?}/signal.env
     environment:
       SIGNALING_ONLY: "1"
       PUBLIC_ORIGIN: https://fidant.se
@@ -237,37 +237,37 @@ services:
       STUN_URLS: stun:198.51.100.20:3478
       HTTP_KEEP_ALIVE_MS: "125000"
     volumes:
-      - ${SIGILL_E2E_COTURN_DIR:?}/signal-relays.json:/config/relays.json:ro
+      - ${FIDANT_E2E_COTURN_DIR:?}/signal-relays.json:/config/relays.json:ro
     networks:
       lb: { ipv4_address: 10.89.3.10 }
 
   alb:
-    image: sigill-e2e-alb
+    image: fidant-e2e-alb
     build: alb
     volumes:
-      - ${SIGILL_E2E_COTURN_DIR:?}/turn.crt:/etc/alb/tls.crt:ro
-      - ${SIGILL_E2E_COTURN_DIR:?}/turn.key:/etc/alb/tls.key:ro
+      - ${FIDANT_E2E_COTURN_DIR:?}/turn.crt:/etc/alb/tls.crt:ro
+      - ${FIDANT_E2E_COTURN_DIR:?}/turn.key:/etc/alb/tls.key:ro
     networks:
       public: { ipv4_address: 198.51.100.50 }
       lb: { ipv4_address: 10.89.3.2 }
 
   # The pages CDN stand-in: apps/infra/edge/site.js over the pages build, /relay-secret/* to alb.
   pages:
-    image: sigill-e2e-node
+    image: fidant-e2e-node
     build:
       context: box
       target: node
-    user: ${SIGILL_E2E_UID:?}:${SIGILL_E2E_GID:?}
+    user: ${FIDANT_E2E_UID:?}:${FIDANT_E2E_GID:?}
     init: true
     sysctls:
       net.ipv4.ip_unprivileged_port_start: 0
-    working_dir: ${SIGILL_E2E_REPO:?}
+    working_dir: ${FIDANT_E2E_REPO:?}
     command: ["node", "apps/e2e/networks/pages/serve.ts"]
     volumes:
-      - ${SIGILL_E2E_REPO:?}:${SIGILL_E2E_REPO:?}:ro
-      - ${SIGILL_E2E_PAGES_DIR:?}:/pages:ro
-      - ${SIGILL_E2E_COTURN_DIR:?}/turn.crt:/etc/pages/tls.crt:ro
-      - ${SIGILL_E2E_COTURN_DIR:?}/turn.key:/etc/pages/tls.key:ro
+      - ${FIDANT_E2E_REPO:?}:${FIDANT_E2E_REPO:?}:ro
+      - ${FIDANT_E2E_PAGES_DIR:?}:/pages:ro
+      - ${FIDANT_E2E_COTURN_DIR:?}/turn.crt:/etc/pages/tls.crt:ro
+      - ${FIDANT_E2E_COTURN_DIR:?}/turn.key:/etc/pages/tls.key:ro
     networks:
       public: { ipv4_address: 198.51.100.60 }
     healthcheck:

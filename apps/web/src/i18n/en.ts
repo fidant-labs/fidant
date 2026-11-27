@@ -1,7 +1,7 @@
 // English text. sv.ts must have the same keys; messages.test.ts checks it.
 // Plain strings, or functions for text with numbers or names in it.
 
-import type { LogFields } from "@sigill/protocol";
+import type { LogFields } from "@fidant/protocol";
 import type { Line } from "../how/traces.ts";
 import type { Kind, Tie } from "../lib/server-facts.ts";
 
@@ -10,7 +10,7 @@ export type Place = { name: string; kept: string; never: string; lines: readonly
 
 // Every field a server log line can carry (plus `event`, which names the log line), with what it is
 // and why we keep it. Keyed by LogFields, so a new field fails the typecheck until it is described
-// here and in sv.ts. Event names are typed by LogEvent in @sigill/protocol.
+// here and in sv.ts. Event names are typed by LogEvent in @fidant/protocol.
 const logFields: Record<"event" | keyof LogFields, readonly [string, string]> = {
   event: [
     "what happened, like a link being opened or a connection being refused",
@@ -839,14 +839,14 @@ export const en = {
         body: [
           "All the code that runs this site is public under the MIT license. Every claim on the privacy and security pages can be checked against it, and you can run your own copy.",
         ],
-        link: ["The code on GitHub", "https://github.com/sigill-labs/sigill"],
+        link: ["The code on GitHub", "https://github.com/fidant-labs/fidant"],
       },
       {
         heading: "Contact",
         body: [
           "Questions, bugs and ideas go in the project's issue tracker. Issues are public, so never post files, links or personal details there. To report a security problem, follow the security page instead.",
         ],
-        link: ["Open an issue", "https://github.com/sigill-labs/sigill/issues"],
+        link: ["Open an issue", "https://github.com/fidant-labs/fidant/issues"],
       },
     ] as Sections,
   },
@@ -876,7 +876,7 @@ export const en = {
       {
         heading: "Changes",
         body: ["These terms can change. Every change is visible in the project's public history."],
-        link: ["History of this text", "https://github.com/sigill-labs/sigill/commits/main"],
+        link: ["History of this text", "https://github.com/fidant-labs/fidant/commits/main"],
       },
     ] as Sections,
   },
@@ -912,7 +912,7 @@ export const en = {
         ],
         link: [
           "Report privately on GitHub",
-          "https://github.com/sigill-labs/sigill/security/advisories/new",
+          "https://github.com/fidant-labs/fidant/security/advisories/new",
         ],
       },
     ] as Sections,
@@ -927,7 +927,7 @@ export const en = {
           "There are no accounts, no file storage and no database of people or transfers. The server holds what it knows about pages and transfers only in memory. On disk the server keeps secrets of its own, among them the one the relay's secret comes from. The relay keeps its current and previous secret in a small database file.",
           "All of it is open source, so every statement on this page can be checked against the code.",
         ],
-        link: ["The code on GitHub", "https://github.com/sigill-labs/sigill"],
+        link: ["The code on GitHub", "https://github.com/fidant-labs/fidant"],
       },
       link: {
         heading: "The link",
@@ -1080,7 +1080,7 @@ export const en = {
         ],
         link: [
           "The design records on GitHub",
-          "https://github.com/sigill-labs/sigill/tree/main/docs/decisions",
+          "https://github.com/fidant-labs/fidant/tree/main/docs/decisions",
         ],
       },
     } satisfies Record<string, Section>,
@@ -1703,7 +1703,7 @@ export const en = {
     checkLinks: [
       ["How it works, step by step", "/how"],
       ["What is seen and kept at each step", "/how/traces"],
-      ["The code on GitHub", "https://github.com/sigill-labs/sigill"],
+      ["The code on GitHub", "https://github.com/fidant-labs/fidant"],
     ] as ReadonlyArray<readonly [string, string]>,
     contactHeading: "Contact",
     contact:

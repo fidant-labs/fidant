@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { maskAddress } from "@fidant/protocol";
 import type { Download, Locator, Page } from "@playwright/test";
-import { maskAddress } from "@sigill/protocol";
 import {
   breakableSender,
   canaryFile,
@@ -329,7 +329,7 @@ test("a sender whose connection setup fails logs why and lets the recipient try 
     (await observed("sender").records()).flatMap((r) => (r.type === "console" ? [r.text] : []));
   await expect
     .poll(logged)
-    .toContain("sigill: sender dropped a connection: setup-failed (OperationError)");
+    .toContain("fidant: sender dropped a connection: setup-failed (OperationError)");
   expect((await logged()).filter((text) => text.includes("injected"))).toEqual([]);
 
   const refusals = async () =>
@@ -1048,7 +1048,7 @@ test.describe("a hostile path", () => {
     await recipient.goto(link);
     await expect
       .poll(warnings, { timeout: 10_000 })
-      .toContain("sigill: sender dropped a connection: bad-signal");
+      .toContain("fidant: sender dropped a connection: bad-signal");
     await failed(sender, name);
     expect(reflected, "reflected the offer").toBe(true);
   });
@@ -1100,7 +1100,7 @@ test.describe("a hostile path", () => {
     await recipient.goto(link);
     await expect
       .poll(warnings, { timeout: 10_000 })
-      .toContain("sigill: sender dropped a connection: bad-signal");
+      .toContain("fidant: sender dropped a connection: bad-signal");
     await failed(sender, name);
     expect(kinds, "the sender took the swapped commit and offered").toContain("offer");
   });
@@ -1110,7 +1110,7 @@ test.describe("a hostile path", () => {
     leaks,
     canary,
   }) => {
-    test.skip(!process.env.SIGILL_E2E_MAILPIT, "needs Mailpit");
+    test.skip(!process.env.FIDANT_E2E_MAILPIT, "needs Mailpit");
     const middle = await interpose(await demo.open("middle"));
     const sender = await openSender(demo, makeFile(leaks, canary, 100_001), "", (page) =>
       middle.takeOver(page, "sender"),
@@ -1208,7 +1208,7 @@ test.describe("safety number", () => {
     leaks,
     canary,
   }) => {
-    test.skip(!process.env.SIGILL_E2E_MAILPIT, "needs Mailpit");
+    test.skip(!process.env.FIDANT_E2E_MAILPIT, "needs Mailpit");
     const file = makeFile(leaks, canary, 100_001);
     const sender = await openSender(demo, file);
     const name = makeName(leaks, canary, "Anna");
@@ -1469,7 +1469,7 @@ test.describe("safety number", () => {
   });
 
   test("a recipient page ignores a token it didn't ask for", async ({ demo, leaks, canary }) => {
-    test.skip(!process.env.SIGILL_E2E_MAILPIT, "needs Mailpit");
+    test.skip(!process.env.FIDANT_E2E_MAILPIT, "needs Mailpit");
     const sender = await openSender(demo, makeFile(leaks, canary, 10));
     const name = makeName(leaks, canary, "Anna");
     const emailed = await addEmailed(leaks, sender, name, addressFor(canary, "Anna"), "", true);
@@ -1894,7 +1894,7 @@ function hostPlain(page: Page, link: string, attempt: string): Promise<string> {
 }
 
 test.describe("emailed links", () => {
-  test.skip(!process.env.SIGILL_E2E_MAILPIT, "needs Mailpit");
+  test.skip(!process.env.FIDANT_E2E_MAILPIT, "needs Mailpit");
 
   test("a recipient enters the emailed code and gets the file", async ({
     demo,
@@ -2128,7 +2128,7 @@ harness(
     const hello = async () => await messages(observed, "sender", "hello", "frame-received");
     await expect.poll(async () => (await hello()).length).toBe(1);
     const mail = (await hello())[0]?.mail;
-    expect(mail).toBe(Boolean(process.env.SIGILL_E2E_MAILPIT));
+    expect(mail).toBe(Boolean(process.env.FIDANT_E2E_MAILPIT));
     // The add form shows once a file is chosen. The address field appears only once the sender
     // chooses to have the link emailed.
     await chooseFile(page, {

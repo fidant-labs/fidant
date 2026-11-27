@@ -1,5 +1,5 @@
 {
-  "name": "sigill",
+  "name": "fidant",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -8,9 +8,9 @@
     "node": ">=26"
   },
   "scripts": {
-    "start": "pnpm run build && pnpm --filter @sigill/server start",
-    "e2e": "pnpm run build && pnpm --filter @sigill/e2e e2e",
-    "e2e:networks": "pnpm run build && pnpm --filter @sigill/e2e e2e:networks",
+    "start": "pnpm run build && pnpm --filter @fidant/server start",
+    "e2e": "pnpm run build && pnpm --filter @fidant/e2e e2e",
+    "e2e:networks": "pnpm run build && pnpm --filter @fidant/e2e e2e:networks",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build",
     "build": "pnpm -r --if-present run build",
     "lint": "biome ci .",
@@ -18,7 +18,7 @@
     "typecheck": "pnpm -r --if-present run typecheck",
     "test": "node --test '.claude/scripts/*.test.ts' && pnpm -r --if-present run test",
     "prepare": "lefthook install",
-    "lighthouse": "pnpm --filter @sigill/web build && pnpm --filter @sigill/web lighthouse"
+    "lighthouse": "pnpm --filter @fidant/web build && pnpm --filter @fidant/web lighthouse"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.8",

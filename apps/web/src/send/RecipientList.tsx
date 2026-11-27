@@ -10,7 +10,7 @@
 // address, not the person, because whoever opens a link may not be the person
 // it was made for.
 
-import { maskAddress } from "@sigill/protocol";
+import { maskAddress } from "@fidant/protocol";
 import { useEffect, useId, useRef, useState } from "preact/hooks";
 import { Button } from "#components/ui/button";
 import { Card, CardContent } from "#components/ui/card";

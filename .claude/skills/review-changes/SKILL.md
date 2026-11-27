@@ -1,7 +1,7 @@
 ---
 
 name: review-changes
-description: Sigill's review flow. Use before calling a code change done, before opening a pull request, and before pushing finished work to an open pull request. Runs parallel reviewer agents over the branch diff, verifies their findings, and fixes blockers and majors in a loop until none remain. A hook blocks `gh pr create` until this flow marks the diff clean.
+description: Fidant's review flow. Use before calling a code change done, before opening a pull request, and before pushing finished work to an open pull request. Runs parallel reviewer agents over the branch diff, verifies their findings, and fixes blockers and majors in a loop until none remain. A hook blocks `gh pr create` until this flow marks the diff clean.
 ---
 
 # Review changes

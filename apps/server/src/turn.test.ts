@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { parseIceServers } from "@sigill/protocol";
+import { parseIceServers } from "@fidant/protocol";
 import { chooseIce, iceServersFor, turnCredentials } from "./turn.ts";
 
 const userData = readFileSync(new URL("../../infra/box/user-data.sh", import.meta.url), "utf8");

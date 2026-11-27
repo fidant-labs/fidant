@@ -3,7 +3,7 @@
 ## Reporting a vulnerability
 
 Please report security problems privately through GitHub, not in a public issue:
-[report a vulnerability](https://github.com/sigill-labs/sigill/security/advisories/new). We'll reply there.
+[report a vulnerability](https://github.com/fidant-labs/fidant/security/advisories/new). We'll reply there.
 
 Don't include real files, transfer links or personal data in a report.
 

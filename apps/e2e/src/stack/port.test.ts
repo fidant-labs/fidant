@@ -23,7 +23,7 @@ test("ignores other events and invalid ports", () => {
 
 test("ignores garbage and other hosts", () => {
   assert.equal(parsePort(""), undefined);
-  assert.equal(parsePort("Sigill is running."), undefined);
+  assert.equal(parsePort("Fidant is running."), undefined);
   assert.equal(parsePort("  https://192.168.1.10:8443"), undefined);
   assert.equal(parsePort("http://localhost:8443"), undefined);
   assert.equal(parsePort("{not json"), undefined);

@@ -22,7 +22,7 @@ import {
   RETRY_MAX_MS,
   SERVICE_RESTART,
   type ServerMessage,
-} from "@sigill/protocol";
+} from "@fidant/protocol";
 import { signalingUrl } from "./signaling-list.ts";
 
 export type SignalingClose = {
@@ -134,7 +134,7 @@ export function connectSignaling({
     next.addEventListener("message", (event: MessageEvent) => {
       const message = typeof event.data === "string" ? parseServerMessage(event.data) : undefined;
       if (!message) {
-        console.warn("sigill: ignored an invalid signaling message");
+        console.warn("fidant: ignored an invalid signaling message");
         return;
       }
       if (message.t === "relay") {

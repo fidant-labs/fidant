@@ -1,4 +1,4 @@
-import type { EmailMessage } from "@sigill/protocol";
+import type { EmailMessage } from "@fidant/protocol";
 import { createTransport } from "nodemailer";
 
 type Lang = EmailMessage["lang"];

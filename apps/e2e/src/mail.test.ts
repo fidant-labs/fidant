@@ -31,13 +31,13 @@ test("saves each message Mailpit holds once and deletes only the saved ones", as
     }
   });
   await new Promise<void>((resolve) => mailpit.listen(0, "127.0.0.1", resolve));
-  const dir = await mkdtemp(join(tmpdir(), "sigill-e2e-mail-test-"));
+  const dir = await mkdtemp(join(tmpdir(), "fidant-e2e-mail-test-"));
   t.after(async () => {
-    delete process.env.SIGILL_E2E_MAILPIT;
+    delete process.env.FIDANT_E2E_MAILPIT;
     mailpit.close();
     await rm(dir, { recursive: true, force: true });
   });
-  process.env.SIGILL_E2E_MAILPIT = `http://127.0.0.1:${(mailpit.address() as AddressInfo).port}`;
+  process.env.FIDANT_E2E_MAILPIT = `http://127.0.0.1:${(mailpit.address() as AddressInfo).port}`;
   const mailDir = join(dir, "mail");
   await mkdir(mailDir);
   await writeFile(join(mailDir, "A1.eml"), "saved before");
@@ -53,7 +53,7 @@ test("saves each message Mailpit holds once and deletes only the saved ones", as
   await deleteSavedMail(dir);
   assert.deepEqual(deleted, [["A1", "B2"]]);
 
-  delete process.env.SIGILL_E2E_MAILPIT;
+  delete process.env.FIDANT_E2E_MAILPIT;
   await deleteSavedMail(dir);
   assert.deepEqual(await saveMail(join(dir, "other")), []);
   assert.deepEqual(deleted, [["A1", "B2"]]);
