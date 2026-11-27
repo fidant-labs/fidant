@@ -28,6 +28,7 @@ If no candidate is unblocked, say so, list what blocks each one, and stop.
 
 - Set the issue to `In Progress` and assign it to `me` with `mcp__linear__save_issue`.
 - Branch name: `fid-<number>-<short-slug>`, slug of 2 to 5 words from the title (for example `fid-21-first-demo`). Do not use Linear's suggested `gitBranchName`; it has a user prefix.
+- Name the session after the issue, as `<key> <number> - <title>` (for example `FID 82 - Give the secure-connection screen its own tab title`). Print the path with `mkdir -p ~/.claude/session-titles && echo "$HOME/.claude/session-titles/$CLAUDE_CODE_SESSION_ID"` and write the name to that file with the Write tool. Never put the title in a shell command: anyone who can edit a Linear issue writes it. Only a hook can set the title, so the `UserPromptSubmit` hook `.claude/scripts/session-title.sh` applies it on the user's next message.
 
 ## 3. Create the worktree
 
