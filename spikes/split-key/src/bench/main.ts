@@ -61,7 +61,7 @@ type MicroRun = {
 
 type Run = MicroRun | PipelineRun;
 
-type Report = { bench: "sigill-split-key"; version: 1; environment: Environment; runs: Run[] };
+type Report = { bench: "fidant-split-key"; version: 1; environment: Environment; runs: Run[] };
 
 function element<T extends HTMLElement>(id: string): T {
   const found = document.getElementById(id);
@@ -91,7 +91,7 @@ const environmentBlock = element<HTMLPreElement>("environment");
 const jsonBlock = element<HTMLPreElement>("json");
 const copyButton = element<HTMLButtonElement>("copy");
 
-const report: Report = { bench: "sigill-split-key", version: 1, environment: {}, runs: [] };
+const report: Report = { bench: "fidant-split-key", version: 1, environment: {}, runs: [] };
 const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
 let nextId = 1;
 let downloadUrl: string | undefined;

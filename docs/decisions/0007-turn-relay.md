@@ -2,12 +2,12 @@
 
 - Status: Accepted
 - Date: 2026-11-24
-- Linear: SIG-77
+- Linear: FID-77
 
 ## Context
 
-- Before SIG-77 the hosted site handed out no STUN or TURN servers. Browsers connected only over local addresses, so sender and recipient had to be on the same network.
-- SIG-58 put the relay on the Lightsail Micro that runs the app, the most exposed machine.
+- Before FID-77 the hosted site handed out no STUN or TURN servers. Browsers connected only over local addresses, so sender and recipient had to be on the same network.
+- FID-58 put the relay on the Lightsail Micro that runs the app, the most exposed machine.
 - 0006 mints TURN credentials per pairing, valid for 5 minutes, from `TURN_URLS` and the secret in `TURN_SECRET_FILE`. The server checks `TURN_URLS` at startup: 1 to 4 `turn:`, `turns:` or `stun:` URLs.
 - `apps/infra/box/user-data.sh` sets the box up once, at first boot. Lightsail never re-runs user data, so the instance name carries a hash of it and any change replaces the box.
 - DNS (FidantDns) and the box (FidantApp) deploy to different AWS accounts. Both take the box's static address from `boxAddress` in `apps/infra/src/config.ts`.
@@ -44,11 +44,11 @@
 - Static settings live in `apps/infra/box/turnserver.conf`. CDK puts the file into the user data at synth time, with the domain filled in.
 - `user-data.sh` writes `/etc/turnserver.conf` (0640 root:turnserver) from it and adds what only the box knows: `external-ip=<boxAddress>/<private IPv4>` and `static-auth-secret`.
 - `use-auth-secret` checks the credentials the app mints (0006).
-- The secret is generated on the box at first boot into `/etc/sigill/turn-secret` (0600 root). It never passes through a shell variable or a command argument, so `set -x` can't trace it into the cloud-init log. It is never in CloudFormation or the user data.
-- The drop-in `/etc/systemd/system/sigill.service.d/turn.conf` gives the app `TURN_URLS`, and the secret through `LoadCredential=` and `TURN_SECRET_FILE`.
+- The secret is generated on the box at first boot into `/etc/fidant/turn-secret` (0600 root). It never passes through a shell variable or a command argument, so `set -x` can't trace it into the cloud-init log. It is never in CloudFormation or the user data.
+- The drop-in `/etc/systemd/system/fidant.service.d/turn.conf` gives the app `TURN_URLS`, and the secret through `LoadCredential=` and `TURN_SECRET_FILE`.
 - coturn never runs with the package's default config. It is masked while the package installs, then unmasked and started with ours.
 - coturn starts after `network-online.target` (drop-in `coturn.service.d/online.conf`). It binds the addresses it finds when it starts, so after a reboot it could otherwise bind loopback only.
-- The app's drop-in is written only if coturn is active. If anything in the coturn part fails at first boot, the app runs without STUN or TURN, as before SIG-77.
+- The app's drop-in is written only if coturn is active. If anything in the coturn part fails at first boot, the app runs without STUN or TURN, as before FID-77.
 
 ### URLs
 
@@ -70,7 +70,7 @@
 
 - `total-quota=200` allocations. Each browser allocates once per `turn:` URL on each network interface, even when the direct path wins, so a pairing takes up to about 8. 200 is about 25 pairings at once.
 - No `user-quota`. See the table.
-- Quotas don't cap the bill. The decided backstop is an AWS Budgets alert, "Fidant POC monthly cost": 10 USD a month, alerting when actual or forecast cost passes 100 %, by email to budget-alert@fidant.se. CloudFormation can't create it in eu-north-1, so it is not part of FidantApp. SIG-90 creates it outside the stack.
+- Quotas don't cap the bill. The decided backstop is an AWS Budgets alert, "Fidant POC monthly cost": 10 USD a month, alerting when actual or forecast cost passes 100 %, by email to budget-alert@fidant.se. CloudFormation can't create it in eu-north-1, so it is not part of FidantApp. FID-90 creates it outside the stack.
 - A bandwidth cap waits until transfers through the relay have been measured.
 
 ### Deferred
@@ -87,8 +87,8 @@
 - If coturn can't read `/etc/turnserver.conf`, it only warns and runs on built-in defaults. Edits must keep the file 0640 root:turnserver.
 - A coturn failure after first boot doesn't change the app: it keeps handing out the URLs. Every URL points at coturn, so browsers then get no STUN or TURN answers. Pairs that connect over local addresses still work. Pairs that needed a STUN-found address or the relay fail.
 - A new static IP needs `boxAddress` in `config.ts` updated. That changes the user data, so the deploy replaces the box.
-- App deploys (`sigill-deploy`) restart only the app, not coturn. Box changes, including any change to `turnserver.conf`, replace the box: about 5–10 minutes down, and new certificates. Let's Encrypt issues about 5 identical certificates a week, which limits how often the box can be replaced.
-- The budget alert only sends an email. When it fires, someone runs the emergency stop. Until SIG-90 creates it, there is no cost alert.
+- App deploys (`fidant-deploy`) restart only the app, not coturn. Box changes, including any change to `turnserver.conf`, replace the box: about 5–10 minutes down, and new certificates. Let's Encrypt issues about 5 identical certificates a week, which limits how often the box can be replaced.
+- The budget alert only sends an email. When it fires, someone runs the emergency stop. Until FID-90 creates it, there is no cost alert.
 
 ## Runbook
 
@@ -97,10 +97,10 @@ Use browser SSH from the Lightsail console, and become root first with `sudo -i`
 ### Status
 
 ```sh
-systemctl status coturn sigill
+systemctl status coturn fidant
 ss -lunpt | grep 3478
 journalctl -u coturn
-cat /etc/systemd/system/sigill.service.d/turn.conf
+cat /etc/systemd/system/fidant.service.d/turn.conf
 ```
 
 - coturn listens on UDP and TCP 3478.
@@ -146,14 +146,14 @@ rm -rf /run/coturn
 
 ### Secret
 
-- It lives in `/etc/sigill/turn-secret` (0600 root). The app reads it through `LoadCredential=` in `/etc/systemd/system/sigill.service.d/turn.conf`. coturn has a copy in `static-auth-secret` in `/etc/turnserver.conf` (0640 root:turnserver).
+- It lives in `/etc/fidant/turn-secret` (0600 root). The app reads it through `LoadCredential=` in `/etc/systemd/system/fidant.service.d/turn.conf`. coturn has a copy in `static-auth-secret` in `/etc/turnserver.conf` (0640 root:turnserver).
 - Rotate it without printing it:
 
 ```sh
-openssl rand -hex 32 >/etc/sigill/turn-secret
+openssl rand -hex 32 >/etc/fidant/turn-secret
 sed -i '/^static-auth-secret=/d' /etc/turnserver.conf
-{ printf 'static-auth-secret='; cat /etc/sigill/turn-secret; } >>/etc/turnserver.conf
-systemctl restart coturn sigill
+{ printf 'static-auth-secret='; cat /etc/fidant/turn-secret; } >>/etc/turnserver.conf
+systemctl restart coturn fidant
 ```
 
 - Credentials already handed out stop working, and relayed transfers in progress drop.
@@ -163,5 +163,5 @@ systemctl restart coturn sigill
 How often connections went direct, through a STUN-found address, through the relay, or failed:
 
 ```sh
-journalctl -u sigill -o cat | grep -o '"event":"path","path":"[a-z]*"' | sort | uniq -c
+journalctl -u fidant -o cat | grep -o '"event":"path","path":"[a-z]*"' | sort | uniq -c
 ```

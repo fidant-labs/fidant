@@ -3,7 +3,7 @@ import { createWriteStream } from "node:fs";
 import { join } from "node:path";
 import { pipeline } from "node:stream/promises";
 
-/** The chunk size of SIG-21's file frames. Canary sizes avoid its multiples. */
+/** The chunk size of FID-21's file frames. Canary sizes avoid its multiples. */
 export const defaultChunkSize = 48 * 1024;
 /** The smallest size with six decimal digits. Smaller sizes are too common to search for. */
 export const minCheckableSize = 100_000;

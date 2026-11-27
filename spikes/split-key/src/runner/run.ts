@@ -69,7 +69,7 @@ type RunRecord = {
 };
 
 type EngineReport = {
-  bench: "sigill-split-key-runner";
+  bench: "fidant-split-key-runner";
   version: 1;
   engine: Engine;
   browserVersion: string;
@@ -330,7 +330,7 @@ async function runEngine(engine: Engine, url: string, serverPid: number): Promis
   const sampler = new RssSampler(engine, [serverPid]);
   sampler.start();
   const report: EngineReport = {
-    bench: "sigill-split-key-runner",
+    bench: "fidant-split-key-runner",
     version: 1,
     engine,
     browserVersion: context.browser()?.version() ?? "unknown",

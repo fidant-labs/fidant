@@ -1,4 +1,4 @@
-// Fragment handoff check for the SIG-7 spike: does a link fragment carrying
+// Fragment handoff check for the FID-7 spike: does a link fragment carrying
 // the 43-character F survive email clients, link scanners and chat apps?
 //
 // The probe link is

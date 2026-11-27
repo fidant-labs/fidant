@@ -1,4 +1,4 @@
-// Chunked AES-GCM stream for the SIG-7 spike.
+// Chunked AES-GCM stream for the FID-7 spike.
 //
 // WebCrypto AES-GCM does not stream, so the padded file is cut into chunks of
 // exactly chunkSize bytes and each chunk is its own AES-GCM message under the

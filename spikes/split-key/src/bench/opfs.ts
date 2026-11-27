@@ -12,7 +12,7 @@
 // out, so a minimal local type describes it.
 
 export const BENCH_DIR = "split-key-bench";
-export const STAGED_NAME = "staged.sigill";
+export const STAGED_NAME = "staged.fidant";
 export const OUTPUT_NAME = "bench-output.bin";
 
 type SyncAccessHandle = {
