@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
+import { on, once } from "node:events";
 import { createServer, request, type Server } from "node:http";
 import { type AddressInfo, BlockList, type Socket, connect as tcpConnect } from "node:net";
 import { networkInterfaces } from "node:os";
-import { after, before, test } from "node:test";
+import { after, before, type TestContext, test } from "node:test";
 import {
   CODE_RESULTS,
   CONNECTION_PATHS,
@@ -771,13 +772,20 @@ test("rejects upgrades with 429 once one address holds its share of sockets", as
   assert.equal(await upgradeAfterClose(limited), 101);
 });
 
-/** A signaling server with a low message limit and a short window, and the events it logs. */
-async function rateLimitedServer(t: { after(fn: () => void): void }) {
+/** Heartbeat of `rateLimitedServer`; each tick of it ends a message window. */
+const RATE_WINDOW_MS = 1000;
+
+/**
+ * A signaling server with a low message limit, and the events it logs. Its heartbeat is mocked, so
+ * a window ends, and a socket that missed a ping is dropped, only when the test ticks it.
+ */
+async function rateLimitedServer(t: TestContext) {
   const events: string[] = [];
   const limited = createServer();
+  t.mock.timers.enable({ apis: ["setInterval"] });
   const limitedSignaling = attachSignaling(limited, {
     log: (event) => events.push(event),
-    heartbeatMs: 20,
+    heartbeatMs: RATE_WINDOW_MS,
     limits: { messagesPerWindow: 5 },
   });
   t.after(() => {
@@ -801,17 +809,27 @@ test("closes a socket with 1008 once it sends too many messages and logs it once
 
 test("keeps a socket under the message limit open across window resets", async (t) => {
   const { events, url } = await rateLimitedServer(t);
-  const client = await connect(url);
+  // A ws client, not connect()'s WebSocket, because only ws tells the test when a ping came.
+  const socket = new WsClient(url);
+  t.after(() => socket.terminate());
+  const incoming = on(socket, "message");
+  const next = async () => JSON.parse(String((await incoming.next()).value?.[0]));
+  await once(socket, "open");
+  assert.deepEqual(await next(), { t: "hello", mail: false });
   for (let round = 0; round < 3; round += 1) {
     for (let i = 0; i < 4; i += 1) {
-      client.send({ t: "relay", link: linkId(), data: "sync" });
+      socket.send(JSON.stringify({ t: "relay", link: linkId(), data: "sync" }));
     }
     for (let i = 0; i < 4; i += 1) {
-      assert.deepEqual(await client.next(), { t: "error", code: "not-on-link" });
+      assert.deepEqual(await next(), { t: "error", code: "not-on-link" });
     }
-    await new Promise((done) => setTimeout(done, 50));
+    // ws sends its pong before it emits "ping", so the pong goes out ahead of the next round's
+    // messages, and the server has it once it has answered them, before the next tick checks it.
+    const pinged = once(socket, "ping");
+    t.mock.timers.tick(RATE_WINDOW_MS);
+    await pinged;
   }
-  assert.equal(client.socket.readyState, WebSocket.OPEN);
+  assert.equal(socket.readyState, WsClient.OPEN);
   assert.ok(!events.includes("rate-limited"));
 });
 
