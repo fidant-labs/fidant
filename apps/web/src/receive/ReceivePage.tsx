@@ -108,6 +108,7 @@ import { LINK_ID_BYTES, parseRecipientLocation } from "../lib/link.ts";
 import { createRecipientPeer, type OpenPath, type Peer, type PeerOpenInfo } from "../lib/peer.ts";
 import type { FileOffer, Resumable } from "../lib/receive-file.ts";
 import { ReceiveError, receiveFile } from "../lib/receive-file.ts";
+import { joinedAction, joinsAgain, takesGate, takesRefusal } from "../lib/receive-guards.ts";
 import { keepsPart, peerLostProblem, refusedProblem } from "../lib/receive-problem.ts";
 import { addRelay, type Kind, NO_RELAYS, type Tie } from "../lib/server-facts.ts";
 import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
@@ -478,7 +479,13 @@ export function ReceivePage({
       switch (message.t) {
         case "gate": {
           // Once the channel is open, a `gate` can only answer a repeated `join`, and the transfer goes on without it.
-          if (!current() || message.link !== linkId || attempt.channelOpen) {
+          if (
+            !takesGate({
+              current: current(),
+              ourLink: message.link === linkId,
+              channelOpen: attempt.channelOpen,
+            })
+          ) {
             break;
           }
           if (joinSent) {
@@ -540,16 +547,16 @@ export function ReceivePage({
           setView({ s: "connecting" });
           join(message.token);
           break;
-        case "joined":
-          if (
-            !current() ||
-            !signalKey ||
-            message.link !== linkId ||
-            message.attempt !== attemptId
-          ) {
+        case "joined": {
+          const action = joinedAction({
+            current: current(),
+            ours: message.link === linkId && message.attempt === attemptId,
+            hasPeer: attempt.peer !== undefined,
+          });
+          if (action === "ignore" || !signalKey) {
             break;
           }
-          if (attempt.peer) {
+          if (action === "rejoin" && attempt.peer) {
             // The answer to a repeated `join`. The peer ignores one it never asked for.
             attempt.peer.rejoined(message.iceServers);
             break;
@@ -570,7 +577,13 @@ export function ReceivePage({
             // The same `join` again, token included (decision 0029). After `host-gone` it would
             // be a new pairing with the sender's new socket, so then nothing is sent.
             onStalled: () => {
-              if (current() && !attempt.hostGone && !attempt.abort.signal.aborted) {
+              if (
+                joinsAgain({
+                  current: current(),
+                  hostGone: attempt.hostGone,
+                  aborted: attempt.abort.signal.aborted,
+                })
+              ) {
                 join(joinToken);
               }
             },
@@ -582,6 +595,7 @@ export function ReceivePage({
                   : lost(),
           });
           break;
+        }
         case "relay":
           attempt.heardSender = true;
           void attempt.peer?.handleRelay(message.data);
@@ -594,7 +608,7 @@ export function ReceivePage({
           // an older sender's page), and so does any refusal after `host-gone`: the sender's
           // socket is gone, so it is the server's answer to a `join` that crossed it. The
           // transfer goes on without the server.
-          if (attempt.channelOpen && (message.reason === "busy" || attempt.hostGone)) {
+          if (!takesRefusal(attempt, message.reason)) {
             break;
           }
           if (attempt.saidDiffers) {
