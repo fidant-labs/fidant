@@ -1028,7 +1028,7 @@ test("the CI role may only assume its own account's CDK bootstrap roles", () => 
   ]);
 });
 
-test("only the app environment can assume the release role, which only fidant-poc has", () => {
+test("only a job of release-jobs.yml on main, in the app environment, can assume the release role, which only fidant-poc has", () => {
   assert.doesNotMatch(JSON.stringify(ciTemplate(dnsAccount).toJSON()), /fidant-release|:app"/);
   const ci = ciTemplate(pocAccount);
   ci.resourceCountIs("AWS::IAM::ManagedPolicy", 0);
@@ -1049,6 +1049,8 @@ test("only the app environment can assume the release role, which only fidant-po
               "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
               "token.actions.githubusercontent.com:sub":
                 "repo:fidant-labs@360211033/fidant@1468787132:environment:app",
+              "token.actions.githubusercontent.com:job_workflow_ref":
+                "fidant-labs/fidant/.github/workflows/release-jobs.yml@refs/heads/main",
             },
           },
         },

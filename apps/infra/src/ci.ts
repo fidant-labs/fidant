@@ -6,6 +6,7 @@ import {
   pagesBucket,
   releaseRoleName,
   releaseSessionSeconds,
+  releaseWorkflow,
   signalCluster,
   signalService,
 } from "./config.ts";
@@ -49,6 +50,7 @@ export class CiStack extends Stack {
           StringEquals: {
             [`${issuer}:aud`]: "sts.amazonaws.com",
             [`${issuer}:sub`]: "repo:fidant-labs@360211033/fidant@1468787132:environment:app",
+            [`${issuer}:job_workflow_ref`]: `${releaseWorkflow}@refs/heads/main`,
           },
         }),
       });
