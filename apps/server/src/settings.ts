@@ -60,7 +60,7 @@ export function siteSettings(env: Record<string, string | undefined>): SiteSetti
     throw new Error("SIGNALING_ONLY must be 1 or unset.");
   }
 
-  // Email is off until verified transfers need it (docs/decisions/0029-email-off-until-verified-transfers.md).
+  // Email is off until verified transfers need it (docs/decisions/0030-email-off-until-verified-transfers.md).
   const mail = env.MAIL_ENABLED;
   if (mail && mail !== "1") {
     throw new Error("MAIL_ENABLED must be 1 or unset.");

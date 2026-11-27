@@ -39,7 +39,7 @@ A link works once: after a confirmed delivery, opening it again shows "This link
 ## Network tips
 
 - With a local `pnpm start`, sender and recipients must be on the same network: it hands out no STUN or TURN servers unless `TURN_URLS` and `TURN_SECRET_FILE` are set, `STUN_URLS` names STUN servers, or `RELAYS_FILE` and `RELAY_MASTER_FILE` name a relay list and a master file (see `AGENTS.md`), so browsers connect only over local addresses.
-- Email is off until verified transfers (`docs/decisions/0029-email-off-until-verified-transfers.md`). A local `pnpm start` sends no mail, so the send page offers no email field. To try emailed links, run `mailpit` in another terminal and start with `MAIL_ENABLED=1 MAIL_SMTP_URL=smtp://127.0.0.1:1025 MAIL_FROM="Fidant <noreply@example.se>" PUBLIC_ORIGIN=https://localhost:8443 pnpm start` (`PUBLIC_ORIGIN` is the address recipients open). Mailpit shows the mail at http://localhost:8025.
+- Email is off until verified transfers (`docs/decisions/0030-email-off-until-verified-transfers.md`). A local `pnpm start` sends no mail, so the send page offers no email field. To try emailed links, run `mailpit` in another terminal and start with `MAIL_ENABLED=1 MAIL_SMTP_URL=smtp://127.0.0.1:1025 MAIL_FROM="Fidant <noreply@example.se>" PUBLIC_ORIGIN=https://localhost:8443 pnpm start` (`PUBLIC_ORIGIN` is the address recipients open). Mailpit shows the mail at http://localhost:8025.
 - The hosted site at https://fidant.se has a STUN and TURN relay, so browsers there can be on different networks.
 - A phone hotspot is a reliable network for a demo.
 - Guest Wi-Fi with client isolation does not work: devices on it can't reach each other.
