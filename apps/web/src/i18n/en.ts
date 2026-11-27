@@ -210,7 +210,7 @@ export const en = {
         heading: "What is left behind",
         body: [
           "We never see your file, its name or the key that unlocks it. Our relay never sees the key at all.",
-          "What our server and relay do see, they keep in memory or in short logs. The two browsers keep a few traces too, and the recipient keeps the file.",
+          "What our server and relay do see, they keep in memory or in short logs, apart from monthly traffic totals. The two browsers keep a few traces too, and the recipient keeps the file.",
         ],
       },
       encryption: {
@@ -813,6 +813,7 @@ export const en = {
   },
   footer: {
     label: "Site",
+    file: "Send a file",
     tagline: "Files encrypted in your browser. Only the link can unlock them.",
     about: "About",
     terms: "Terms",
@@ -1613,7 +1614,7 @@ export const en = {
       ],
     ] as ReadonlyArray<readonly [string, string]>,
     keepHeading: "What we keep",
-    keep: "We have no accounts, no database of people or transfers, no cookies and no tracking. Once the sender's page is closed, nothing about you is kept, within 2 minutes at most, apart from the log lines below and a relay log while we fix a fault or stop abuse.",
+    keep: "We have no accounts, no database of people or transfers, no cookies and no tracking. Once the sender's page is closed, nothing about you is kept, within 2 minutes at most, apart from the log lines below, a relay log while we fix a fault or stop abuse, and our monthly traffic totals. The totals count all traffic in and out of our server and relay, and we keep them for up to 15 months. They name no transfer. But we save a new total every 5 minutes, so on a quiet relay the difference between two totals can show roughly how big one transfer was and when it happened.",
     logFields,
     logRetention: "Log lines are deleted after 30 days.",
     relayLog:

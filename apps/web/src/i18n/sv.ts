@@ -191,7 +191,7 @@ export const sv: Messages = {
         heading: "Det här lämnas kvar",
         body: [
           "Vi ser aldrig din fil, dess namn eller nyckeln som låser upp den. Vårt relä ser aldrig nyckeln alls.",
-          "Vår server och vårt relä har det de ser i minnet eller i korta loggar. Några spår finns också kvar i de två webbläsarna, och mottagaren har filen.",
+          "Vår server och vårt relä har det de ser i minnet eller i korta loggar, förutom månatliga trafiksummor. Några spår finns också kvar i de två webbläsarna, och mottagaren har filen.",
         ],
       },
       encryption: {
@@ -768,6 +768,7 @@ export const sv: Messages = {
       )}. Aldrig namn, nycklar, ${items[kind].data} eller IP-adresser.`,
   },
   footer: {
+    file: "Skicka en fil",
     label: "Webbplats",
     tagline: "Filer krypteras i din webbläsare. Bara länken kan låsa upp dem.",
     about: "Om Fidant",
@@ -1579,7 +1580,7 @@ export const sv: Messages = {
       ],
     ],
     keepHeading: "Vad vi sparar",
-    keep: "Vi har inga konton, ingen databas över personer eller överföringar, inga cookies och ingen spårning. När avsändarens sida har stängts sparas ingenting om dig, inom högst två minuter, förutom loggraderna nedan och en relälogg medan vi åtgärdar ett fel eller stoppar missbruk.",
+    keep: "Vi har inga konton, ingen databas över personer eller överföringar, inga cookies och ingen spårning. När avsändarens sida har stängts sparas ingenting om dig, inom högst två minuter, förutom loggraderna nedan, en relälogg medan vi åtgärdar ett fel eller stoppar missbruk, och våra månatliga trafiksummor. Summorna räknar ihop all trafik in och ut genom vår server och vårt relä, och vi sparar dem i upp till 15 månader. De pekar inte ut någon överföring. Men vi sparar en ny summa var 5:e minut, så på ett lugnt relä kan skillnaden mellan två summor visa ungefär hur stor en överföring var och när den skedde.",
     logFields,
     logRetention: "Loggraderna raderas efter 30 dagar.",
     relayLog:
