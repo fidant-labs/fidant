@@ -10,7 +10,7 @@ export type Choice = {
 
 export const CHOICES = {
   what: ["file", "secret"],
-  link: ["self"], // ponytail: emailed links are off until FID-380
+  link: ["self"], // Emailed links are off until FID-380 (docs/decisions/0030-email-off-until-verified-transfers.md).
   route: ["direct", "relay", "norelay"],
 } as const satisfies { [K in keyof Choice]: readonly Choice[K][] };
 
