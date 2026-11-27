@@ -1,7 +1,7 @@
 ---
 
 name: next-issue
-description: Pick the next Linear issue that moves the Free version project toward its current milestone, implement it in its own git worktree with subagents, commit in reviewable chunks, and open a pull request. Use when asked to "take the next issue", "work on the next milestone", or given an issue key like SIG-21.
+description: Pick the next Linear issue that moves the Free version project toward its current milestone, implement it in its own git worktree with subagents, commit in reviewable chunks, and open a pull request. Use when asked to "take the next issue", "work on the next milestone", or given an issue key like FID-21.
 argument-hint: "[FID-<number>]"
 ---
 
@@ -11,12 +11,12 @@ Takes one Linear issue from idea to pull request. One issue, one worktree, one b
 
 Read `AGENTS.md` first. Its conventions and invariants apply to every step and every subagent.
 
-If an argument like `FID-21` (or an older `SIG-21`) was given, skip step 1 and use that issue.
+If an argument like `FID-21` was given, skip step 1 and use that issue.
 
 ## 1. Pick the issue
 
-1. List milestones of the project `Free version` (`P-SIG-1`) with `mcp__linear__list_milestones`. Order them by `sortOrder`. The current milestone is the first one with open issues.
-2. List the project's issues with `mcp__linear__list_issues` (team `FID`, project `P-SIG-1`, fields `title`, `status`, `projectMilestone`, `priority`, `assignee`).
+1. List milestones of the project `Free version` (`P-FID-1`) with `mcp__linear__list_milestones`. Order them by `sortOrder`. The current milestone is the first one with open issues.
+2. List the project's issues with `mcp__linear__list_issues` (team `FID`, project `P-FID-1`, fields `title`, `status`, `projectMilestone`, `priority`, `assignee`).
 3. Candidates are the current milestone's issues in `Backlog` or `Todo`. Skip `In Progress`, `Done`, `Canceled` and `Duplicate`.
 4. Read each candidate with `mcp__linear__get_issue` and its comments with `mcp__linear__list_comments`. Drop candidates that are blocked by an open issue, or whose description says they depend on work that is not done (milestone descriptions state such orderings too, for example "starts only after the first laptop-to-laptop transfer works").
 5. Rank what is left: issues that unblock others first, then priority (Urgent > High > Medium > Low > none), then milestone order in the description.
@@ -123,7 +123,7 @@ If follow-up work came up, create Linear issues for it in the same project and m
 The `Claude review` workflow reviews every push to a pull request that a maintainer opened from this repository, once it is not a draft, and posts as `github-actions[bot]`: one review with the verdict, with findings on diff lines as inline comments and the rest in its body, or every finding in its body when GitHub refuses the inline comments. Read it before telling the user the PR is ready. Two things make it easy to miss:
 
 - Each run reviews the head commit from scratch. A later run can approve without repeating a blocker an earlier run raised, and that blocker may still hold.
-- The `review` check passes even when the verdict is request changes (SIG-52), so a green check says nothing about the verdict.
+- The `review` check passes even when the verdict is request changes (FID-52), so a green check says nothing about the verdict.
 
 After opening the PR, and after every later push:
 

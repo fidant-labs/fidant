@@ -46,3 +46,9 @@ test("pageUrl names the page in its language", () => {
   assert.equal(pageUrl("/", "sv"), "https://fidant.se/sv");
   assert.equal(pageUrl("/about", "sv"), "https://fidant.se/sv/om");
 });
+
+test("pageUrl gives /send its file mode address and names the secret page in Swedish", () => {
+  assert.equal(pageUrl("/send", "en"), "https://fidant.se/send/file");
+  assert.equal(pageUrl("/send", "sv"), "https://fidant.se/sv/skicka/fil");
+  assert.equal(pageUrl("/send/secret", "sv"), "https://fidant.se/sv/skicka/hemlighet");
+});

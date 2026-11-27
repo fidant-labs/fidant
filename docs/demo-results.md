@@ -1,4 +1,4 @@
-# First demo results (SIG-21)
+# First demo results (FID-21)
 
 Manual test results for the first demo. Fill this in by hand after running it on real devices; see the README for how to run it. Replace "not tested yet" with what you saw.
 
@@ -46,7 +46,7 @@ not tested yet
 
 ## Checklist
 
-From the SIG-21 "Done when" list:
+From the FID-21 "Done when" list:
 
 - [ ] A 1 GB file reaches two recipients on two other devices on the same network, and each recipient's browser confirms the checksum back to the sender.
 - [ ] A used link is refused ("This link has already been used").

@@ -43,7 +43,8 @@ const SV_PREFIX = /^\/sv(?=\/|$)/;
 /** Each public page's Swedish address after /sv, by its English path. The Swedish front page is /sv. */
 export const SWEDISH_PATHS: Readonly<Record<string, string>> = {
   "/send": "/skicka",
-  "/secret": "/hemlighet",
+  "/send/file": "/skicka/fil",
+  "/send/secret": "/skicka/hemlighet",
   "/how": "/sa-fungerar-det",
   "/how/file": "/sa-fungerar-det/filen",
   "/how/encryption": "/sa-fungerar-det/kryptering",

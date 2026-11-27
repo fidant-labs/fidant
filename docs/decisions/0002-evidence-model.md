@@ -2,13 +2,13 @@
 
 - Status: Accepted
 - Date: 2026-11-23
-- Linear: SIG-6
+- Linear: FID-6
 
 ## Context
 
 ### The question
 
-Years later, the evidence of a verified transfer must show who sent which file, who received it, and when. SIG-6 settled the shape of that evidence and left three points open:
+Years later, the evidence of a verified transfer must show who sent which file, who received it, and when. FID-6 settled the shape of that evidence and left three points open:
 
 - the final wording of the receipt in Swedish and English;
 - which checksums the receipt covers;
@@ -16,7 +16,7 @@ Years later, the evidence of a verified transfer must show who sent which file, 
 
 This record decides those three points. It must not contradict 0001.
 
-### What SIG-6 already decided
+### What FID-6 already decided
 
 These are inputs, not decisions of this record:
 
@@ -55,10 +55,10 @@ The issue also has a draft receipt text and a proposal for the checksums:
 
 In `apps/web/src/lib`:
 
-- `keys.ts`: every transfer attempt gets a fresh 16-byte random `transferId`, sent in clear in the INIT frame. The file key is `HKDF-SHA256(fragmentSecret, salt = transferId, info "sigill/v1/file")`. The code's `transferId` names one attempt, not the server-side transfer that 0001 calls a transfer ID.
+- `keys.ts`: every transfer attempt gets a fresh 16-byte random `transferId`, sent in clear in the INIT frame. The file key is `HKDF-SHA256(fragmentSecret, salt = transferId, info "fidant/v1/file")`. The code's `transferId` names one attempt, not the server-side transfer that 0001 calls a transfer ID.
 - `send-file.ts`: `chunkSize = min(48 KiB, maxMessageSize − 64)`. It depends on the data channel of that connection.
 - `frames.ts`:
-  - META is `{chunkSize, from, name, size, type}`, padded to exactly 1024 bytes. `from` is the name the sender typed for themselves, unverified (SIG-55). It has no salt and no commitment. `parseMeta` rejects any other set of keys.
+  - META is `{chunkSize, from, name, size, type}`, padded to exactly 1024 bytes. `from` is the name the sender typed for themselves, unverified (FID-55). It has no salt and no commitment. `parseMeta` rejects any other set of keys.
   - Names and types with control characters or direction controls are refused.
   - The sender sends META before the recipient's ACCEPT. Every frame after INIT is encrypted under the one file key.
   - END carries a plain SHA-256 of the file and the exact size. RECEIPT carries the SHA-256 the recipient computed. Both travel only inside the encrypted channel.
@@ -69,14 +69,14 @@ In `apps/web/src/lib`:
 
 | Mode   | Issue                | What carries the ciphertext                                                                  |
 | ------ | -------------------- | -------------------------------------------------------------------------------------------- |
-| P2P    | SIG-23               | The sender's browser, live, per attempt. The recipient signs, then the key half is released. |
+| P2P    | FID-23               | The sender's browser, live, per attempt. The recipient signs, then the key half is released. |
 | Hosted | Milestone 3, on hold | One stored ciphertext object in object storage                                               |
 
 In P2P there is no single encrypted file. Each attempt has its own key and may have its own chunk size, so the same file gives different ciphertext each time.
 
 ### The BankID sign API
 
-From the BankID Relying Party API v6.0, written from memory. Items marked unverified must be checked against the current RP guidelines before SIG-15, and the local BankID simulator must enforce the same limits.
+From the BankID Relying Party API v6.0, written from memory. Items marked unverified must be checked against the current RP guidelines before FID-15, and the local BankID simulator must enforce the same limits.
 
 | Fact                                                                                                                                                                                | Status     |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
@@ -148,7 +148,7 @@ If the signature XML embeds the IP, every evidence package carries it, whatever 
 | Option                                                              | For                                                                     | Against                                                                                                 |
 | ------------------------------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | META under the full key                                             | No change to the keys                                                   | The recipient's browser cannot name the file before signing                                             |
-| META under a key from the fragment half, content under the full key | The browser can render the receipt; content still needs the server half | Name and `C` readable with the link alone (salt, type and size are not); key change in SIG-7 and SIG-13 |
+| META under a key from the fragment half, content under the full key | The browser can render the receipt; content still needs the server half | Name and `C` readable with the link alone (salt, type and size are not); key change in FID-7 and FID-13 |
 
 ### Identity in the audit log
 
@@ -225,13 +225,13 @@ Rules:
   3. **No quote lookalikes.** The Unicode confusable skeleton of the name (UTS #39) contains no character with `Quotation_Mark=Yes` other than U+0027, and no U+0027 U+0027 sequence. Apostrophes stay allowed: ’ has the skeleton ', and " and ” both have the skeleton ''. That refuses letters that look like quotes, such as ꞌꞌ (U+A78C) or ײ (U+05F2), and `’’`, which looks like ”.
   4. **Short.** At most 120 Unicode code points after NFC; each combining mark counts as one. The browser and the server count the same way. META would allow about 900 bytes, room for a paragraph inside the quotation marks. The cap limits how much a name can say. It does not stop a short sentence such as `avtal.pdf från Anna Andersson. Jag godkänner även fakturan om 100 000 kr. Bilaga` (80 code points).
 
-  Together these refuse every double quotation mark, every character or sequence Unicode lists as confusable with one, every format, direction and invisible character, and every line or paragraph separator. So the name cannot start a new line or hide or reorder text, and no character Unicode lists as confusable can close the quotation marks. Lookalikes that Unicode does not list remain possible, and so does a short sentence within 120 code points. The hidden data still binds the file through `C`, so such a name can mislead the reader but cannot change which file the receipt covers. The send page refuses a name that fails the checks when the sender chooses the file and asks for a new name. The server's re-render check applies the same checks. SIG-15 fixes the Unicode data version and the code, with tests for every example above.
-- **Name direction.** The template puts FSI (U+2068) right after the opening mark and PDI (U+2069) right before the closing mark: `”`, U+2068, the name, U+2069, `”`. FSI and PDI are fixed template bytes, not part of the name. The examples above contain them, though they are invisible. The variable slot is the text strictly between U+2068 and U+2069. The name cannot contain U+2069, so the slot boundary is unambiguous. The isolates keep a right-to-left name from moving the quotation marks or the words around it. Unverified: that the BankID app honours them. If it does not, SIG-15 refuses right-to-left letters in verified names instead.
+  Together these refuse every double quotation mark, every character or sequence Unicode lists as confusable with one, every format, direction and invisible character, and every line or paragraph separator. So the name cannot start a new line or hide or reorder text, and no character Unicode lists as confusable can close the quotation marks. Lookalikes that Unicode does not list remain possible, and so does a short sentence within 120 code points. The hidden data still binds the file through `C`, so such a name can mislead the reader but cannot change which file the receipt covers. The send page refuses a name that fails the checks when the sender chooses the file and asks for a new name. The server's re-render check applies the same checks. FID-15 fixes the Unicode data version and the code, with tests for every example above.
+- **Name direction.** The template puts FSI (U+2068) right after the opening mark and PDI (U+2069) right before the closing mark: `”`, U+2068, the name, U+2069, `”`. FSI and PDI are fixed template bytes, not part of the name. The examples above contain them, though they are invisible. The variable slot is the text strictly between U+2068 and U+2069. The name cannot contain U+2069, so the slot boundary is unambiguous. The isolates keep a right-to-left name from moving the quotation marks or the words around it. Unverified: that the BankID app honours them. If it does not, FID-15 refuses right-to-left letters in verified names instead.
 - **Date.** Day without a leading zero, then the month name, then the year. Swedish month names are lowercase.
 - **Time.** Swedish local time (Europe/Stockholm), 24-hour clock, two-digit hour and minute: "14.02" in Swedish, "14:02" in English. The minute is truncated, not rounded. The text says "svensk tid" or "Swedish time". This takes the option "Swedish local time, labelled". The hidden data holds the exact UTC time, which also settles the repeated hour when summer time ends.
 - **"Sent".** The server's time of the `transfer.created` event, in both modes. It is the moment the sender created the transfer, not when the recipient's copy arrived.
 - **Sender.** The name of the logged-in sender, as BankID returned it when they logged in. Never META's `from`, the name the sender typed, which nobody checks. There is no sender signature in the POC.
-- **No organisation line.** The POC omits it until SIG-36 adds the sender signature or Fidant can check the organisation. This takes the option "Omit it until checked": the recipient signs only what Fidant knows.
+- **No organisation line.** The POC omits it until FID-36 adds the sender signature or Fidant can check the organisation. This takes the option "Omit it until checked": the recipient signs only what Fidant knows.
 - **Visible checksum.** The first 4 and the last 4 lowercase hex characters of `C`, joined by … (U+2026). This takes the option "Shortened `C`": it is the same value a verifier recomputes from the file and the salt.
 - **Template IDs.** `receipt-sv-1` and `receipt-en-1`. Any change to the wording, the date or time format, or the rules above gets a new ID. Old templates stay, so old receipts can still be checked.
 
@@ -285,7 +285,7 @@ This takes the option "`C` plus a ciphertext hash".
 - **The ciphertext hash is the check before signing.** Its definition depends on the mode:
   - Hosted: SHA-256 of the one stored ciphertext object. The server can check it too.
   - P2P: SHA-256 of the CHUNK frames as received in that attempt, in order, hashed as they arrive, before buffering. The sender declares it in a frame the recipient can read with the fragment half (see Key layering), sent right after the last CHUNK. It is its own frame, not a field in END, because END is under the full key, which the recipient does not hold before signing. So the sender hashes the ciphertext as it streams and needs neither a second encryption pass nor a buffer of the whole ciphertext. It covers one attempt only. Retries after signing are bound by `C` alone.
-- **Sign only after the ciphertext is on the device**, in both modes. The recipient's browser checks the ciphertext hash first, so when they sign, the ciphertext is on the device and matches what the sender declared. "Har tagit emot filen" attests that; whether it decrypts to the file behind `C` is shown only later (see What counts as a download). This follows SIG-23's order.
+- **Sign only after the ciphertext is on the device**, in both modes. The recipient's browser checks the ciphertext hash first, so when they sign, the ciphertext is on the device and matches what the sender declared. "Har tagit emot filen" attests that; whether it decrypts to the file behind `C` is shown only later (see What counts as a download). This follows FID-23's order.
 - **Who is to blame.**
   - The ciphertext hash does not match. Hosted: storage or transport failed. P2P: the sender's stream does not match its own declaration, since the data channel is integrity-protected (DTLS); the sender is at fault. Either way the recipient retries and does not sign.
   - The ciphertext hash matches but `C` does not: the sender's file or declaration is at fault, not the recipient.
@@ -295,14 +295,14 @@ This stays within 0001. The ciphertext hash is computed from ciphertext, which i
 
 ### Key layering
 
-This takes the option "META under a key from the fragment half, content under the full key". SIG-7, SIG-13, SIG-15 and SIG-23 implement it.
+This takes the option "META under a key from the fragment half, content under the full key". FID-7, FID-13, FID-15 and FID-23 implement it.
 
 - META (name, `C`, the sender's typed name `from`, `chunkSize` and `paddedLength`) and the frame declaring the P2P ciphertext hash are encrypted under a key derived from the fragment half alone.
 - The salt, the MIME type and the exact size travel in a SEALED frame under the full key, which needs the server half. 0001 puts them in the encrypted metadata and speaks of one META frame (name, type, exact size, salt). This record amends that wording: the encrypted metadata spans two frames, META and SEALED. They stay AEAD ciphertext under keys no infrastructure holds, so this is stricter than 0001, not looser. The SEALED frame has a fixed size, so 0001's padding goal still holds. The recipient learns the chunk size and the padded length from META before signing, which is enough to receive, buffer and check the ciphertext. `paddedLength` is not secret, exception (b) of 0001. The exact size is checked after signing.
 - CHUNK frames, the file content, are also under the full key.
 - So the recipient's browser can read the name and `C` and render the receipt before signing, but can read neither the SEALED frame nor the content until the server releases its half. The receipt needs only the name and the short form of `C`. The salt is needed only after decrypting, to recompute `C`.
 
-The trade-off: anyone holding the link can read the file name, the sender's typed name and `C` without signing. This is accepted because the recipient must see what they sign, and the content, type and size still need the signature. When the sender named the recipient, BankID identity is the capability, not the link alone, so a forwarded or misdirected link still reveals the file name. Releasing a metadata key only after BankID login, before signing, would close that; SIG-15 and SIG-23 may adopt it. `C` alone reveals nothing about the content: without the 32-byte salt, a guess about the file cannot be checked against it. The salt stays behind the signature for exactly that reason. If a link holder could read it, then with `C`, which the server, the audit log and BankID also hold, they could confirm guesses about a predictable file offline. The fragment half never reaches infrastructure, so META stays AEAD ciphertext under a key no infrastructure holds, exception (a).
+The trade-off: anyone holding the link can read the file name, the sender's typed name and `C` without signing. This is accepted because the recipient must see what they sign, and the content, type and size still need the signature. When the sender named the recipient, BankID identity is the capability, not the link alone, so a forwarded or misdirected link still reveals the file name. Releasing a metadata key only after BankID login, before signing, would close that; FID-15 and FID-23 may adopt it. `C` alone reveals nothing about the content: without the 32-byte salt, a guess about the file cannot be checked against it. The salt stays behind the signature for exactly that reason. If a link holder could read it, then with `C`, which the server, the audit log and BankID also hold, they could confirm guesses about a predictable file offline. The fragment half never reaches infrastructure, so META stays AEAD ciphertext under a key no infrastructure holds, exception (a).
 
 ### Rendering and checking
 
@@ -313,7 +313,7 @@ This takes the option "Browser sends the full `receiptText`; server re-renders a
 - The recipient's browser renders the text from the template and META, shows it, and sends it as `receiptText` in the sign-start request, the one field 0001 allows. The request also carries the language, `C`, and the ciphertext hash with its attempt ID.
 - The server re-renders the text from what it knows: the template for that language, the sender's name, `sentAt` and the short form of `C`. It takes the file name from the template's one variable slot in the received text and applies the Name rules to it.
 - The server rejects any `receiptText` that is not byte for byte identical to its own rendering. It builds the hidden data itself, so the visible checksum and the hidden `C` always agree.
-- On rejection, neither the `receiptText` nor the name taken from it goes into the error response, a log line, an exception message or an audit `reason`, and neither is kept beyond the request. The response and the log carry only a fixed code from `@sigill/protocol`. Error paths are where a name most easily leaks outside 0001's six places.
+- On rejection, neither the `receiptText` nor the name taken from it goes into the error response, a log line, an exception message or an audit `reason`, and neither is kept beyond the request. The response and the log carry only a fixed code from `@fidant/protocol`. Error paths are where a name most easily leaks outside 0001's six places.
 - The evidence records the choice as `lang` and `template`, in the hidden data and in the audit event.
 
 ### What counts as a download
@@ -339,7 +339,7 @@ Rules:
 - **Party reference.** `partyRef = HMAC-SHA256(serverPepper, personnummer)`, with the personnummer in one canonical form: 12 digits `YYYYMMDDNNNN`, no hyphen or plus sign. A personnummer a sender types is converted to that form before hashing. For the 10-digit form the century follows from the separator, as in Skatteverket's rules, judged by today's date in Europe/Stockholm: with `-`, the latest century that gives a birth date not in the future, and a number for someone who turns 100 in the current year is refused, since their separator is already `+`; with `+`, the latest century that makes the person at least 100 in the current year. For a samordningsnummer, subtract 60 from the day before checking the date. A 10-digit number without a separator is refused. That way it gives the same reference as the one BankID returns. The pepper is a server secret, kept outside the database. A plain SHA-256 would not do: there are only about 10^7 to 10^8 personnummer, so it is easily brute-forced. This takes the option "HMAC under a server pepper, identity in a separate deletable table".
 - **`parties` table.** One row per `partyRef`: name and personnummer. A row is created when a sender names a recipient by personnummer, or at the party's first BankID login, whichever comes first. The name is filled in at that first login. Naming a recipient puts the personnummer here, so the sign request can set `requirement.personalNumber`.
 - **No IP address and no user agent** in the audit log. This takes the option "Keep them out of the audit log". BankID still receives `endUserIp` with every request, as its API requires. If the BankID signature XML embeds the IP (unverified, see Context), every evidence package carries it regardless.
-- **Time.** Every event has the server's UTC time. The TSA anchors the chain in batches, as SIG-9 decides.
+- **Time.** Every event has the server's UTC time. The TSA anchors the chain in batches, as FID-9 decides.
 
 Every event also has `eventId`, `transferId`, `at` and its chain hash. The other fields:
 
@@ -354,7 +354,7 @@ Every event also has `eventId`, `transferId`, `at` and its chain hash. The other
 | `download.attempted`                                     | `slotId`, `attemptId`                                                                                                                                     | None. Every attempt is logged.                                                                                                                                                                                     |
 | `download.confirmed`, `download.failed`                  | `slotId`, `attemptId`, `result` (`match`, `mismatch` or `decrypt-failed`)                                                                                 | None                                                                                                                                                                                                               |
 | `transfer.expired`, `transfer.revoked`, `object.deleted` | `reason`                                                                                                                                                  | None                                                                                                                                                                                                               |
-| `sender.signed` (SIG-36, production)                     | SHA-256 of `signature`                                                                                                                                    | As `receipt.signed`                                                                                                                                                                                                |
+| `sender.signed` (FID-36, production)                     | SHA-256 of `signature`                                                                                                                                    | As `receipt.signed`                                                                                                                                                                                                |
 
 The chain stores no hash of `userNonVisibleData`. In hosted mode every field in it except the sender's name can be derived from the chain, so trying a list of names against that hash would recover the name even after the `parties` row and the pepper are gone. The hash of `signature` already commits to the hidden data, because the signature XML embeds it.
 
@@ -364,47 +364,47 @@ Why this much and no more:
 
 - **Data minimisation.** GDPR Art. 5(1)(c) allows only the personal data needed for the purpose. The purpose is to show who sent, who received, and when. A reference that resolves through `parties` does that.
 - **Personnummer.** Dataskyddslagen (2018:218) 3 kap. 10 § allows personnummer only where clearly justified, for example for secure identification. BankID identification is that case. Outside the chain, two places hold it: `parties`, and the column that stores each BankID signature (0001). The signature XML carries the signer's certificate, with name and personnummer, and through the receipt text and hidden data also the sender's name. The `ocspResponse` is stored next to the signature and may identify the signer too. The signature and `ocspResponse` are needed as evidence.
-- **Erasure.** An append-only chain cannot honour erasure or end of retention. So it holds nothing directly identifying. Deleting a `parties` row leaves only references in the chain, but the signature column still names every signer and, through the receipt, the sender. SIG-29 sets retention for both, and SIG-31 lists both. Anyone with the pepper can still resolve a reference by trying every personnummer, so the references stay personal data (pseudonymous, not anonymous) until the pepper is destroyed. SIG-29 decides when that happens.
-- **Transparency.** This table feeds SIG-31, the public page that lists every piece of data Fidant stores.
+- **Erasure.** An append-only chain cannot honour erasure or end of retention. So it holds nothing directly identifying. Deleting a `parties` row leaves only references in the chain, but the signature column still names every signer and, through the receipt, the sender. FID-29 sets retention for both, and FID-31 lists both. Anyone with the pepper can still resolve a reference by trying every personnummer, so the references stay personal data (pseudonymous, not anonymous) until the pepper is destroyed. FID-29 decides when that happens.
+- **Transparency.** This table feeds FID-31, the public page that lists every piece of data Fidant stores.
 
 ## Consequences
 
-- **SIG-7 and SIG-13**:
+- **FID-7 and FID-13**:
   - META gains `C` as base64url (43 characters, about 50 bytes with its key) of META's 1024 bytes, so the file-name budget shrinks. `metaFits` must reserve the room, and `parseMeta` accepts the new key set.
   - A new SEALED frame carries the salt, the MIME type and the exact size under the full key, so they reach the recipient only after signing. META keeps the name, `C`, `from`, `chunkSize` and `paddedLength`.
   - META and the frame declaring the P2P ciphertext hash move under a key from the fragment half. CHUNK frames stay under the full key.
   - A new frame under the fragment-half key carries the ciphertext hash, sent right after the last CHUNK.
   - `parseMeta` and `metaFits` also enforce the Name rules for verified transfers.
-- **SIG-15**:
+- **FID-15**:
   - The receipt templates, the browser rendering and the server's re-render check.
   - Signing only after the ciphertext check; refusing a sign-start whose `C` differs from the registered one.
   - `requirement.personalNumber` when the sender named the recipient.
   - Check the current BankID RP guidelines first, especially the facts marked unverified in Context.
-- **SIG-34**: the BankID simulator enforces the same limits as the real API, including the lengths of `userVisibleData` and `userNonVisibleData`.
-- **SIG-9**: the event types and fields above; the `parties` table outside the chain; the pepper.
-- **SIG-19 and SIG-20**:
+- **FID-34**: the BankID simulator enforces the same limits as the real API, including the lengths of `userVisibleData` and `userNonVisibleData`.
+- **FID-9**: the event types and fields above; the `parties` table outside the chain; the pepper.
+- **FID-19 and FID-20**:
   - The evidence package is assembled in the browser. It holds the signature, `ocspResponse`, the TSA tokens, the salt and the template text for the version signed.
   - A verifier recomputes `C` from the file and the salt, checks the hidden data, and checks the visible text against the template.
-  - It counts delivery only with a matching `download.confirmed` event for the same slot in the audit log (see What counts as a download). The package carries that event and its chain proof once the event's batch is anchored (SIG-9 sets the schedule).
-- **SIG-23**:
+  - It counts delivery only with a matching `download.confirmed` event for the same slot in the audit log (see What counts as a download). The package carries that event and its chain proof once the event's batch is anchored (FID-9 sets the schedule).
+- **FID-23**:
   - The create-transfer request carries `C`.
   - The recipient signs after the ciphertext is on the device, and the key half is released after signing.
-  - So the recipient's browser cannot decrypt while it receives. It buffers the whole padded ciphertext, in memory or in the origin private file system (OPFS), and decrypts it in a second pass after signing. SIG-23 decides the buffer location, the size limit or quota handling, and how the buffer is deleted when the recipient does not sign.
+  - So the recipient's browser cannot decrypt while it receives. It buffers the whole padded ciphertext, in memory or in the origin private file system (OPFS), and decrypts it in a second pass after signing. FID-23 decides the buffer location, the size limit or quota handling, and how the buffer is deleted when the recipient does not sign.
   - The send page says that repeat downloads need the sender's browser online.
-- **SIG-29**: retention, deleting `parties` rows and stored signatures with their `ocspResponse`, and the pepper's lifecycle.
-- **SIG-31**: publish the per-event table and the stores outside the chain: `parties` and the signature column with `ocspResponse`.
-- **SIG-36**: the sender signature and the organisation line.
-- **SIG-28**: this model is not qualified electronic registered delivery under eIDAS.
+- **FID-29**: retention, deleting `parties` rows and stored signatures with their `ocspResponse`, and the pepper's lifecycle.
+- **FID-31**: publish the per-event table and the stores outside the chain: `parties` and the signature column with `ocspResponse`.
+- **FID-36**: the sender signature and the organisation line.
+- **FID-28**: this model is not qualified electronic registered delivery under eIDAS.
 
 The inconsistencies in Context:
 
 1. **Size**: dropped from the receipt (Receipt text).
 2. **Where the signature lives**: 0001's wording; the audit log stores its hash (Personal data per audit event).
 3. **"The encrypted file" in P2P**: the ciphertext hash is defined per mode (Checksums).
-4. **Naming the file before signing**: META moves under a key from the fragment half (Key layering; SIG-7, SIG-13).
-5. **The declared checksum**: it is `C`, carried in META and registered with the server (Checksums; SIG-7, SIG-13, SIG-23).
+4. **Naming the file before signing**: META moves under a key from the fragment half (Key layering; FID-7, FID-13).
+5. **The declared checksum**: it is `C`, carried in META and registered with the server (Checksums; FID-7, FID-13, FID-23).
 6. **Plain checksums in END and RECEIPT**: kept for unverified transfers; verified transfers compare `C` (Checksums).
-7. **Draft wording**: time labelled "svensk tid", organisation line omitted (Receipt text; SIG-36).
+7. **Draft wording**: time labelled "svensk tid", organisation line omitted (Receipt text; FID-36).
 8. **Recipient labels**: never sent; recipients are identified by slot ID and, after BankID, by `partyRef` (Personal data per audit event).
 9. **Size formatting**: moot, since the size is dropped (Receipt text).
 10. **Who confirms a download**: browser-reported and backed only by comparison with the registered `C` (What counts as a download).

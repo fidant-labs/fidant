@@ -2,12 +2,12 @@
 
 - Status: Accepted
 - Date: 2026-11-23
-- Linear: SIG-69
+- Linear: FID-69
 
 ## Context
 
-- `apps/web` is Preact 11 with Vite and Tailwind v4 (SIG-67). Its buttons, inputs, cards, notices and menu are hand-made Tailwind elements.
-- SIG-69 asks for shadcn/ui components instead. shadcn/ui is written for React: its components import `react` and are built on Radix primitives (or Base UI), which also import `react` and `react-dom`.
+- `apps/web` is Preact 11 with Vite and Tailwind v4 (FID-67). Its buttons, inputs, cards, notices and menu are hand-made Tailwind elements.
+- FID-69 asks for shadcn/ui components instead. shadcn/ui is written for React: its components import `react` and are built on Radix primitives (or Base UI), which also import `react` and `react-dom`.
 - `preact/compat` implements the React API on top of Preact. With `react` and `react-dom` resolved to it, React libraries run on Preact without React itself.
 - shadcn/ui is not a dependency in the usual sense. Its CLI copies component source into the repository, where we own and edit it. The libraries those components import (Radix, `class-variance-authority`, a `cn` helper) are real dependencies.
 
@@ -15,9 +15,9 @@
 
 | Option                            | For                                                                                                                                                  | Against                                                                                                                |
 | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Keep hand-made Tailwind elements  | No new dependencies, smallest bundle                                                                                                                 | Every component, its states and its accessibility stay ours to build and test. SIG-69 asks for shadcn.                 |
-| shadcn/ui with Radix via compat   | Stock, widely used components with tested keyboard and screen-reader behavior. Radix is the base SIG-69 names. Preact stays; no React in the bundle. | React-ecosystem dependencies on a Preact app. Relies on compat matching React closely enough for Radix. Larger bundle. |
-| shadcn/ui with Base UI via compat | The CLI's newer default base                                                                                                                         | Same compat reliance as Radix, younger library, and SIG-69 names Radix.                                                |
+| Keep hand-made Tailwind elements  | No new dependencies, smallest bundle                                                                                                                 | Every component, its states and its accessibility stay ours to build and test. FID-69 asks for shadcn.                 |
+| shadcn/ui with Radix via compat   | Stock, widely used components with tested keyboard and screen-reader behavior. Radix is the base FID-69 names. Preact stays; no React in the bundle. | React-ecosystem dependencies on a Preact app. Relies on compat matching React closely enough for Radix. Larger bundle. |
+| shadcn/ui with Base UI via compat | The CLI's newer default base                                                                                                                         | Same compat reliance as Radix, younger library, and FID-69 names Radix.                                                |
 | Move `apps/web` to React          | shadcn and Radix run on the runtime they target                                                                                                      | Rewrites the client and its tests for no product gain, and a larger runtime.                                           |
 
 ## Decision
@@ -36,5 +36,5 @@
 - **Hand edits to generated code.** `button.tsx` has no `asChild` or `Slot`; `input.tsx` passes `type` through props; `label.tsx` is typed as `ComponentProps<"label">` (all for typecheck under `exactOptionalPropertyTypes` and the no-`asChild` rule). Components import `cn` from the `cn` package (there is no `lib/utils.ts`). `styles.css` does dark mode with `prefers-color-scheme`, and the CLI may re-add `@custom-variant dark` or `.dark`. `shadcn add`, a component that depends on an edited one, or `--overwrite` can silently regenerate these. Decline overwrites of edited files and review the `styles.css` diff after every `shadcn add`.
 - **No components that inject `<style>` at runtime.** Dialog, Sheet, AlertDialog, Drawer, Select, DropdownMenu, ContextMenu, a modal Popover and ScrollArea add a `<style>` element when they open or mount. The server's Content Security Policy (`default-src 'self'`, no `style-src`, in `apps/server/src/server.ts`) blocks inline `<style>` elements, so these need a separate decision (a CSP nonce or `style-src` change) first.
 - **Focus ring.** shadcn's stock ring is lighter than our previous 3px primary outline. We keep it to stay stock, and note it as a known gap against WCAG 2.2 focus appearance. Elements outside shadcn keep our `:focus-visible` outline.
-- **Bundle.** Radix, `class-variance-authority` and the `cn` helper add to the client bundle. The increase is measured in the SIG-69 pull request.
+- **Bundle.** Radix, `class-variance-authority` and the `cn` helper add to the client bundle. The increase is measured in the FID-69 pull request.
 - **Dependency review.** New React-ecosystem dependencies get the same review as any other. A library that needs a React feature compat lacks is a reason to pick another component, not to add React.

@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-11-25
-- Linear: SIG-280
+- Linear: FID-280
 
 This record amends 0017 (`0017-check-number.md`) and 0008 (`0008-relay-opt-out.md`). Read them with the replacements under Decision.
 

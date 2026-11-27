@@ -89,6 +89,15 @@ jobs:
             getent -s files hosts "$name" >/dev/null || echo "127.0.1.1 $name" | sudo tee -a /etc/hosts
           done
           getent -s files hosts "${names[@]}"
+      # Some runners list a nameserver off loopback after the loopback ones, which a lookup refused on loopback falls through to.
+      - name: Keep only the nameservers on loopback
+        run: |
+          ls -l /etc/resolv.conf
+          grep -v '^#' /etc/resolv.conf
+          awk '$1 != "nameserver" || $2 ~ /^127\./ || $2 == "::1"' /etc/resolv.conf > "$RUNNER_TEMP/resolv.conf"
+          cmp -s /etc/resolv.conf "$RUNNER_TEMP/resolv.conf" && exit 0
+          grep -q '^nameserver' "$RUNNER_TEMP/resolv.conf" || { echo "::error::/etc/resolv.conf names no nameserver on loopback"; exit 1; }
+          sudo cp --remove-destination "$RUNNER_TEMP/resolv.conf" /etc/resolv.conf
       - name: Let the test user reach loopback only
         id: egress
         run: |
@@ -111,20 +120,22 @@ jobs:
           sudo ss -tulpn
           logged() {
             for ipt in iptables ip6tables; do
-              for chain in fidant-e2e-egress fidant-e2e-dns; do sudo "$ipt" -nvxL "$chain"; done
+              for chain in "$@"; do sudo "$ipt" -nvxL "$chain"; done
             done | awk '$3 == "LOG" { n += $1 } END { print n + 0 }'
           }
           blocked() {
             local before
-            before=$(logged)
+            before=$(logged fidant-e2e-egress fidant-e2e-dns)
             if sudo -u fidant-e2e "$@"; then
               echo "::error::The test user ran $* past the block"
               exit 1
             fi
-            [ "$(logged)" -gt "$before" ] || { echo "::error::The block did not log $*"; exit 1; }
+            [ "$(logged fidant-e2e-egress fidant-e2e-dns)" -gt "$before" ] || { echo "::error::The block did not log $*"; exit 1; }
           }
           blocked curl -sS --max-time 5 http://1.1.1.1/
+          sent=$(logged fidant-e2e-egress)
           blocked getent hosts example.com
+          [ "$(logged fidant-e2e-egress)" -eq "$sent" ] || { echo "::error::A name lookup as the test user left loopback"; exit 1; }
           blocked curl -sS -g --max-time 5 'http://[::1]:53/'
           for ipt in iptables ip6tables; do
             for chain in fidant-e2e-egress fidant-e2e-dns; do sudo "$ipt" -Z "$chain"; done

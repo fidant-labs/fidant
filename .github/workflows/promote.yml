@@ -1,6 +1,6 @@
 name: Promote
 
-# A shortcut for the early project, which SIG-331 removes: every merge to main goes to fidant.se (0026).
+# A shortcut for the early project, which FID-331 removes: every merge to main goes to fidant.se (0026).
 on:
   push:
     branches: [main]

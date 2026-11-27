@@ -235,7 +235,7 @@ export function udpFree(port: number): Promise<boolean> {
 
 /**
  * A loopback port that was free a moment ago, for TCP and UDP both: coturn listens on both, and
- * browsers' ICE sockets and other relays take UDP ports from the same range (SIG-328).
+ * browsers' ICE sockets and other relays take UDP ports from the same range (FID-328).
  * ponytail: racy, so coturn's start also checks that it answers on UDP (waitForStun).
  */
 export async function freePort(): Promise<number> {

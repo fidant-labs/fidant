@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-11-24
-- Linear: SIG-130
+- Linear: FID-130
 
 ## Context
 
@@ -58,11 +58,11 @@
 
 ## Consequences
 
-- This supersedes 0007's line "A bandwidth cap waits until transfers through the relay have been measured", for the bill only. Fairness per sender stays with SIG-124. 0007 stays as written.
+- This supersedes 0007's line "A bandwidth cap waits until transfers through the relay have been measured", for the bill only. Fairness per sender stays with FID-124. 0007 stays as written.
 - A deploy that touches the instance reopens the ports, because CloudFormation applies the template's ports. While the cap is active they stay open until the next run, up to 5 minutes.
 - Lightsail's metrics lag by a few minutes, so the cap acts 10–15 minutes late at worst. That is about 110 GB at 1 Gbit/s, inside the 200 GB margin.
 - Relayed transfers are cut when the cap closes the ports. Direct transfers and the site are not affected.
-- Users get no message in the app. That stays with SIG-124.
+- Users get no message in the app. That stays with FID-124.
 - Another Lightsail instance of the same bundle in the region uses the pooled allowance too. The Lambda does not count it.
 - About 0.30 USD a month for the three alarms. The rest is in the free tier.
 
@@ -80,7 +80,7 @@ aws ssm get-parameter --name /fidant/relay-cap --profile fidant-poc --region eu-
 
 ### Lift the cap
 
-- Raise `relayCapBytes` in `apps/infra/src/config.ts` (and `relayWarnBytes` with it) and deploy `FidantApp`. A merge to main that touches `apps/infra/**` deploys it through `deploy-infra.yml`, or deploy by hand with `pnpm --filter @sigill/infra cdk deploy FidantApp --profile fidant-poc`. The next run reopens the ports.
+- Raise `relayCapBytes` in `apps/infra/src/config.ts` (and `relayWarnBytes` with it) and deploy `FidantApp`. A merge to main that touches `apps/infra/**` deploys it through `deploy-infra.yml`, or deploy by hand with `pnpm --filter @fidant/infra cdk deploy FidantApp --profile fidant-poc`. The next run reopens the ports.
 - Keep the limit under the bundle's allowance, or traffic past it is billed at 0.09 USD/GB.
 
 ### Pause the cap

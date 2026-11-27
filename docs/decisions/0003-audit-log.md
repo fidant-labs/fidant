@@ -2,20 +2,20 @@
 
 - Status: Accepted
 - Date: 2026-11-23
-- Linear: SIG-9
+- Linear: FID-9
 
 ## Context
 
 ### The question
 
-The audit log must make tampering visible, including tampering by us. SIG-9 asks for four decisions:
+The audit log must make tampering visible, including tampering by us. FID-9 asks for four decisions:
 
 - **Chain shape.** One hash chain per transfer, or one global chain.
 - **Append-only.** How the store refuses updates and deletes.
 - **Trusted timestamps.** Which RFC 3161 timestamp authority (TSA) the POC uses, and how often we anchor.
 - **Offline checks.** What a verifier needs to check the log without access to our systems.
 
-SIG-12 builds what this record decides.
+FID-12 builds what this record decides.
 
 ### What 0001 and 0002 already settle
 
@@ -25,14 +25,14 @@ These are inputs, not decisions of this record:
 - **No direct identity in the chain.** Parties appear as `partyRef = HMAC-SHA256(serverPepper, personnummer)`. Names and personnummer live in a separate, deletable `parties` table. The pepper is a server secret kept outside the database. No IP address and no user agent.
 - **No file name.** The audit log and the TSA hold hashes of the BankID signature or the signed receipt text, never the signature itself (0001, exception (e)). The signature lives in one database column.
 - **Time.** Every event has the server's UTC time. The TSA anchors the chain in batches.
-- **Evidence package.** SIG-19 and SIG-20 assemble it in the browser. It carries a transfer's `download.confirmed` event and its chain proof once the event's batch is anchored.
+- **Evidence package.** FID-19 and FID-20 assemble it in the browser. It carries a transfer's `download.confirmed` event and its chain proof once the event's batch is anchored.
 - **Offline.** The project must run fully local for tests and demos. 0001 lists a local timestamp authority in the local stack.
 
-### What SIG-58 settles
+### What FID-58 settles
 
 - The POC host is one Lightsail Micro instance in eu-north-1. It runs the app server and the TURN relay.
 - The database must not run on that box, because the relay is the most exposed machine.
-- SIG-58 left the store to this issue: Postgres (managed, about $14 a month, always on) or DynamoDB on demand ($0 when idle, the first 25 GB free).
+- FID-58 left the store to this issue: Postgres (managed, about $14 a month, always on) or DynamoDB on demand ($0 when idle, the first 25 GB free).
 
 ### Who we defend against
 
@@ -57,7 +57,7 @@ What a hash chain cannot show: events that were never written. If the server ski
 | Option                               | How it refuses updates and deletes                                                                                                                                                                                    | Against                                                                                                                                                                                                                                                    |
 | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Postgres on its own managed instance | The app role gets only `INSERT` and `SELECT`. A trigger raises on `UPDATE` and `DELETE`, a statement trigger on `TRUNCATE`. The table owner is a separate role.                                                       | About $14–15 a month, always on. A superuser still bypasses both.                                                                                                                                                                                          |
-| Postgres on the Lightsail app box    | As above                                                                                                                                                                                                              | $0 extra, but reverses SIG-58: the database sits on the most exposed machine.                                                                                                                                                                              |
+| Postgres on the Lightsail app box    | As above                                                                                                                                                                                                              | $0 extra, but reverses FID-58: the database sits on the most exposed machine.                                                                                                                                                                              |
 | DynamoDB on demand                   | Writes use `PutItem` with `attribute_not_exists`, so an existing item is never overwritten. The app's IAM policy denies `UpdateItem`, `DeleteItem`, `BatchWriteItem`, PartiQL updates and deletes, and table changes. | IAM cannot force the condition on `PutItem`: stolen app credentials can still overwrite an item with an unconditional put. DynamoDB Local ignores IAM, so the refusal is only testable as a policy document locally. The local stack needs Java or Docker. |
 
 In every option, the store's refusal stops bugs and casual misuse. Against us, only the chain and the external anchors make changes visible.
@@ -69,7 +69,7 @@ In every option, the store's refusal stops bugs and casual misuse. Against us, o
 | FreeTSA (`https://freetsa.org/tsr`)        | Free, RFC 3161                                    | A hobby project; little weight in a dispute; no published availability                                  |
 | DigiCert (`http://timestamp.digicert.com`) | Free, widely trusted, used for code signing       | A single provider                                                                                       |
 | Both, one token from each per batch        | Survives one TSA disappearing or being distrusted | Two HTTP calls per batch                                                                                |
-| A qualified TSA under eIDAS                | Legal presumption of accuracy (eIDAS Art. 41)     | Paid, needs a contract; not needed for the POC. SIG-28 already says the POC is not a qualified service. |
+| A qualified TSA under eIDAS                | Legal presumption of accuracy (eIDAS Art. 41)     | Paid, needs a contract; not needed for the POC. FID-28 already says the POC is not a qualified service. |
 | Local `openssl ts` authority               | Runs offline                                      | Proves nothing outside our own systems; tests and demos only                                            |
 
 ### How often to anchor
@@ -114,7 +114,7 @@ The audit log lives in DynamoDB in eu-north-1. Locally and in tests it runs agai
 | `audit_anchors` | `log` (always `audit`), `batchId` (a number, from 0) | `root`, `leafCount`, `prevRoot`, `anchoredAt`, one `TimeStampResp` per TSA | Conditional `PutItem` only                     |
 | `audit_proofs`  | `transferId`, `seq`                                  | `batchId`, `leafIndex`, the audit path, for each anchored head             | Conditional `PutItem` only                     |
 | `audit_pending` | `transferId`                                         | A random `token`; marks a transfer with events not yet anchored            | `PutItem`, conditional `DeleteItem`            |
-| `parties`       | `partyRef`                                           | Name and personnummer (0002). Not part of the chain.                       | `PutItem`, `UpdateItem`, `DeleteItem` (SIG-29) |
+| `parties`       | `partyRef`                                           | Name and personnummer (0002). Not part of the chain.                       | `PutItem`, `UpdateItem`, `DeleteItem` (FID-29) |
 
 - **Appending.** One function appends events; every other module calls it. It puts the transfer's `audit_pending` item with a fresh `token`, reads the transfer's head with a strongly consistent `Query` (descending, limit 1), computes `seq` and `hash`, and writes with `ConditionExpression: attribute_not_exists(seq)`. If two writers race, one condition fails, and that writer reads the head again and retries. After the event is written, it puts the `audit_pending` item again with a new `token`. The first put means a crash after the event write cannot leave the event unmarked. The second means an anchoring run that read the head just before the write does not clear the mark. If any of these writes fails, the append fails and the caller sees an error; an event already written stays marked by the first put.
 - **Refusing updates and deletes.** The app's IAM policy allows only `PutItem`, `GetItem` and `Query` on `audit_events`, `audit_anchors` and `audit_proofs`, and `PutItem`, `Scan` and `DeleteItem` on `audit_pending`. On the three audit tables it explicitly denies `UpdateItem`, `DeleteItem`, `BatchWriteItem`, `PartiQLUpdate`, `PartiQLDelete`, `DeleteTable`, `UpdateTable` and `UpdateTimeToLive`. TTL stays off on these tables. Deletion protection and point-in-time recovery are on.
@@ -128,12 +128,12 @@ The audit log lives in DynamoDB in eu-north-1. Locally and in tests it runs agai
 - A batch counts as anchored when at least one TSA returned a valid token: correct imprint and nonce, a signature that checks, and a `genTime` within 5 minutes of the server's clock. A missing second token is not retried; the next batch covers the same heads again only if they changed.
 - **Schedule.** The app server runs the anchoring job every 10 minutes, and only when `audit_pending` has items. No events, no TSA calls.
 - **The job.** Runs never overlap: the next run is scheduled when the previous one ends. A run scans `audit_pending`, reads each transfer's head with a strongly consistent `Query`, and reads the latest batch with a descending `Query` on `log = audit`, limit 1, for `prevRoot` and the next `batchId`. It builds the tree, gets the tokens, and writes `audit_anchors` with `attribute_not_exists(batchId)` and then one `audit_proofs` item per head. If no TSA returned a valid token, or the `audit_anchors` put is refused, the run writes nothing more and leaves `audit_pending` as it is. If a run stops halfway, the next run anchors the same heads again in a new batch; a proof that already exists for a head is kept, and the refused write is not an error. Then it deletes each `audit_pending` item on the condition that its `token` is still the one it read, so a transfer that got a new event in the meantime stays pending for the next batch.
-- **The window before an anchor.** Every API response that appends an event returns the event's `seq` and `hash`. The browser keeps them for the evidence package; where it keeps them across page loads is SIG-19's choice. A rewrite before the anchor then contradicts a hash the party already holds. This covers only events a party's own request caused. Events the server writes on its own, such as `transfer.expired`, have no such witness until they are anchored.
+- **The window before an anchor.** Every API response that appends an event returns the event's `seq` and `hash`. The browser keeps them for the evidence package; where it keeps them across page loads is FID-19's choice. A rewrite before the anchor then contradicts a hash the party already holds. This covers only events a party's own request caused. Events the server writes on its own, such as `transfer.expired`, have no such witness until they are anchored.
 - **Ceiling.** The window is up to 10 minutes plus the time a TSA is unreachable. Both TSAs down for longer means no anchors until one is back; transfers continue.
 
 ### Offline checks: the evidence package carries everything
 
-For one transfer, the evidence package (SIG-19, SIG-20) carries:
+For one transfer, the evidence package (FID-19, FID-20) carries:
 
 1. the transfer's events from `seq` 0 to the anchored head, with their `hash` values;
 2. the `audit_proofs` item for that head: `batchId`, `leafIndex`, audit path;
@@ -149,7 +149,7 @@ The verifier then, with no access to our systems:
 
 The verifier needs neither the pepper nor the `parties` table. Names come from the BankID signatures in the package. A transfer's chain holds the `partyRef` of every party to the transfer, so a package shows other recipients' references, but not who they are.
 
-Which TSA roots a verifier trusts is the verifier's choice. SIG-20's verifier ships FreeTSA's and DigiCert's roots. Tokens stay checkable after a TSA certificate expires, because the verifier checks the certificates at `genTime` (`-attime` above), which falls inside their validity. SIG-20's verifier does the same. Keeping them checkable for decades, for example by timestamping old tokens again (RFC 4998), is left to production.
+Which TSA roots a verifier trusts is the verifier's choice. FID-20's verifier ships FreeTSA's and DigiCert's roots. Tokens stay checkable after a TSA certificate expires, because the verifier checks the certificates at `genTime` (`-attime` above), which falls inside their validity. FID-20's verifier does the same. Keeping them checkable for decades, for example by timestamping old tokens again (RFC 4998), is left to production.
 
 We do not publish batch roots. Each package carries its own tokens, and the chain of batch roots makes a withdrawn batch visible to anyone holding a later one.
 
@@ -159,18 +159,18 @@ We do not publish batch roots. Each package carries its own tokens, and the chai
   - Events carry only the fields 0002 lists: references, hashes, counts, flags, times. `commitment` is exception (c); the signature hash is exception (e); the OCSP response is not secret, so neither is its hash; `ciphertextSha256` is a hash of ciphertext, which is not secret.
   - The TSA receives SHA-256 of a root, a hash of hashes of the above. No class M or K value reaches it.
   - DynamoDB is reached over HTTP, so the recording proxy 0001 describes for server→HTTP dependencies covers it, both DynamoDB Local and the TSAs.
-- **0001's stack table.** This record amends one row of 0001's stack table, as 0002 amended 0001 before it: the audit log moves from Postgres to DynamoDB, and DynamoDB Local joins the local stack. 0001 is not superseded. Key halves, receipts and the stored signature are not decided here. SIG-63 decides whether they move too, so the stack keeps one store, and updates the places 0001 names a Postgres column. Until then, 0001 stands as written for them.
-- **Prerequisites.** DynamoDB Local needs Docker or Java. SIG-12 picks one and adds it to `AGENTS.md`.
-- **SIG-12** builds:
+- **0001's stack table.** This record amends one row of 0001's stack table, as 0002 amended 0001 before it: the audit log moves from Postgres to DynamoDB, and DynamoDB Local joins the local stack. 0001 is not superseded. Key halves, receipts and the stored signature are not decided here. FID-63 decides whether they move too, so the stack keeps one store, and updates the places 0001 names a Postgres column. Until then, 0001 stands as written for them.
+- **Prerequisites.** DynamoDB Local needs Docker or Java. FID-12 picks one and adds it to `AGENTS.md`.
+- **FID-12** builds:
   - the five tables, the single append function, the canonical form and the chain hash;
   - the anchoring job and the local `openssl ts` TSA;
   - a test that changing any stored event breaks the chain;
   - a test against DynamoDB Local that a second write to an existing `seq` is refused, and that two concurrent appends to one transfer both land, in order;
   - a test that an event appended while an anchoring run is in progress stays pending, and that a run stopped halfway is completed by the next;
   - a round trip: anchor with the local TSA, then check one transfer with the verifier steps above;
-  - a unit test over the IAM policy document that it denies the actions listed above. DynamoDB Local ignores IAM, so "the database refuses updates and deletes" is checked on the policy, not by a live call. SIG-12's "Done when" must say so.
-- **SIG-54** creates the tables in CDK with deletion protection and point-in-time recovery, the IAM user and policy for the app, and passes the TSA URLs to the server.
-- **SIG-19 and SIG-20:** the package contents and verifier steps above, including the event hashes the browser kept. SIG-20's verifier ships the TSA roots it trusts.
-- **SIG-15 and SIG-23:** API responses that append an event return its `seq` and `hash`.
-- **SIG-29:** deleting a transfer's events at the end of retention runs under its own role, not the app's. Proofs are stored per transfer, so deleting one transfer's items leaves every other transfer's evidence checkable.
-- **SIG-28:** the TSAs are not qualified under eIDAS. A qualified TSA is a production decision.
+  - a unit test over the IAM policy document that it denies the actions listed above. DynamoDB Local ignores IAM, so "the database refuses updates and deletes" is checked on the policy, not by a live call. FID-12's "Done when" must say so.
+- **FID-54** creates the tables in CDK with deletion protection and point-in-time recovery, the IAM user and policy for the app, and passes the TSA URLs to the server.
+- **FID-19 and FID-20:** the package contents and verifier steps above, including the event hashes the browser kept. FID-20's verifier ships the TSA roots it trusts.
+- **FID-15 and FID-23:** API responses that append an event return its `seq` and `hash`.
+- **FID-29:** deleting a transfer's events at the end of retention runs under its own role, not the app's. Proofs are stored per transfer, so deleting one transfer's items leaves every other transfer's evidence checkable.
+- **FID-28:** the TSAs are not qualified under eIDAS. A qualified TSA is a production decision.

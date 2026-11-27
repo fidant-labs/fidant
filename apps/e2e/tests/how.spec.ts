@@ -199,7 +199,7 @@ test("the top nav links to How it works between Send and Privacy", async ({ page
   await expect(links.nth(1)).toHaveAttribute("aria-current", "page");
   await expect(
     page.locator("footer").getByRole("link", { name: "Share a secret" }),
-  ).toHaveAttribute("href", "/send?mode=secret");
+  ).toHaveAttribute("href", "/send/secret");
 });
 
 test.describe("in Swedish", () => {

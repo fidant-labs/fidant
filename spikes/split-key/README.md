@@ -1,6 +1,6 @@
-# Split-key encryption spike (SIG-7)
+# Split-key encryption spike (FID-7)
 
-Throwaway code that answers the questions in SIG-7: can a browser encrypt and
+Throwaway code that answers the questions in FID-7: can a browser encrypt and
 decrypt multi-gigabyte files in chunks under a key split between the link
 fragment and the server, and how does it save the result to disk in each
 browser. Nothing here ships. The findings and the recommended format go into
@@ -13,8 +13,8 @@ The key split:
 - `F`, the fragment half (32 bytes), travels in the link after `#`.
 - `S`, the server half (32 bytes), is generated in the sender's browser, held
   by the server, and released only after the receipt is signed.
-- `metaKey = HKDF-SHA256(F, salt = transferId, info "sigill/v2/meta")`
-- `contentKey = HKDF-SHA256(F ‖ S, salt = transferId, info "sigill/v2/content")`
+- `metaKey = HKDF-SHA256(F, salt = transferId, info "fidant/v2/meta")`
+- `contentKey = HKDF-SHA256(F ‖ S, salt = transferId, info "fidant/v2/content")`
 
 ## Tests
 

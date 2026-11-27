@@ -160,7 +160,7 @@ shareButton.addEventListener("click", async () => {
 emailButton.addEventListener("click", () => {
   const subject = "Fidant handoff probe (dummy key)";
   const body =
-    "A link fragment test for SIG-7. The key in it is a dummy, not a real key.\n\n" +
+    "A link fragment test for FID-7. The key in it is a dummy, not a real key.\n\n" +
     `Open this link:\n\n${link}\n`;
   location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 });

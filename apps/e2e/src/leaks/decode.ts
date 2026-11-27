@@ -340,7 +340,7 @@ interface Inflated {
  * it that fits, marked `limited`, so a secret early in a bomb is still found and the caller can
  * report that the rest was not scanned. A corrupt stream yields what it decodes to before the
  * damage, not marked: corrupt data is mostly a false magic in random bytes, so it reports no
- * `limit` (the gap this leaves is tracked in SIG-275).
+ * `limit` (the gap this leaves is tracked in FID-275).
  */
 function inflate(inflater: Inflater, data: Buffer, room: number): Inflated | undefined {
   const cap = Math.min(maxInflated, room);
