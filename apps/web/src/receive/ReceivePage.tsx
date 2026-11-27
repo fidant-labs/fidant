@@ -9,9 +9,10 @@
 //   masked address, the mark no longer matches a binding and the page joins
 //   nothing (`unbound`). Otherwise it joins with this tab's token from
 //   sessionStorage, or first asks the server to email a code and trades the
-//   right code for a token. A `gate` answer to a `join` is a refusal: the
-//   token is dropped and an emailed link asks `gate` again; a plain link is
-//   email-bound and ends as `unbound`.
+//   right code for a token. Before the channel opens, a `gate` answer to a
+//   `join` is a refusal: the token is dropped and an emailed link asks `gate`
+//   again; a plain link is email-bound and ends as `unbound`. Once it is open,
+//   a `gate` can only answer a repeated `join` and is ignored (decision 0029).
 // - The server answers `join` with `joined`, carrying this pairing's ICE
 //   servers, before it tells the sender; the recipient peer is created
 //   synchronously on it, so the sender's offer, which comes later on the same
@@ -19,8 +20,10 @@
 //   random attempt ID, so a sender's late refusal of an earlier attempt cannot
 //   end this one.
 // - `relay` goes to the peer. `refused` ends the attempt with the matching
-//   message, and so does `host-gone` until the file starts arriving. A
-//   transfer under way no longer needs the server (the sender may only have
+//   message, except a `busy`, or any refusal after `host-gone`, once the
+//   channel is open (decision 0029). `host-gone` ends it until the file starts
+//   arriving. A transfer under way needs the server only to recover a dropped
+//   route, not to go on (the sender may only have
 //   lost its signaling connection), so then `host-gone` is only remembered: if
 //   the sender's tab really closed, the peer drops too (at the latest when ICE
 //   consent runs out) and the drop is reported as the sender's page closing.
