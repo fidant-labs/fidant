@@ -14,7 +14,9 @@
 //
 // With the safety number on, each side sends CHECK once its own user compared
 // the numbers, and META goes only after both said they match. Either side's
-// CHECK(0) ends the transfer before anything about the file was sent.
+// CHECK(0) ends the transfer before anything about the file was sent. A shared
+// secret (`minChunkBytes`) on a connection too small for it ends with
+// `too-small` only after both confirmed, before META, as a file would get that far.
 //
 // The sender sends CHUNK i (0-based from ACCEPT's offset) only while i < the
 // highest CREDIT so far, so a recipient that writes slowly holds at most its
@@ -96,6 +98,13 @@ export type SendFileOptions = {
   signal: AbortSignal;
   /** With the safety number on: resolves with whether the sender said the numbers match. */
   confirm?: Promise<boolean>;
+  /**
+   * The smallest chunk this transfer may use (a shared secret: MAX_TEXT_BYTES).
+   * Only with `confirm`: on a smaller connection the transfer ends after both
+   * confirmed, before META, with `too-small`. Without the check the caller
+   * refuses before INIT.
+   */
+  minChunkBytes?: number;
   /** Both sides said the numbers match; META goes next. */
   onChecked?(): void;
   /** The recipient accepted; streaming starts. */
@@ -109,6 +118,8 @@ export type SendResult =
   | { type: "check-differs"; by: "sender" | "recipient" }
   /** The recipient declined the offer. */
   | { type: "declined" }
+  /** The connection can't carry a chunk of `minChunkBytes`, so no META was sent. */
+  | { type: "too-small" }
   /** The recipient sent a RECEIPT; `match` says whether its checksum equals ours. */
   | { type: "receipt"; match: boolean };
 
@@ -164,6 +175,9 @@ export async function sendFile(options: SendFileOptions): Promise<SendResult> {
     }
 
     const chunkSize = Math.min(MAX_CHUNK_BYTES, maxMessageSize - FRAME_OVERHEAD_BYTES);
+    if (options.minChunkBytes !== undefined && chunkSize < options.minChunkBytes) {
+      return { type: "too-small" };
+    }
     if (chunkSize < MIN_CHUNK_BYTES) {
       throw new Error("max message size too small");
     }
