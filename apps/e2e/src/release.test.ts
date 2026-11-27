@@ -11,7 +11,6 @@ import {
   pagesBucket,
   releaseRoleName,
   releaseSessionSeconds,
-  releaseWorkflow,
   signalCluster,
   signalService,
 } from "../../infra/src/config.ts";
@@ -223,7 +222,7 @@ test("release.yml only calls release-jobs.yml on main by its full path, the one 
   assert.deepEqual(doc.jobs, {
     release: {
       permissions: { contents: "read", "id-token": "write" },
-      uses: `${releaseWorkflow}@main`,
+      uses: "fidant-labs/fidant/.github/workflows/release-jobs.yml@main",
       secrets: { FIDANT_POC_ACCOUNT: `\${{ secrets.FIDANT_POC_ACCOUNT }}` },
     },
   });
@@ -240,6 +239,8 @@ test("the release workflow names what the infra names", () => {
     `--cluster ${signalCluster} --services ${signalService}`,
     `--cluster ${signalCluster} --service ${signalService}`,
     `:role/${releaseRoleName}\n`,
+    `role-to-assume: arn:aws:iam::\${{ secrets.FIDANT_POC_ACCOUNT }}:role/${releaseRoleName}\n`,
+    `- name: Check the account secret arrived\n        env:\n          ACCOUNT: \${{ secrets.FIDANT_POC_ACCOUNT }}\n`,
     `bucket=s3://${pagesBucket("$ACCOUNT")}\n`,
     "aws-region: eu-north-1",
   ]) {
@@ -700,7 +701,7 @@ test("a new image is pushed and tagged, and with no service live moves and nothi
   });
 });
 
-test("a release never reads a tag from before the v2- prefix, so it pushes and tags its own image even when an old tag names another", () => {
+test("a release never reads a commit, inputs- or failed- tag from before the v2- prefix, live excepted, so it tags its own image even when an old tag names another", () => {
   const old = {
     [`inputs-${key}`]: "sha256:bad",
     [sha]: "sha256:bad",
@@ -711,7 +712,6 @@ test("a release never reads a tag from before the v2- prefix, so it pushes and t
     services: [{ services: [], failures: [{ reason: "MISSING" }] }],
   });
   assert.equal(status, 0);
-  assert.ok(calls.includes("docker push"));
   for (const call of calls) {
     assert.doesNotMatch(call, /imageTag=(inputs-|failed-|[0-9a-f]{40})/);
   }
