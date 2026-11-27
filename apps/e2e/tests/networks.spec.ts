@@ -736,7 +736,7 @@ test.describe("the box", () => {
 /** The types of the candidates a page gathers with `server`, and the codes of its candidate errors. */
 function gather(page: Page, server: RTCIceServer): Promise<{ types: string[]; errors: number[] }> {
   return page.evaluate(async (iceServer) => {
-    // A certificate of our own: see relayedChannel.
+    // A certificate of our own, and the wait for it: see relayedChannel.
     const certificates = [
       await RTCPeerConnection.generateCertificate({
         name: "ECDSA",
@@ -744,6 +744,7 @@ function gather(page: Page, server: RTCIceServer): Promise<{ types: string[]; er
       } as EcKeyGenParams),
     ];
     const pc = new RTCPeerConnection({ iceServers: [iceServer], certificates });
+    await pc.getStats();
     const types: string[] = [];
     const errors: number[] = [];
     pc.addEventListener("icecandidate", ({ candidate }) => {
@@ -790,9 +791,10 @@ async function relayedChannel(
 ): Promise<{ path: string; echoed: boolean }> {
   const config: RTCConfiguration = { iceServers: [ice], iceTransportPolicy: "relay" };
   // Each callback runs in a page, so it repeats the helpers it needs.
-  // Each connection gets a certificate made beforehand, which WebRTC applies in the constructor.
-  // Without one, Chromium makes it asynchronously, and in CI an offer was once set before the
-  // certificate reached the transport: "Fingerprint provided but no identity available" (FID-274).
+  // Each connection gets a certificate made beforehand and waits for a getStats round trip before
+  // its first description. Chromium hands even a supplied certificate to the transport
+  // asynchronously, and an offer set before it arrives fails with "Fingerprint provided but no
+  // identity available" (FID-274, FID-194).
   const offer = await sender.evaluate(async (config) => {
     const certificates = [
       await RTCPeerConnection.generateCertificate({
@@ -801,6 +803,7 @@ async function relayedChannel(
       } as EcKeyGenParams),
     ];
     const pc = new RTCPeerConnection({ ...config, certificates });
+    await pc.getStats();
     (globalThis as RelayGlobals).relay = { pc, channel: pc.createDataChannel("relay") };
     await pc.setLocalDescription();
     while (pc.iceGatheringState !== "complete") {
@@ -817,6 +820,7 @@ async function relayedChannel(
         } as EcKeyGenParams),
       ];
       const pc = new RTCPeerConnection({ ...config, certificates });
+      await pc.getStats();
       const received = new Promise<string>((resolve) => {
         pc.addEventListener("datachannel", ({ channel }) => {
           channel.binaryType = "arraybuffer";
