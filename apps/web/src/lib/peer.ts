@@ -68,7 +68,7 @@ export const DEFAULT_MAX_MESSAGE_SIZE = 65536;
 /** How long to wait before reading a "stun" path again (see readPath). */
 const PATH_RECHECK_MS = 1000;
 
-/** How long the sender lets ICE try without the relay, from applying the answer. */
+/** How long ICE gets without the relay: from the sender applying the answer, or the recipient sending it. */
 export const RELAY_FALLBACK_MS = 3000;
 
 export type PeerCloseReason =
@@ -127,6 +127,11 @@ export type PeerOptions = {
    * is a caught error's name (see errorName), safe to log.
    */
   onClose(reason: PeerCloseReason, detail?: string, name?: string): void;
+  /**
+   * Nothing has connected RELAY_FALLBACK_MS after the answer, and this peer got
+   * no TURN URL to add. Called at most once. The peer stays as it is.
+   */
+  onStalled?(): void;
 };
 
 export type Peer = {
@@ -589,6 +594,9 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
         }
         sendSignal({ kind: "answer", sdp: answer.sdp }, true);
         answered = true;
+        if (!hasTurn && !closed) {
+          relayTimer = setTimeout(stalled, RELAY_FALLBACK_MS);
+        }
         theirFingerprint = theirs;
         resolveNumber(await checkNumber(theirs, answer.fingerprint));
         return;
@@ -604,8 +612,8 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
         await setRemote("answer", payload.sdp, theirs);
         answerAccepted = true;
         theirFingerprint = theirs;
-        if (hasTurn && !closed) {
-          relayTimer = setTimeout(fallBackToRelay, RELAY_FALLBACK_MS);
+        if (!closed) {
+          relayTimer = setTimeout(hasTurn ? fallBackToRelay : stalled, RELAY_FALLBACK_MS);
         }
         resolveNumber(await checkNumber(offerFingerprint, theirs));
         return;
@@ -618,7 +626,7 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
         if (ignoredRestart) {
           return;
         }
-        if (isConnected(connection().iceConnectionState) || channel?.readyState === "open") {
+        if (pathUp()) {
           ignoredRestart = true;
           return;
         }
@@ -649,7 +657,7 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
         if (ignoredRestart) {
           return;
         }
-        if (isConnected(connection().iceConnectionState) || channel?.readyState === "open") {
+        if (pathUp()) {
           ignoredRestart = true;
           return;
         }
@@ -684,6 +692,18 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
     }
   }
 
+  /** ICE connected or the channel opened. */
+  function pathUp(): boolean {
+    return isConnected(connection().iceConnectionState) || channel?.readyState === "open";
+  }
+
+  /** The timer that teardown clears calls this, so the peer is not closed here. */
+  function stalled(): void {
+    if (!pathUp()) {
+      options.onStalled?.();
+    }
+  }
+
   function addRelay(): void {
     const pc = connection();
     pc.setConfiguration({ ...pc.getConfiguration(), iceServers: options.iceServers });
@@ -694,8 +714,7 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
     incoming = incoming
       .then(async () => {
         const pc = connection();
-        const state = pc.iceConnectionState;
-        if (closed || isConnected(state) || channel?.readyState === "open") {
+        if (closed || pathUp()) {
           return;
         }
         try {

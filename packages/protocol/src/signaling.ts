@@ -50,8 +50,12 @@ const CODE_PATTERN = /^[0-9]{6}$/;
 
 const BASE64URL_PATTERN = /^[A-Za-z0-9_-]+$/;
 
-/** Why a sender's page may turn a recipient away. `drop`: the sender gave up on the attempt; the link still works. */
-export const REFUSE_REASONS = ["used", "busy", "unknown", "drop"] as const;
+/**
+ * Why a sender's page may turn a recipient away. `drop`: the sender gave up on the attempt; the
+ * link still works. `turn`: the sender allowed our relay for the link, so join again (decision
+ * 0028). The server never logs `turn`.
+ */
+export const REFUSE_REASONS = ["used", "busy", "unknown", "drop", "turn"] as const;
 export type RefuseReason = (typeof REFUSE_REASONS)[number];
 
 /**
@@ -102,8 +106,12 @@ export type ErrorCode = (typeof ERROR_CODES)[number];
 export const UPGRADE_REJECT_REASONS = ["path", "origin", "full", "address"] as const;
 export type UpgradeRejectReason = (typeof UPGRADE_REJECT_REASONS)[number];
 
-/** Every value the server may write in a log line's `reason` field. */
-export type LogReason = RefusedReason | UpgradeRejectReason | CodeResult | "unverified";
+/** Every value the server may write in a log line's `reason` field. Never `turn` (decision 0028). */
+export type LogReason =
+  | Exclude<RefusedReason, "turn">
+  | UpgradeRejectReason
+  | CodeResult
+  | "unverified";
 
 /** The only events a log line may name. */
 export const LOG_EVENTS = [
@@ -140,9 +148,11 @@ export type LogFields = {
 
 /**
  * The sender announces its full list of link IDs, and in `turn` whether recipients who join from
- * now on may use our TURN relay. Re-sent whenever either changes.
+ * now on may use our TURN relay. `turnLinks` lists the links whose recipients may use it even when
+ * `turn` is false (decision 0028); each is also in `links`. Re-sent whenever any of them changes.
+ * The server never logs `turn` or `turnLinks`.
  */
-export type HostMessage = { t: "host"; links: string[]; turn: boolean };
+export type HostMessage = { t: "host"; links: string[]; turn: boolean; turnLinks?: string[] };
 /**
  * A recipient asks to be connected to the sender hosting a link. `attempt` is a fresh random ID
  * (same shape as a link ID) for this join, so a refusal can name the attempt it refuses. It is
@@ -211,6 +221,11 @@ export type JoinedMessage = {
   iceServers: IceServer[];
   turn: boolean;
 };
+/**
+ * Tells both pages, after a `joined` whose `turn` is false, that a relay is up, so asking the
+ * sender to allow it is worth it (decision 0028). Never logged.
+ */
+export type TurnUpMessage = { t: "turn-up"; link: string; attempt: string };
 /** Tells the sender that the recipient on a link went away. */
 export type LeftMessage = { t: "left"; link: string };
 /** Tells a recipient why it cannot connect. */
@@ -236,6 +251,7 @@ export type TokenMessage = { t: "token"; link: string; token: string };
 
 export type ServerMessage =
   | JoinedMessage
+  | TurnUpMessage
   | LeftMessage
   | RelayMessage
   | RefusedMessage
@@ -441,10 +457,12 @@ export function parseClientMessage(raw: string): ClientMessage | undefined {
   }
   switch (value.t) {
     case "host": {
-      if (!hasKeys(value, ["t", "links", "turn"]) || typeof value.turn !== "boolean") {
+      const { links, turn, turnLinks } = value;
+      const keys =
+        turnLinks === undefined ? ["t", "links", "turn"] : ["t", "links", "turn", "turnLinks"];
+      if (!hasKeys(value, keys) || typeof turn !== "boolean") {
         return undefined;
       }
-      const links = value.links;
       if (!Array.isArray(links) || links.length > MAX_LINKS) {
         return undefined;
       }
@@ -454,7 +472,17 @@ export function parseClientMessage(raw: string): ClientMessage | undefined {
       if (new Set(links).size !== links.length) {
         return undefined;
       }
-      return { t: "host", links: [...links], turn: value.turn };
+      if (turnLinks === undefined) {
+        return { t: "host", links: [...links], turn };
+      }
+      if (!Array.isArray(turnLinks) || new Set(turnLinks).size !== turnLinks.length) {
+        return undefined;
+      }
+      // Each is one of `links`, so the list is link IDs and at most MAX_LINKS long.
+      if (!turnLinks.every((id) => links.includes(id))) {
+        return undefined;
+      }
+      return { t: "host", links: [...links], turn, turnLinks: [...turnLinks] };
     }
     case "join": {
       const { link, attempt, token } = value;
@@ -551,6 +579,14 @@ export function parseServerMessage(raw: string): ServerMessage | undefined {
         turn: value.turn,
       };
     }
+    case "turn-up":
+      if (!hasKeys(value, ["t", "link", "attempt"])) {
+        return undefined;
+      }
+      if (!isLinkId(value.link) || !isLinkId(value.attempt)) {
+        return undefined;
+      }
+      return { t: "turn-up", link: value.link, attempt: value.attempt };
     case "left":
       if (!hasKeys(value, ["t", "link"]) || !isLinkId(value.link)) {
         return undefined;

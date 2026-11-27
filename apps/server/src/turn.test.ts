@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { parseIceServers } from "@sigill/protocol";
-import { chooseIce, iceServersFor, turnCredentials } from "./turn.ts";
+import { chooseIce, hasTurn, iceServersFor, turnCredentials } from "./turn.ts";
 
 const userData = readFileSync(new URL("../../infra/box/user-data.sh", import.meta.url), "utf8");
 const [, staticUrls = ""] = userData.match(/^turn_urls="([^"]*)"$/m) ?? [];
@@ -58,6 +58,14 @@ test("hands STUN_URLS alone, with no credentials, whatever the sender's relay ch
     assert.deepEqual(servers, [{ urls }]);
     assert.deepEqual(parseIceServers(JSON.parse(JSON.stringify(servers))), servers);
   }
+});
+
+test("hasTurn: only a secret with a turn: or turns: URL counts as a relay", () => {
+  assert.equal(hasTurn({ urls: boxUrls, secret: "test-secret" }), true);
+  assert.equal(hasTurn({ urls: ["turns:a:5349"], secret: "test-secret" }), true);
+  assert.equal(hasTurn({ urls: ["stun:a:3478"], secret: "test-secret" }), false);
+  assert.equal(hasTurn({ urls: boxUrls }), false);
+  assert.equal(hasTurn(undefined), false);
 });
 
 test("chooseIce: a relay list beats TURN, TURN beats STUN, STUN alone has no secret, else nothing", () => {

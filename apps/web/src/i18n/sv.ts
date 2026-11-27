@@ -135,7 +135,7 @@ export const sv: Messages = {
     neverHeading: "Vår server får aldrig",
     seesHeading: "Vår server ser",
     relayNote:
-      "Om de två webbläsarna inte kan ansluta direkt och vårt relä är tillgängligt går filen i stället via reläet, fortfarande krypterad. Reläet ser då båda IP-adresserna och ungefär hur stor filen är, men kan inte låsa upp den.",
+      "Om de två webbläsarna inte kan ansluta direkt kan avsändaren tillåta vårt relä. Om reläet är tillgängligt går filen då via det i stället, fortfarande krypterad. Reläet ser då båda IP-adresserna och ungefär hur stor filen är, men kan inte låsa upp den.",
     caveat: "Haken: eftersom inget sparas måste fliken vara öppen tills filen har kommit fram.",
     tryHeading: "Prova på dig själv",
     tryBody:
@@ -182,7 +182,7 @@ export const sv: Messages = {
         heading: "Ibland går den via vårt relä",
         body: [
           "Vissa nätverk kan inte ansluta direkt till varandra. Det är vanligt på mobildata och på kontorsnätverk.",
-          "Om reläet är tillgängligt går filen då via vårt relä i Stockholm i stället, fortfarande låst.",
+          "Då kan avsändaren tillåta vårt relä i Stockholm. Om reläet är tillgängligt går filen via det i stället, fortfarande låst.",
           "Reläet kan inte öppna filen och sparar den inte.",
           "Det ser varje enhets internetadress och ungefär hur stor filen är.",
         ],
@@ -334,7 +334,12 @@ export const sv: Messages = {
       "Om vi mejlar en länk står ditt namn också i mejlet, markerat som inte verifierat. Vår server lägger in det där och sparar det inte.",
     allowRelay: "Använd vårt relä vid behov",
     allowRelayHint: (kind: Kind) =>
-      `Vissa nätverk stoppar direkta anslutningar. Då går ${items[kind].the} via vårt relä i Stockholm, fortfarande ${items[kind].encrypted}. Reläet ser båda IP-adresserna${kind === "file" ? " och ungefär storleken" : ""}, men kan inte öppna ${items[kind].it}. Om du bockar ur det här slutar vår server dela ut inloggningsuppgifter till reläet för den här sändningen. Reläet ser ändå varje IP-adress, eftersom varje webbläsare får veta sin offentliga adress från reläet.`,
+      `Vissa nätverk stoppar direkta anslutningar. Om du bockar i det här går ${items[kind].the} då via vårt relä i Stockholm, fortfarande ${items[kind].encrypted}. Reläet ser båda IP-adresserna${kind === "file" ? " och ungefär storleken" : ""}, men kan inte öppna ${items[kind].it}. Om du låter rutan vara tom frågar sidan dig när en länk inte kan ansluta direkt och vårt relä är tillgängligt. Då kan du tillåta reläet för just den länken. Reläet ser i båda fallen varje IP-adress, eftersom varje webbläsare får veta sin offentliga adress från reläet.`,
+    ask: (name: string) =>
+      `Länken till ${name} öppnades men kunde inte ansluta direkt. Den väntar på att du tillåter vårt relä.`,
+    allowRelayFor: (name: string) => `Tillåt vårt relä för ${name}`,
+    askTitle: "En länk väntar på dig",
+    askBody: "Den kunde inte ansluta direkt. Öppna Fidant för att tillåta vårt relä.",
     fromError: {
       unsafe:
         "Ditt namn innehåller tecken som inte kan skickas, eller tre eller fler mellanslag i rad. Ta bort dem och försök igen.",
@@ -419,7 +424,7 @@ export const sv: Messages = {
     noConnect: (name: string) =>
       `Länken till ${name} öppnades men kunde inte ansluta till din dator. Länken fungerar fortfarande om de försöker igen.`,
     noRelay: (name: string) =>
-      `Länken till ${name} öppnades men kunde inte ansluta direkt. Om du tillåter vårt relä kan den kanske ansluta när de försöker igen.`,
+      `Länken till ${name} öppnades men kunde inte ansluta direkt, och vårt relä är inte tillgängligt just nu. Länken fungerar fortfarande om de försöker igen.`,
     mail: {
       sending: (to: string) => `Skickar mejl till ${to}…`,
       sent: (to: string) => `Mejl skickat till ${to}`,
@@ -445,6 +450,7 @@ export const sv: Messages = {
   },
   receive: {
     connecting: "Ansluter till avsändaren…",
+    askingRelay: "Det gick inte att ansluta direkt. Väntar på att avsändaren tillåter vårt relä.",
     verify: {
       title: "Bekräfta din mejladress för att öppna länken",
       body: (to: string) => `Vi mejlar en kod till ${to}.`,
@@ -576,7 +582,7 @@ export const sv: Messages = {
       },
       noRelay: {
         title: "Det gick inte att ansluta direkt till avsändaren",
-        body: "Avsändaren tillåter inte vårt relä, och era nätverk kunde troligen inte ansluta direkt till varandra. Be avsändaren att tillåta reläet, eller prova ett annat nätverk, till exempel mobildata i din telefon.",
+        body: "Era nätverk kunde troligen inte ansluta direkt till varandra, och vårt relä användes inte: avsändaren har inte tillåtit det, eller så är det inte tillgängligt just nu. Försök igen, eller prova ett annat nätverk, till exempel mobildata i din telefon.",
       },
       server: {
         title: "Det gick inte att nå servern",
@@ -680,15 +686,19 @@ export const sv: Messages = {
       "Din IP-adress och de vanliga uppgifterna om webbläsaren som alla webbplatser får, och samma sak för varje mottagare när de öppnar sin länk.",
     seesRecipient:
       "Din IP-adress och de vanliga uppgifterna om webbläsaren som alla webbplatser får.",
-    senderHolds: ({ online, links, connected, relay, emailed, sending, mailed, kind }) => {
+    senderHolds: ({ online, links, connected, relay, granted, emailed, sending, mailed, kind }) => {
       if (!online) {
         return mailed
           ? "Bara antalet mejl den skickade åt dig, i förvrängd form, i upp till en timme, när den har märkt att anslutningen har stängts. Det tar upp till en minut om nätverket bröts."
           : "Ingenting, när den har märkt att anslutningen har stängts. Det tar upp till en minut om nätverket bröts.";
       }
-      const choice = relay
-        ? "Ditt val att tillåta vårt relä."
-        : "Ditt val att inte tillåta vårt relä.";
+      const grants =
+        granted === 0
+          ? ""
+          : granted === 1
+            ? " Länken du tillät det för."
+            : ` De ${granted} länkarna du tillät det för.`;
+      const choice = `${relay ? "Ditt val att tillåta vårt relä." : "Ditt val att inte tillåta vårt relä."}${grants}`;
       const counts = mailed
         ? " Antalet mejl den skickade åt dig, i förvrängd form, i upp till en timme."
         : "";
@@ -844,7 +854,7 @@ export const sv: Messages = {
         heading: "Så skyddas filen",
         body: [
           "Din webbläsare krypterar filen med AES-256-GCM innan den lämnar din dator. Nyckeln finns i den del av länken som står efter #. Den delen skickar webbläsare aldrig till någon server. Om du ber oss mejla en länk ger din webbläsare länkens nyckel till vår server en gång, för att lägga den i mejlet. Servern varken sparar eller loggar nyckeln.",
-          "Filen går direkt mellan de två webbläsarna. Om ett nätverk stoppar det och vårt relä är tillgängligt går den i stället krypterad via reläet. Mellan webbläsarna skickar vår server vidare några små meddelanden. De som kopplar upp anslutningen är krypterade så att servern inte kan läsa dem, utom för en länk som den har mejlat och därför haft nyckeln till.",
+          "Filen går direkt mellan de två webbläsarna. Om ett nätverk stoppar det kan avsändaren tillåta vårt relä. Om reläet är tillgängligt går filen då i stället krypterad via det. Mellan webbläsarna skickar vår server vidare några små meddelanden. De som kopplar upp anslutningen är krypterade så att servern inte kan läsa dem, utom för en länk som den har mejlat och därför haft nyckeln till.",
           "Mottagarens webbläsare kontrollerar filens SHA-256-kontrollsumma, så en fil som ändrats eller skadats på vägen sparas inte.",
         ],
         link: ["Så fungerar det, steg för steg", "/how"],
@@ -962,8 +972,8 @@ export const sv: Messages = {
       relaying: {
         heading: "När reläet används",
         body: [
-          "När ingen direkt väg fungerar, vilket är vanligt på mobildata och kontorsnätverk, går trafiken via vårt TURN-relä i Stockholm. Webbläsarna lägger till reläet bara om avsändaren tillåter det, om reläet är tillgängligt och om ingen anslutning har kommit till stånd 3 sekunder efter att mottagaren har svarat. En sida som öppnades innan vi började lägga till reläet på det här sättet reserverar fortfarande reläadresser från början, tills den laddas om.",
-          "För att lägga till reläet börjar webbläsarna koppla upp på nytt, med ett nytt erbjudande och svar, krypterade precis som de första. En direkt väg kan fortfarande vinna efter det. En anslutning som behöver reläet kommer alltså i gång ungefär 3 sekunder senare. En direkt väg som ännu inte är uppkopplad 3 sekunder efter att mottagaren har svarat, till exempel på ett nätverk som tappar många paket, kan hamna på reläet.",
+          "När ingen direkt väg fungerar, vilket är vanligt på mobildata och kontorsnätverk, kan trafiken gå via vårt TURN-relä i Stockholm. Reläet är avstängt tills avsändaren tillåter det. Webbläsarna lägger till reläet bara om avsändaren tillät det innan den anslutningen började, om reläet är tillgängligt och om ingen anslutning har kommit till stånd 3 sekunder efter att mottagaren har svarat. En sida som öppnades innan vi började lägga till reläet på det här sättet reserverar fortfarande reläadresser från början, tills den laddas om.",
+          "För att lägga till reläet börjar webbläsarna koppla upp på nytt, med ett nytt erbjudande och svar, krypterade precis som de första. En direkt väg kan fortfarande vinna efter det. En anslutning som behöver reläet kommer alltså i gång ungefär 3 sekunder senare. En direkt väg som ännu inte är uppkopplad 3 sekunder efter att mottagaren har svarat, till exempel på ett nätverk som tappar många paket, kan hamna på reläet när avsändaren har tillåtit det.",
           "Reläet för vidare krypterade paket. Det kan inte dekryptera dem och sparar dem inte.",
           "För att använda reläet behöver en webbläsare inloggningsuppgifter, som vår server skapar för varje ihopkoppling och bara ger till de två ihopkopplade sidorna. Med dem kan en reläanslutning starta i 5 minuter, och den kan sedan pågå längre. Vår server kontrollerar varje minut att reläet kan föra vidare trafik och erbjuder det när en kontroll lyckas. Servern slutar erbjuda det efter två misslyckade kontroller i rad. Reläet får hemligheten bakom inloggningsuppgifterna från vår server, förseglad så att bara reläet kan öppna den.",
           "Webbläsare når reläet över UDP, eller över TLS på port 443 där ett nätverk bara släpper igenom webbtrafik. Reläet skickar bara vidare över UDP, och bara från sin egen adress. Det vägrar skicka till andra datorer på privata eller interna nätverk, med ett godtaget undantag: reläets egen server (se beslut 0007). Det begränsar också hur många anslutningar som går via det samtidigt.",
@@ -971,9 +981,11 @@ export const sv: Messages = {
         ],
       },
       norelay: {
-        heading: "Att neka reläet",
+        heading: "Att tillåta reläet",
         body: [
-          'Avsändaren kan bocka ur "Använd vårt relä vid behov". Vår server ger då inga inloggningsuppgifter till reläet för den sändningen, bara STUN-adressen, så en omodifierad webbläsare kan inte använda reläet. Avsändarens webbläsare upprätthåller också själv valet: den startar anslutningen utan inloggningsuppgifter till reläet, vad vår server än skickar. Som extra skydd avslutar avsändarens webbläsare anslutningen om den ändå ser att den går via reläet. Det extra skyddet är inte heltäckande: en modifierad mottagare kan dölja att dess sida går via ett relä.',
+          'Reläet är avstängt tills avsändaren tillåter det. Att bocka i "Använd vårt relä vid behov" före sändningen tillåter det för hela den sändningen. Annars ger vår server inga inloggningsuppgifter till reläet för sändningen, bara STUN-adressen, så en omodifierad webbläsare kan inte använda reläet.',
+          "När en länk inte har anslutit 3 sekunder efter att mottagaren har svarat och reläet är tillgängligt frågar avsändarens sida om avsändaren vill tillåta reläet för just den länken, med ett ljud och, om aviseringar är på, en avisering. Vår server har talat om för båda sidorna att reläet är tillgängligt, så mottagarens sida väntar i stället för att ge upp. När avsändaren tillåter det talar sidan om för vår server vilken länk det gäller, mottagarens sida ansluter igen av sig själv, och den nya anslutningen får inloggningsuppgifter till reläet. Vår server har de tillåtna länkarna i minnet medan avsändarens sida är ansluten och loggar dem aldrig.",
+          "Avsändarens webbläsare upprätthåller också själv valet: den startar anslutningen utan inloggningsuppgifter till reläet, vad vår server än skickar. Som extra skydd avslutar avsändarens webbläsare anslutningen om den ändå ser att den går via reläet. Det extra skyddet är inte heltäckande: en modifierad mottagare kan dölja att dess sida går via ett relä.",
           "Gränsen: en modifierad mottagare kan ändå skicka sin del via vårt relä med uppgifter från en annan ihopkoppling, eller via vilket offentligt relä som helst. Den mottagaren har ju nyckeln ändå. Valet avgör vilken infrastruktur som bär den krypterade trafiken, inte vem som kan läsa filen.",
         ],
       },
@@ -1080,11 +1092,11 @@ export const sv: Messages = {
           },
           relay: {
             heading: "Via vårt relä",
-            body: "När ingen anslutning har kommit till stånd 3 sekunder efter att mottagaren har svarat och reläet är tillgängligt, lägger webbläsarna till vårt TURN-relä i Stockholm. Om inte en direkt väg ändå vinner går den krypterade trafiken sedan via reläet, över UDP eller över TLS på port 443. Reläet för vidare paket som det inte kan dekryptera och sparar dem inte.",
+            body: "När avsändaren har tillåtit det, reläet är tillgängligt och ingen anslutning har kommit till stånd 3 sekunder efter att mottagaren har svarat, lägger webbläsarna till vårt TURN-relä i Stockholm. Om inte en direkt väg ändå vinner går den krypterade trafiken sedan via reläet, över UDP eller över TLS på port 443. Reläet för vidare paket som det inte kan dekryptera och sparar dem inte.",
           },
           norelay: {
-            heading: "Reläet nekat",
-            body: "Avsändaren kan neka vårt relä för en sändning. Vår server ger då inga inloggningsuppgifter till reläet, och en anslutning utan direkt väg misslyckas.",
+            heading: "Reläet inte tillåtet",
+            body: "Reläet är avstängt tills avsändaren tillåter det, för hela sändningen eller för en länk när avsändaren tillfrågas. Till dess ger vår server inga inloggningsuppgifter till reläet. En anslutning utan direkt väg väntar då på att avsändaren tillåter reläet om det är tillgängligt, och misslyckas annars.",
           },
         },
       },
@@ -1223,7 +1235,7 @@ export const sv: Messages = {
         ],
         [
           "Du vill inte att din trafik går via vårt relä",
-          "Bocka ur reläet för den sändningen. Vår server ger då inga inloggningsuppgifter till reläet, och avsändarens webbläsare avslutar en anslutning som den ser går via det.",
+          "Reläet är avstängt tills avsändaren tillåter det. Fram till dess ger vår server inga inloggningsuppgifter till reläet, och avsändarens webbläsare avslutar en anslutning som den ser går via det.",
         ],
       ],
     },
@@ -1243,7 +1255,7 @@ export const sv: Messages = {
           options: {
             direct: "Direkt, med vårt relä tillåtet",
             relay: "Via vårt relä",
-            norelay: "Direkt, med vårt relä avböjt",
+            norelay: "Direkt, med vårt relä inte tillåtet",
           },
         },
       },
@@ -1521,8 +1533,8 @@ export const sv: Messages = {
         ],
         [
           "Din sida anmäler sina länkar",
-          "Länk-ID:na, ditt val om reläet och din IP-adress.",
-          "Länk-ID:na och ditt val om reläet, i minnet, medan din sida är öppen.",
+          "Länk-ID:na, ditt val om reläet, länkarna du har tillåtit reläet för och din IP-adress.",
+          "Länk-ID:na, ditt val om reläet och länkarna du har tillåtit reläet för, i minnet, medan din sida är öppen.",
           "Att en avsändare anmälde sig, och hur många länkar.",
           "Ingenting.",
         ],
@@ -1542,17 +1554,17 @@ export const sv: Messages = {
         ],
         [
           "En mottagare öppnar sin länk",
-          "Länk-ID:t, ett slumpmässigt försöks-ID och mottagarens IP-adress och webbläsaruppgifter. Om din sida nekar mottagaren, varför: länken har redan använts, en annan sida är ansluten till den, din sida har inte länken eller din sida avbröt försöket.",
+          "Länk-ID:t, ett slumpmässigt försöks-ID och mottagarens IP-adress och webbläsaruppgifter. Om din sida nekar mottagaren, varför: länken har redan använts, en annan sida är ansluten till den, din sida har inte länken eller din sida avbröt försöket. Eller att du tillät reläet för den länken, så att mottagarens sida ansluter igen.",
           "Vilken mottagarsida som är ihopkopplad med vilken länk, i minnet.",
           "Att en mottagare anslöt eller nekades och varför, med de 6 första tecknen i länk-ID:t.",
-          "Ingenting än. Om du tillåter reläet och det är tillgängligt ger vår server de två sidorna inloggningsuppgifter till det, som en reläanslutning kan starta med i 5 minuter.",
+          "Ingenting än. Om du tillät reläet innan mottagaren öppnade länken, och det är tillgängligt, ger vår server de två sidorna inloggningsuppgifter till det, som en reläanslutning kan starta med i 5 minuter.",
         ],
         [
           "Webbläsarna kopplar upp sig",
           "Krypterade meddelanden för uppkopplingen och deras storlek. Den kan inte läsa dem, utom för en länk vi mejlat.",
           "Ingenting. Den skickar dem vidare.",
           "Varje meddelandes storlek, med de 6 första tecknen i länk-ID:t.",
-          "Varje webbläsares IP-adress, när den frågar efter sin offentliga adress (STUN). Om du tillåter reläet och det är tillgängligt, och webbläsarna fortfarande inte är anslutna 3 sekunder efter att mottagaren svarat, lägger de till reläet. Båda reserverar då en reläadress. Bara din gör det om mottagarens webbläsare redan var ansluten när din sidas begäran om att lägga till reläet kom fram. Reläet kan få veta båda IP-adresserna i båda fallen, även om en direkt väg vinner till slut.",
+          "Varje webbläsares IP-adress, när den frågar efter sin offentliga adress (STUN). Om du tillät reläet innan den här anslutningen började och det är tillgängligt, och webbläsarna fortfarande inte är anslutna 3 sekunder efter att mottagaren svarat, lägger de till reläet. Båda reserverar då en reläadress. Bara din gör det om mottagarens webbläsare redan var ansluten när din sidas begäran om att lägga till reläet kom fram. Reläet kan få veta båda IP-adresserna i båda fallen, även om en direkt väg vinner till slut.",
         ],
         [
           "Filen eller hemligheten skickas",
@@ -1620,7 +1632,7 @@ export const sv: Messages = {
       ],
       [
         "Avsändarens val om reläet",
-        "Om avsändaren tillåter vårt relä, så att vi bara ger mottagare tillgång till det när avsändaren gör det. Vi glömmer det inom en minut efter att avsändarens sida har stängts, och skriver aldrig in det i våra loggar.",
+        "Om avsändaren tillåter vårt relä, för hela sändningen eller för enskilda länkar, så att vi bara ger mottagare tillgång till det när avsändaren gör det. Vi glömmer det inom en minut efter att avsändarens sida har stängts, och skriver aldrig in det i våra loggar.",
       ],
       [
         "Hur varje anslutning gick",

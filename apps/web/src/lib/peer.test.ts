@@ -321,6 +321,7 @@ async function harness(
   const sent: unknown[] = [];
   const closes: Array<{ reason: PeerCloseReason; detail?: string | undefined }> = [];
   const opens: PeerOpenInfo[] = [];
+  const stalls: number[] = [];
   const options = {
     signaling: {
       send(message: { t: string; data?: string }) {
@@ -337,6 +338,7 @@ async function harness(
     ...(check === undefined ? {} : { check }),
     onOpen: (_channel: RTCDataChannel, info: PeerOpenInfo) => opens.push(info),
     onClose: (reason: PeerCloseReason, detail?: string) => closes.push({ reason, detail }),
+    onStalled: () => stalls.push(1),
   };
   const peer = side === "s" ? createSenderPeer(options) : createRecipientPeer(options);
   const from = side === "s" ? "r" : "s";
@@ -362,7 +364,7 @@ async function harness(
   if (marked) {
     await relay(versionMarker(FRAME_VERSION));
   }
-  return { peer, relay, relayFrom, signals, closes, opens };
+  return { peer, relay, relayFrom, signals, closes, opens, stalls };
 }
 
 test("the sender offers only after the recipient's commitment, with its check setting", async () => {
@@ -762,6 +764,40 @@ function pathUp(pc: FakePeerConnection, how: "open" | "connected" | "completed")
     pc.iceConnectionState = "checking";
   };
 }
+
+const answeredSides = { s: answeredSender, r: answeredRecipient };
+
+test("a peer without TURN says once that nothing connected 3 s after the answer", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  for (const side of ["s", "r"] as const) {
+    const h = await answeredSides[side](stunServers);
+    t.mock.timers.tick(RELAY_FALLBACK_MS - 1);
+    assert.deepEqual(h.stalls, [], side);
+    t.mock.timers.tick(1);
+    assert.deepEqual(h.stalls, [1], side);
+    t.mock.timers.tick(RELAY_FALLBACK_MS);
+    assert.deepEqual(h.stalls, [1], side);
+    assert.deepEqual(h.closes, [], side);
+    assert.equal(h.pc.connectionState, "new", side);
+  }
+});
+
+test("no stall with a TURN URL, a path that is up, or after close()", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  for (const side of ["s", "r"] as const) {
+    for (const how of ["turn", "open", "connected", "completed", "close"] as const) {
+      const h = await answeredSides[side](how === "turn" ? relayServers : stunServers);
+      if (how === "close") {
+        h.peer.close();
+      } else if (how !== "turn") {
+        pathUp(h.pc, how);
+      }
+      t.mock.timers.tick(RELAY_FALLBACK_MS);
+      await h.signals(1);
+      assert.deepEqual(h.stalls, [], `${side} ${how}`);
+    }
+  }
+});
 
 test("the recipient ignores a restart-offer once its channel is open or ICE connected", async () => {
   for (const how of ["open", "connected", "completed"] as const) {

@@ -338,6 +338,7 @@ test("offers the first relay up in list order, with credentials from its own sec
     { urls: at("bb").urls, ...turnCredentials(relaySecret(master, "bb"), Date.now()) },
   ]);
   assert.deepEqual(relays.ice(false), [{ urls: ["stun:bb.test:3478"] }]);
+  assert.equal(relays.up(), true);
 });
 
 test("offers only the first listed relay's STUN URLs, with no credentials, when none is up", async (t) => {
@@ -346,12 +347,15 @@ test("offers only the first listed relay's STUN URLs, with no credentials, when 
   t.after(relays.stop);
   const stun = [{ urls: ["stun:aa.test:3478"] }];
   assert.deepEqual(relays.ice(true), stun);
+  assert.equal(relays.up(), false);
   await settle();
   assert.deepEqual(relays.ice(true), stun);
   assert.deepEqual(relays.ice(false), stun);
+  assert.equal(relays.up(), false);
   const none = startRelays([], master);
   t.after(none.stop);
   assert.deepEqual(none.ice(true), []);
+  assert.equal(none.up(), false);
 });
 
 test("checks every interval, and a relay goes down after two failed checks in a row", async (t) => {

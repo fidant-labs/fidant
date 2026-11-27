@@ -55,6 +55,7 @@ const on =
       | "accepted"
       | "dropped"
       | "timeout"
+      | "stalled"
       | "declined"
       | "unsendable",
   ): Step =>
@@ -80,6 +81,7 @@ const mail =
     ...(marked ? { mark: "preview" } : { fresh: createLink(location.origin) }),
   });
 const serverLost: Step = () => ({ type: "server-lost" });
+const turnUp: Step = (linkId) => ({ type: "turn-up", linkId, attempt: ATTEMPT });
 
 const OPEN = [joined(), on("channel-open"), path("direct")];
 const SENDING = [...OPEN, on("accepted"), progress(SIZE * 0.4)];
@@ -229,6 +231,9 @@ export const STATES: readonly DevState[] = [
       false,
     ),
   ),
+  send("Asked to allow the relay", () =>
+    sending([{ name: "Anna", steps: [joined(false), turnUp, on("stalled")] }]),
+  ),
   send("Offered", () => sending([{ name: "Anna", steps: OPEN }])),
   send("Sending", () => sending([{ name: "Anna", steps: SENDING }], { from: "Anna Lind" })),
   send("Sending through the relay", () =>
@@ -272,7 +277,10 @@ export const STATES: readonly DevState[] = [
       { name: "Checksum differed", steps: [...SENDING, receipt(false)] },
       { name: "Interrupted", steps: [...SENDING, on("dropped")] },
       { name: "Could not connect", steps: [joined(), on("timeout")] },
-      { name: "Could not connect, relay off", steps: [joined(false), on("timeout")] },
+      {
+        name: "Could not connect, no relay up",
+        steps: [joined(false), on("stalled"), on("timeout")],
+      },
       { name: "Numbers differed", check: true, steps: DIFFERS },
       {
         name: "Number not confirmed in time",
@@ -347,6 +355,10 @@ export const STATES: readonly DevState[] = [
 
   receive("Receive", "Link malformed", {}),
   receive("Receive", "Connecting", { view: { s: "connecting" }, tie: "unpaired" }),
+  receive("Receive", "Waiting for the sender to allow our relay", {
+    view: { s: "connecting", asking: true },
+    tie: "paired",
+  }),
   receive("Receive", "Email code: not asked yet", verify({ asked: false })),
   receive("Receive", "Email code: sending", verify({ sending: true })),
   ...CODE_RESULTS.map((result) => receive("Receive", `Email code: ${result}`, verify({ result }))),

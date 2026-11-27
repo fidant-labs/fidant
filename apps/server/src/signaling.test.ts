@@ -298,11 +298,12 @@ test("echoes the host's relay choice at each join and keeps the guest bound when
   assert.deepEqual(await host.next(), { t: "relay", link: bound, data: "Ym91bmQ" });
 });
 
-test("logs host only when the link list changes, so a relay toggle leaves no log line", async () => {
+test("logs host only when the link list changes, so a relay toggle or grant leaves no log line", async () => {
   const link = linkId();
   const before = logLines.length;
   const host = await hostFor(link);
   host.send({ t: "host", links: [link], turn: false });
+  host.send({ t: "host", links: [link], turn: false, turnLinks: [link] });
   host.send({ t: "host", links: [link], turn: true });
   host.send({ t: "host", links: [link, linkId()], turn: true });
   host.send({ t: "relay", link: linkId(), data: "sync" });
@@ -314,6 +315,86 @@ test("logs host only when the link list changes, so a relay toggle leaves no log
       .map((line) => line.fields),
     [{ links: 1 }, { links: 2 }],
   );
+});
+
+test("hands TURN to a link in turnLinks and to no other link, until a host leaves it out", async () => {
+  const granted = linkId();
+  const other = linkId();
+  const host = await connect();
+  host.send({ t: "host", links: [granted, other], turn: false, turnLinks: [granted] });
+  const guest = await joinAs(granted, host, true);
+  await joinAs(other, host, false);
+  guest.socket.close();
+  assert.deepEqual(await host.next(), { t: "left", link: granted });
+  host.send({ t: "host", links: [granted, other], turn: false });
+  await joinAs(granted, host, false);
+});
+
+test("forwards a refusal with turn, unbinds the guest and logs nothing of it", async () => {
+  const link = linkId();
+  const host = await hostFor(link);
+  const guest = await joinAs(link, host);
+  const before = logLines.length;
+  host.send({ t: "refuse", link, attempt: guest.attempt, reason: "turn" });
+  assert.deepEqual(await guest.next(), { t: "refused", reason: "turn" });
+  guest.send({ t: "relay", link, data: "bGF0ZQ" });
+  assert.deepEqual(await guest.next(), { t: "error", code: "not-on-link" });
+  assert.deepEqual(logLines.slice(before), [{ event: "error", fields: { code: "not-on-link" } }]);
+  // The link is free again for the recipient's next attempt.
+  await joinAs(link, host);
+});
+
+test("sends turn-up to both pages only when the sender hasn't allowed the relay and one is up, minting and logging nothing", async (t) => {
+  let up = true;
+  const minted: boolean[] = [];
+  const lines: unknown[] = [];
+  const second = createServer();
+  const secondSignaling = attachSignaling(second, {
+    log: (event, fields) => lines.push({ event, fields }),
+    iceServers: (turn) => {
+      minted.push(turn);
+      return turn ? [RELAY] : [];
+    },
+    relayUp: () => up,
+  });
+  t.after(() => {
+    secondSignaling.close();
+    second.close();
+  });
+  await new Promise<void>((done) => second.listen(0, done));
+  const url = `ws://localhost:${(second.address() as AddressInfo).port}/signal`;
+  const [asked, granted, down] = [linkId(), linkId(), linkId()];
+  const host = await connect(url);
+  host.send({ t: "host", links: [asked, granted, down], turn: false, turnLinks: [granted] });
+  /** Joins a guest and checks both pages hear `joined` and then `turn-up`, or no `turn-up`. */
+  const pair = async (link: string, turn: boolean, turnUp: boolean) => {
+    const guest = await connect(url);
+    const attempt = randomBytes(16).toString("base64url");
+    guest.send({ t: "join", link, attempt });
+    // Had a turn-up been sent, it would arrive before the answer to this relay.
+    guest.send({ t: "relay", link: linkId(), data: "sync" });
+    const joined = { t: "joined", link, attempt, iceServers: turn ? [RELAY] : [], turn };
+    for (const page of [guest, host]) {
+      assert.deepEqual(await page.next(), joined);
+      if (turnUp) {
+        assert.deepEqual(await page.next(), { t: "turn-up", link, attempt });
+      }
+    }
+    assert.deepEqual(await guest.next(), { t: "error", code: "not-on-link" });
+    host.send({ t: "relay", link: linkId(), data: "sync" });
+    assert.deepEqual(await host.next(), { t: "error", code: "not-on-link" });
+    return attempt;
+  };
+  const attempts = [await pair(asked, false, true), await pair(granted, true, false)];
+  up = false;
+  attempts.push(await pair(down, false, false));
+  // One call per pairing, with the sender's own choice: finding out that a relay is up mints nothing.
+  assert.deepEqual(minted, [false, true, false]);
+  const log = JSON.stringify(lines);
+  assert.ok(lines.length > 3 && !log.includes("turn"), log);
+  for (const attempt of attempts) {
+    assert.ok(!log.includes(attempt.slice(0, 6)), log);
+  }
 });
 
 test("leaves TURN out of joined when the host refuses it", async () => {

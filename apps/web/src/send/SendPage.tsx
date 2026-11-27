@@ -4,10 +4,11 @@
 //
 // Wiring (see lib/peer.ts and lib/sender-state.ts):
 // - On mount, connect to the signaling server and host every link ID on the
-//   list, with whether recipients may use our TURN relay; re-host the full
+//   list, with whether recipients may use our TURN relay and the links the
+//   sender allowed it for (`turnLinks`); re-host the full
 //   list whenever the hosted links change (an add, a remove, a link the check locked, or a
-//   link replaced after a refused email), every change of the relay checkbox and
-//   every reconnect, and again REHOST_AFTER_MS after `already-hosted` while
+//   link replaced after a refused email), whenever the allowed links change, every change of
+//   the relay checkbox and every reconnect, and again REHOST_AFTER_MS after `already-hosted` while
 //   the server still holds the old socket. When the socket drops, recipients
 //   still connecting go back to waiting (reducer `server-lost`, which never
 //   blames the relay); the page says the server is gone
@@ -35,8 +36,16 @@
 //   (refusesRelay) counts as failed too, and the reducer then ends the
 //   attempt. An open channel's path also goes to the reducer, for the
 //   recipient's card.
+// - The relay is off unless the sender allows it (decision 0028). The server's
+//   `turn-up` → reducer `turn-up`; the peer's onStalled → reducer `stalled`,
+//   which with a relay up ends the attempt and asks the sender on the card.
+//   The page reports that attempt's path as failed. The card's button, or
+//   ticking the checkbox, → reducer `allow`, whose `host` effect sends the
+//   grant before its `refuse` makes the recipient join again. While an ask is
+//   open the page beeps and, where notifications are on, notifies at
+//   ALERT_AFTER_MS.
 // - Effects run outside render: `close` tears the peer down, `refuse` tells
-//   the server to refuse the joiner.
+//   the server to refuse the joiner, `host` sends `host` again.
 // - When the server's `hello` says it can send mail, the add form offers an
 //   email address. Adding a recipient with one sends a single `email` message
 //   after the `host` that includes its link; the server's `email` replies go
@@ -72,7 +81,14 @@ import { formatBytes, toHex } from "../lib/format.ts";
 import { hasForbiddenCharacters, MAX_FROM_LENGTH, metaFits } from "../lib/frames.ts";
 import { deriveSignalKey } from "../lib/keys.ts";
 import { createLink } from "../lib/link.ts";
-import { askToNotify, notify, notifyPermission } from "../lib/notify.ts";
+import {
+  ALERT_AFTER_MS,
+  armSound,
+  askToNotify,
+  beep,
+  notify,
+  notifyPermission,
+} from "../lib/notify.ts";
 import { createSenderPeer, type Peer } from "../lib/peer.ts";
 import { hashFile, sendFile } from "../lib/send-file.ts";
 import {
@@ -87,6 +103,7 @@ import {
   type SenderAction,
   type SenderEffect,
   type SenderState,
+  turnLinks,
   update,
 } from "../lib/sender-state.ts";
 import { addRelay, NO_RELAYS } from "../lib/server-facts.ts";
@@ -238,7 +255,7 @@ export function SendPage({
   const [fileError, setFileError] = useState<ErrorOf<"fileError">>("");
   const [from, setFrom] = useState("");
   const [fromError, setFromError] = useState<ErrorOf<"fromError">>("");
-  const [allowRelay, setAllowRelay] = useState(true);
+  const [allowRelay, setAllowRelay] = useState(false);
   const [textLength, setTextLength] = useState(0);
   const [canAskToNotify, setCanAskToNotify] = useState(false);
   const [notifyAnswer, setNotifyAnswer] = useState<"on" | "blocked" | undefined>(undefined);
@@ -257,7 +274,7 @@ export function SendPage({
   const senderRef = useRef<SenderState>(initialSenderState);
   // Set when the first recipient is added; the name field stays locked while anyone is on the list.
   const fromRef = useRef("");
-  const allowRelayRef = useRef(true);
+  const allowRelayRef = useRef(false);
   const fileRef = useRef<{ file: File; sha256: Promise<Uint8Array> } | undefined>(undefined);
   const hashAbortRef = useRef<AbortController | undefined>(undefined);
   const signalingRef = useRef<SignalingClient | undefined>(undefined);
@@ -266,10 +283,12 @@ export function SendPage({
   const refusalsRef = useRef(new Set<ReturnType<typeof setTimeout>>());
 
   const host = () => {
+    const grants = turnLinks(senderRef.current);
     signalingRef.current?.send({
       t: "host",
       links: hostedLinks(senderRef.current),
       turn: allowRelayRef.current,
+      ...(grants.length > 0 && { turnLinks: grants }),
     });
   };
 
@@ -416,6 +435,17 @@ export function SendPage({
           },
         );
       },
+      onStalled() {
+        if (connectionsRef.current.get(linkId) !== connection) {
+          return;
+        }
+        // With a relay up the reducer ends the attempt here and asks the sender (decision 0028).
+        const latest = findRecipient(senderRef.current, linkId);
+        if (latest?.status === "connecting" && latest.turn === false && latest.turnUp) {
+          sendPath(linkId, connection, "failed");
+        }
+        dispatch({ type: "stalled", linkId });
+      },
       onClose(reason, _detail, name) {
         console.warn(`sigill: sender dropped a connection: ${reason}${name ? ` (${name})` : ""}`);
         if (reason === "connection-failed") {
@@ -462,12 +492,16 @@ export function SendPage({
           reason: effect.reason,
         });
         break;
+      case "host":
+        host();
+        break;
     }
   };
 
   // Applies an action, then carries out its effects. Never called during render.
   dispatchRef.current = (action: SenderAction) => {
-    const hosted = hostedLinks(senderRef.current).join();
+    const hosting = (state: SenderState) => `${hostedLinks(state)} ${turnLinks(state)}`;
+    const hosted = hosting(senderRef.current);
     const next = update(senderRef.current, action);
     const changed = next.state !== senderRef.current;
     if (changed) {
@@ -489,8 +523,8 @@ export function SendPage({
       runEffect(effect);
     }
     // Adding, removing, a check locking a link or a refused email replacing a link
-    // changes what to host.
-    if (hostedLinks(next.state).join() !== hosted) {
+    // changes what to host, and a delivery ends a grant. A `host` effect already sent it.
+    if (hosting(next.state) !== hosted && !next.effects.some((e) => e.type === "host")) {
       host();
     }
   };
@@ -505,6 +539,14 @@ export function SendPage({
       const view = all[linkId];
       return view ? { ...all, [linkId]: { ...view, said: matches } } : all;
     });
+  };
+
+  const onAllow = (linkId: string) => {
+    dispatchRef.current({ type: "allow", linkId });
+    // The button is gone with the ask; its card's status line takes the focus it held.
+    requestAnimationFrame(() =>
+      document.querySelector<HTMLElement>(`[data-status="${linkId}"]`)?.focus(),
+    );
   };
 
   const onLater = (linkId: string, later: boolean) =>
@@ -581,6 +623,9 @@ export function SendPage({
           void connection.relayed.then(() => connection.pendingLeft === apply && apply());
           break;
         }
+        case "turn-up":
+          dispatch({ type: "turn-up", linkId: message.link, attempt: message.attempt });
+          break;
         case "hello":
           setMail(message.mail);
           break;
@@ -726,6 +771,8 @@ export function SendPage({
 
   const onAdd = (event: Event) => {
     event.preventDefault();
+    // A click or a key press: from here on the page may beep when a link needs an answer.
+    armSound();
     const form = event.currentTarget as HTMLFormElement;
     const input = form.elements.namedItem("name") as HTMLInputElement;
     const name = input.value.trim();
@@ -834,6 +881,31 @@ export function SendPage({
       setCanAskToNotify(notifyPermission() === "default");
     }
   }, [hasRecipients]);
+  // One beep when a link asks for the relay, then louder ones, and a notification each time
+  // where the sender turned them on. Only fixed text: the system keeps a notification.
+  const asking = sender.recipients
+    .filter((r) => r.ask !== undefined)
+    .map((r) => r.linkId)
+    .join();
+  useEffect(() => {
+    if (!asking || preview) {
+      return;
+    }
+    let close = () => {};
+    const timers = ALERT_AFTER_MS.map((ms, i) =>
+      setTimeout(() => {
+        beep(i + 1);
+        close();
+        close = notify(t.send.askTitle, t.send.askBody, {
+          requireInteraction: i === ALERT_AFTER_MS.length - 1,
+        });
+      }, ms),
+    );
+    return () => {
+      timers.forEach(clearTimeout);
+      close();
+    };
+  }, [asking]);
   const sendingText = t.send.sendingBar(delivered, sender.recipients.length);
   const doneText = (text ? t.secret : t.send).allDone;
   const barText = unfinished
@@ -1220,6 +1292,7 @@ export function SendPage({
           statusText={text ? { ...t.send.status, ...t.secret.status } : t.send.status}
           summary={(text ? t.secret : t.send).summary}
           onRemove={onRemove}
+          onAllow={onAllow}
           checks={checks}
           onCheck={onCheck}
           onLater={onLater}
@@ -1238,6 +1311,10 @@ export function SendPage({
                 const checked = event.currentTarget.checked;
                 allowRelayRef.current = checked;
                 setAllowRelay(checked);
+                // Ticking it answers every open ask, so no recipient is left waiting.
+                if (checked) {
+                  dispatchRef.current({ type: "allow" });
+                }
                 host();
               }}
             />
@@ -1260,6 +1337,7 @@ export function SendPage({
           links: hostedLinks(sender).length,
           connected,
           relay: allowRelay,
+          granted: turnLinks(sender).length,
           emailed: emailed.length,
           sending: emailed.filter((r) => r.mail === "sending").length,
           mailed,

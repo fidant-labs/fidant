@@ -72,7 +72,7 @@ test("parses valid client messages", () => {
     parseClientMessage(JSON.stringify({ t: "refuse", link, attempt, reason: "starting" })),
     undefined,
   );
-  for (const reason of ["used", "busy", "unknown", "drop"] as const) {
+  for (const reason of ["used", "busy", "unknown", "drop", "turn"] as const) {
     assert.deepEqual(parseClientMessage(JSON.stringify({ t: "refuse", link, attempt, reason })), {
       t: "refuse",
       link,
@@ -115,13 +115,14 @@ test("parses valid server messages", () => {
     ),
     { t: "joined", link, attempt, iceServers: [turn], turn: true },
   );
+  assert.deepEqual(server({ t: "turn-up", link, attempt }), { t: "turn-up", link, attempt });
   assert.deepEqual(parseServerMessage(JSON.stringify({ t: "left", link })), { t: "left", link });
   assert.deepEqual(parseServerMessage(JSON.stringify({ t: "relay", link, data: "xyz" })), {
     t: "relay",
     link,
     data: "xyz",
   });
-  for (const reason of ["used", "busy", "unknown", "drop", "starting"] as const) {
+  for (const reason of ["used", "busy", "unknown", "drop", "turn", "starting"] as const) {
     assert.deepEqual(parseServerMessage(JSON.stringify({ t: "refused", reason })), {
       t: "refused",
       reason,
@@ -222,6 +223,49 @@ test("rejects too many, duplicate or non-array links", () => {
   }
 });
 
+test("accepts in turnLinks only distinct link IDs that are also in links", () => {
+  for (const turnLinks of [[], [other], [other, link]]) {
+    const message = { t: "host", links: [link, other], turn: false, turnLinks };
+    assert.deepEqual(client(message), message);
+  }
+  const all = linkIds(MAX_LINKS);
+  assert.deepEqual(client({ t: "host", links: all, turn: true, turnLinks: all })?.t, "host");
+  for (const turnLinks of [
+    [attempt],
+    [link, attempt],
+    [link, link],
+    ["nope"],
+    [1],
+    [null],
+    [[link]],
+    link,
+    { 0: link },
+    null,
+    true,
+  ]) {
+    assert.equal(
+      client({ t: "host", links: [link, other], turn: false, turnLinks }),
+      undefined,
+      JSON.stringify(turnLinks),
+    );
+  }
+  assert.equal(client({ t: "host", links: [], turn: true, turnLinks: [link] }), undefined);
+});
+
+test("rejects turn-up from a browser, with bad IDs or with other keys", () => {
+  assert.equal(client({ t: "turn-up", link, attempt }), undefined);
+  for (const message of [
+    { t: "turn-up", link },
+    { t: "turn-up", attempt },
+    { t: "turn-up", link, attempt: "nope" },
+    { t: "turn-up", link: "nope", attempt },
+    { t: "turn-up", link, attempt, turn: true },
+    { t: "turn-up", link, attempt, iceServers: [] },
+  ]) {
+    assert.equal(server(message), undefined, JSON.stringify(message));
+  }
+});
+
 test("carries the relay choice in host and joined only as a boolean", () => {
   for (const value of ["false", "true", 0, 1, null, {}]) {
     assert.equal(
@@ -257,6 +301,7 @@ test("rejects extra fields", () => {
   const extra = { name: "report.pdf" };
   const client = [
     { t: "host", links: [link], turn: true, ...extra },
+    { t: "host", links: [link], turn: true, turnLinks: [link], ...extra },
     { t: "join", link, attempt, ...extra },
     { t: "relay", link, data: "x", ...extra },
     { t: "refuse", link, attempt, reason: "used", ...extra },
@@ -702,6 +747,7 @@ test("one mutation of a valid message never throws, and what is accepted parses 
   ];
   const valid: Fields[] = [
     { t: "host", links: [link, other], turn: true },
+    { t: "host", links: [link, other], turn: false, turnLinks: [other] },
     { t: "join", link, attempt },
     { t: "join", link, attempt, token },
     { t: "relay", link, data: "abc" },
@@ -714,6 +760,7 @@ test("one mutation of a valid message never throws, and what is accepted parses 
     { t: "code", link, code: "123456" },
     { t: "code", link, code: "123456", mark },
     { t: "joined", link, attempt, turn: true, iceServers },
+    { t: "turn-up", link, attempt },
     { t: "left", link },
     { t: "refused", reason: "busy" },
     { t: "host-gone" },

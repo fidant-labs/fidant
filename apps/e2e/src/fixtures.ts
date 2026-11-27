@@ -493,6 +493,21 @@ export async function chooseFile(
   await expect(page.getByLabel("Your name")).toBeFocused();
 }
 
+/** Ticks "Use our relay if needed" on the send page, after a file is chosen or a secret typed; a no-op when it is already ticked. A test that needs a relayed path calls it. */
+export async function allowRelay(page: Page): Promise<void> {
+  const box = page.getByLabel("Use our relay if needed");
+  if (await box.isVisible()) {
+    await box.check();
+    return;
+  }
+  // Enter, not a click: the page glides after a file is chosen, so a pointer click can miss.
+  const options = page.getByText("Connection options", { exact: true });
+  await options.press("Enter");
+  await box.check();
+  // Folded again: left open, "Show details" takes over its open state once every link has delivered.
+  await options.press("Enter");
+}
+
 /** Runs in the page through addInitScript, so it may use nothing from this module: `cut()` closes its peers, `stalled` (set after `stallAt` CHUNKs) drops what its channels send, `held` queues it for `release()`, and `sent` counts frames by kind. */
 export function breakableSender() {
   const g = globalThis as {

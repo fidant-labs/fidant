@@ -45,9 +45,9 @@ test("passes the lines the server writes", () => {
 
 test("passes every reason, code and path that @sigill/protocol defines", () => {
   const lines = [
-    ...[...REFUSED_REASONS, ...UPGRADE_REJECT_REASONS, ...CODE_RESULTS].map((reason) =>
-      line({ event: "refused", reason }),
-    ),
+    ...[...REFUSED_REASONS, ...UPGRADE_REJECT_REASONS, ...CODE_RESULTS]
+      .filter((reason) => reason !== "turn")
+      .map((reason) => line({ event: "refused", reason })),
     ...ERROR_CODES.map((code) => line({ event: "error", code })),
     ...CONNECTION_PATHS.map((path) => line({ event: "path", path })),
   ];
@@ -102,6 +102,8 @@ test("fails counts that are not non-negative integers", () => {
 
 test("fails an unknown reason or code", () => {
   assert.deepEqual(rules(line({ event: "refused", reason: "gone" })), ["reason"]);
+  // The relay choice is never logged (decision 0028).
+  assert.deepEqual(rules(line({ event: "refused", reason: "turn" })), ["reason"]);
   assert.deepEqual(rules(line({ event: "error", code: "oops" })), ["code"]);
   assert.deepEqual(rules(line({ event: "error", code: null })), ["code"]);
 });

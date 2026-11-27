@@ -370,6 +370,9 @@ async function startNetworks(): Promise<RunningService> {
       TURN_SECRET_FILE: secretFile,
       RELAYS_FILE: relaysFile,
       RELAY_MASTER_FILE: masterFile,
+      // Test knob: check the relays every 5 s (a check of a relay that doesn't answer takes 5 s more),
+      // so a paused relay counts as down within half a minute.
+      RELAY_CHECK_MS: "5000",
     },
     stop,
   };
@@ -462,6 +465,8 @@ export const dockerServer: Service = {
           "RELAYS_FILE",
           "-e",
           "RELAY_MASTER_FILE",
+          "-e",
+          "RELAY_CHECK_MS",
           serverImage,
           "node",
         ];

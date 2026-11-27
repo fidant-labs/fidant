@@ -4,6 +4,10 @@
 // for the next, so a click meant for one check can never answer another. Its answer buttons stay dead
 // for a moment after it shows a recipient, so a click already on its way cannot answer the new one.
 //
+// A link that couldn't connect directly while a relay is up asks the sender to allow our relay
+// (decision 0028): the status line says so, and the button sits outside it, so a screen reader
+// hears the sentence once. Focus stays where the sender has it.
+//
 // Only the status sentence, the email line, the safety number and the check's
 // confirmation sit in live regions, so screen readers hear "Sending through
 // Anna's link", "Email sent to a***@example.se" and so on, not every progress tick. Each status names the link or the masked
@@ -121,6 +125,8 @@ type Props = {
   statusText: StatusText;
   summary(done: number, total: number): string;
   onRemove(linkId: string): void;
+  /** The sender allows our relay for the asking link. */
+  onAllow(linkId: string): void;
   /** Open checks by link ID. */
   checks: Readonly<Record<string, CheckView>>;
   /** The sender said the numbers match, or differ. */
@@ -137,6 +143,7 @@ export function RecipientList({
   statusText,
   summary,
   onRemove,
+  onAllow,
   checks,
   onCheck,
   onLater,
@@ -222,6 +229,7 @@ export function RecipientList({
             fileSize={fileSize}
             statusText={statusText}
             onRemove={onRemove}
+            onAllow={onAllow}
             check={checks[recipient.linkId]}
             onCompare={
               unanswered(recipient) && checks[recipient.linkId]?.later
@@ -312,12 +320,21 @@ type RowProps = {
   fileSize: number;
   statusText: StatusText;
   onRemove(linkId: string): void;
+  onAllow(linkId: string): void;
   check: CheckView | undefined;
   /** Opens the safety number's dialog again, while the sender has put it off. */
   onCompare: (() => void) | undefined;
 };
 
-function RecipientRow({ recipient, fileSize, statusText, onRemove, check, onCompare }: RowProps) {
+function RecipientRow({
+  recipient,
+  fileSize,
+  statusText,
+  onRemove,
+  onAllow,
+  check,
+  onCompare,
+}: RowProps) {
   const {
     name,
     url,
@@ -325,6 +342,7 @@ function RecipientRow({ recipient, fileSize, statusText, onRemove, check, onComp
     bytesSent,
     linkId,
     path,
+    ask,
     noRelay,
     noConnect,
     error,
@@ -339,7 +357,8 @@ function RecipientRow({ recipient, fileSize, statusText, onRemove, check, onComp
   // A link the server may still email, or whose email binding died, is not to be shared.
   const shareable = open && !unmarked(recipient) && !unbound && !recipient.locked;
   const checkFailed = error === CHECK_DIFFERS || error === CHECK_EXPIRED || error === CHECK_LIMIT;
-  const blocked = noRelay || noConnect;
+  const asked = ask !== undefined;
+  const blocked = asked || noRelay || noConnect;
   const lost = open && unbound;
   const removeButton = (
     <Button
@@ -400,25 +419,27 @@ function RecipientRow({ recipient, fileSize, statusText, onRemove, check, onComp
             )}
             {status === "declined" && !blocked && <Icon name="declined" />}
             <span>
-              {noRelay
-                ? t.send.noRelay(name)
-                : noConnect
-                  ? t.send.noConnect(name)
-                  : error === INTERRUPTED
-                    ? statusText.interrupted(name)
-                    : error === TOO_SMALL_FOR_TEXT
-                      ? t.secret.unsendable(name)
-                      : error === CHECK_DIFFERS
-                        ? t.send.check.differed
-                        : error === CHECK_EXPIRED
-                          ? t.send.check.expired
-                          : error === CHECK_LIMIT
-                            ? t.send.check.limit(CHECK_ATTEMPTS)
-                            : error === SENDER_OUTDATED
-                              ? statusText.senderOutdated(name)
-                              : error === RECIPIENT_OUTDATED
-                                ? statusText.recipientOutdated(name)
-                                : statusText[status](name)}
+              {asked
+                ? t.send.ask(name)
+                : noRelay
+                  ? t.send.noRelay(name)
+                  : noConnect
+                    ? t.send.noConnect(name)
+                    : error === INTERRUPTED
+                      ? statusText.interrupted(name)
+                      : error === TOO_SMALL_FOR_TEXT
+                        ? t.secret.unsendable(name)
+                        : error === CHECK_DIFFERS
+                          ? t.send.check.differed
+                          : error === CHECK_EXPIRED
+                            ? t.send.check.expired
+                            : error === CHECK_LIMIT
+                              ? t.send.check.limit(CHECK_ATTEMPTS)
+                              : error === SENDER_OUTDATED
+                                ? statusText.senderOutdated(name)
+                                : error === RECIPIENT_OUTDATED
+                                  ? statusText.recipientOutdated(name)
+                                  : statusText[status](name)}
             </span>
           </p>
           {email && mail && (
@@ -450,13 +471,24 @@ function RecipientRow({ recipient, fileSize, statusText, onRemove, check, onComp
           {/* Every button in one row at the card's lower right. Reversed, so the main one
               stays first for the keyboard and sits outermost for the thumb. */}
           <div class="mt-auto flex flex-row-reverse flex-wrap items-center gap-x-3 gap-y-2 pt-3">
+            {asked && (
+              <Button type="button" onClick={() => onAllow(linkId)}>
+                {t.send.allowRelayFor(name)}
+              </Button>
+            )}
             {onCompare && (
               <Button type="button" aria-label={t.send.check.compareFor(name)} onClick={onCompare}>
                 {t.send.check.compare}
               </Button>
             )}
             {shareable && (
-              <Button type="button" aria-label={t.send.copyFor(name)} onClick={() => copy(url)}>
+              <Button
+                type="button"
+                // One main button per card: while the sender is asked, that is the answer.
+                variant={asked ? "outline" : "default"}
+                aria-label={t.send.copyFor(name)}
+                onClick={() => copy(url)}
+              >
                 <SwapLabel
                   idle={t.send.copy}
                   active={t.send.copyNote.copied}

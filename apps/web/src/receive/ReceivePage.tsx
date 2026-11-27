@@ -47,6 +47,16 @@
 // - If the data channel hasn't opened CONNECT_TIMEOUT_MS (30 s) after the
 //   attempt starts, the attempt fails with "connect" (a peer exists) or
 //   "server" (no `joined` yet), so "Connecting…" never stays up for good.
+// - The relay is off unless the sender allows it (decision 0028). When the
+//   server said a relay is up (`turn-up`) and the peer reports a stall with no
+//   open channel, the page stops that timeout, keeps its peer and socket and
+//   says it waits for the sender to allow our relay, with no deadline and no
+//   Try again. `refused` with `turn` means the sender allowed it: unless the
+//   channel is open, a new attempt starts by itself, at most MAX_REJOINS times
+//   until the recipient next presses a button that starts one. Reaching the
+//   code step doesn't reset that count, so a server that forges the message
+//   gets no more connections than that without a click. `host-gone`, any other
+//   refusal and a dropped socket end the wait as they end an attempt.
 // - When the data channel opens with the safety number on, the page shows the
 //   number before anything about the file, and receiveFile holds the offer
 //   until the recipient said it matches and the sender's page said so too.
@@ -95,7 +105,14 @@ import { LINK_ID_BYTES, parseRecipientLocation } from "../lib/link.ts";
 import { createRecipientPeer, type OpenPath, type Peer, type PeerOpenInfo } from "../lib/peer.ts";
 import type { FileOffer, Resumable } from "../lib/receive-file.ts";
 import { ReceiveError, receiveFile } from "../lib/receive-file.ts";
-import { keepsPart, peerLostProblem, refusedProblem } from "../lib/receive-problem.ts";
+import {
+  keepsDeadPeer,
+  keepsPart,
+  peerLostProblem,
+  refusedProblem,
+  turnRefused,
+  waitsForRelay,
+} from "../lib/receive-problem.ts";
 import { addRelay, type Kind, NO_RELAYS, type Tie } from "../lib/server-facts.ts";
 import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
 import {
@@ -165,7 +182,7 @@ type ProblemText = { title: string; body: string; detail?: string };
 type Offer = FileOffer & { text: boolean };
 
 export type View =
-  | { s: "connecting" }
+  | { s: "connecting"; asking?: true }
   | { s: "verify"; to: string; asked: boolean; sending: boolean; result: CodeResult | undefined }
   | { s: "check"; number: string | undefined; said?: boolean }
   | { s: "refused"; problem: ProblemKey; text?: boolean }
@@ -193,6 +210,12 @@ type Attempt = {
   hostGone: boolean;
   /** The sender refused our relay for this attempt, as the server's `joined` said. */
   relayRefused: boolean;
+  /** Nothing had connected RELAY_FALLBACK_MS after the answer, and this page had no relay to add. */
+  stalled?: boolean;
+  /** The server said a relay is up that the sender could allow (`turn-up`). */
+  relayUp?: boolean;
+  /** Waiting for the sender to allow our relay: no connect timeout, and a lost peer changes nothing. */
+  asking?: boolean;
   /** Set once the attempt reached its final view. Later events are ignored. */
   ended: boolean;
   /** The final view, set when finish() ends the attempt. */
@@ -297,7 +320,8 @@ export function ReceivePage({
     }
   };
 
-  const start = (rejoins = 0) => {
+  // `turnRestarts` counts the attempts started by `refused` with `turn` since the last click.
+  const start = (rejoins = 0, turnRestarts = 0) => {
     if (!link || preview) {
       return;
     }
@@ -349,7 +373,8 @@ export function ReceivePage({
     // closed, `host-gone` arrives within moments of the drop, before or after
     // it; wait for it so the message says why.
     const lost = () => {
-      if (!current()) {
+      // While asking, the dead peer is kept until the sender answers or goes away.
+      if (!current() || keepsDeadPeer(attempt)) {
         return;
       }
       if (attempt.saidDiffers) {
@@ -446,7 +471,7 @@ export function ReceivePage({
         return;
       }
       if (rejoins < MAX_REJOINS) {
-        start(rejoins + 1);
+        start(rejoins + 1, turnRestarts);
       } else {
         finish({ s: "failed", problem: "server" });
       }
@@ -534,6 +559,14 @@ export function ReceivePage({
             attempt: attemptId,
             signalKey,
             iceServers: message.iceServers,
+            onStalled: () => {
+              attempt.stalled = true;
+              if (current() && waitsForRelay(attempt)) {
+                attempt.asking = true;
+                clearTimeout(connectTimer);
+                setView({ s: "connecting", asking: true });
+              }
+            },
             onOpen: (channel, info) => {
               // A short transfer can end before the path resolves, so this checks the attempt, not current().
               void info.path.then((resolved) => {
@@ -555,11 +588,27 @@ export function ReceivePage({
                   : lost(),
           });
           break;
+        case "turn-up":
+          if (current() && message.link === linkId && message.attempt === attemptId) {
+            attempt.relayUp = true;
+          }
+          break;
         case "relay":
           attempt.heardSender = true;
           void attempt.peer?.handleRelay(message.data);
           break;
         case "refused":
+          // The sender allowed our relay: join again to get its credentials. Checked first,
+          // because the sender has signaled by then.
+          if (message.reason === "turn") {
+            const next = current() ? turnRefused(attempt, turnRestarts, MAX_REJOINS) : "ignore";
+            if (next === "restart") {
+              start(rejoins, turnRestarts + 1);
+            } else if (next === "fail") {
+              finish({ s: "failed", problem: lostMessage() });
+            }
+            break;
+          }
           // A refusal after the sender's first signal means the sender gave up
           // on this attempt (its peer failed or never connected), not that the
           // link is in use or used: the sender only signals a join it took.
@@ -619,6 +668,10 @@ export function ReceivePage({
         attempt.resuming = true;
       }
       attempt.channelOpen = true;
+      if (attempt.asking) {
+        // ICE connected after the waiting view went up: drop the waiting text.
+        setView({ s: "connecting" });
+      }
       let offered: Offer | undefined;
       let timeLeft: ReturnType<typeof etaTracker> | undefined;
       const offerOf = (received: FileOffer): Offer => {
@@ -891,7 +944,13 @@ export function ReceivePage({
   let body: VNode;
   switch (view.s) {
     case "connecting":
-      body = <h1>{t.receive.connecting}</h1>;
+      body = (
+        <>
+          <h1>{t.receive.connecting}</h1>
+          {/* Always there, so a screen reader announces the text when it appears. Focus stays put. */}
+          <p role="status">{view.asking && t.receive.askingRelay}</p>
+        </>
+      );
       break;
     case "verify": {
       const { verify } = t.receive;

@@ -16,6 +16,7 @@ import { LIMITS } from "../../server/src/signaling.ts";
 import { turnCredentials } from "../../server/src/turn.ts";
 import {
   type Actor,
+  allowRelay,
   canaryFile,
   canaryKey,
   chooseFile,
@@ -79,6 +80,8 @@ interface Scenario {
   progress?: true;
   /** Share a secret from /secret instead of a file. Not with `progress`. */
   secret?: true;
+  /** Leave the relay unticked: the pages ask, the sender allows, and the recipient joins again alone. */
+  ask?: true;
 }
 
 const scenarios: Scenario[] = [
@@ -102,6 +105,14 @@ const scenarios: Scenario[] = [
     recipient: "b1",
     routerB: "symmetric",
     path: /relay/,
+  },
+  {
+    title: "symmetric NAT, relay off until the sender allows it",
+    sender: "a1",
+    recipient: "b1",
+    routerB: "symmetric",
+    path: /relay/,
+    ask: true,
   },
   {
     title: "UDP blocked",
@@ -234,6 +245,20 @@ async function expectHonestProgress(
 
 const sizeOf = async (file: string) => (await readFile(file).catch(() => Buffer.alloc(0))).length;
 
+/** Whether the server counts any relay as up. It checks them every 5 s here (RELAY_CHECK_MS), and a check of a relay that doesn't answer takes 5 s more. */
+const someRelayUp = async () =>
+  (
+    JSON.parse(
+      await inRelay("curl", "-sk", "--max-time", "10", `https://${serverIp}/relay-status`),
+    ) as { id: string; up: boolean }[]
+  ).some((relay) => relay.up);
+
+/** Resumes coturn and waits until the server offers a relay again, so the next test finds one. */
+const relayBack = async () => {
+  await resumeRelay();
+  await expect.poll(someRelayUp, { timeout: 30_000, intervals: [1_000] }).toBe(true);
+};
+
 test.describe.configure({ timeout: 90_000 });
 
 test("the leak scan sees what reaches coturn", async ({ leaks, canary }) => {
@@ -261,7 +286,7 @@ for (const row of scenarios) {
     const path = row.path;
     if (path === "none") {
       // Paused, not stopped: coturn keeps its address, so packets to it go unanswered.
-      test.afterEach(resumeRelay);
+      test.afterEach(relayBack);
 
       test("says it couldn't connect, and nothing goes another way", async ({
         actor,
@@ -271,7 +296,6 @@ for (const row of scenarios) {
         baseURL,
       }) => {
         await routerMode("router-b", row.routerB);
-        await pauseRelay();
         const stdoutStart = await sizeOf(serverStdoutLog);
         const file = leaks.watch(canaryFile(canary.fork("file"), { size: 300_001 }));
         const name = makeName(leaks, canary, "Anna");
@@ -284,6 +308,7 @@ for (const row of scenarios) {
           mimeType: file.mime,
           buffer: file.bytes,
         });
+        await allowRelay(sender.page);
         await sender.page.getByLabel("Who is it for?").fill(name);
         await sender.page.getByRole("button", { name: "Create link", exact: true }).click();
         const link =
@@ -294,7 +319,15 @@ for (const row of scenarios) {
         await recordPeerConnections(recipient.context);
         let downloads = 0;
         recipient.page.on("download", () => downloads++);
+        // Paused only now: the server still counts the relay as up when the recipient joins, so
+        // `joined` offers a relay that doesn't answer. Two failed checks, 10 s or more, take it down.
+        await pauseRelay();
         await recipient.page.goto(link);
+        // The sender's page makes its connection on `joined`.
+        await expect
+          .poll(async () => (await readPeerConnections(sender.page)).length, { timeout: 5_000 })
+          .toBeGreaterThan(0);
+        expect(await someRelayUp()).toBe(true);
         // Exact: "Couldn't connect" alone also matches the server panel.
         await expect(
           recipient.page.getByText("Couldn't connect to the sender's computer", { exact: true }),
@@ -355,6 +388,9 @@ for (const row of scenarios) {
           buffer: file.bytes,
         });
       }
+      if (!row.ask) {
+        await allowRelay(sender.page);
+      }
       await sender.page.getByLabel("Who is it for?").fill(name);
       await sender.page.getByRole("button", { name: "Create link", exact: true }).click();
       const link =
@@ -364,6 +400,19 @@ for (const row of scenarios) {
       const recipient = await actor("recipient");
       await recordPeerConnections(recipient.context);
       await recipient.page.goto(link);
+      if (row.ask) {
+        // Real timers: both pages give up on a direct path 3 s after the answer.
+        await expect(
+          recipient.page.getByText(
+            "Couldn't connect directly. Waiting for the sender to allow our relay.",
+          ),
+        ).toBeVisible({ timeout: 30_000 });
+        await expect(recipient.page.getByRole("button", { name: "Try again" })).toHaveCount(0);
+        await sender.page
+          .getByRole("button", { name: `Allow our relay for ${name}`, exact: true })
+          .click({ timeout: 30_000 });
+        // From here the recipient presses nothing before Download.
+      }
       if (row.secret) {
         const show = recipient.page.getByRole("button", { name: "Show", exact: true });
         await expect(show).toBeVisible({ timeout: 45_000 });
@@ -405,6 +454,60 @@ for (const row of scenarios) {
     });
   });
 }
+
+// No relay up: the server stops offering one only after its checks fail twice in a row, so this
+// waits for that and then for the checks to find coturn again.
+test.describe("no relay up", () => {
+  test.use({
+    remoteBrowsers: { sender: remoteBrowsers.a1, recipient: remoteBrowsers.b1 },
+  });
+
+  test("shows no ask, and both pages say the relay wasn't used", async ({
+    actor,
+    leaks,
+    canary,
+  }) => {
+    test.setTimeout(150_000);
+    try {
+      await routerMode("router-b", "symmetric");
+      await pauseRelay();
+      await expect.poll(someRelayUp, { timeout: 40_000, intervals: [1_000] }).toBe(false);
+      const file = leaks.watch(canaryFile(canary.fork("file"), { size: 300_001 }));
+      const name = makeName(leaks, canary, "Anna");
+
+      const sender = await actor("sender");
+      await sender.page.goto("/send");
+      await chooseFile(sender.page, { name: file.name, mimeType: file.mime, buffer: file.bytes });
+      await sender.page.getByLabel("Who is it for?").fill(name);
+      await sender.page.getByRole("button", { name: "Create link", exact: true }).click();
+      const link =
+        (await sender.page.getByLabel(`Link for ${name}`, { exact: true }).textContent()) ?? "";
+      leaks.watchKey("link secret", new URL(link).hash.slice(1));
+
+      const recipient = await actor("recipient");
+      await recipient.page.goto(link);
+      // The sender's 20 s setup timeout ends the attempt.
+      await expect(
+        sender.page
+          .getByRole("list", { name: "Recipients" })
+          .getByText(
+            `${name}'s link was opened but couldn't connect directly, and our relay isn't available right now.`,
+          ),
+      ).toBeVisible({ timeout: 45_000 });
+      await expect(
+        recipient.page.getByText("Couldn't connect directly to the sender", { exact: true }),
+      ).toBeVisible({ timeout: 30_000 });
+      await expect(
+        sender.page.getByRole("button", { name: `Allow our relay for ${name}`, exact: true }),
+      ).toHaveCount(0);
+      await expect(
+        recipient.page.getByText("Waiting for the sender to allow our relay."),
+      ).toHaveCount(0);
+    } finally {
+      await relayBack();
+    }
+  });
+});
 
 /**
  * One `journalctl -o json --all` entry. MESSAGE is a byte array when it is not valid UTF-8 text;
@@ -456,6 +559,7 @@ test.describe("the box", () => {
       mimeType: file.mime,
       buffer: file.bytes,
     });
+    await allowRelay(sender.page);
     await sender.page.getByLabel("Who is it for?").fill(name);
     await sender.page.getByRole("button", { name: "Create link", exact: true }).click();
     const link =
@@ -1196,9 +1300,9 @@ test.describe("the relay box", () => {
         expect(await inRelay("sha256sum", "/var/lib/fidant-relay/current")).toBe(
           `${hash}  /var/lib/fidant-relay/current\n`,
         );
-        // The server checks each relay once a minute.
+        // The server checks each relay every 5 s here (RELAY_CHECK_MS).
         await expect
-          .poll(status, { timeout: 150_000, intervals: [5_000] })
+          .poll(status, { timeout: 30_000, intervals: [1_000] })
           .toContainEqual({ id: "sto", up: true });
 
         let lines: string[] = [];

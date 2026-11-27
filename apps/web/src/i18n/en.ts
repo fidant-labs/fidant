@@ -154,7 +154,7 @@ export const en = {
     neverHeading: "Our server never gets",
     seesHeading: "Our server sees",
     relayNote:
-      "If the two browsers can't connect directly and our relay is available, the file passes through the relay instead, still encrypted. The relay then sees both IP addresses and roughly how big the file is, and can't unlock it.",
+      "If the two browsers can't connect directly, the sender can allow our relay. If the relay is available, the file then passes through it instead, still encrypted. The relay then sees both IP addresses and roughly how big the file is, and can't unlock it.",
     caveat: "The catch: since nothing is stored, keep your tab open until the file has arrived.",
     tryHeading: "Try it on yourself",
     tryBody:
@@ -201,7 +201,7 @@ export const en = {
         heading: "Sometimes it goes through our relay",
         body: [
           "Some networks can't connect directly to each other. This is common on mobile data and office networks.",
-          "Then, if the relay is available, the file goes through our relay in Stockholm instead, still locked.",
+          "Then the sender can allow our relay in Stockholm. If the relay is available, the file goes through it instead, still locked.",
           "The relay can't open the file and doesn't keep it.",
           "It sees the internet address of each device and roughly how big the file is.",
         ],
@@ -354,7 +354,12 @@ export const en = {
       "If we email a link, your name also goes in that email, marked as not verified. Our server puts it there and doesn't keep it.",
     allowRelay: "Use our relay if needed",
     allowRelayHint: (kind: Kind) =>
-      `Some networks block direct connections. Then ${items[kind].the} goes through our relay in Stockholm, still encrypted. The relay sees both IP addresses${kind === "file" ? " and roughly the size" : ""}, but can't open ${items[kind].it}. If you untick this, our server stops giving out relay credentials for this send. The relay still sees each IP address, because each browser learns its public address from the relay.`,
+      `Some networks block direct connections. Tick this and ${items[kind].the} then goes through our relay in Stockholm, still encrypted. The relay sees both IP addresses${kind === "file" ? " and roughly the size" : ""}, but can't open ${items[kind].it}. Leave it unticked and this page asks you when a link can't connect directly and our relay is available. You can then allow the relay for that link. Either way the relay sees each IP address, because each browser learns its public address from the relay.`,
+    ask: (name: string) =>
+      `${name}'s link was opened but couldn't connect directly. It is waiting for you to allow our relay.`,
+    allowRelayFor: (name: string) => `Allow our relay for ${name}`,
+    askTitle: "A link is waiting for you",
+    askBody: "It couldn't connect directly. Open Fidant to allow our relay.",
     fromError: {
       unsafe:
         "Your name contains characters that can't be sent, or three or more spaces in a row. Remove them and try again.",
@@ -439,7 +444,7 @@ export const en = {
     noConnect: (name: string) =>
       `${name}'s link was opened but couldn't connect to your computer. The link still works if they try again.`,
     noRelay: (name: string) =>
-      `${name}'s link was opened but couldn't connect directly. Allowing our relay may let it connect when they try again.`,
+      `${name}'s link was opened but couldn't connect directly, and our relay isn't available right now. The link still works if they try again.`,
     /** `to` is the masked address, like a***@example.se. */
     mail: {
       sending: (to: string) => `Sending email to ${to}…`,
@@ -466,6 +471,7 @@ export const en = {
   },
   receive: {
     connecting: "Connecting to the sender…",
+    askingRelay: "Couldn't connect directly. Waiting for the sender to allow our relay.",
     /** The code step of a link that was emailed. `to` is the masked address, like a***@example.se. */
     verify: {
       title: "Confirm your email to open this link",
@@ -597,7 +603,7 @@ export const en = {
       },
       noRelay: {
         title: "Couldn't connect directly to the sender",
-        body: "The sender doesn't allow our relay, and your networks probably couldn't connect directly. Ask the sender to allow the relay, or try another network, for example your phone's mobile data.",
+        body: "Your networks probably couldn't connect directly, and our relay wasn't used: the sender hasn't allowed it, or it isn't available right now. Try again, or try another network, for example your phone's mobile data.",
       },
       server: {
         title: "Couldn't reach the server",
@@ -704,6 +710,7 @@ export const en = {
       links,
       connected,
       relay,
+      granted,
       emailed,
       sending,
       mailed,
@@ -713,8 +720,10 @@ export const en = {
       online: boolean;
       links: number;
       connected: number;
-      /** Whether the sender allows our TURN relay. */
+      /** Whether the sender allows our TURN relay for the whole send. */
       relay: boolean;
+      /** Links the sender allowed our relay for when asked. */
+      granted: number;
       /** Hosted links the server emails or may be emailing. */
       emailed: number;
       /** Of those, links whose email the server may still be sending. */
@@ -727,9 +736,13 @@ export const en = {
           ? "Only scrambled counts of the emails it sent for you, for up to an hour, once it notices the connection has closed. That takes up to a minute if the network dropped."
           : "Nothing once it notices the connection has closed. That takes up to a minute if the network dropped.";
       }
-      const choice = relay
-        ? "Your choice to allow our relay."
-        : "Your choice not to allow our relay.";
+      const grants =
+        granted === 0
+          ? ""
+          : granted === 1
+            ? " The link you allowed it for."
+            : ` The ${granted} links you allowed it for.`;
+      const choice = `${relay ? "Your choice to allow our relay." : "Your choice not to allow our relay."}${grants}`;
       const counts = mailed
         ? " Scrambled counts of the emails it sent for you, for up to an hour."
         : "";
@@ -888,7 +901,7 @@ export const en = {
         heading: "How the file is protected",
         body: [
           "Your browser encrypts the file with AES-256-GCM before it leaves your computer. The key is in the part of the link after #, which browsers never send to a server. If you ask us to email a link, your browser gives that link's key to our server once, to put in the email. The server doesn't store or log the key.",
-          "The file goes directly between the two browsers. If a network blocks that and our relay is available, it passes through the relay instead, still encrypted. Between the browsers, our server passes on a few small messages. Those that set up the connection are encrypted, so the server can't read them, except for a link it emailed, whose key it had.",
+          "The file goes directly between the two browsers. If a network blocks that, the sender can allow our relay. If the relay is available, the file then passes through it instead, still encrypted. Between the browsers, our server passes on a few small messages. Those that set up the connection are encrypted, so the server can't read them, except for a link it emailed, whose key it had.",
           "The recipient's browser checks the file's SHA-256 checksum, so a file that was changed or damaged on the way is not saved.",
         ],
         link: ["How it works, step by step", "/how"],
@@ -1006,8 +1019,8 @@ export const en = {
       relaying: {
         heading: "When the relay is used",
         body: [
-          "When no direct route works, which is common on mobile data and office networks, the traffic goes through our TURN relay in Stockholm. The browsers add the relay only if the sender allows it, the relay is available and nothing has connected 3 seconds after the recipient answers. A page opened before we began adding the relay this way still reserves relay addresses from the start, until it is reloaded.",
-          "To add the relay, the browsers start the connection setup again, with a new offer and answer, encrypted just like the first. A direct route can still win after that. So a connection that needs the relay starts about 3 seconds later. A direct route that is still connecting 3 seconds after the recipient answers, for example on a network that loses many packets, may end up on the relay.",
+          "When no direct route works, which is common on mobile data and office networks, the traffic can go through our TURN relay in Stockholm. The relay is off unless the sender allows it. The browsers add the relay only if the sender allowed it before that connection started, the relay is available and nothing has connected 3 seconds after the recipient answers. A page opened before we began adding the relay this way still reserves relay addresses from the start, until it is reloaded.",
+          "To add the relay, the browsers start the connection setup again, with a new offer and answer, encrypted just like the first. A direct route can still win after that. So a connection that needs the relay starts about 3 seconds later. A direct route that is still connecting 3 seconds after the recipient answers, for example on a network that loses many packets, may end up on the relay when the sender allowed it.",
           "The relay forwards encrypted packets. It can't decrypt them and doesn't store them.",
           "To use the relay a browser needs credentials, which our server creates for each pairing and gives only to the two paired pages. A relay connection can start with them for 5 minutes, and can then run longer. Our server checks every minute that the relay can carry traffic, and offers it once a check passes. The server stops offering it after two failed checks in a row. The relay gets the secret behind the credentials from our server, sealed so that only the relay can open it.",
           "Browsers reach the relay over UDP, or over TLS on port 443 where a network allows only web traffic. The relay forwards only over UDP, and only from its own address. It refuses to forward to other machines on private or internal networks, with one accepted exception: the relay's own box (see decision 0007). It also limits how many relayed connections run at once.",
@@ -1015,9 +1028,11 @@ export const en = {
         ],
       },
       norelay: {
-        heading: "Refusing the relay",
+        heading: "Allowing the relay",
         body: [
-          "The sender can untick \"Use our relay if needed\". Our server then gives that send no relay credentials, only the STUN address, so an unmodified browser can't use the relay. The sender's browser also enforces the choice itself: it starts the connection without relay credentials, whatever our server sends. As a backstop, if the sender's browser still sees a relayed connection, it ends it. The backstop is best effort: a modified recipient can hide that its side goes through a relay.",
+          'The relay is off unless the sender allows it. Ticking "Use our relay if needed" before sending allows it for that whole send. Otherwise our server gives the send no relay credentials, only the STUN address, so an unmodified browser can\'t use the relay.',
+          "When a link hasn't connected 3 seconds after the recipient answers and the relay is available, the sender's page asks the sender to allow the relay for that one link, with a sound and, if notifications are on, a notification. Our server told both pages that the relay is available, so the recipient's page waits instead of giving up. When the sender allows it, the page tells our server which link, the recipient's page connects again by itself, and that new connection gets relay credentials. Our server keeps the allowed links in memory while the sender's page is connected and never logs them.",
+          "The sender's browser also enforces the choice itself: it starts the connection without relay credentials, whatever our server sends. As a backstop, if the sender's browser still sees a relayed connection, it ends it. The backstop is best effort: a modified recipient can hide that its side goes through a relay.",
           "The limit: a modified recipient can still send its side through our relay with credentials from another pairing, or through any public relay. That recipient has the key anyway. The choice decides which infrastructure carries the encrypted traffic, not who can read the file.",
         ],
       },
@@ -1124,11 +1139,11 @@ export const en = {
           },
           relay: {
             heading: "Through our relay",
-            body: "When nothing has connected 3 seconds after the recipient answers and the relay is available, the browsers add our TURN relay in Stockholm. Unless a direct route still wins, the encrypted traffic then goes through the relay, over UDP or over TLS on port 443. The relay forwards packets it can't decrypt and doesn't store them.",
+            body: "When the sender allowed it, the relay is available and nothing has connected 3 seconds after the recipient answers, the browsers add our TURN relay in Stockholm. Unless a direct route still wins, the encrypted traffic then goes through the relay, over UDP or over TLS on port 443. The relay forwards packets it can't decrypt and doesn't store them.",
           },
           norelay: {
-            heading: "Relay refused",
-            body: "The sender can refuse our relay for a send. Our server then gives no relay credentials, and a connection with no direct route fails.",
+            heading: "Relay not allowed",
+            body: "The relay is off unless the sender allows it, for the whole send or for one link when asked. Until then our server gives no relay credentials. A connection with no direct route then waits for the sender to allow the relay if it is available, and fails if not.",
           },
         },
       },
@@ -1267,7 +1282,7 @@ export const en = {
         ],
         [
           "You don't want your traffic through our relay",
-          "Untick the relay for that send. Our server then gives no relay credentials, and the sender's browser ends a relayed connection it sees.",
+          "The relay is off unless the sender allows it. Until then our server gives no relay credentials, and the sender's browser ends a relayed connection it sees.",
         ],
       ],
     },
@@ -1287,7 +1302,7 @@ export const en = {
           options: {
             direct: "Directly, with our relay allowed",
             relay: "Through our relay",
-            norelay: "Directly, with our relay refused",
+            norelay: "Directly, with our relay not allowed",
           },
         },
       },
@@ -1558,8 +1573,8 @@ export const en = {
         ],
         [
           "Your page registers its links",
-          "The link IDs, your relay choice and your IP address.",
-          "The link IDs and your relay choice, in memory, while your page is open.",
+          "The link IDs, your relay choice, the links you allowed the relay for and your IP address.",
+          "The link IDs, your relay choice and the links you allowed the relay for, in memory, while your page is open.",
           "That a sender registered, and how many links.",
           "Nothing.",
         ],
@@ -1579,17 +1594,17 @@ export const en = {
         ],
         [
           "A recipient opens their link",
-          "The link ID, a random attempt ID, and the recipient's IP address and browser details. If your page turns the recipient away, why: the link was already used, another page is connected to it, your page doesn't have that link, or your page ended the attempt.",
+          "The link ID, a random attempt ID, and the recipient's IP address and browser details. If your page turns the recipient away, why: the link was already used, another page is connected to it, your page doesn't have that link, or your page ended the attempt. Or that you allowed the relay for that link, so the recipient's page connects again.",
           "Which recipient page is paired with which link, in memory.",
           "That a recipient joined or was refused and why, with the first 6 characters of the link ID.",
-          "Nothing yet. If you allow the relay and it is available, our server gives the two pages credentials for it, with which a relay connection can start for 5 minutes.",
+          "Nothing yet. If you allowed the relay before the recipient opened the link, and it is available, our server gives the two pages credentials for it, with which a relay connection can start for 5 minutes.",
         ],
         [
           "The browsers set up the connection",
           "Encrypted setup messages and their sizes. It can't read them, except for a link we emailed.",
           "Nothing. It passes them on.",
           "Each message's size, with the first 6 characters of the link ID.",
-          "Each browser's IP address, when it asks for its public address (STUN). If you allow the relay and it is available, and the browsers still haven't connected 3 seconds after the recipient answers, they add the relay. Both then reserve a relay address. Only yours does if the recipient's browser had already connected when your page's request to add the relay reached it. Either way the relay can learn both IP addresses, even if a direct route wins after all.",
+          "Each browser's IP address, when it asks for its public address (STUN). If you allowed the relay before this connection started and it is available, and the browsers still haven't connected 3 seconds after the recipient answers, they add the relay. Both then reserve a relay address. Only yours does if the recipient's browser had already connected when your page's request to add the relay reached it. Either way the relay can learn both IP addresses, even if a direct route wins after all.",
         ],
         [
           "The file or secret travels",
@@ -1657,7 +1672,7 @@ export const en = {
       ],
       [
         "The sender's relay choice",
-        "Whether the sender allows our relay, so we only give recipients access to it when the sender does. We forget it within a minute after the sender's page closes, and never write it to our logs.",
+        "Whether the sender allows our relay, for the whole send or for single links, so we only give recipients access to it when the sender does. We forget it within a minute after the sender's page closes, and never write it to our logs.",
       ],
       [
         "How each connection went",
