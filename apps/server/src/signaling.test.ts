@@ -812,8 +812,14 @@ test("keeps a socket under the message limit open across window resets", async (
   // A ws client, not connect()'s WebSocket, because only ws tells the test when a ping came.
   const socket = new WsClient(url);
   t.after(() => socket.terminate());
-  const incoming = on(socket, "message");
-  const next = async () => JSON.parse(String((await incoming.next()).value?.[0]));
+  // A close ends the iterator, so a server that drops the socket fails the test instead of hanging it.
+  const incoming = on(socket, "message", { close: ["close"] });
+  const next = async () => {
+    const { done, value } = await incoming.next();
+    assert.ok(!done, "socket closed while waiting for a message");
+    return JSON.parse(String(value[0]));
+  };
+  const closed = once(socket, "close");
   await once(socket, "open");
   assert.deepEqual(await next(), { t: "hello", mail: false });
   for (let round = 0; round < 3; round += 1) {
@@ -827,7 +833,8 @@ test("keeps a socket under the message limit open across window resets", async (
     // messages, and the server has it once it has answered them, before the next tick checks it.
     const pinged = once(socket, "ping");
     t.mock.timers.tick(RATE_WINDOW_MS);
-    await pinged;
+    const first = await Promise.race([pinged.then(() => "ping"), closed.then(() => "close")]);
+    assert.equal(first, "ping", "socket closed before the ping");
   }
   assert.equal(socket.readyState, WsClient.OPEN);
   assert.ok(!events.includes("rate-limited"));
