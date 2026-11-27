@@ -29,7 +29,7 @@ What the two services send and do, from their docs, read on 2026-11-27:
   - the text typed after the command
   - `command`, `response_url`, `trigger_id` and `api_app_id`
 
-  The page calls these "some of the important fields", so the list may not be complete. The reply may come in the HTTP response, and it is `ephemeral` by default, seen only by the user who ran the command ([implementing slash commands](https://docs.slack.dev/interactivity/implementing-slash-commands)).
+  The page calls these "some of the important fields", so the list may not be complete. None of them is the user's language, and the docs name no way to ask for it in the request. The reply may come in the HTTP response, and it is `ephemeral` by default, seen only by the user who ran the command ([implementing slash commands](https://docs.slack.dev/interactivity/implementing-slash-commands)). Only `users.info` returns a user's locale, called with a token that has the `users:read` scope ([users.info](https://docs.slack.dev/reference/methods/users.info)).
 - **Ephemeral messages.** Slack says they "do not persist across reloads" and "are not persisted". It says nothing about what its own servers keep ([chat.postEphemeral](https://docs.slack.dev/reference/methods/chat.postEphemeral)).
 - **Buttons.** A Block Kit button with a `url` still sends the app an interaction payload when clicked: "If you're using `url`, you'll still receive an interaction payload" ([button element](https://docs.slack.dev/reference/block-kit/block-elements/button-element)). That payload carries the user, team and channel. For an ephemeral message it leaves the message out ([messaging](https://docs.slack.dev/messaging)). A click on a button in a message the app posted carries that message ([block_actions](https://docs.slack.dev/reference/interaction-payloads/block_actions-payload)).
 - **Global shortcuts.** An acknowledgment alone shows the user nothing, and the only other answer is a modal opened with `views.open`, which takes a token ([handling user interaction](https://docs.slack.dev/interactivity/handling-user-interaction), [views.open](https://docs.slack.dev/reference/methods/views.open)).
@@ -95,10 +95,15 @@ Option 1 in each of the first four tables. For the install, option 1 if a live t
 
 - **The commands.** `/fidant` and `/secret`. Slack doesn't namespace slash commands, and when two apps register the same name the one installed last wins, so help text always names `/fidant secret`.
 - **The reply.** One fixed reply, the same bytes for every request. It goes in the HTTP response body with `response_type` set to `ephemeral`, in Slack's `mrkdwn`:
-  - a line in English and Swedish with one plain link, to `https://fidant.se/send/secret#chat`
-  - a line saying never to type a secret or a link after the command
 
-  One link serves both languages. The page's pre-paint script opens the Swedish twin, `/sv/skicka/hemlighet#chat`, when the stored language choice is Swedish, or nothing is stored and the browser's language is, and it keeps the part after `#` (`apps/web/src/prepaint.js`).
+  ```
+  Share a secret with Fidant:
+  https://fidant.se/send/secret#chat
+
+  Never type a secret or a link after the command: Slack sends it to us.
+  ```
+
+  The link is plain and shows its address. The reply is in English, because Slack's request doesn't say which language the user reads. The page opens in the reader's own language: its pre-paint script opens the Swedish twin, `/sv/skicka/hemlighet#chat`, when the stored language choice is Swedish, or nothing is stored and the browser's language is, and it keeps the part after `#` (`apps/web/src/prepaint.js`).
 
   The reply sets `unfurl_links` and `unfurl_media` to `false`. If Slack previews the link anyway, its crawler requests `/send/secret`, which tells us no more than the command already did.
 
@@ -165,8 +170,8 @@ Option 1 in each of the first four tables. For the install, option 1 if a live t
 ### Mattermost
 
 - **A server plugin.** It lives in this repository and is built after Slack works.
-- **What it does.** It registers `/fidant` and `/secret`, and answers inside the Mattermost server with an ephemeral reply that carries the same text and link as Slack's, in Mattermost's Markdown.
-- **What it never does.** It makes no network request, has no settings, reads neither the text typed after its command nor any post, writes no log line about a command, and implements no hook besides activating and answering its command. A hook that sees posts as they are written would see every link's key.
+- **What it does.** It registers `/fidant` and `/secret`, and answers inside the Mattermost server with an ephemeral reply in Mattermost's Markdown, with the same link as Slack's. The reply is in the user's Mattermost language, Swedish or otherwise English, which the plugin reads through the plugin API inside that server. Its warning not to type a secret after the command doesn't say that the text reaches us, because it doesn't.
+- **What it never does.** It makes no network request, has no settings, reads neither the text typed after its command nor any post, reads nothing about the user besides their language, writes no log line about a command, and implements no hook besides activating and answering its command. A hook that sees posts as they are written would see every link's key.
 - **How it ships.** A file attached to a GitHub release, which an admin installs by upload, from its URL or from the command line. A Marketplace listing is a later decision.
 - **Its link's preview.** The plugin issue tests, on a Mattermost server with link previews on, whether the server fetches a preview of the link in the plugin's ephemeral reply. If it does, each use shows our CDN the customer server's address and the time. The issue then looks for a reply that Mattermost won't preview, or this record is amended to say so.
 - **No custom slash command.** We don't offer or document setting up a custom slash command against fidant.se.
@@ -204,4 +209,4 @@ Option 1 in each of the first four tables. For the install, option 1 if a live t
   - FID-384 builds the Mattermost plugin.
 - **Approval from the other maintainer.** The `FidantPages` behaviour, `site.js` (with `/slack`, `/slack/installed` and their Swedish addresses added to `PAGES`) and `AGENTS.md` are sensitive paths, so the pull requests that change them need it.
 - **The plugin's cost.** The first Go code in the repository, with its own build and tests in CI and a release file per version. A server that requires signed plugins can't install it until a Marketplace carries it: Mattermost's, or one its admin points the server at and trusts the key of. Signing our releases is not decided here. One with uploads off needs them turned on in `config.json`, or the bundle unpacked by hand.
-- **Not decided here.** A Marketplace listing for either service, and files from Slack (FID-159).
+- **Not decided here.** A Marketplace listing for either service, files from Slack (FID-159), and a Swedish Slack app. That would be a second app whose command posts to its own path, answered with a fixed Swedish reply, so a workspace chooses its language by the link it installs from and we keep no setting.
