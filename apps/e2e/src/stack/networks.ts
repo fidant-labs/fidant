@@ -296,26 +296,22 @@ export function assertDocker(): void {
   }
 }
 
-const projectName = "fidant-e2e";
-/** The label on the server container that names the checkout whose run started it. */
-const checkoutLabel = "fidant.e2e.checkout";
+// Must match `name:` in networks/compose.yaml (networks.test.ts checks).
+export const projectName = "fidant-e2e";
 
 /**
- * Where the networks run that holds the containers comes from, when that is not this checkout.
- * `projects` is `docker compose ls --all --format json`, `serverCheckout` the server container's
- * checkout label: undefined without a container, empty for one that carries none.
+ * The compose file of the networks run whose containers are up, when it is not `ownFile`.
+ * `projects` is `docker compose ls --all --format json`. The server container needs no check of
+ * its own: it starts after the project is up and stops before it.
  */
 export function otherRun(
   projects: { Name: string; ConfigFiles: string }[],
-  serverCheckout: string | undefined,
-  own: { composeFile: string; checkout: string },
+  ownFile: string,
 ): string | undefined {
   const project = projects.find((p) => p.Name === projectName);
-  if (project && !project.ConfigFiles.split(",").includes(own.composeFile)) {
-    return project.ConfigFiles.split(",")[0];
-  }
-  if (serverCheckout !== undefined && serverCheckout !== own.checkout) {
-    return serverCheckout || `a run that left ${serverName} without a checkout label`;
+  const files = project?.ConfigFiles.split(",") ?? [];
+  if (project && !files.includes(ownFile)) {
+    return files[0] || "an unknown checkout";
   }
   return undefined;
 }
@@ -334,17 +330,7 @@ export function assertNoOtherRun(): void {
       timeout: 15_000,
     }) || "[]",
   );
-  let serverCheckout: string | undefined;
-  try {
-    serverCheckout = execFileSync(
-      "docker",
-      ["inspect", "-f", `{{index .Config.Labels "${checkoutLabel}"}}`, serverName],
-      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 15_000 },
-    ).trim();
-  } catch {
-    // No server container.
-  }
-  const other = otherRun(projects, serverCheckout, { composeFile, checkout: repo });
+  const other = otherRun(projects, composeFile);
   if (other) {
     throw new Error(
       `Another pnpm e2e:networks run, from ${other}, has containers up, and runs on one machine can't overlap. Wait for it to end. If it no longer runs, remove its containers with \`docker rm -f ${serverName}; docker compose -p ${projectName} down --remove-orphans\`.`,
@@ -577,7 +563,7 @@ export const dockerServer: Service = {
         const secretDir = dirname(env.TURN_SECRET_FILE ?? "");
         // --init: as PID 1 the server would ignore any signal it has no handler for, such as
         // SIGTERM before it listens, so tini takes PID 1 and forwards docker's signals to it.
-        // ponytail: one server container at a time; assertNoOtherRun refuses a second run.
+        // ponytail: one server container at a time; assertNoOtherRun refuses a second checkout's run.
         return [
           "docker",
           "run",
@@ -585,8 +571,6 @@ export const dockerServer: Service = {
           "--init",
           "--name",
           serverName,
-          "--label",
-          `${checkoutLabel}=${repo}`,
           "--network",
           "fidant-e2e-public",
           "--ip",
