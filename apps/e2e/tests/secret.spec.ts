@@ -30,10 +30,15 @@ async function share(leaks: Leaks, sender: Page, text: string, from: string, nam
   return addLink(leaks, sender, name);
 }
 
-/** Adds a recipient on /send/secret and returns their link, with its secret watched. */
-async function addLink(leaks: Leaks, sender: Page, name: string) {
+/** Adds a recipient on /send/secret and returns their link, with its secret watched. With `check`, the link has the safety number on. */
+async function addLink(leaks: Leaks, sender: Page, name: string, check = false) {
   await sender.locator("#secret-recipient-name").fill(name);
-  await sender.getByRole("button", { name: "Create link", exact: true }).click();
+  await sender
+    .getByRole("button", {
+      name: check ? "Create link with safety number" : "Create link",
+      exact: true,
+    })
+    .click();
   const link = (await sender.getByLabel(`Link for ${name}`, { exact: true }).textContent()) ?? "";
   const secret = new URL(link).hash.slice(1);
   expect(secret, `link secret for ${name}`).toMatch(/^[A-Za-z0-9_-]{43}$/);
@@ -295,36 +300,48 @@ test("a recipient who loses the sender during the offer sees the text wording", 
   await expect(closed.getByText("The file comes straight from their browser")).toHaveCount(0);
 });
 
-test("a connection too small to carry a text in one chunk fails the card and sends nothing", async ({
-  actor,
-  leaks,
-  canary,
-}) => {
-  const text = makeText(leaks, canary);
-  const name = makeName(leaks, canary, "Hugo");
-  const { page: sender } = await actor("sender");
-  await sender.addInitScript(() => {
-    const g = globalThis as { sent?: number };
-    g.sent = 0;
-    Object.defineProperty(RTCSctpTransport.prototype, "maxMessageSize", { get: () => 32_831 });
-    const send = RTCDataChannel.prototype.send;
-    RTCDataChannel.prototype.send = function (this: RTCDataChannel, ...args: unknown[]) {
-      g.sent = (g.sent ?? 0) + 1;
-      Reflect.apply(send, this, args);
-    } as RTCDataChannel["send"];
-  });
-  await sender.goto("/send/secret");
-  const link = await share(leaks, sender, text, "", name);
+for (const check of [false, true]) {
+  test(`a connection too small to carry a text in one chunk fails the card and sends ${check ? "only INIT and CHECK, after the check" : "nothing"}`, async ({
+    actor,
+    leaks,
+    canary,
+  }) => {
+    const text = makeText(leaks, canary);
+    const name = makeName(leaks, canary, "Hugo");
+    const { page: sender } = await actor("sender");
+    await sender.addInitScript(() => {
+      const g = globalThis as { sent?: number };
+      g.sent = 0;
+      Object.defineProperty(RTCSctpTransport.prototype, "maxMessageSize", { get: () => 32_831 });
+      const send = RTCDataChannel.prototype.send;
+      RTCDataChannel.prototype.send = function (this: RTCDataChannel, ...args: unknown[]) {
+        g.sent = (g.sent ?? 0) + 1;
+        Reflect.apply(send, this, args);
+      } as RTCDataChannel["send"];
+    });
+    await sender.goto("/send/secret");
+    await sender.getByLabel("Your secret").fill(text);
+    const link = await addLink(leaks, sender, name, check);
 
-  const { page } = await openRecipient(actor, link);
-  await expect(
-    recipientRow(sender, name).getByText(
-      `The secret wasn't sent through ${name}'s link, because its length would have shown on this connection. The link still works.`,
-    ),
-  ).toBeVisible();
-  expect(await sender.evaluate(() => (globalThis as { sent?: number }).sent)).toBe(0);
-  await expect(page.getByRole("button", { name: "Show", exact: true })).toHaveCount(0);
-});
+    const { page } = await openRecipient(actor, link);
+    if (check) {
+      // As for a file: INIT goes and the check runs, so the link's holder can't tell a secret from a file before both confirm.
+      await expect(page.getByRole("heading", { name: "Safety number" })).toBeVisible();
+      await sender
+        .getByRole("dialog", { name: `Safety number for ${name}` })
+        .getByRole("button", { name: "It matches" })
+        .click();
+      await page.getByRole("button", { name: "They said it matches" }).click();
+    }
+    await expect(
+      recipientRow(sender, name).getByText(
+        `The secret wasn't sent through ${name}'s link, because its length would have shown on this connection. The link still works.`,
+      ),
+    ).toBeVisible();
+    expect(await sender.evaluate(() => (globalThis as { sent?: number }).sent)).toBe(check ? 2 : 0);
+    await expect(page.getByRole("button", { name: "Show", exact: true })).toHaveCount(0);
+  });
+}
 
 test("a sender who loses the server sees the text wording", async ({ actor }) => {
   const { page: sender } = await actor("sender");
