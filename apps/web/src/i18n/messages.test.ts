@@ -57,3 +57,16 @@ test("index.html's noscript text is the English noscript message", () => {
   const noscript = html.match(/<noscript>([\s\S]*)<\/noscript>/)?.[1] ?? "";
   assert.ok(noscript.includes(`>${en.noscript}</p>`));
 });
+
+// Emailed links are off until verified transfers (FID-376), so the public pages say nothing about them.
+// The send and receive strings stay, because they render only while mail is on.
+test("the public pages don't mention emailed links", () => {
+  const banned =
+    /emailed|we email|us to email|emails it|email the link|mailbox|our mail service|mejlad|mejlar|mejla länk|vår mejltjänst|inkorg|brevlåd/i;
+  for (const messages of [en, sv]) {
+    const { landing, how, terms, security, technical } = messages;
+    const { logFields: _kept, ...privacy } = messages.privacy;
+    const text = JSON.stringify({ landing, how, terms, security, technical, privacy });
+    assert.doesNotMatch(text, banned);
+  }
+});
