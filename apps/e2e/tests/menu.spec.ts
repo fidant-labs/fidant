@@ -8,6 +8,7 @@ import {
   recipientRow,
   test,
 } from "../src/fixtures.ts";
+import { base32Token } from "../src/leaks/canary.ts";
 
 const nav = (page: Page) => page.locator("header nav");
 
@@ -76,6 +77,49 @@ test("leaving /send for Privacy and going back keeps the file and recipient", as
   await expect(page).toHaveURL(/\/send\/file$/);
   await expect(page.getByText(file.name, { exact: true })).toBeVisible();
   await expect(page.getByLabel("Your secret")).toBeHidden();
+});
+
+test("the footer links both ways to send, and a secret on its way keeps its page", async ({
+  page,
+  leaks,
+  canary,
+}) => {
+  await page.goto("/");
+  await expect(footer(page).getByRole("link", { name: "Send a file" })).toHaveAttribute(
+    "href",
+    "/send/file",
+  );
+  await expect(footer(page).getByRole("link", { name: "Share a secret" })).toHaveAttribute(
+    "href",
+    "/send/secret",
+  );
+
+  const name = makeName(leaks, canary, "Anna");
+  const text = base32Token(canary.fork("text"), 40);
+  leaks.watchContent("text", text);
+  await page.goto("/send/secret");
+  await page.getByLabel("Your secret").fill(text);
+  await page.locator("#secret-recipient-name").fill(name);
+  await page.getByRole("button", { name: "Create link", exact: true }).click();
+  const link = await page.getByLabel(`Link for ${name}`, { exact: true }).textContent();
+  leaks.watchKey("link secret", new URL(link ?? "").hash.slice(1));
+
+  await expect(
+    page.getByRole("navigation", { name: "What to send" }).getByRole("button", { name: "File" }),
+  ).toBeDisabled();
+  await footer(page).getByRole("link", { name: "Send a file" }).click();
+  await expect(page).toHaveURL(/\/send\/secret$/);
+  await expect(recipientRow(page, name)).toBeVisible();
+
+  await page.goto("/sv");
+  await expect(footer(page).getByRole("link", { name: "Skicka en fil" })).toHaveAttribute(
+    "href",
+    "/sv/skicka/fil",
+  );
+  await expect(footer(page).getByRole("link", { name: "Dela en hemlighet" })).toHaveAttribute(
+    "href",
+    "/sv/skicka/hemlighet",
+  );
 });
 
 test("the menu's Send and the landing page's button open /send", async ({ page }) => {
