@@ -15,9 +15,8 @@ This record amends 0001 (`0001-e2e-tests-and-leak-model.md`). Read it with the r
   - the safety number on by default for a link started from Slack
   - an "Add to Slack" install from fidant.se, unlisted in the Slack Marketplace, keeping no Slack tokens
 - On 2026-11-27 Mattermost joined the project, for organisations that run their own Mattermost. It is decided here and built after Slack works.
-- A secret is shared from the send page in secret mode, today `/send?mode=secret` (`/sv/skicka?mode=secret`). The recipient's link carries the key after `#`, which browsers never send in a request (`docs/how-fidant-works.md`, "The link"). Every load of the page in secret mode already tells our server that it is in secret mode ("Sharing a secret").
-- The old address `/secret` still opens, but the router rewrites it to `/send?mode=secret` and drops the part after `#` (`apps/web/src/App.tsx`). The router reads the part after `#` only on `/how` and on the receive page.
-- On 2026-11-27 David decided that addresses carry no query parameters. FID-367 moves the two modes to `/send/file` and `/send/secret` (`/sv/skicka/fil` and `/sv/skicka/hemlighet`), keeps `/send` as file mode, and redirects the old addresses. This record's links assume FID-367 has landed.
+- A secret is shared from the send page in secret mode, `/send/secret` (`/sv/skicka/hemlighet`). The recipient's link carries the key after `#`, which browsers never send in a request (`docs/how-fidant-works.md`, "The link"). Every load of the page in secret mode already tells our server that it is in secret mode ("Sharing a secret").
+- On 2026-11-27 David decided that addresses carry no query parameters. FID-367 (merged that day) gave the two modes the paths `/send/file` and `/send/secret`, kept `/send` as file mode, and redirects the old `/secret` and `/sv/hemlighet` with a 301. The router reads the part after `#` only on `/how` and on the receive page (`apps/web/src/App.tsx`).
 - 0024 put the safety number on the button that creates the link. "Create link" comes first and "Create link with safety number" second, and the order flips once the sender chooses email.
 - Our CDN's edge function (`apps/infra/edge/site.js`, `FidantPages`) runs on viewer requests and already answers some itself, without contacting the origin: redirects, and the empty 404 under `/relay-secret/`. A CloudFront Function has no access to the request body ("Access to the request body | No", [choosing between CloudFront Functions and Lambda@Edge](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/edge-functions-choosing.html)). AWS's pages don't say whether one answers a POST itself the same way. `FidantPages` keeps no access logs, and all of its behaviours allow only GET and HEAD.
 - Until the cutover (FID-263), the app box serves fidant.se, and `apps/server` answers pages only for GET and HEAD.
@@ -104,7 +103,7 @@ Option 1 in each of the first four tables. For the install, option 1 if a live t
 
   The endpoint reads no field of the request. `/fidant secret`, `/fidant` and `/fidant` followed by anything else all get the same reply, and so do Slack's `ssl_check` requests.
 
-  The two links are a lasting contract once installed, above all in Mattermost plugin releases that admins upload and keep, so the send page keeps answering them. FID-367 lands before FID-335 and FID-336 for that reason.
+  The two links are a lasting contract once installed, above all in Mattermost plugin releases that admins upload and keep, so the send page keeps answering them.
 - **Where.** `POST https://fidant.se/slack/command`.
   - After the cutover, the edge function answers it on a new `FidantPages` behaviour for `/slack/command`, the only one that allows POST. The function returns the reply itself, so the request never reaches the origin.
   - Until the cutover, and on the local stack, `apps/server` answers the same path with the same bytes. It reads no body: it answers at once and closes the connection, so it needs no size cap, and it has no rate limit, like every page.
@@ -188,7 +187,7 @@ Option 1 in each of the first four tables. For the install, option 1 if a live t
   No transfer path, signaling message or log event is added, so `packages/protocol/src/transfer-paths.test.ts` needs no change.
 - **Absolutes.** Copy that says our infrastructure never receives a secret, or receives nothing about one, is qualified for the typed text. The command's request also tells us that someone in a given workspace is about to share a secret.
 - **The issues.**
-  - FID-367 gives the send page's modes their own addresses, first.
+  - FID-367 gave the send page's modes their own addresses (merged).
   - FID-335 builds the endpoint: a link instead of a button, the edge function and the server route, no log event, the manifest with its test, the canary test and the `AGENTS.md` exception.
   - FID-336 builds the `#chat` marker on the send page.
   - FID-337 builds `/slack`, `/slack/installed` and the install, and runs the live test.
