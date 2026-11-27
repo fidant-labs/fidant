@@ -119,6 +119,17 @@ jobs:
       # The lossy row shapes the link with tc netem, which works in the router container only
       # when the host kernel has the module loaded.
       - run: sudo modprobe sch_netem
+      # Building the images from scratch took 274s of the job's setup (FID-365). The layers go to
+      # GitHub Actions' cache through compose.gha-cache.yaml, which needs the cache service's
+      # address and token; only JavaScript actions get them, so this step hands them on. A pull
+      # request's cache writes stay in its own scope, and it reads main's.
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            for (const name of ["ACTIONS_CACHE_URL", "ACTIONS_CACHE_SERVICE_V2", "ACTIONS_RESULTS_URL", "ACTIONS_RUNTIME_TOKEN"]) {
+              if (process.env[name]) core.exportVariable(name, process.env[name]);
+            }
+            core.exportVariable("FIDANT_E2E_GHA_CACHE", "1");
       - run: pnpm e2e:networks
       # Same rule as the e2e job: only the observations are uploaded. The coturn capture holds
       # STUN/TURN headers and DTLS ciphertext, never file content or keys.

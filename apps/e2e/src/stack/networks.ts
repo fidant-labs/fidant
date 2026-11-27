@@ -18,7 +18,14 @@ import type { RunningService, Service } from "./service.ts";
 // The simulated networks of networks/compose.yaml, and the server on their public network.
 
 const run = promisify(execFile);
-const compose = ["compose", "-f", join(e2eDir, "networks", "compose.yaml")];
+const compose = [
+  "compose",
+  "-f",
+  join(e2eDir, "networks", "compose.yaml"),
+  ...(process.env.FIDANT_E2E_GHA_CACHE
+    ? ["-f", join(e2eDir, "networks", "compose.gha-cache.yaml")]
+    : []),
+];
 const serverName = "fidant-e2e-server";
 /** The server's address on the public network, where the browsers reach it. */
 export const serverIp = "198.51.100.10";
@@ -343,8 +350,11 @@ async function startNetworks(): Promise<RunningService> {
   try {
     // Left over from a run that was killed.
     down();
-    await Promise.all([fetchImages(), buildPages(pagesDir)]);
-    await run("docker", [...compose, "up", "-d", "--wait", "--wait-timeout", "120"]);
+    await Promise.all([fetchImages(), timed("web build", buildPages(pagesDir))]);
+    await timed(
+      "stack up",
+      run("docker", [...compose, "up", "-d", "--wait", "--wait-timeout", "120"]),
+    );
     const relays = [
       { id: "net", urls: turnUrls, publicKey: netKey },
       {
@@ -375,6 +385,14 @@ async function startNetworks(): Promise<RunningService> {
   };
 }
 
+/** Logs how long a setup step took, so a slow CI start shows which step to speed up. */
+async function timed<T>(step: string, work: Promise<T>): Promise<T> {
+  const start = performance.now();
+  const result = await work;
+  console.log(`networks setup: ${step} took ${((performance.now() - start) / 1000).toFixed(1)}s`);
+  return result;
+}
+
 /** The web build the release uploads, with the signaling address from apps/web/signals.json. */
 async function buildPages(outDir: string): Promise<void> {
   const vite = join(repo, "apps", "web", "node_modules", "vite", "bin", "vite.js");
@@ -395,17 +413,24 @@ async function buildPages(outDir: string): Promise<void> {
  */
 async function fetchImages(): Promise<void> {
   await Promise.all([
-    run("docker", [...compose, "pull", "--policy", "missing", "--ignore-buildable", "--quiet"]),
-    run("docker", ["image", "inspect", serverImage]).catch(() =>
-      run("docker", ["pull", "--quiet", serverImage]),
+    timed(
+      "image pull",
+      run("docker", [...compose, "pull", "--policy", "missing", "--ignore-buildable", "--quiet"]),
     ),
-    run("docker", [...compose, "build"], { maxBuffer: 64 * 1024 * 1024 }).catch(
-      async (error: { stdout?: string }) => {
-        // On a pipe, as in CI, the write is async and the run could exit before it drains.
-        await new Promise((done) => process.stderr.write(error.stdout ?? "", done));
-        throw error;
-      },
+    timed(
+      "server image pull",
+      run("docker", ["image", "inspect", serverImage]).catch(() =>
+        run("docker", ["pull", "--quiet", serverImage]),
+      ),
     ),
+    timed(
+      "image build",
+      run("docker", [...compose, "build"], { maxBuffer: 64 * 1024 * 1024 }),
+    ).catch(async (error: { stdout?: string }) => {
+      // On a pipe, as in CI, the write is async and the run could exit before it drains.
+      await new Promise((done) => process.stderr.write(error.stdout ?? "", done));
+      throw error;
+    }),
   ]);
 }
 
