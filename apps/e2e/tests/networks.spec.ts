@@ -77,7 +77,7 @@ interface Scenario {
   path: RegExp | "none";
   /** Send a larger file and check that both sides report progress honestly along the way. */
   progress?: true;
-  /** Share a secret from /secret instead of a file. Not with `progress`. */
+  /** Share a secret from /send/secret instead of a file. Not with `progress`. */
   secret?: true;
 }
 
@@ -343,7 +343,7 @@ for (const row of scenarios) {
       if (row.secret) {
         sent = base32Token(canary.fork("text"), 64);
         leaks.watchContent("text", sent);
-        await sender.page.goto("/secret");
+        await sender.page.goto("/send/secret");
         await sender.page.getByLabel("Your secret").fill(sent);
       } else {
         const file = leaks.watch(canaryFile(canary.fork("file"), { size }));

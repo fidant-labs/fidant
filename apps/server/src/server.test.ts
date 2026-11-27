@@ -38,6 +38,8 @@ for (const page of [
   "how/index",
   "sv/index",
   "sv/om/index",
+  "send/secret/index",
+  "sv/skicka/hemlighet/index",
   "sv/sa-fungerar-det/lamnas-kvar/index",
   "404",
   "sv/404",
@@ -165,7 +167,7 @@ test("unknown paths get the not-found page in the path's language", async () => 
   }
 });
 
-test("a trailing slash and the old /technical address redirect to the page", async () => {
+test("a trailing slash and the old addresses redirect to the page", async () => {
   for (const [path, location] of [
     ["/about/", "/about"],
     ["/sv/", "/sv"],
@@ -173,6 +175,10 @@ test("a trailing slash and the old /technical address redirect to the page", asy
     ["/sv/sa-fungerar-det/lamnas-kvar/", "/sv/sa-fungerar-det/lamnas-kvar"],
     ["/technical", "/how"],
     ["/technical/", "/how"],
+    ["/secret", "/send/secret"],
+    ["/secret/?a=1", "/send/secret?a=1"],
+    ["/sv/hemlighet", "/sv/skicka/hemlighet"],
+    ["/sv/hemlighet/", "/sv/skicka/hemlighet"],
   ] as const) {
     const res = await page(path);
     assert.equal(res.status, 301, path);
