@@ -142,6 +142,7 @@ function short(link: string): string {
 }
 
 const STATUS_TEXT = {
+  400: "Bad Request",
   403: "Forbidden",
   404: "Not Found",
   429: "Too Many Requests",
@@ -184,11 +185,21 @@ function prefix64(ip: string): string {
     .join(":")}::/64`;
 }
 
+function trustsForwarding(remote: string | undefined, proxies: BlockList | undefined): boolean {
+  const ip = normalize(remote ?? "");
+  const family = isIP(ip);
+  return (
+    ip === "::1" ||
+    ip.startsWith("127.") ||
+    (proxies !== undefined && family !== 0 && proxies.check(ip, family === 4 ? "ipv4" : "ipv6"))
+  );
+}
+
 /**
  * The address a socket counts against for the per-address cap. X-Forwarded-For is trusted only
- * from loopback (a reverse proxy on the same host) or a peer in `proxies`, and only its rightmost
- * entry, which that proxy wrote. IPv6 clients are keyed by their /64, since one host usually owns
- * a whole /64. The result is used only as a map key and is never logged.
+ * from a peer `trustsForwarding` accepts, and only its rightmost entry, which that proxy wrote.
+ * IPv6 clients are keyed by their /64, since one host usually owns a whole /64. The result is used
+ * only as a map key and is never logged.
  */
 export function clientAddress(
   remote: string | undefined,
@@ -196,12 +207,7 @@ export function clientAddress(
   proxies?: BlockList,
 ): string {
   let ip = normalize(remote ?? "");
-  const family = isIP(ip);
-  if (
-    ip === "::1" ||
-    ip.startsWith("127.") ||
-    (proxies !== undefined && family !== 0 && proxies.check(ip, family === 4 ? "ipv4" : "ipv6"))
-  ) {
+  if (trustsForwarding(ip, proxies)) {
     const header = Array.isArray(forwardedFor) ? forwardedFor.join(",") : (forwardedFor ?? "");
     const forwarded = normalize(header.split(",").at(-1)?.trim() ?? "");
     if (isIP(forwarded) !== 0) {
@@ -298,6 +304,15 @@ export function attachSignaling(
     if (peers.size >= limits.sockets) {
       log("upgrade-rejected", { reason: "full" });
       rejectUpgrade(socket, 503);
+      return;
+    }
+    // Counted from rawHeaders, because req.headers joins repeated lines into one.
+    const forwardedLines = req.rawHeaders.filter(
+      (name, i) => i % 2 === 0 && name.toLowerCase() === "x-forwarded-for",
+    ).length;
+    if (forwardedLines > 1 && trustsForwarding(req.socket.remoteAddress, options.proxies)) {
+      log("upgrade-rejected", { reason: "forwarded" });
+      rejectUpgrade(socket, 400);
       return;
     }
     const address = clientAddress(
