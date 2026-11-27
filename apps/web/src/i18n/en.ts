@@ -813,6 +813,7 @@ export const en = {
   },
   footer: {
     label: "Site",
+    file: "Send a file",
     tagline: "Files encrypted in your browser. Only the link can unlock them.",
     about: "About",
     terms: "Terms",
