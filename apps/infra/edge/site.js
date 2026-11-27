@@ -7,11 +7,16 @@ const LOWER = "abcdefghijklmnopqrstuvwxyz";
 const DIGITS = "0123456789";
 const HEX = `${DIGITS}abcdefABCDEF`;
 const WORD = `${LOWER}${LOWER.toUpperCase()}${DIGITS}_`;
-const MOVED = { "/technical": "/how" };
+const MOVED = {
+  "/technical": "/how",
+  "/secret": "/send/secret",
+  "/sv/hemlighet": "/sv/skicka/hemlighet",
+};
 const PAGES = [
   "/",
   "/send",
-  "/secret",
+  "/send/file",
+  "/send/secret",
   "/how",
   "/how/file",
   "/how/encryption",
@@ -31,7 +36,8 @@ const PAGES = [
   "/terms",
   "/sv",
   "/sv/skicka",
-  "/sv/hemlighet",
+  "/sv/skicka/fil",
+  "/sv/skicka/hemlighet",
   "/sv/sa-fungerar-det",
   "/sv/sa-fungerar-det/filen",
   "/sv/sa-fungerar-det/kryptering",

@@ -74,19 +74,55 @@ test("the send page's toggle switches between a file and a secret, and the addre
   actor,
 }) => {
   const { page } = await actor("sender");
-  await page.goto("/send?mode=secret");
+  await page.goto("/send/secret");
   await expect(page.getByLabel("Your secret")).toBeVisible();
   const toggle = page.getByRole("navigation", { name: "What to send" }).filter({ visible: true });
   await toggle.getByRole("link", { name: "File" }).click();
-  await expect(page).toHaveURL(/\/send\?mode=file$/);
+  await expect(page).toHaveURL(/\/send\/file$/);
   await expect(page.getByLabel("Your secret")).toBeHidden();
   await expect(page).toHaveTitle("Send a file – Fidant");
   await toggle.getByRole("link", { name: "Secret" }).click();
-  await expect(page).toHaveURL(/\/send\?mode=secret$/);
+  await expect(page).toHaveURL(/\/send\/secret$/);
   await expect(page.getByLabel("Your secret")).toBeVisible();
-  // The old address still opens secret mode.
-  await page.goto("/secret");
-  await expect(page).toHaveURL(/\/send\?mode=secret$/);
+  await page.goto("/send");
+  await expect(page).toHaveURL(/\/send$/);
+  await expect(page.getByLabel("Your secret")).toBeHidden();
+  // The old addresses still open their mode, under its new address.
+  for (const [old, now] of [
+    ["/secret", /\/send\/secret$/],
+    ["/sv/hemlighet", /\/sv\/skicka\/hemlighet$/],
+    ["/send?mode=secret", /\/send\/secret$/],
+    ["/send?mode=file", /\/send\/file$/],
+    ["/sv/skicka?mode=secret", /\/sv\/skicka\/hemlighet$/],
+  ] as const) {
+    await page.goto(old);
+    await expect(page, old).toHaveURL(now);
+  }
+  await expect(page.getByLabel("Din hemlighet")).toBeVisible();
+});
+
+test("each send mode is its own page, and /send names file mode as its canonical", async ({
+  request,
+}) => {
+  for (const [path, title, canonical] of [
+    ["/send", "Send a file – Fidant", "https://fidant.se/send/file"],
+    ["/send/file", "Send a file – Fidant", "https://fidant.se/send/file"],
+    ["/send/secret", "Share a secret – Fidant", "https://fidant.se/send/secret"],
+    ["/sv/skicka", "Skicka en fil – Fidant", "https://fidant.se/sv/skicka/fil"],
+    ["/sv/skicka/hemlighet", "Dela en hemlighet – Fidant", "https://fidant.se/sv/skicka/hemlighet"],
+  ] as const) {
+    const html = await (await request.get(path, { maxRedirects: 0 })).text();
+    expect(html, path).toContain(`<title>${title}</title>`);
+    expect(html, path).toContain(`<link rel="canonical" href="${canonical}" />`);
+  }
+  for (const [old, now] of [
+    ["/secret", "/send/secret"],
+    ["/sv/hemlighet", "/sv/skicka/hemlighet"],
+  ] as const) {
+    const res = await request.get(old, { maxRedirects: 0 });
+    expect(res.status(), old).toBe(301);
+    expect(res.headers().location, old).toBe(now);
+  }
 });
 
 test.describe("in a Swedish browser", () => {
@@ -129,7 +165,7 @@ test("switching language while sharing keeps the share, and the recipient still 
   const text = `language-switch-${makeName(leaks, canary, "text")}`;
   leaks.watchContent("text", text);
   const { page: sender } = await actor("sender");
-  await sender.goto("/secret");
+  await sender.goto("/send/secret");
   await sender.getByLabel("Your secret").fill(text);
   await sender.locator("#secret-recipient-name").fill(name);
   await sender.getByRole("button", { name: "Create link", exact: true }).click();
@@ -138,7 +174,7 @@ test("switching language while sharing keeps the share, and the recipient still 
 
   await sender.evaluate(() => Object.assign(window, { notReloaded: true }));
   await choose(sender, "Language", "Svenska");
-  await expect(sender).toHaveURL(/\/sv\/skicka\?mode=secret$/);
+  await expect(sender).toHaveURL(/\/sv\/skicka\/hemlighet$/);
   await expect(sender.locator("html")).toHaveAttribute("lang", "sv");
   expect(await sender.evaluate(() => "notReloaded" in window)).toBe(true);
   await expect(sender.getByLabel(`Länk till ${name}`, { exact: true })).toHaveText(link);
@@ -170,6 +206,8 @@ test("every internal link on a Swedish page leads to a Swedish page", async ({ p
     (m) => m[1] ?? "",
   );
   expect(swedish).toHaveLength(20);
+  // The menu's /sv/skicka is left out of the sitemap, which lists its canonical /sv/skicka/fil.
+  const linkable = [...swedish, "/sv/skicka"];
   for (const path of swedish) {
     await page.goto(path);
     await expect(page.locator("html")).toHaveAttribute("lang", "sv");
@@ -179,7 +217,7 @@ test("every internal link on a Swedish page leads to a Swedish page", async ({ p
       .evaluateAll((links) => links.map((link) => link.getAttribute("href") ?? ""));
     expect(hrefs.length, path).toBeGreaterThan(0);
     for (const href of hrefs) {
-      expect(swedish, `${path} links to ${href}`).toContain(href.split(/[?#]/)[0]);
+      expect(linkable, `${path} links to ${href}`).toContain(href.split(/[?#]/)[0]);
     }
   }
 });

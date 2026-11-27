@@ -5,9 +5,12 @@ import { type Lang, localizedPath } from "./i18n/language.ts";
 
 export const ORIGIN = "https://fidant.se";
 
+/** Pages that show another page, by its path: their canonical address is that page's. */
+const SAME_AS: Readonly<Record<string, string>> = { "/send": "/send/file" };
+
 /** The canonical address of a page in `lang`: no trailing slash except the root. */
 export function pageUrl(path: string, lang: Lang): string {
-  return ORIGIN + localizedPath(path, lang);
+  return ORIGIN + localizedPath(SAME_AS[path] ?? path, lang);
 }
 
 export function sitemap(urls: readonly string[]): string {

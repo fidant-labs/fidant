@@ -2104,7 +2104,7 @@ test.describe("emailed links", () => {
     const text = `${base32Token(canary.fork("text"), 40)} åäö`;
     leaks.watchContent("text", text);
     const sender = await demo.open("sender");
-    await sender.goto("/secret");
+    await sender.goto("/send/secret");
     await sender.getByLabel("Your secret").fill(text);
     await sender.getByLabel("Email the link for me (less private)").check();
     const email = sender.getByLabel("Their email address");
