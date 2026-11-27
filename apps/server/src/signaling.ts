@@ -185,7 +185,6 @@ function prefix64(ip: string): string {
     .join(":")}::/64`;
 }
 
-/** Loopback (a proxy on this host) and peers in `proxies` may write X-Forwarded-For. */
 function trustsForwarding(remote: string | undefined, proxies: BlockList | undefined): boolean {
   const ip = normalize(remote ?? "");
   const family = isIP(ip);
