@@ -781,7 +781,7 @@ test("only the fidant.se distribution reads the bucket, over TLS, and the bucket
   ]);
 });
 
-test("each zone and its www get a distribution with their own certificate, function and web ACL, and no IPv6, logs or error pages", () => {
+test("each zone and its www get a distribution with their own certificate, function and web ACL, IPv6, and no logs or error pages", () => {
   const { pages } = pagesApp();
   for (const zone of zoneNames) {
     const name =
@@ -819,7 +819,7 @@ test("each zone and its www get a distribution with their own certificate, funct
         ...(site && { DefaultRootObject: "pages/index.html" }),
         Enabled: true,
         HttpVersion: "http2",
-        IPV6Enabled: false,
+        IPV6Enabled: true,
         Origins: undefined,
         ViewerCertificate: {
           AcmCertificateArn: {
