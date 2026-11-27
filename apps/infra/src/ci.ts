@@ -6,6 +6,7 @@ import {
   pagesBucket,
   releaseRoleName,
   releaseSessionSeconds,
+  releaseWorkflow,
   signalCluster,
   signalService,
 } from "./config.ts";
@@ -55,6 +56,7 @@ export class CiStack extends Stack {
               "repo:sigill-labs@360211033/sigill@1468787132:environment:app",
               "repo:fidant-labs@360211033/fidant@1468787132:environment:app",
             ],
+            [`${issuer}:job_workflow_ref`]: `${releaseWorkflow}@refs/heads/main`,
           },
         }),
       });
