@@ -165,7 +165,7 @@ import {
   type IceServer,
   MAX_LINKS,
   type RefuseReason,
-} from "@sigill/protocol";
+} from "@fidant/protocol";
 import type { Link } from "./link.ts";
 import type { OpenPath } from "./peer.ts";
 

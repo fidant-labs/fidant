@@ -529,7 +529,7 @@ test("the web job hands on the web client built for the signaling name, hidden f
   const web = workflow.slice(workflow.indexOf("\n  web:\n"), workflow.indexOf("\n  release:\n"));
   assert.ok(
     web.includes(
-      "      - run: pnpm install --frozen-lockfile\n      - name: Build the web client\n        env:\n          SIGNALS_FILE: signals.json\n        run: pnpm --filter @sigill/web build\n",
+      "      - run: pnpm install --frozen-lockfile\n      - name: Build the web client\n        env:\n          SIGNALS_FILE: signals.json\n        run: pnpm --filter @fidant/web build\n",
     ),
   );
   assert.ok(

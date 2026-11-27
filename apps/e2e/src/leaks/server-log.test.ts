@@ -6,7 +6,7 @@ import {
   ERROR_CODES,
   REFUSED_REASONS,
   UPGRADE_REJECT_REASONS,
-} from "@sigill/protocol";
+} from "@fidant/protocol";
 import { canaryKey, SeededRandom } from "./canary.ts";
 import {
   checkServerLog,
@@ -43,7 +43,7 @@ test("passes the lines the server writes", () => {
   assert.deepEqual(checkServerLog(lines, serverLogAllowlist), []);
 });
 
-test("passes every reason, code and path that @sigill/protocol defines", () => {
+test("passes every reason, code and path that @fidant/protocol defines", () => {
   const lines = [
     ...[...REFUSED_REASONS, ...UPGRADE_REJECT_REASONS, ...CODE_RESULTS].map((reason) =>
       line({ event: "refused", reason }),

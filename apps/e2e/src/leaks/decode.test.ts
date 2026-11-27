@@ -121,7 +121,7 @@ test("decodes quoted-printable and RFC 2047 words", () => {
 });
 
 test("decodes UTF-16 runs in either byte order", () => {
-  const text = "sigill-abcdefghijklmnop-räksmörgås";
+  const text = "fidant-abcdefghijklmnop-räksmörgås";
   const le = Buffer.from(text, "utf16le");
   const be = Buffer.from(le).swap16();
   assert.ok(pathsWith(Buffer.concat([junk, le, junk]), Buffer.from(text)).includes("utf16le"));

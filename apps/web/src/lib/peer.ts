@@ -50,7 +50,7 @@
 // No DOM or UI here, and nothing about files or names: the data channel
 // carries only encrypted frames (frames.ts), and its label is fixed.
 
-import type { ClientMessage, ConnectionPath } from "@sigill/protocol";
+import type { ClientMessage, ConnectionPath } from "@fidant/protocol";
 import { decodeBase64url } from "./base64url.ts";
 import { certificateFingerprint, checkNumber, commitFingerprint, sdpFingerprint } from "./check.ts";
 import { FRAME_VERSION } from "./frames.ts";

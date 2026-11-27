@@ -76,7 +76,7 @@ export const test = base.extend<Fixtures>({
   _leakWatch: [
     // biome-ignore lint/correctness/noEmptyPattern: Playwright reads dependencies from the pattern.
     async ({}, use, testInfo) => {
-      const watch = await LeakWatch.start(testDirName(testInfo), process.env.SIGILL_E2E_REGISTRY);
+      const watch = await LeakWatch.start(testDirName(testInfo), process.env.FIDANT_E2E_REGISTRY);
       await use(watch);
       // check() saved this test's mail: delete it, so the next test does not take it for its own.
       await failOnLeaks(watch, () => deleteSavedMail(join(observationsDir, testDirName(testInfo))));
@@ -90,9 +90,9 @@ export const test = base.extend<Fixtures>({
 
   // biome-ignore lint/correctness/noEmptyPattern: Playwright reads dependencies from the pattern.
   canary: async ({}, use, testInfo) => {
-    const seed = process.env.SIGILL_E2E_SEED;
+    const seed = process.env.FIDANT_E2E_SEED;
     if (!seed) {
-      throw new Error("SIGILL_E2E_SEED is not set. Run the suite through global setup.");
+      throw new Error("FIDANT_E2E_SEED is not set. Run the suite through global setup.");
     }
     const path = [testInfo.project.name, ...testInfo.titlePath];
     await use(new SeededRandom(runSeed(seed)).fork(JSON.stringify(path)));
@@ -288,7 +288,7 @@ async function record(
   name: string,
   context: BrowserContext,
 ): Promise<void> {
-  const recorder = new Recorder(name, parseStackOrigins(process.env.SIGILL_E2E_STACK_ORIGINS));
+  const recorder = new Recorder(name, parseStackOrigins(process.env.FIDANT_E2E_STACK_ORIGINS));
   recorders.set(name, recorder);
   await recorder.attach(context);
   await context.addInitScript(logPeerFailures);
@@ -296,7 +296,7 @@ async function record(
 
 /** Runs in the page through addInitScript, so it may use nothing from this module: logs why a peer connection call failed, every error the page builds and its cause, what a data channel refused, how often a channel opened and gained a message listener, and who closed a peer or channel after which frames, which the app keeps out of its console. */
 function logPeerFailures() {
-  const log = (text: string) => console.warn(`sigill-e2e: ${text}`);
+  const log = (text: string) => console.warn(`fidant-e2e: ${text}`);
   const native = (fn: unknown) =>
     typeof fn === "function" && Function.prototype.toString.call(fn).includes("[native code]");
   const NativeError = Error;

@@ -8,7 +8,7 @@ import { canaryKey, SeededRandom } from "./leaks/canary.ts";
 import type { Recorder } from "./recorder.ts";
 
 // Without Mailpit, check() saves no mail.
-delete process.env.SIGILL_E2E_MAILPIT;
+delete process.env.FIDANT_E2E_MAILPIT;
 
 // Sources under a temp dir, so a concurrent run's logs and packet capture can't change the result.
 const dir = await mkdtemp(join(tmpdir(), "leak-watch-test-"));

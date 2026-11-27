@@ -7,7 +7,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/server/package.json apps/server/
 COPY packages/protocol/package.json packages/protocol/
 RUN npm install --global "$(node -p 'require("./package.json").packageManager')" \
-  && pnpm install --frozen-lockfile --prod --ignore-scripts --filter @sigill/server...
+  && pnpm install --frozen-lockfile --prod --ignore-scripts --filter @fidant/server...
 COPY apps/server/src apps/server/src
 COPY apps/server/relays.json apps/server/entrypoint.sh apps/server/
 COPY packages/protocol/src packages/protocol/src

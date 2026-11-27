@@ -35,7 +35,7 @@ test("lists findings, violations and the seed", () => {
     report,
     [
       "Leak check failed: 1 finding(s), 1 server stdout violation(s).",
-      "Replay the canaries with SIGILL_E2E_SEED=ab12.",
+      "Replay the canaries with FIDANT_E2E_SEED=ab12.",
       "Findings:",
       "  K fragment text in observations/t/default.jsonl#3 request.url, view raw, offset 5, " +
         "43 bytes: x?k=[[…]]",

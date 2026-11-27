@@ -6,7 +6,7 @@
 // copy Fidant emails has the fragment `e.<mark>.<secret>`, where the mark is
 // the value the server picked when it emailed the link.
 
-import { isLinkId, parseEmailedFragment } from "@sigill/protocol";
+import { isLinkId, parseEmailedFragment } from "@fidant/protocol";
 import { decodeBase64url, encodeBase64url } from "./base64url.ts";
 
 export const LINK_ID_BYTES = 16;

@@ -70,7 +70,7 @@
 // Writers and readers keep state: await each encrypt or decrypt before
 // starting the next one. A reader stops accepting frames after any failure.
 
-import { hasForbiddenCharacters, MAX_FROM_LENGTH } from "@sigill/protocol";
+import { hasForbiddenCharacters, MAX_FROM_LENGTH } from "@fidant/protocol";
 import type { Direction } from "./keys.ts";
 import { Sha256 } from "./sha256.ts";
 

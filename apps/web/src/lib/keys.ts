@@ -29,7 +29,7 @@
 // fingerprint of a connection that is already closed, so no data channel opens,
 // and simply dropping messages has the same effect.
 
-import { isLinkId, MAX_RELAY_DATA } from "@sigill/protocol";
+import { isLinkId, MAX_RELAY_DATA } from "@fidant/protocol";
 import { decodeBase64url, encodeBase64url } from "./base64url.ts";
 import { isSecret } from "./link.ts";
 

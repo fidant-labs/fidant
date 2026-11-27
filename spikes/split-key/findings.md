@@ -55,9 +55,9 @@ AES-GCM is not the limit: it ran at 1 to 4.8 GB/s alone. The JavaScript SHA-256 
 
 Phones are pending.
 
-### How does the link half reach the recipient without passing through Sigill?
+### How does the link half reach the recipient without passing through Fidant?
 
-Sigill sends only a notice. The full link, with `F` in the fragment, goes from the sender's own device through a channel the sender picks: `navigator.share`, a `mailto:` link or Copy. The receive page reads `F` and removes the fragment from the address bar. This holds for both recipient modes. See Link-half delivery. Whether real mail and messaging channels deliver the fragment intact is pending.
+Fidant sends only a notice. The full link, with `F` in the fragment, goes from the sender's own device through a channel the sender picks: `navigator.share`, a `mailto:` link or Copy. The receive page reads `F` and removes the fragment from the address bar. This holds for both recipient modes. See Link-half delivery. Whether real mail and messaging channels deliver the fragment intact is pending.
 
 ## Measurements
 
@@ -189,33 +189,33 @@ Browser RSS just after the page loaded: Chromium 393 MiB, Firefox 1267 MiB, WebK
 - **Personnummer-locked.** The sender names the recipient by personnummer. The sign request sets `requirement.personalNumber`, so only that person can sign and receive `S`. Someone else holding the link can read META (file name, `C`, the sender's typed name) with `F`, but cannot sign and never gets `S`.
 - **Personal link, first identity binds.** The sender names no personnummer. The first person to log in with BankID through the link binds it, signs and receives `S`. Until then the link is the capability: whoever opens it first with a BankID gets the file, and the receipt names them.
 
-In both modes the recipient needs `F` (in the link) and `S` (from Sigill, after signing).
+In both modes the recipient needs `F` (in the link) and `S` (from Fidant, after signing).
 
-### Why no Sigill path may carry `F`
+### Why no Fidant path may carry `F`
 
-Sigill holds `S`. If any path Sigill operates also carries `F` (its notice mail, an SMS it sends, a redirect, a page that shows the link, a log line), Sigill holds both halves and could decrypt every transfer whose ciphertext it stores or relays. The split key exists to prevent exactly that, and AGENTS.md's invariant that keys live only in the fragment or in browser memory forbids it. This holds in both modes: the personnummer lock limits who can sign, not what Sigill can decrypt. It covers Sigill's mail provider and every other processor Sigill uses for notices.
+Fidant holds `S`. If any path Fidant operates also carries `F` (its notice mail, an SMS it sends, a redirect, a page that shows the link, a log line), Fidant holds both halves and could decrypt every transfer whose ciphertext it stores or relays. The split key exists to prevent exactly that, and AGENTS.md's invariant that keys live only in the fragment or in browser memory forbids it. This holds in both modes: the personnummer lock limits who can sign, not what Fidant can decrypt. It covers Fidant's mail provider and every other processor Fidant uses for notices.
 
-This rests on one trust assumption that no delivery channel removes: Sigill serves the receive page's JavaScript, and that code reads `location.hash`. A changed bundle could send `F` to Sigill, which then holds both halves. What limits it: a strict `connect-src` so the page can reach only the origins it needs, reviewed builds, and later a signed or installable client. SIG-35 (prove the web app we serve is the published code) covers this; 0001 lists a malicious served web app as out of its leak model.
+This rests on one trust assumption that no delivery channel removes: Fidant serves the receive page's JavaScript, and that code reads `location.hash`. A changed bundle could send `F` to Fidant, which then holds both halves. What limits it: a strict `connect-src` so the page can reach only the origins it needs, reviewed builds, and later a signed or installable client. SIG-35 (prove the web app we serve is the published code) covers this; 0001 lists a malicious served web app as out of its leak model.
 
 ### Options
 
 | Option                                                                                  | Who sees `F`                                                 | Cost                                                                                      |
 | --------------------------------------------------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
-| Sigill mails the full link                                                              | Sigill, its mail provider, the recipient's mail provider     | Sigill holds both halves. Ruled out.                                                      |
-| Sigill mails a notice; the sender's device sends the full link (share, `mailto:`, Copy) | The sender's and the recipient's mail or messaging providers | Two messages, and the sender must send one.                                               |
+| Fidant mails the full link                                                              | Fidant, its mail provider, the recipient's mail provider     | Fidant holds both halves. Ruled out.                                                      |
+| Fidant mails a notice; the sender's device sends the full link (share, `mailto:`, Copy) | The sender's and the recipient's mail or messaging providers | Two messages, and the sender must send one.                                               |
 | `F` wrapped to a public key the recipient's browser registered earlier                  | Only the recipient's device                                  | Needs a recipient with a key already in a browser, and key-loss handling. Later, if ever. |
 | `F` derived from a password the sender tells the recipient                              | Whoever hears it; offline guessing against META              | Weak keys. Ruled out.                                                                     |
 
 ### Recommendation
 
-1. Sigill sends only a notice: a verified sender has a file waiting. It links to the pickup page without a fragment and without key material, and says the sender sends the link separately. This is SIG-14's likely shape.
+1. Fidant sends only a notice: a verified sender has a file waiting. It links to the pickup page without a fragment and without key material, and says the sender sends the link separately. This is SIG-14's likely shape.
 2. The sender's browser hands the full link to the sender's own channel: `navigator.share` where it exists, a `mailto:` link and Copy. The send page never puts the full link in anything it sends to the server.
-3. The receive page reads `F` once, keeps it in memory, and removes the fragment with `history.replaceState`, as the handoff page does. Browsers never send the fragment in requests or in `Referer`. A channel that moves the fragment into the query (the handoff page detects this) would send `F` to Sigill's server in the request line. Such channels are unsupported. No layer in front of the pickup route (proxy, CDN, load balancer) logs its query string. The route itself never logs query strings, and it refuses a request with a `k=` query (matched after percent-decoding, as the handoff detector does), or strips it with a redirect that does not log it.
+3. The receive page reads `F` once, keeps it in memory, and removes the fragment with `history.replaceState`, as the handoff page does. Browsers never send the fragment in requests or in `Referer`. A channel that moves the fragment into the query (the handoff page detects this) would send `F` to Fidant's server in the request line. Such channels are unsupported. No layer in front of the pickup route (proxy, CDN, load balancer) logs its query string. The route itself never logs query strings, and it refuses a request with a `k=` query (matched after percent-decoding, as the handoff detector does), or strips it with a redirect that does not log it.
 4. Prefer the personnummer-locked mode when the sender knows the personnummer.
 
 What remains:
 
-- The sender's and the recipient's mail or messaging providers see `F`, and so does any link scanner on the way (Outlook Safe Links and similar). They do not see `S`, which Sigill releases only to a recipient who signed, so a provider alone cannot decrypt. A provider and Sigill together could.
+- The sender's and the recipient's mail or messaging providers see `F`, and so does any link scanner on the way (Outlook Safe Links and similar). They do not see `S`, which Fidant releases only to a recipient who signed, so a provider alone cannot decrypt. A provider and Fidant together could.
 - In the first-identity-binds mode, anyone who reads the link before the recipient (a compromised mailbox, a forwarded message) can bind it with their own BankID and get the file; the receipt then names them. A link scanner fetches the page but cannot complete BankID, so it cannot bind. That scanners never complete BankID is an assumption.
 - Anyone holding the link can read the file name, the sender's typed name and `C` without signing, as 0002 accepts. With write access to the stored or relayed ciphertext, they can also rewrite them; see Format.
 - Browser history sync may store the full URL, fragment included, before the page removes it. Not tested; a guess.
@@ -281,7 +281,7 @@ Options:
 
 Recommendation: keep `C = SHA-256(salt ‖ plaintext)`. Measure a WebAssembly SHA-256 in this bench before SIG-13, and adopt it if it at least doubles Firefox's speed.
 
-### A future `@sigill/crypto` package
+### A future `@fidant/crypto` package
 
 Lift the spike's modules into a workspace package when the first production consumer and a second consumer exist (0001: the e2e harness, which must reproduce the derivations). Everything works in the browser and in Node, with no DOM:
 
@@ -305,7 +305,7 @@ Sinks, OPFS staging and any service worker stay in `apps/web`: they are browser 
 Start the bench on the laptop that serves it:
 
 ```sh
-pnpm --filter @sigill/spike-split-key bench
+pnpm --filter @fidant/spike-split-key bench
 ```
 
 It prints `http://127.0.0.1:8450/` (this machine) and `https://<LAN address>:8451/` (phones, other machines; accept the certificate warning). Per run: choose size, chunk size 256 KiB, the seeded source and a sink, click "Run pipeline", and when it is done click "Copy JSON" and save the JSON to `results/` with the browser and device in the file name. "Clear OPFS" between runs. 5 GiB needs about 11 GB free.
@@ -320,10 +320,10 @@ It prints `http://127.0.0.1:8450/` (this machine) and `https://<LAN address>:845
 
 ## Follow-ups
 
-- **SIG-13 (Send a file):** implement this format (two keys, stream header in the AAD, final-chunk kind, META and SEALED, the META hash in SEALED) in `@sigill/crypto`, with `apps/web` and the e2e detector as consumers; one `paddedLength(size, chunkSize)`; 48 KiB chunks unless hosted mode shows a reason; measure a WebAssembly SHA-256 first. SIG-13 owns a decision record that amends 0001 and 0002 the way 0004 does, with a "Where 0001 or 0002 says / Read" table. It covers: END replaced by the final-chunk kind, with `C` compared after the last chunk (0002 says verified transfers compare `C` in END); the stream header in the AAD; META's and SEALED's sizes; the HKDF labels; a per-stream random `streamId` as the HKDF salt, apart from the server's `transferId`; the SHA-256 of META in SEALED; ownership of `paddedLength`; and, if adopted, reserving META's place and filling it last, which changes 0002's frame order. When the modules move into `@sigill/crypto`, SIG-13 deletes `spikes/split-key` and the `spikes/*` entry in `pnpm-workspace.yaml`. The spike's `serve.ts` imports `ensureCert` from `apps/server`, a spike shortcut that goes with it.
-- **SIG-14 (Notify the recipient):** Sigill sends a notice without the fragment; the sender's browser offers share, `mailto:` and Copy for the full link; the receive page strips the fragment. Run the handoff checks above first.
+- **SIG-13 (Send a file):** implement this format (two keys, stream header in the AAD, final-chunk kind, META and SEALED, the META hash in SEALED) in `@fidant/crypto`, with `apps/web` and the e2e detector as consumers; one `paddedLength(size, chunkSize)`; 48 KiB chunks unless hosted mode shows a reason; measure a WebAssembly SHA-256 first. SIG-13 owns a decision record that amends 0001 and 0002 the way 0004 does, with a "Where 0001 or 0002 says / Read" table. It covers: END replaced by the final-chunk kind, with `C` compared after the last chunk (0002 says verified transfers compare `C` in END); the stream header in the AAD; META's and SEALED's sizes; the HKDF labels; a per-stream random `streamId` as the HKDF salt, apart from the server's `transferId`; the SHA-256 of META in SEALED; ownership of `paddedLength`; and, if adopted, reserving META's place and filling it last, which changes 0002's frame order. When the modules move into `@fidant/crypto`, SIG-13 deletes `spikes/split-key` and the `spikes/*` entry in `pnpm-workspace.yaml`. The spike's `serve.ts` imports `ensureCert` from `apps/server`, a spike shortcut that goes with it.
+- **SIG-14 (Notify the recipient):** Fidant sends a notice without the fragment; the sender's browser offers share, `mailto:` and Copy for the full link; the receive page strips the fragment. Run the handoff checks above first.
 - **SIG-23 (Verified P2P transfer):** stage ciphertext in OPFS with a sync access handle; check space for two copies before receiving, and let that check gate signing and the release of `S`; decide Firefox's large-file path (persist, in-place decryption or a limit); define, for either design, the outcome of a decrypt or delivery that fails after `S` is released, since 0004 allows one release per signed slot (staging allows a retry only while `S` is still in memory); check `C` before closing the sink and abort on failure (covers `fsa`), and test whether `sw` leaves a partial download after the stream errors; check the META hash in SEALED, and define the outcome of a mismatch found after signing; delete the staged buffer when the recipient does not sign; add the ciphertext-hash frame under `metaKey` and a direction rule for the recipient's frames; pick the sink per browser as above.
-- **SIG-39 and SIG-41 (done):** nothing to change unless the app adopts the service worker or adds WebKit. Then a new issue for SPKI or CA trust, `serviceWorkers`, the recorder's service-worker blind spot and WebKit's persistent context; and the detector derives `metaKey` and `contentKey` once `@sigill/crypto` exists.
+- **SIG-39 and SIG-41 (done):** nothing to change unless the app adopts the service worker or adds WebKit. Then a new issue for SPKI or CA trust, `serviceWorkers`, the recorder's service-worker blind spot and WebKit's persistent context; and the detector derives `metaKey` and `contentKey` once `@fidant/crypto` exists.
 - **0001:** no change needed now beyond SIG-13's record. If the service worker is adopted, its Certificate trust consequence applies.
 - **0002:** the format departs from it in two places (three if META is filled last): verified transfers compare `C` after the final chunk, not in END, and SEALED also carries the SHA-256 of META. SIG-13's record amends it; this spike does not.
 - **This spike:** the human runs above.

@@ -10,7 +10,7 @@ import type { ObservationRecord } from "./observations.ts";
 import { sweepRun } from "./sweep.ts";
 
 // Every run gets a temp dir of its own; apps/e2e/observations is never touched.
-const root = await mkdtemp(join(tmpdir(), "sigill-sweep-test-"));
+const root = await mkdtemp(join(tmpdir(), "fidant-sweep-test-"));
 after(() => rm(root, { recursive: true, force: true }));
 
 const key = canaryKey(SeededRandom.fromLabel("sweep test")).text;
