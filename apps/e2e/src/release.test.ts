@@ -5,17 +5,23 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { load } from "js-yaml";
 import {
   imageRepository,
   pagesBucket,
   releaseRoleName,
   releaseSessionSeconds,
+  releaseWorkflow,
   signalCluster,
   signalService,
 } from "../../infra/src/config.ts";
 import { uploadCacheControl } from "./edge.ts";
 
 const workflow = readFileSync(
+  new URL("../../../.github/workflows/release-jobs.yml", import.meta.url),
+  "utf8",
+);
+const caller = readFileSync(
   new URL("../../../.github/workflows/release.yml", import.meta.url),
   "utf8",
 );
@@ -201,12 +207,31 @@ test("release.yml and deploy-infra.yml queue in one group without cancelling", (
   const lock =
     "\nconcurrency:\n  group: fidant-deploy\n  cancel-in-progress: false\n  queue: max\n";
   for (const [name, file] of [
-    ["release.yml", workflow],
+    ["release.yml", caller],
     ["deploy-infra.yml", infra],
   ] as const) {
     assert.ok(file.includes(lock), name);
     assert.equal(file.match(/concurrency:/g)?.length, 1, name);
   }
+  assert.doesNotMatch(workflow, /concurrency:/);
+});
+
+test("release.yml only calls release-jobs.yml on main by its full path, the one file the release role trusts, and passes it only the account", () => {
+  const doc = load(caller) as Record<string, unknown>;
+  assert.deepEqual(doc.on, { push: { branches: ["production"] } });
+  assert.deepEqual(doc.permissions, {});
+  assert.deepEqual(doc.jobs, {
+    release: {
+      permissions: { contents: "read", "id-token": "write" },
+      uses: `${releaseWorkflow}@main`,
+      secrets: { FIDANT_POC_ACCOUNT: `\${{ secrets.FIDANT_POC_ACCOUNT }}` },
+    },
+  });
+  const called = load(workflow) as Record<string, unknown>;
+  assert.deepEqual(called.on, {
+    workflow_call: { secrets: { FIDANT_POC_ACCOUNT: { required: true } } },
+  });
+  assert.deepEqual(called.permissions, {});
 });
 
 test("the release workflow names what the infra names", () => {
