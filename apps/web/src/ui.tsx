@@ -334,10 +334,11 @@ export function Header({
 }
 
 const FOOTER_LINKS: ReadonlyArray<
-  readonly ["how" | "secret" | "privacy" | "about" | "terms" | "security", string]
+  readonly ["file" | "how" | "secret" | "privacy" | "about" | "terms" | "security", string]
 > = [
-  ["how", "/how"],
+  ["file", FILE_HREF],
   ["secret", SECRET_HREF],
+  ["how", "/how"],
   ["about", "/about"],
   ["privacy", "/privacy"],
   ["terms", "/terms"],
