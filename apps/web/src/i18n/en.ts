@@ -1118,7 +1118,7 @@ export const en = {
         items: {
           local: {
             heading: "Direct, on the same network",
-            body: "When both browsers are on the same local network, they connect over their local addresses. The file goes straight between them, and our server and relay see none of it. Each browser still asks our STUN service for its public address.",
+            body: "When both browsers are on the same local network, they connect over their local addresses. The file goes straight between them, and our server and relay see none of it. Each browser still asks our STUN service for its public address. A test in our suite puts both browsers on one simulated network and checks that they connect over their local addresses and that nothing leaves that network but the browsers' connections to our server and their STUN requests.",
           },
           stun: {
             heading: "Direct, through public addresses",
