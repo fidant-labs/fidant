@@ -109,14 +109,24 @@ export async function sendToRelay(payload: Uint8Array): Promise<void> {
 const edgePcap = "/tmp/edge.pcap";
 
 /**
- * Starts capturing every packet on router-a's outside interface, site A's edge. The returned
- * function stops the capture and prints the packets that match a tcpdump filter, one per line.
+ * Starts capturing every packet on router-a's outside interface, site A's edge. `stop` ends the
+ * capture and waits for tcpdump to exit; call it from a `finally`, it is safe to call twice.
+ * `read` prints the packets that match a tcpdump filter, one per line, once it has stopped.
  */
-export async function captureSiteA(): Promise<(filter: string) => Promise<string[]>> {
+export async function captureSiteA(): Promise<{
+  stop: () => Promise<void>;
+  read: (filter: string) => Promise<string[]>;
+}> {
   const inRouter = (...command: string[]) =>
     run("docker", [...compose, "exec", "-T", "router-a", ...command]);
-  // A failed test leaves its capture running.
-  await inRouter("sh", "-c", `pkill tcpdump; rm -f ${edgePcap}`);
+  const stop = () =>
+    inRouter(
+      "sh",
+      "-c",
+      "pkill -INT tcpdump; for i in $(seq 100); do pgrep tcpdump >/dev/null || exit 0; sleep 0.1; done; exit 1",
+    ).then(() => undefined);
+  // A file left from an earlier capture would pass the wait below before tcpdump starts.
+  await inRouter("rm", "-f", edgePcap);
   await run("docker", [
     ...compose,
     "exec",
@@ -127,19 +137,23 @@ export async function captureSiteA(): Promise<(filter: string) => Promise<string
     edgePcap,
   ]);
   // tcpdump writes the file's header once it is capturing.
-  await inRouter(
-    "sh",
-    "-c",
-    `for i in $(seq 100); do test -s ${edgePcap} && exit 0; sleep 0.1; done; exit 1`,
-  );
-  return async (filter) => {
+  try {
     await inRouter(
       "sh",
       "-c",
-      "pkill -INT tcpdump; while pgrep tcpdump >/dev/null; do sleep 0.1; done",
+      `for i in $(seq 100); do test -s ${edgePcap} && exit 0; sleep 0.1; done; exit 1`,
     );
-    const { stdout } = await inRouter("tcpdump", "-r", edgePcap, "-nn", filter);
-    return stdout.split("\n").filter(Boolean);
+  } catch (error) {
+    // The caller gets no stop() when this rejects, so tcpdump must not outlive it on the shared router.
+    await stop();
+    throw error;
+  }
+  return {
+    stop,
+    read: async (filter) => {
+      const { stdout } = await inRouter("tcpdump", "-r", edgePcap, "-nn", filter);
+      return stdout.split("\n").filter(Boolean);
+    },
   };
 }
 

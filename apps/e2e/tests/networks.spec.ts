@@ -342,79 +342,84 @@ for (const row of scenarios) {
       const name = makeName(leaks, canary, "Anna");
       const edge = row.staysInSite ? await captureSiteA() : undefined;
 
-      const sender = await actor("sender");
-      await recordPeerConnections(sender.context);
-      // The secret's text, or the file's SHA-256.
-      let sent: string;
-      if (row.secret) {
-        sent = base32Token(canary.fork("text"), 64);
-        leaks.watchContent("text", sent);
-        await sender.page.goto("/secret");
-        await sender.page.getByLabel("Your secret").fill(sent);
-      } else {
-        const file = leaks.watch(canaryFile(canary.fork("file"), { size }));
-        sent = sha256Hex(file.bytes);
-        await sender.page.goto("/send");
-        await chooseFile(sender.page, {
-          name: file.name,
-          mimeType: file.mime,
-          buffer: file.bytes,
-        });
-      }
-      await sender.page.getByLabel("Who is it for?").fill(name);
-      await sender.page.getByRole("button", { name: "Create link", exact: true }).click();
-      const link =
-        (await sender.page.getByLabel(`Link for ${name}`, { exact: true }).textContent()) ?? "";
-      leaks.watchKey("link secret", new URL(link).hash.slice(1));
-
-      const recipient = await actor("recipient");
-      await recordPeerConnections(recipient.context);
-      await recipient.page.goto(link);
-      if (row.secret) {
-        const show = recipient.page.getByRole("button", { name: "Show", exact: true });
-        await expect(show).toBeVisible({ timeout: 45_000 });
-        await show.click();
-        await expect(
-          recipient.page.getByRole("region", { name: "The secret", exact: true }),
-        ).toHaveJSProperty("textContent", sent, { timeout: 60_000 });
-        await expect(deliveredRow(sender.page, name)).toBeAttached();
-      } else {
-        const downloading = recipient.page.waitForEvent("download", { timeout: 60_000 });
-        const downloadButton = recipient.page.getByRole("button", { name: "Download" });
-        await expect(downloadButton).toBeVisible({ timeout: 45_000 });
-        await downloadButton.click();
-        if (row.progress) {
-          await expectHonestProgress(sender.page, recipient.page, size, name);
+      try {
+        const sender = await actor("sender");
+        await recordPeerConnections(sender.context);
+        // The secret's text, or the file's SHA-256.
+        let sent: string;
+        if (row.secret) {
+          sent = base32Token(canary.fork("text"), 64);
+          leaks.watchContent("text", sent);
+          await sender.page.goto("/secret");
+          await sender.page.getByLabel("Your secret").fill(sent);
+        } else {
+          const file = leaks.watch(canaryFile(canary.fork("file"), { size }));
+          sent = sha256Hex(file.bytes);
+          await sender.page.goto("/send");
+          await chooseFile(sender.page, {
+            name: file.name,
+            mimeType: file.mime,
+            buffer: file.bytes,
+          });
         }
-        await expect(recipient.page.getByText(verifiedText)).toBeVisible({ timeout: 60_000 });
-        // path() is not available from a remote browser.
-        const download = await downloading;
-        expect(sha256Hex(await buffer(await download.createReadStream()))).toBe(sent);
-      }
+        await sender.page.getByLabel("Who is it for?").fill(name);
+        await sender.page.getByRole("button", { name: "Create link", exact: true }).click();
+        const link =
+          (await sender.page.getByLabel(`Link for ${name}`, { exact: true }).textContent()) ?? "";
+        leaks.watchKey("link secret", new URL(link).hash.slice(1));
 
-      await expect
-        .poll(async () => `${await pathOf(sender.page)} ${await pathOf(recipient.page)}`)
-        .toMatch(path);
-      for (const [name, page] of [
-        ["sender", sender.page],
-        ["recipient", recipient.page],
-      ] as const) {
-        const gathered = (await readPeerConnections(page)).flatMap((pc) => pc.gathered);
-        expect(gathered.includes("relay"), `${name} gathered ${gathered}`).toBe(
-          path.source.includes("relay"),
-        );
-      }
-      await watchIcePasswords(leaks, "sender", sender.page);
-      await watchIcePasswords(leaks, "recipient", recipient.page);
+        const recipient = await actor("recipient");
+        await recordPeerConnections(recipient.context);
+        await recipient.page.goto(link);
+        if (row.secret) {
+          const show = recipient.page.getByRole("button", { name: "Show", exact: true });
+          await expect(show).toBeVisible({ timeout: 45_000 });
+          await show.click();
+          await expect(
+            recipient.page.getByRole("region", { name: "The secret", exact: true }),
+          ).toHaveJSProperty("textContent", sent, { timeout: 60_000 });
+          await expect(deliveredRow(sender.page, name)).toBeAttached();
+        } else {
+          const downloading = recipient.page.waitForEvent("download", { timeout: 60_000 });
+          const downloadButton = recipient.page.getByRole("button", { name: "Download" });
+          await expect(downloadButton).toBeVisible({ timeout: 45_000 });
+          await downloadButton.click();
+          if (row.progress) {
+            await expectHonestProgress(sender.page, recipient.page, size, name);
+          }
+          await expect(recipient.page.getByText(verifiedText)).toBeVisible({ timeout: 60_000 });
+          // path() is not available from a remote browser.
+          const download = await downloading;
+          expect(sha256Hex(await buffer(await download.createReadStream()))).toBe(sent);
+        }
 
-      if (edge) {
-        // TLS to the server, and STUN to coturn: a UDP packet whose payload carries STUN's magic
-        // cookie at byte 4. DTLS, which would carry the file, never does.
-        const signaling = `tcp and host ${serverIp} and port 443`;
-        const stun = `udp and host ${turnIp} and port 3478 and udp[12:4] = 0x2112a442`;
-        expect(await edge(signaling), "signaling crossed the edge").not.toEqual([]);
-        expect(await edge(stun), "STUN crossed the edge").not.toEqual([]);
-        expect(await edge(`not arp and not (${signaling}) and not (${stun})`)).toEqual([]);
+        await expect
+          .poll(async () => `${await pathOf(sender.page)} ${await pathOf(recipient.page)}`)
+          .toMatch(path);
+        for (const [name, page] of [
+          ["sender", sender.page],
+          ["recipient", recipient.page],
+        ] as const) {
+          const gathered = (await readPeerConnections(page)).flatMap((pc) => pc.gathered);
+          expect(gathered.includes("relay"), `${name} gathered ${gathered}`).toBe(
+            path.source.includes("relay"),
+          );
+        }
+        await watchIcePasswords(leaks, "sender", sender.page);
+        await watchIcePasswords(leaks, "recipient", recipient.page);
+
+        if (edge) {
+          await edge.stop();
+          // TLS to the server, and STUN to coturn: a UDP packet whose payload carries STUN's magic
+          // cookie at byte 4. DTLS, which would carry the file, never does.
+          const signaling = `tcp and host ${serverIp} and port 443`;
+          const stun = `udp and host ${turnIp} and port 3478 and udp[12:4] = 0x2112a442`;
+          expect(await edge.read(signaling), "signaling crossed the edge").not.toEqual([]);
+          expect(await edge.read(stun), "STUN crossed the edge").not.toEqual([]);
+          expect(await edge.read(`not arp and not (${signaling}) and not (${stun})`)).toEqual([]);
+        }
+      } finally {
+        await edge?.stop();
       }
 
       await expectSignaling(observed, baseURL);
