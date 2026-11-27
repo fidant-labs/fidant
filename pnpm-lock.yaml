@@ -36,6 +36,9 @@ importers:
       '@types/node':
         specifier: ^26.6.6
         version: 26.6.6
+      js-yaml:
+        specifier: 5.5.0
+        version: 5.5.0
 
   apps/infra:
     dependencies:
