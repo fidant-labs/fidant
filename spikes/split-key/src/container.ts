@@ -1,4 +1,4 @@
-// META and SEALED frames and the salted commitment C for the SIG-7 spike.
+// META and SEALED frames and the salted commitment C for the FID-7 spike.
 //
 // A transfer is: stream header || META || SEALED || CHUNK ... || CHUNK_FINAL.
 // META and SEALED use the frame header, IV and AAD of stream.ts, each at seq 0

@@ -888,7 +888,7 @@ test("a mark makes the recipient's link the one the server emailed; a refusal ke
   assert.equal(recipient?.url, link.url);
 });
 
-test("a link whose email the server refused is not offered for sharing by hand (SIG-237)", () => {
+test("a link whose email the server refused is not offered for sharing by hand (FID-237)", () => {
   for (const status of ["limit", "failed"] as const) {
     const link = createLink(ORIGIN);
     const fresh = createLink(ORIGIN);

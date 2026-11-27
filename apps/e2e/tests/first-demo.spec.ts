@@ -1715,7 +1715,7 @@ test.describe("through a server restart", () => {
         ),
       )
       .toContain("starting");
-    // Just over the 15 s that recipients used to wait before calling the link inactive (SIG-88).
+    // Just over the 15 s that recipients used to wait before calling the link inactive (FID-88).
     await opener.waitForTimeout(16_000 - (Date.now() - restarted));
     for (const page of [waiting, opener]) {
       await expect(connecting(page)).toBeVisible();

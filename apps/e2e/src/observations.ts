@@ -42,7 +42,7 @@ export interface BlockedRecord {
 }
 
 /**
- * Drops the fragment from a URL. Browsers never send it, and SIG-21 links carry the key there,
+ * Drops the fragment from a URL. Browsers never send it, and FID-21 links carry the key there,
  * so no URL is stored with one.
  */
 export function stripFragment(url: string): string {

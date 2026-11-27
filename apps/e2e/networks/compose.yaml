@@ -185,17 +185,17 @@ services:
     privileged: true
     tmpfs: [/run, /run/lock]
     volumes:
-      # sigill.service's WorkingDirectory, as the release symlink is on the box.
-      - ${FIDANT_E2E_REPO:?}:/opt/sigill/current:ro
+      # fidant.service's WorkingDirectory, as the release symlink is on the box.
+      - ${FIDANT_E2E_REPO:?}:/opt/fidant/current:ro
       - ${FIDANT_E2E_BOX_DIR:?}:/box:ro
     networks:
       public: { ipv4_address: 198.51.100.30 }
     healthcheck:
-      # The server's check is sigill-deploy's: sigill.service is briefly active even when it
+      # The server's check is fidant-deploy's: fidant.service is briefly active even when it
       # exits at once and restarts.
       test:
         - CMD-SHELL
-        - for u in sigill haproxy caddy coturn rsyslog; do systemctl is-active --quiet $$u || exit 1; done && curl -fsk --max-time 2 -o /dev/null https://127.0.0.1:8443/
+        - for u in fidant haproxy caddy coturn rsyslog; do systemctl is-active --quiet $$u || exit 1; done && curl -fsk --max-time 2 -o /dev/null https://127.0.0.1:8443/
       interval: 1s
       retries: 90
 
@@ -224,7 +224,7 @@ services:
       dockerfile: apps/server/Dockerfile
     read_only: true
     # Docker Desktop makes a bare tmpfs root's, and the server then can't write to it.
-    tmpfs: ["/run/sigill:uid=1000,gid=1000,mode=700"]
+    tmpfs: ["/run/fidant:uid=1000,gid=1000,mode=700"]
     # No healthcheck: its exec would inherit RELAY_MASTER, which this file holds.
     env_file: ${FIDANT_E2E_COTURN_DIR:?}/signal.env
     environment:
@@ -232,8 +232,8 @@ services:
       PUBLIC_ORIGIN: https://fidant.se
       TRUSTED_PROXIES: 10.89.3.0/24
       RELAYS_FILE: /config/relays.json
-      RELAY_MASTER_FILE: /run/sigill/relay-master
-      CERT_DIR: /run/sigill/certs
+      RELAY_MASTER_FILE: /run/fidant/relay-master
+      CERT_DIR: /run/fidant/certs
       STUN_URLS: stun:198.51.100.20:3478
       HTTP_KEEP_ALIVE_MS: "125000"
     volumes:

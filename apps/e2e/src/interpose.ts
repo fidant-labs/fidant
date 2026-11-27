@@ -75,7 +75,7 @@ export function signalsOf(link: string) {
           name: "HKDF",
           hash: "SHA-256",
           salt: Buffer.from(linkId, "base64url"),
-          info: encoder.encode("sigill/v1/signal"),
+          info: encoder.encode("fidant/v1/signal"),
         },
         base,
         { name: "AES-GCM", length: 256 },
@@ -86,7 +86,7 @@ export function signalsOf(link: string) {
   const params = (iv: Uint8Array<ArrayBuffer>, attempt: string, dir: Dir) => ({
     name: "AES-GCM",
     iv,
-    additionalData: encoder.encode(`sigill/v1/signal|${linkId}|${attempt}|${dir}`),
+    additionalData: encoder.encode(`fidant/v1/signal|${linkId}|${attempt}|${dir}`),
   });
   return {
     linkId,
@@ -166,7 +166,7 @@ function middleman() {
     if (leg === "sender") {
       pc.ondatachannel = ({ channel }) => attach(leg, channel);
     } else {
-      attach(leg, pc.createDataChannel("sigill", { ordered: true }));
+      attach(leg, pc.createDataChannel("fidant", { ordered: true }));
       await pc.setLocalDescription();
       await toPage(leg, { kind: "offer", sdp: pc.localDescription?.sdp, check: true });
     }

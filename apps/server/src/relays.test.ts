@@ -141,7 +141,7 @@ for (const [what, text, message] of rejections) {
   });
 }
 
-const boxMaster = "/var/lib/sigill/relay-master";
+const boxMaster = "/var/lib/fidant/relay-master";
 
 test("RELAYS_FILE names the list on any machine, with the master in RELAY_MASTER_FILE", () => {
   assert.deepEqual(relayConfig({ RELAYS_FILE: "/run/relays.json" }, false), {

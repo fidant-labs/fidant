@@ -24,7 +24,7 @@ export const BLOB_FOLD_BYTES = 16 * 1024 * 1024;
 
 /**
  * Above this size, a browser without a save picker is warned that the file is
- * held in memory until it is saved. SIG-7 measured about 1.1 GiB of extra
+ * held in memory until it is saved. FID-7 measured about 1.1 GiB of extra
  * memory per GiB in Chromium and WebKit, and 2.4 GiB in Firefox.
  */
 // ponytail: warn, not refuse; an OPFS sink would remove the limit.
