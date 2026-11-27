@@ -23,7 +23,9 @@
       "Bash(pnpm dlx *modern-web-guidance*)",
       "Bash(pnpm exec *modern-web-guidance*)",
       "Bash(npm exec *modern-web-guidance*)",
-      "Bash(npm x *modern-web-guidance*)"
+      "Bash(npm x *modern-web-guidance*)",
+      "Bash(bunx *modern-web-guidance*)",
+      "Bash(yarn dlx *modern-web-guidance*)"
     ]
   },
   "hooks": {
