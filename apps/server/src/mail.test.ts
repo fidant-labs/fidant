@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { type AddressInfo, createServer } from "node:net";
 import { test } from "node:test";
 import { parseClientMessage } from "@fidant/protocol";
-import { compose, isLoopback, type Mail, smtpMailer } from "./mail.ts";
+import { compose, isLoopback, type Mail, mailService, smtpMailer } from "./mail.ts";
 
 const url =
   "https://fidant.se/r/AAAAAAAAAAAAAAAAAAAAAA#BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
@@ -309,4 +309,17 @@ test("an address or sender name the parser accepts adds no recipient, header or 
     const body = smtp.messages.at(-1) ?? "";
     assert.ok(!/^content-type: text\/html/im.test(body.slice(0, body.indexOf("\r\n\r\n"))));
   }
+});
+
+test("mail stays off without MAIL_ENABLED=1, even with every mail setting", () => {
+  const env = { MAIL_SMTP_URL: "smtp://127.0.0.1:1025", MAIL_FROM: "Fidant <noreply@example.se>" };
+  const origin = "https://fidant.se";
+  assert.equal(mailService(env, { mail: false, origin }), undefined);
+  assert.equal(mailService(env, { mail: true, origin })?.origin, origin);
+  assert.throws(() => mailService({}, { mail: true, origin }), {
+    message: "MAIL_ENABLED=1 needs MAIL_SMTP_URL and MAIL_FROM together with PUBLIC_ORIGIN.",
+  });
+  assert.throws(() => mailService(env, { mail: true, origin: undefined }), {
+    message: "MAIL_ENABLED=1 needs MAIL_SMTP_URL and MAIL_FROM together with PUBLIC_ORIGIN.",
+  });
 });

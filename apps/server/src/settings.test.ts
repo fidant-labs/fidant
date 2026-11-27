@@ -151,3 +151,13 @@ test("an IPv6 range trusts its own addresses and not the next network's", () => 
   assert.equal(proxies.check("fd00:1::9", "ipv6"), true);
   assert.equal(proxies.check("fd00:1:0:1::9", "ipv6"), false);
 });
+
+test("MAIL_ENABLED=1 turns mail on, it is off by default, and any other value stops the server", () => {
+  assert.equal(siteSettings({}).mail, false);
+  assert.equal(siteSettings({ MAIL_ENABLED: "1" }).mail, true);
+  for (const value of ["0", "true", "yes"]) {
+    assert.throws(() => siteSettings({ MAIL_ENABLED: value }), {
+      message: "MAIL_ENABLED must be 1 or unset.",
+    });
+  }
+});
