@@ -51,9 +51,15 @@ export const LIMITS = {
    * Guests a link pairs per heartbeat window, a bound guest's repeated join included (decision
    * 0029). Each pairing can cost the sender's socket a message (a guest without the secret gets a
    * `refuse`), so without this one guest could spend the sender's message limit (SIG-235). An
-   * honest recipient pairs at most 5 times per attempt.
-   * ponytail: per link, so a guest holding ~100 of one sender's links could still spend it; count
-   * pairings per host socket too if that ever matters.
+   * honest recipient pairs at most 5 times to open an attempt (the first join and the page's 4
+   * rejoins before the channel opens), then once or twice per route that drops after it: on
+   * `disconnected`, and on `failed` while a deadline runs (0029).
+   * ponytail: per link, so a guest holding many of one sender's links could still spend the
+   * sender's message limit. Each repeated `joined` costs that socket more than one `refuse`: a
+   * `restart-offer` plus new candidates, roughly 5-10 messages (an estimate). So recipients
+   * connected on roughly 7-20 of one sender's links could push it over `messagesPerWindow`,
+   * versus about 100 before. It needs a recipient holding each link's secret. Count pairings per
+   * host socket if that ever matters.
    */
   pairingsPerLink: 10,
   /**

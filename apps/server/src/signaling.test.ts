@@ -228,6 +228,70 @@ test("forwards the sender's refusal to the guest and unbinds it", async () => {
   await joinAs(link, host);
 });
 
+test("treats a join repeated after the sender's refusal as a first join (0029)", async () => {
+  const link = linkId();
+  const host = await hostFor(link);
+  const guest = await joinAs(link, host);
+  host.send({ t: "refuse", link, attempt: guest.attempt, reason: "drop" });
+  assert.deepEqual(await guest.next(), { t: "refused", reason: "drop" });
+  guest.send({ t: "join", link, attempt: guest.attempt });
+  const joined = { t: "joined", link, attempt: guest.attempt, iceServers: [RELAY], turn: true };
+  assert.deepEqual(await guest.next(), joined);
+  assert.deepEqual(await host.next(), joined);
+  guest.send({ t: "relay", link, data: "eA" });
+  assert.deepEqual(await host.next(), { t: "relay", link, data: "eA" });
+});
+
+test("treats a join repeated from a new socket after the guest's own closed as a first join (0029)", async () => {
+  const link = linkId();
+  const host = await hostFor(link);
+  const first = await joinAs(link, host);
+  first.socket.close();
+  assert.deepEqual(await host.next(), { t: "left", link });
+  const second = await connect();
+  second.send({ t: "join", link, attempt: first.attempt });
+  const joined = { t: "joined", link, attempt: first.attempt, iceServers: [RELAY], turn: true };
+  assert.deepEqual(await second.next(), joined);
+  assert.deepEqual(await host.next(), joined);
+});
+
+test("does not charge a refused second socket's join to the bound guest's pairings (0029)", async (t) => {
+  const limited = createServer();
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const signaling = attachSignaling(limited, {
+    log: () => {},
+    heartbeatMs: 1000,
+    limits: { pairingsPerLink: 2 },
+  });
+  t.after(() => {
+    signaling.close();
+    limited.close();
+  });
+  await new Promise<void>((done) => limited.listen(0, done));
+  const url = `ws://localhost:${(limited.address() as AddressInfo).port}/signal`;
+  const link = linkId();
+  const host = await connect(url);
+  host.send({ t: "host", links: [link], turn: false });
+  const guest = await connect(url);
+  const attempt = linkId();
+  const join = { t: "join", link, attempt };
+  guest.send(join);
+  assert.equal((await guest.next()).t, "joined");
+  assert.equal((await host.next()).t, "joined");
+  // Three refused joins from another socket would use up the cap if they counted.
+  const other = await connect(url);
+  for (let i = 0; i < 3; i += 1) {
+    other.send({ t: "join", link, attempt: linkId() });
+    assert.deepEqual(await other.next(), { t: "refused", reason: "busy" });
+  }
+  guest.send(join);
+  assert.equal((await guest.next()).t, "joined");
+  assert.equal((await host.next()).t, "joined");
+  // The budget of 2 is now spent by the guest's own pairings alone.
+  guest.send(join);
+  assert.deepEqual(await guest.next(), { t: "refused", reason: "busy" });
+});
+
 test("ignores a refusal of an earlier attempt once another guest is bound", async () => {
   const link = linkId();
   const host = await hostFor(link);

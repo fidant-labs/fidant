@@ -216,7 +216,10 @@ export type JoinedMessage = {
 };
 /** Tells the sender that the recipient on a link went away. */
 export type LeftMessage = { t: "left"; link: string };
-/** Tells a recipient why it cannot connect. */
+/**
+ * Tells a recipient why it cannot connect. A `busy` that answers a bound recipient's repeated
+ * `join` (over the pairings cap) leaves it bound to the link (0029).
+ */
 export type RefusedMessage = { t: "refused"; reason: RefusedReason };
 /** Tells a recipient that the sender went away. */
 export type HostGoneMessage = { t: "host-gone" };
@@ -230,7 +233,11 @@ export type HelloMessage = { t: "hello"; mail: boolean };
  * request, `mark` is the value it put in the emailed link's fragment; it is never logged.
  */
 export type EmailStatusMessage = { t: "email"; link: string; status: EmailStatus; mark?: string };
-/** Tells a recipient where a link's code goes: a masked address, or "" if it needs no code. */
+/**
+ * Tells a recipient where a link's code goes: a masked address, or "" if it needs no code. A
+ * `gate` that answers a bound recipient's repeated `join` (missing or wrong token) leaves it
+ * bound to the link (0029).
+ */
 export type GateAnswerMessage = { t: "gate"; link: string; to: string };
 /** Answers a recipient's `send-code` or `code`. */
 export type CodeResultMessage = { t: "code"; link: string; result: CodeResult };
