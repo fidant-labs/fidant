@@ -68,7 +68,7 @@ test("blocks commands that update the production branch", () => {
     "gh api repos/fidant-labs/fidant/git/refs -f ref=refs/heads/production -f sha=abc",
     "git push origin refs/remotes/origin/main:refs/heads/production",
     "git fetch origin && git push origin refs/remotes/origin/main:refs/heads/production",
-    "git push origin sig-1 && git fetch origin production",
+    "git push origin fid-1 && git fetch origin production",
     "git push origin 0123abc:refs/heads/production",
     "git --git-dir /x/.git push origin main:production",
     "git --git-dir=/x/.git push origin main:production",
@@ -107,7 +107,7 @@ test("blocks commands that update the production branch", () => {
 
 test("allows commands that leave the production branch alone", () => {
   for (const command of [
-    'git push -u origin sig-169-promote-branch && gh pr create --title "SIG-169: Deploy the app from a production branch"',
+    'git push -u origin fid-169-promote-branch && gh pr create --title "FID-169: Deploy the app from a production branch"',
     "git push origin fix-production-docs",
     "git push origin main:production-docs",
     "git push origin refs/heads/production/x",
@@ -125,9 +125,9 @@ test("allows commands that leave the production branch alone", () => {
     "gh pr create --base main --title production",
     "gh pr create -fB main --title production",
     "gh pr list --base production",
-    "git push origin sig-1",
+    "git push origin fid-1",
     "git --git-dir .git status",
-    "git --git-dir .git push origin sig-1",
+    "git --git-dir .git push origin fid-1",
     'git commit -m "docs: agents never push production"',
     "git log --oneline origin/production..origin/main",
     "git ls-remote origin refs/heads/production",
@@ -193,13 +193,13 @@ test("blocks every push from a repository that has a local production branch", (
   expect("git --shallow-file /dev/null push", withProd, 2);
 
   expect(
-    "git -c include.path=/dev/stdin push origin sig-1; git push origin main:production",
+    "git -c include.path=/dev/stdin push origin fid-1; git push origin main:production",
     withoutProd,
     2,
   );
-  expect("git -c include.path=/dev/stdin push origin sig-1; git push --all", withProd, 2);
-  expect("git -c include.path=/dev/stdin push origin sig-1", withoutProd, 0);
-  expect("git push origin sig-1", withoutProd, 0);
+  expect("git -c include.path=/dev/stdin push origin fid-1; git push --all", withProd, 2);
+  expect("git -c include.path=/dev/stdin push origin fid-1", withoutProd, 0);
+  expect("git push origin fid-1", withoutProd, 0);
 });
 
 test("checks every part for production before the hook runs git", () => {
@@ -208,7 +208,7 @@ test("checks every part for production before the hook runs git", () => {
   assert.equal(spawnSync("mkfifo", [fifo]).status, 0);
   try {
     for (const separator of [";", " &"]) {
-      const command = `git -c include.path=${fifo} push origin sig-1${separator} git push origin main:production`;
+      const command = `git -c include.path=${fifo} push origin fid-1${separator} git push origin main:production`;
       assert.equal(guard(command, repo), 2, command);
     }
   } finally {

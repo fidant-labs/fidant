@@ -20,7 +20,7 @@ function makeText(leaks: Leaks, canary: SeededRandom): string {
   return text;
 }
 
-/** Fills the text and the sender's name on /secret, adds a recipient and returns their link, with its secret watched. */
+/** Fills the text and the sender's name on /send/secret, adds a recipient and returns their link, with its secret watched. */
 async function share(leaks: Leaks, sender: Page, text: string, from: string, name: string) {
   await sender.getByLabel("Your secret").fill(text);
   await expect(sender.getByLabel("Your secret")).toHaveAttribute("writingsuggestions", "false");
@@ -30,7 +30,7 @@ async function share(leaks: Leaks, sender: Page, text: string, from: string, nam
   return addLink(leaks, sender, name);
 }
 
-/** Adds a recipient on /secret and returns their link, with its secret watched. */
+/** Adds a recipient on /send/secret and returns their link, with its secret watched. */
 async function addLink(leaks: Leaks, sender: Page, name: string) {
   await sender.locator("#secret-recipient-name").fill(name);
   await sender.getByRole("button", { name: "Create link", exact: true }).click();
@@ -69,7 +69,7 @@ async function openRecipient(
   return { page, downloads };
 }
 
-test("a text goes from /secret to the recipient, who shows and copies it", async ({
+test("a text goes from /send/secret to the recipient, who shows and copies it", async ({
   actor,
   leaks,
   canary,
@@ -92,7 +92,7 @@ test("a text goes from /secret to the recipient, who shows and copies it", async
     .filter({ visible: true })
     .getByRole("link", { name: "Secret" });
   await entry.click();
-  await expect(sender).toHaveURL(/\/send\?mode=secret$/);
+  await expect(sender).toHaveURL(/\/send\/secret$/);
   await expect(sender).toHaveTitle("Share a secret – Fidant");
   await expect(entry).toHaveAttribute("aria-current", "page");
   const field = sender.getByLabel("Your secret");
@@ -208,7 +208,7 @@ test("a pasted text over 10,000 characters stays whole and can't be shared until
   const long = base32Token(canary.fork("long text"), 12_000);
   leaks.watchContent("long text", long);
   const { page: sender } = await actor("sender");
-  await sender.goto("/secret");
+  await sender.goto("/send/secret");
   const field = sender.getByLabel("Your secret");
   const error = sender.locator("#secret-text-error");
   const live = error.locator("[role=status]");
@@ -244,7 +244,7 @@ test("declining a text keeps the link working", async ({ actor, leaks, canary })
   const text = makeText(leaks, canary);
   const name = makeName(leaks, canary, "Erik");
   const { page: sender } = await actor("sender");
-  await sender.goto("/secret");
+  await sender.goto("/send/secret");
   const link = await share(leaks, sender, text, "", name);
 
   const { page } = await openRecipient(actor, link);
@@ -276,7 +276,7 @@ test("a recipient who loses the sender during the offer sees the text wording", 
   const text = makeText(leaks, canary);
   const { page: sender } = await actor("sender");
   await sender.addInitScript(breakableSender);
-  await sender.goto("/secret");
+  await sender.goto("/send/secret");
 
   const ida = await share(leaks, sender, text, "", makeName(leaks, canary, "Ida"));
   const { page: cut } = await openRecipient(actor, ida, "ida");
@@ -313,7 +313,7 @@ test("a connection too small to carry a text in one chunk fails the card and sen
       Reflect.apply(send, this, args);
     } as RTCDataChannel["send"];
   });
-  await sender.goto("/secret");
+  await sender.goto("/send/secret");
   const link = await share(leaks, sender, text, "", name);
 
   const { page } = await openRecipient(actor, link);
@@ -360,7 +360,7 @@ test("a sender who loses the server sees the text wording", async ({ actor }) =>
     };
   });
   await sender.clock.install();
-  await sender.goto("/secret");
+  await sender.goto("/send/secret");
   await sender.waitForFunction(() => (globalThis as { serverOpen?: boolean }).serverOpen === true);
   await sender.evaluate(() => (globalThis as { dropServer?: () => void }).dropServer?.());
   await sender.waitForFunction(
@@ -381,7 +381,7 @@ test("a recipient whose browser can't read the received text is told so, with no
   const text = makeText(leaks, canary);
   const name = makeName(leaks, canary, "Jon");
   const { page: sender } = await actor("sender");
-  await sender.goto("/secret");
+  await sender.goto("/send/secret");
   const link = await share(leaks, sender, text, "", name);
 
   const { page } = await openRecipient(actor, link);

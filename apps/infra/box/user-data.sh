@@ -41,26 +41,26 @@ grep " $tarball\$" SHASUMS256.txt | sha256sum -c -
 tar --no-same-owner -xJf "$tarball" -C /usr/local --strip-components=1
 npm install -g pnpm@@PNPM_VERSION@
 
-useradd --system --create-home --home-dir /var/lib/sigill --shell /usr/sbin/nologin sigill
-install -d -o sigill -g sigill /opt/sigill/releases
+useradd --system --create-home --home-dir /var/lib/fidant --shell /usr/sbin/nologin fidant
+install -d -o fidant -g fidant /opt/fidant/releases
 
-cat >/usr/local/bin/sigill-deploy <<'EOF'
+cat >/usr/local/bin/fidant-deploy <<'EOF'
 #!/bin/bash
 set -euo pipefail
-repo=https://github.com/sigill-labs/sigill.git
+repo=https://github.com/fidant-labs/fidant.git
 sha=$(git ls-remote "$repo" refs/heads/production | awk '$2 == "refs/heads/production" {print $1}')
 [[ $sha =~ ^[0-9a-f]{40}$ ]] || { echo "no production branch" >&2; exit 1; }
-dir=/opt/sigill/releases/$sha
-previous=$(readlink /opt/sigill/current || true)
+dir=/opt/fidant/releases/$sha
+previous=$(readlink /opt/fidant/current || true)
 [ "$previous" = "$dir" ] && exit 0
-[ -e "/opt/sigill/failed-$sha" ] && exit 0
-as_sigill() { runuser -u sigill -- env HOME=/var/lib/sigill bash -euo pipefail -c "$1"; }
-as_sigill "rm -rf $dir && git clone --quiet --filter=blob:none --no-checkout $repo $dir"
+[ -e "/opt/fidant/failed-$sha" ] && exit 0
+as_fidant() { runuser -u fidant -- env HOME=/var/lib/fidant bash -euo pipefail -c "$1"; }
+as_fidant "rm -rf $dir && git clone --quiet --filter=blob:none --no-checkout $repo $dir"
 # The full ref, because a tag named origin/main would shadow the remote branch.
-list=$(as_sigill "git -C $dir rev-list --first-parent refs/remotes/origin/main") || list=
+list=$(as_fidant "git -C $dir rev-list --first-parent refs/remotes/origin/main") || list=
 if [ -z "$list" ]; then
   echo "could not check $sha against main" >&2
-  as_sigill "rm -rf $dir"
+  as_fidant "rm -rf $dir"
   exit 1
 fi
 # Not a grep pipe: grep -q can stop reading at a match, and pipefail then fails the pipe on its writer.
@@ -68,48 +68,48 @@ case "$list" in
 *"$sha"*) ;;
 *)
   echo "refused $sha: not on main" >&2
-  touch "/opt/sigill/failed-$sha"
-  as_sigill "rm -rf $dir"
+  touch "/opt/fidant/failed-$sha"
+  as_fidant "rm -rf $dir"
   exit 1
   ;;
 esac
-as_sigill "cd $dir && git checkout --quiet $sha && pnpm install --frozen-lockfile"
-if ! as_sigill "cd $dir && pnpm build"; then
-  touch "/opt/sigill/failed-$sha"
-  as_sigill "rm -rf $dir"
+as_fidant "cd $dir && git checkout --quiet $sha && pnpm install --frozen-lockfile"
+if ! as_fidant "cd $dir && pnpm build"; then
+  touch "/opt/fidant/failed-$sha"
+  as_fidant "rm -rf $dir"
   exit 1
 fi
 switch() {
-  ln -sfn "$1" /opt/sigill/current.new
-  mv -T /opt/sigill/current.new /opt/sigill/current
-  systemctl restart sigill
+  ln -sfn "$1" /opt/fidant/current.new
+  mv -T /opt/fidant/current.new /opt/fidant/current
+  systemctl restart fidant
 }
 switch "$dir"
 for _ in $(seq 20); do
   if curl -fsk --max-time 2 -o /dev/null https://127.0.0.1:8443/; then
-    as_sigill "ls -1dt /opt/sigill/releases/*/ | tail -n +4 | xargs -r rm -rf --"
+    as_fidant "ls -1dt /opt/fidant/releases/*/ | tail -n +4 | xargs -r rm -rf --"
     exit 0
   fi
   sleep 1
 done
-touch "/opt/sigill/failed-$sha"
+touch "/opt/fidant/failed-$sha"
 if [ -n "$previous" ]; then
   switch "$previous"
 else
-  rm -f /opt/sigill/current
-  systemctl stop sigill
+  rm -f /opt/fidant/current
+  systemctl stop fidant
 fi
-as_sigill "rm -rf $dir"
+as_fidant "rm -rf $dir"
 exit 1
 EOF
-chmod 755 /usr/local/bin/sigill-deploy
+chmod 755 /usr/local/bin/fidant-deploy
 
-cat >/usr/local/bin/sigill-credential <<'EOF'
+cat >/usr/local/bin/fidant-credential <<'EOF'
 #!/bin/sh
 # A drop-in that names a missing credential file stops the app, so the two exist only together.
 set -eu
-dropin=/etc/systemd/system/sigill.service.d/mail.conf
-secret=/etc/sigill/mail-password
+dropin=/etc/systemd/system/fidant.service.d/mail.conf
+secret=/etc/fidant/mail-password
 case "${1-} ${2-}" in
 "mail on")
   printf 'SMTP user name: '
@@ -123,7 +123,7 @@ case "${1-} ${2-}" in
   stty echo
   echo
   printf '%s\n' "$password" | grep -Eqx '[A-Za-z0-9+/]{44}' || { echo 'Not an SES SMTP password.' >&2; exit 1; }
-  install -d -m 700 /etc/sigill
+  install -d -m 700 /etc/fidant
   (umask 077 && printf '%s\n' "$password" >"$secret")
   mkdir -p "${dropin%/*}"
   printf '%s\n' '[Service]' \
@@ -140,21 +140,21 @@ case "${1-} ${2-}" in
   rm -f "$secret"
   ;;
 *)
-  echo 'Usage: sigill-credential mail on|off' >&2
+  echo 'Usage: fidant-credential mail on|off' >&2
   exit 2
   ;;
 esac
-systemctl try-restart sigill
+systemctl try-restart fidant
 EOF
-chmod 700 /usr/local/bin/sigill-credential
+chmod 700 /usr/local/bin/fidant-credential
 
-cat >/etc/systemd/system/sigill.service <<'EOF'
+cat >/etc/systemd/system/fidant.service <<'EOF'
 [Unit]
-Description=Sigill app server
+Description=Fidant app server
 
 [Service]
-User=sigill
-WorkingDirectory=/opt/sigill/current
+User=fidant
+WorkingDirectory=/opt/fidant/current
 Environment=PORT=8443
 ExecStart=/usr/local/bin/node apps/server/src/main.ts
 Restart=always
@@ -165,17 +165,17 @@ MemorySwapMax=0
 WantedBy=multi-user.target
 EOF
 
-cat >/etc/systemd/system/sigill-deploy.service <<'EOF'
+cat >/etc/systemd/system/fidant-deploy.service <<'EOF'
 [Unit]
 Description=Deploy the production branch
 
 [Service]
 Type=oneshot
 TimeoutStartSec=20min
-ExecStart=/usr/local/bin/sigill-deploy
+ExecStart=/usr/local/bin/fidant-deploy
 EOF
 
-cat >/etc/systemd/system/sigill-deploy.timer <<'EOF'
+cat >/etc/systemd/system/fidant-deploy.timer <<'EOF'
 [Timer]
 OnActiveSec=10s
 OnUnitInactiveSec=60s
@@ -241,8 +241,8 @@ MemorySwapMax=0
 EOF
 
 systemctl daemon-reload
-systemctl enable sigill
-systemctl enable --now sigill-deploy.timer
+systemctl enable fidant
+systemctl enable --now fidant-deploy.timer
 systemctl restart caddy
 
 # HAProxy holds 443 and routes by SNI without decrypting (decision 0010). No log line: it logs nothing.
@@ -289,8 +289,8 @@ systemctl unmask haproxy
 systemctl enable haproxy
 systemctl restart haproxy
 
-install -d -m 700 /etc/sigill
-(umask 077 && openssl rand -hex 32 >/etc/sigill/turn-secret)
+install -d -m 700 /etc/fidant
+(umask 077 && openssl rand -hex 32 >/etc/fidant/turn-secret)
 private_ip=$(ip -4 -o addr show scope global | awk '{ sub("/.*", "", $4); print $4; exit }')
 printf '%s\n' "$private_ip" | grep -Eqx '([0-9]{1,3}\.){3}[0-9]{1,3}'
 systemctl mask coturn
@@ -301,7 +301,7 @@ cat >>/etc/turnserver.conf <<'EOF'
 EOF
 # relay-ip: coturn otherwise relays from the address a client came in on, and HAProxy's TLS
 # clients come in on 127.0.0.1 (decision 0010).
-{ printf 'external-ip=@BOX_ADDRESS@/%s\nrelay-ip=%s\nstatic-auth-secret=' "$private_ip" "$private_ip"; cat /etc/sigill/turn-secret; } >>/etc/turnserver.conf
+{ printf 'external-ip=@BOX_ADDRESS@/%s\nrelay-ip=%s\nstatic-auth-secret=' "$private_ip" "$private_ip"; cat /etc/fidant/turn-secret; } >>/etc/turnserver.conf
 install -d /etc/systemd/system/coturn.service.d
 cat >/etc/systemd/system/coturn.service.d/online.conf <<'EOF'
 [Unit]
@@ -313,7 +313,7 @@ systemctl enable --now coturn
 
 # Copies Caddy's certificate for turn.@DOMAIN@ to coturn when it changes, and fails while the copy
 # expires within 14 days, so it shows in systemctl --failed. No set -x: it handles a key.
-cat >/usr/local/sbin/sigill-turn-cert <<'EOF'
+cat >/usr/local/sbin/fidant-turn-cert <<'EOF'
 #!/bin/sh
 set -eu
 name=turn.@DOMAIN@
@@ -360,16 +360,16 @@ if [ -e /etc/coturn/turn.crt ] && ! openssl x509 -checkend 1209600 -noout -in /e
   exit 1
 fi
 EOF
-chmod 755 /usr/local/sbin/sigill-turn-cert
-cat >/etc/systemd/system/sigill-turn-cert.service <<'EOF'
+chmod 755 /usr/local/sbin/fidant-turn-cert
+cat >/etc/systemd/system/fidant-turn-cert.service <<'EOF'
 [Unit]
 Description=Copy the relay's certificate from Caddy to coturn
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/sbin/sigill-turn-cert
+ExecStart=/usr/local/sbin/fidant-turn-cert
 EOF
-cat >/etc/systemd/system/sigill-turn-cert.timer <<'EOF'
+cat >/etc/systemd/system/fidant-turn-cert.timer <<'EOF'
 [Timer]
 OnActiveSec=1min
 OnUnitInactiveSec=5min
@@ -378,7 +378,7 @@ OnUnitInactiveSec=5min
 WantedBy=timers.target
 EOF
 systemctl daemon-reload
-systemctl enable --now sigill-turn-cert.timer
+systemctl enable --now fidant-turn-cert.timer
 
 turn_urls="stun:turn.@DOMAIN@:3478,turn:turn.@DOMAIN@:3478?transport=udp,turns:turn.@DOMAIN@:443?transport=tcp"
 ipv6=$(ip -6 -o addr show scope global | awk '{ sub("/.*", "", $4); print $4; exit }')
@@ -386,13 +386,13 @@ if printf '%s\n' "$ipv6" | grep -Eqx '[0-9a-f]{0,4}(:[0-9a-f]{0,4}){2,7}'; then
   turn_urls="$turn_urls,stun:[$ipv6]:3478"
 fi
 if systemctl is-active --quiet coturn; then
-  install -d /etc/systemd/system/sigill.service.d
-  cat >/etc/systemd/system/sigill.service.d/turn.conf <<EOF
+  install -d /etc/systemd/system/fidant.service.d
+  cat >/etc/systemd/system/fidant.service.d/turn.conf <<EOF
 [Service]
 Environment=TURN_URLS=$turn_urls
-LoadCredential=turn-secret:/etc/sigill/turn-secret
+LoadCredential=turn-secret:/etc/fidant/turn-secret
 Environment=TURN_SECRET_FILE=%d/turn-secret
 EOF
   systemctl daemon-reload
-  systemctl try-restart sigill
+  systemctl try-restart fidant
 fi

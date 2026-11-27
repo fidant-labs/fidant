@@ -127,6 +127,10 @@ test("a moved path or a page's path with a slash is redirected, with its query",
     ["/send/?", "/send"],
     ["/sv/", "/sv"],
     ["/send/.", "/send"],
+    ["/secret", "/send/secret"],
+    ["/secret/?a=1", "/send/secret?a=1"],
+    ["/sv/hemlighet", "/sv/skicka/hemlighet"],
+    ["/sv/hemlighet/", "/sv/skicka/hemlighet"],
   ] as const) {
     const answer = onRequest(target);
     assert.equal(answer.statusCode, 301, target);

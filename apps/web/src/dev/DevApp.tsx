@@ -49,10 +49,10 @@ function shownPage(): DevState["page"] | undefined {
   if (path.startsWith("/r/")) {
     return "receive";
   }
-  if (path !== "/send") {
-    return undefined;
+  if (path === "/send/secret") {
+    return "secret";
   }
-  return new URLSearchParams(location.search).get("mode") === "secret" ? "secret" : "send";
+  return path === "/send" || path === "/send/file" ? "send" : undefined;
 }
 
 export function DevApp(props: { secure: boolean; theme: Theme }) {

@@ -21,7 +21,7 @@ export const mailpitLog = join(runDir, "mailpit.log");
 /** Every packet to and from coturn, in the network scenarios only (networks/compose.yaml). */
 export const coturnPcap = join(runDir, "coturn.pcap");
 
-/** The box container's journal (sigill, caddy, coturn) and /var/log/syslog, network scenarios only. */
+/** The box container's journal (fidant, caddy, coturn) and /var/log/syslog, network scenarios only. */
 export const boxJournal = join(runDir, "box-journal.jsonl");
 export const boxSyslog = join(runDir, "box-syslog.log");
 /** The signaling image's container log, stdout and stderr, network scenarios only. */

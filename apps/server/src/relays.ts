@@ -18,7 +18,7 @@ export type Relay = { id: string; urls: string[]; publicKey: string; host: strin
 export type RelayState = { up: boolean; failures: number };
 
 const committedList = fileURLToPath(new URL("../relays.json", import.meta.url));
-const defaultMaster = "/var/lib/sigill/relay-master";
+const defaultMaster = "/var/lib/fidant/relay-master";
 const spkiPem = /^-----BEGIN PUBLIC KEY-----\n[A-Za-z0-9+/=\n]+-----END PUBLIC KEY-----\n?$/;
 
 function rsaBits(pem: string): number {

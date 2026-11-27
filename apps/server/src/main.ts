@@ -31,7 +31,7 @@ if (site.pages) {
 // A relay list that isn't empty replaces TURN_URLS. The messages name no secret.
 let relays: Relays | undefined;
 try {
-  const list = loadRelays(process.env, existsSync("/var/lib/sigill"));
+  const list = loadRelays(process.env, existsSync("/var/lib/fidant"));
   relays = list && startRelays(list.relays, readOrCreateMaster(list.masterFile));
 } catch (error) {
   console.error((error as Error).message);

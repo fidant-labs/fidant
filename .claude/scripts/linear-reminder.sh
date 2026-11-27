@@ -9,7 +9,7 @@ if runs "${GH_PR}(create|new)"; then
   branch=$(head_values "$args" | head -1)
   branch=${branch##*:}
   [ -n "$branch" ] || branch=$(git branch --show-current 2>/dev/null)
-  key=$(grep -oiE '^(fid|sig)-[0-9]+' <<<"$branch" | tr '[:lower:]' '[:upper:]')
+  key=$(grep -oiE '^fid-[0-9]+' <<<"$branch" | tr '[:lower:]' '[:upper:]')
   msg="Linear: link the new pull request in ${key:-its Linear issue} and keep the issue In Progress until it merges."
 elif runs "${GH_PR}merge"; then
   [[ $args =~ (^|[[:space:]])--disable-auto($|[[:space:]]) ]] && exit 0

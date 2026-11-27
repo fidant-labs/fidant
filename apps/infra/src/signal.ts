@@ -124,8 +124,8 @@ export class SignalStack extends Stack {
         PUBLIC_ORIGIN: `https://${primaryDomain}`,
         TRUSTED_PROXIES: vpc.publicSubnets.map((subnet) => subnet.ipv4CidrBlock).join(","),
         RELAYS_FILE: "/app/apps/server/relays.json",
-        RELAY_MASTER_FILE: "/run/sigill/relay-master",
-        CERT_DIR: "/run/sigill/certs",
+        RELAY_MASTER_FILE: "/run/fidant/relay-master",
+        CERT_DIR: "/run/fidant/certs",
         STUN_URLS: relays.map((relay) => `stun:${relayName(relay.id)}:3478`).join(","),
         HTTP_KEEP_ALIVE_MS: "125000",
       },
@@ -143,7 +143,7 @@ export class SignalStack extends Stack {
       "ContainerDefinitions.0.LinuxParameters.Tmpfs",
       [
         {
-          ContainerPath: "/run/sigill",
+          ContainerPath: "/run/fidant",
           Size: 1,
           MountOptions: ["noexec", "nosuid", "nodev", "uid=1000", "gid=1000", "mode=700"],
         },

@@ -1036,7 +1036,7 @@ function inFlight() {
   return { pair, count };
 }
 
-test("a replayed INIT does not make the recipient use one key and nonce twice (SIG-231)", async () => {
+test("a replayed INIT does not make the recipient use one key and nonce twice (FID-231)", async () => {
   const { secret } = createLink("https://localhost");
   const transferId = createTransferId();
   const recorded = newAttempt();

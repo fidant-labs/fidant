@@ -13,6 +13,7 @@ import { SendPage, type SendPreview } from "./send/SendPage.tsx";
 import { pageUrl } from "./site-files.ts";
 import { applyTheme, type Theme } from "./theme.ts";
 import {
+  FILE_HREF,
   Footer,
   Header,
   Link,
@@ -49,18 +50,16 @@ function NotFoundPage() {
   );
 }
 
-const NAMED: ReadonlyArray<Route> = [
-  "privacy",
-  "how",
-  "send",
-  "secret",
-  "about",
-  "terms",
-  "security",
-];
+const NAMED: ReadonlyArray<Route> = ["privacy", "how", "send", "about", "terms", "security"];
 
 /** The route of a page's English path, as barePath returns it. */
 function routeOf(path: string): Route {
+  if (/^\/send\/secret\/?$/.test(path)) {
+    return "secret";
+  }
+  if (/^\/send\/file\/?$/.test(path)) {
+    return "send";
+  }
   const named = NAMED.find((name) => new RegExp(`^/${name}/?$`).test(path));
   if (named) {
     return named;
@@ -126,12 +125,11 @@ export function App({
   // still scrolls to it.
   const where = (): Place => {
     let path = barePath(location.pathname);
-    if (path === "/secret") {
-      // The old address of the secret page, which is now a mode of the send page.
-      history.replaceState(history.state, "", localizedPath(SECRET_HREF, lang));
-    } else if (path === "/send" && new URLSearchParams(location.search).get("mode") === "secret") {
-      // Inside the app the secret mode keeps its own path, so it has its own route, title and page.
-      path = "/secret";
+    const mode = new URLSearchParams(location.search).get("mode");
+    if (routeOf(path) === "send" && mode !== null) {
+      // The send page's old addresses named the mode in the query.
+      path = mode === "secret" ? SECRET_HREF : FILE_HREF;
+      history.replaceState(history.state, "", localizedPath(path, lang) + location.hash);
     }
     return { path, hash: routeOf(path) === "how" ? location.hash : "" };
   };
@@ -151,23 +149,23 @@ export function App({
   const secretOpen = secretStatus === "active";
   const receiveOpen = receiveStatus === "active";
   // One send at a time: while a file or a secret is on its way, both modes' addresses lead to it.
-  const lockedTo = sendOpen === secretOpen ? undefined : sendOpen ? "/send" : "/secret";
+  const lockedTo = sendOpen === secretOpen ? undefined : sendOpen ? "send" : "secret";
+  const shown = routeOf(place.path);
   const path =
     lockedTo &&
-    (place.path === "/send" || place.path === "/secret") &&
+    (shown === "send" || shown === "secret") &&
+    shown !== lockedTo &&
     // The dev panel shows the page it picked, whatever the other one holds.
-    place.path !== `/${preview?.page}`
-      ? lockedTo
+    shown !== preview?.page
+      ? lockedTo === "send"
+        ? FILE_HREF
+        : SECRET_HREF
       : place.path;
   const route = routeOf(path);
   // Before paint, so the address never shows the mode that didn't open.
   useLayoutEffect(() => {
     if (path !== place.path) {
-      history.replaceState(
-        history.state,
-        "",
-        localizedPath(path === "/secret" ? SECRET_HREF : "/send", lang),
-      );
+      history.replaceState(history.state, "", localizedPath(path, lang));
       setPlace(where());
     }
   }, [path, place]);

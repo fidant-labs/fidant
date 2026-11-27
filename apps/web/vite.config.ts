@@ -73,7 +73,7 @@ export default defineConfig({
           }
           const sections = [];
           for (const lang of LANGS) {
-            const pages = [];
+            const pages: { title: string; description: string; url: string }[] = [];
             for (const path of PAGES) {
               const page = renderPage(path, lang);
               const local = localizedPath(path, lang);
@@ -85,11 +85,10 @@ export default defineConfig({
                 `pages${local === "/" ? "" : local}/index.html`,
                 pageHtml(shell, { lang, ...page, image: "preview.png", path, script: { src, sv } }),
               );
-              pages.push({
-                title: page.title,
-                description: page.description,
-                url: pageUrl(path, lang),
-              });
+              const url = pageUrl(path, lang);
+              if (!pages.some((listed) => listed.url === url)) {
+                pages.push({ title: page.title, description: page.description, url });
+              }
             }
             sections.push({ heading: LANGUAGE_NAMES[lang], pages });
             const missing = renderPage(NOT_FOUND, lang);
