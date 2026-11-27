@@ -13,7 +13,7 @@ const missing = "mailpit not found; brew install mailpit (macOS) or its release 
 
 /**
  * Mailpit on free loopback ports, catching every mail the server sends. It hands the server
- * MAIL_SMTP_URL and MAIL_FROM, and the tests MAILPIT_API. It has no `url`: the browser may not
+ * MAIL_ENABLED, MAIL_SMTP_URL and MAIL_FROM, and the tests MAILPIT_API. It has no `url`: the browser may not
  * reach it. Without `mailpit` on PATH the stack runs without mail, except in CI, where that fails
  * the run.
  */
@@ -85,6 +85,7 @@ async function startMailpit(): Promise<RunningService> {
   return {
     name: "mailpit",
     env: {
+      MAIL_ENABLED: "1",
       MAIL_SMTP_URL: `smtp://${host}:${smtpPort}`,
       MAIL_FROM: "Fidant <noreply@example.se>",
       MAILPIT_API: `http://${host}:${apiPort}`,

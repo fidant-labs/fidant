@@ -10,11 +10,12 @@ export function TraceExplorer() {
   const { t } = useI18n();
   const text = t.technical.explorer;
   const [choice, setChoice] = useState<Choice>({ what: "file", link: "self", route: "direct" });
-  const groups = Object.keys(CHOICES) as (keyof Choice)[];
+  // A group with one option is no choice, so it isn't shown.
+  const groups = (Object.keys(CHOICES) as (keyof Choice)[]).filter((g) => CHOICES[g].length > 1);
   return (
     <DrawnSection id="explorer" heading={text.heading}>
       <Paragraphs body={text.body} />
-      <div class="mt-6 grid gap-6 sm:grid-cols-3">
+      <div class={`mt-6 grid gap-6 ${groups.length === 3 ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
         {groups.map((group) => {
           const question = text.questions[group];
           const options: Record<string, string> = question.options;
