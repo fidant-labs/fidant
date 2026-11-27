@@ -145,7 +145,10 @@ export async function captureSiteA(): Promise<{
     );
   } catch (error) {
     // The caller gets no stop() when this rejects, so tcpdump must not outlive it on the shared router.
-    await stop();
+    // A failed stop must not hide why the capture never started.
+    await stop().catch((stopError) => {
+      throw new AggregateError([error, stopError], "the edge capture never started");
+    });
     throw error;
   }
   return {
