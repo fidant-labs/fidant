@@ -1236,6 +1236,24 @@ test("the relay keeps the app box's coturn hardening and peer denials, and no st
 
 test("the relay's scripts that handle a secret or a key run with set -eu and never trace", () => {
   const script = readFileSync(new URL("../relay/install.sh", import.meta.url), "utf8");
+  // A script run as its own process doesn't inherit the install's -x, so only its own set or
+  // a shell started with -x traces it. Only options right after the shell's name count, so
+  // `sh -c 'tar -xf a'` passes.
+  const setTrace = /\bset\b[^\n;]*[\s"']-[A-Za-z]*x|xtrace/;
+  const shTrace = /\b(?:ba|da)?sh\b(?:\s+-[A-Za-z]+)*\s+["']?-[A-Za-z]*x/;
+  for (const line of ["set -x", "set -Cx", 'set "-x"', "set -eu -x", "set -o xtrace"]) {
+    assert.match(line, setTrace);
+  }
+  for (const line of ["set -eu", "set -C", "set +x", "unset -x", "set -e; tar -xf a"]) {
+    assert.doesNotMatch(line, setTrace);
+  }
+  for (const line of ["sh -x script", "/bin/sh -eux script", 'sh -e "-x" script', "bash -x a"]) {
+    assert.match(line, shTrace);
+  }
+  for (const line of ["sh -c 'true'", "sh -c 'tar -xf a'", "ssh -x host", "#!/bin/sh\nset -eux"]) {
+    assert.doesNotMatch(line, shTrace);
+  }
+  assert.doesNotMatch(script, shTrace);
   for (const name of [
     "fidant-relay-apply-secret",
     "fidant-relay-secret",
@@ -1248,7 +1266,7 @@ test("the relay's scripts that handle a secret or a key run with set -eu and nev
       script.indexOf("\nEOF\n", start),
     );
     assert.match(body, /^#!\/bin\/sh\nset -eu\n/, name);
-    assert.doesNotMatch(body, /\bset\b[^\n;]*\s-[a-z]*x|xtrace/, name);
+    assert.doesNotMatch(body, setTrace, name);
   }
 });
 
