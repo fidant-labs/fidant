@@ -540,6 +540,8 @@ Checked by `apps/e2e/tests/first-demo.spec.ts` ("refuses used, unknown and malfo
 | `send-code` | recipient → server   | `link`, `mark`                                 | emailed               | `mark`, never logged                                       |
 | `code`      | recipient ⇄ server   | `link`, `code`, `mark` / `link`, `result`      | emailed               | `code`, never logged                                       |
 | `token`     | server → recipient   | `link`, `token`                                | emailed               | `token`, never logged                                      |
+| `resume`    | page → server        | `link`, `attempt`, `token`                     | failures and refusals | `token` is a bearer value, never logged                    |
+| `resume`    | server → page        | `link`, `attempt`, `token` (none if refused)   | all                   | `token` is a bearer value, never logged                    |
 
 The sealed `data` of a `relay` message is a `commit`, an `offer`, an `answer`, an `ice` candidate (each page's first is its version marker) or, when the relay is added or a dropped route is recovered, a `restart-offer` or a `restart-answer` (`apps/web/src/lib/peer.ts`).
 
@@ -572,6 +574,8 @@ There is one `joined` line for each `joined` the server sends, so a recipient's 
 | `email`            | `link`, `reason` | emailed                        |
 | `code`             | `link`, `reason` | emailed                        |
 | `verified`         | `link`           | emailed                        |
+| `resumed`          | `link`           | failures and refusals          |
+| `resume-refused`   | `link`           | failures and refusals          |
 
 ## What Fidant doesn't protect against
 

@@ -124,6 +124,8 @@ export const LOG_EVENTS = [
   "email",
   "code",
   "verified",
+  "resumed",
+  "resume-refused",
 ] as const;
 export type LogEvent = (typeof LOG_EVENTS)[number];
 
@@ -181,6 +183,13 @@ export type SendCodeMessage = { t: "send-code"; link: string; mark?: string };
 /** A recipient enters the code it got by email. */
 export type CodeMessage = { t: "code"; link: string; code: string; mark?: string };
 
+/**
+ * A page on a new socket takes its side of an attempt back after its old socket dropped
+ * (decision 0032). `token` is the one the server last gave this page for that attempt and side;
+ * it is never logged.
+ */
+export type ResumeMessage = { t: "resume"; link: string; attempt: string; token: string };
+
 export type ClientMessage =
   | HostMessage
   | JoinMessage
@@ -190,7 +199,8 @@ export type ClientMessage =
   | EmailMessage
   | GateMessage
   | SendCodeMessage
-  | CodeMessage;
+  | CodeMessage
+  | ResumeMessage;
 
 /**
  * A STUN or TURN server for RTCPeerConnection. For TURN, `username` and `credential` are
@@ -244,6 +254,14 @@ export type CodeResultMessage = { t: "code"; link: string; result: CodeResult };
 /** Gives a recipient that entered the right code its token for `join`. */
 export type TokenMessage = { t: "token"; link: string; token: string };
 
+/**
+ * Gives a page the token that lets a new socket take its side of an attempt back, once the
+ * attempt's connection opened and again after each takeover, which uses up the old one. Without
+ * `token`, it refuses the page's `resume`, and the page carries on as if it had none (decision
+ * 0032). The token is never logged.
+ */
+export type ResumeAnswerMessage = { t: "resume"; link: string; attempt: string; token?: string };
+
 export type ServerMessage =
   | JoinedMessage
   | LeftMessage
@@ -255,7 +273,8 @@ export type ServerMessage =
   | EmailStatusMessage
   | GateAnswerMessage
   | CodeResultMessage
-  | TokenMessage;
+  | TokenMessage
+  | ResumeAnswerMessage;
 
 type Fields = Record<string, unknown>;
 
@@ -520,6 +539,14 @@ export function parseClientMessage(raw: string): ClientMessage | undefined {
       }
       return { t: value.t, link: value.link, ...mark };
     }
+    case "resume":
+      if (!hasKeys(value, ["t", "link", "attempt", "token"])) {
+        return undefined;
+      }
+      if (!isLinkId(value.link) || !isLinkId(value.attempt) || !isLinkId(value.token)) {
+        return undefined;
+      }
+      return { t: "resume", link: value.link, attempt: value.attempt, token: value.token };
     case "code": {
       const mark = markOf(value, ["t", "link", "code"]);
       if (!mark || !isLinkId(value.link)) {
@@ -619,6 +646,18 @@ export function parseServerMessage(raw: string): ServerMessage | undefined {
         return undefined;
       }
       return { t: "token", link: value.link, token: value.token };
+    case "resume": {
+      const { link, attempt, token } = value;
+      const keys =
+        token === undefined ? ["t", "link", "attempt"] : ["t", "link", "attempt", "token"];
+      if (!hasKeys(value, keys) || !isLinkId(link) || !isLinkId(attempt)) {
+        return undefined;
+      }
+      if (token === undefined) {
+        return { t: "resume", link, attempt };
+      }
+      return isLinkId(token) ? { t: "resume", link, attempt, token } : undefined;
+    }
     default:
       return undefined;
   }
