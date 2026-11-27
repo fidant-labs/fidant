@@ -253,6 +253,29 @@ function Choice<T extends string>({
   );
 }
 
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/**
+ * On localhost, a yellow bar saying the links won't work on other computers. The header shows it
+ * above the menu; the app renders it again as an unseen `spacer` that moves the page down by the
+ * bar's height, which changes when the text wraps.
+ */
+export function LocalhostBar({ spacer }: { spacer?: boolean }) {
+  const { t } = useI18n();
+  if (typeof location === "undefined" || !LOCAL_HOSTS.has(location.hostname)) {
+    return null;
+  }
+  return (
+    <p
+      role={spacer ? undefined : "note"}
+      aria-hidden={spacer}
+      class={`m-0 bg-yellow-300 px-4 py-1.5 text-center text-sm text-black ${spacer ? "invisible" : ""}`}
+    >
+      {t.send.localhost}
+    </p>
+  );
+}
+
 export function Header({
   current,
   open,
@@ -264,6 +287,7 @@ export function Header({
   const { t } = useI18n();
   return (
     <header class="fixed inset-x-0 top-0 z-50 border-b border-border/60 bg-background/70 backdrop-blur-xl backdrop-saturate-150">
+      <LocalhostBar />
       <div class="mx-auto flex h-16 max-w-6xl items-center justify-between gap-2 px-3 sm:gap-4 sm:px-4">
         <Link
           href="/"

@@ -133,7 +133,6 @@ type Connection = {
 // Errors are kept as keys and turned into text in render, so they follow a language switch.
 type ErrorOf<K extends "fromError" | "fileError" | "nameError"> = keyof Messages["send"][K] | "";
 
-const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 /** How long the server may stay unreachable before the page says so. */
 const LOST_AFTER_MS = 10_000;
 /** How long to wait before hosting again when the server still holds a link for our old socket. */
@@ -807,7 +806,6 @@ export function SendPage({
     !text && (hash.status === "preparing" || hash.status === "failed") ? hash.status : undefined;
   const tooLong = textLength > MAX_TEXT_LENGTH;
   const full = sender.recipients.length >= MAX_LINKS;
-  const isLocalhost = typeof location !== "undefined" && LOCAL_HOSTS.has(location.hostname);
   // ponytail: counts by status, so it over-counts if a recipient's signaling drops mid-transfer; track joined/left if that matters
   const connected = sender.recipients.filter(isActive).length;
   const emailed = sender.recipients.filter(emailBound);
@@ -899,11 +897,6 @@ export function SendPage({
         </div>
         <p class={lede}>{text ? t.secret.lede : t.send.lede}</p>
 
-        {isLocalhost && (
-          <Alert role="note" className="my-4">
-            <AlertDescription>{t.send.localhost}</AlertDescription>
-          </Alert>
-        )}
         {text && (
           <div class={`my-4 ${field}`}>
             <Label htmlFor="secret-text">{t.secret.label}</Label>
