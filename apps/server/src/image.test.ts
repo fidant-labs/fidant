@@ -40,13 +40,15 @@ test("the entrypoint writes RELAY_MASTER to its file, 0600, and starts the comma
   assert.equal(readOrCreateMaster(file), master);
 });
 
-test("the entrypoint writes nothing without RELAY_MASTER and stops without RELAY_MASTER_FILE", () => {
+test("the entrypoint stops without RELAY_MASTER, so the server never makes a master of its own, and without RELAY_MASTER_FILE", () => {
   const file = join(dir, "unused");
-  const out = execFileSync("sh", printMaster, {
+  const unset = spawnSync("sh", printMaster, {
     env: { PATH, RELAY_MASTER_FILE: file },
     encoding: "utf8",
   });
-  assert.equal(out, "gone\n");
+  assert.notEqual(unset.status, 0);
+  assert.equal(unset.stdout, "");
+  assert.match(unset.stderr, /RELAY_MASTER/);
   assert.equal(existsSync(file), false);
 
   const result = spawnSync("sh", printMaster, {
