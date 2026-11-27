@@ -16,7 +16,7 @@ import { after, before, describe, test } from "node:test";
 const scripts = import.meta.dirname;
 // HOME is the temp dir and inherited GIT_* variables are dropped: the pre-push hook runs this
 // test inside git, and GIT_DIR and friends would point every command at the wrong repo.
-const root = mkdtempSync(join(tmpdir(), "sigill-hooks-"));
+const root = mkdtempSync(join(tmpdir(), "fidant-hooks-"));
 const env = {
   ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_"))),
   HOME: root,
@@ -287,7 +287,7 @@ describe("behind-main hook", () => {
     const marker = join(root, "ssh-ran");
     const script = join(root, "evil-ssh.sh");
     writeFileSync(script, `#!/bin/sh\ntouch ${marker}\n`, { mode: 0o755 });
-    const evil = join(mkdtempSync(join(tmpdir(), "sigill-evil-")), "repo");
+    const evil = join(mkdtempSync(join(tmpdir(), "fidant-evil-")), "repo");
     try {
       execFileSync("git", ["clone", "-q", repo, evil], { env });
       execFileSync("git", ["-C", evil, "config", "core.sshCommand", script], { env });
@@ -318,6 +318,7 @@ describe("Linear reminder", () => {
   test("names the issue of the branch the pull request is for", () => {
     assert.match(remind(`cd ${repo} && gh pr create`), /SIG-12/);
     assert.match(remind(`cd ${repo} && gh pr create --head sig-34-x`), /SIG-34/);
+    assert.match(remind(`cd ${repo} && gh pr create --head fid-56-x`), /FID-56/);
   });
 
   test("does not ask for Done while auto-merge is only queued", () => {
