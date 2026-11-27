@@ -1004,8 +1004,10 @@ test("only this repository's production environment can assume the CI role", () 
         Condition: {
           StringEquals: {
             "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-            "token.actions.githubusercontent.com:sub":
+            "token.actions.githubusercontent.com:sub": [
               "repo:sigill-labs@360211033/sigill@1468787132:environment:production",
+              "repo:fidant-labs@360211033/fidant@1468787132:environment:production",
+            ],
           },
         },
       },
@@ -1046,8 +1048,10 @@ test("only the app environment can assume the release role, which only fidant-po
           Condition: {
             StringEquals: {
               "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-              "token.actions.githubusercontent.com:sub":
+              "token.actions.githubusercontent.com:sub": [
                 "repo:sigill-labs@360211033/sigill@1468787132:environment:app",
+                "repo:fidant-labs@360211033/fidant@1468787132:environment:app",
+              ],
             },
           },
         },
