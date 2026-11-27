@@ -77,7 +77,7 @@ interface Scenario {
   path: RegExp | "none";
   /** Send a larger file and check that both sides report progress honestly along the way. */
   progress?: true;
-  /** Share a secret from /secret instead of a file. Not with `progress`. */
+  /** Share a secret from /send/secret instead of a file. Not with `progress`. */
   secret?: true;
 }
 

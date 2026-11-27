@@ -2096,7 +2096,7 @@ test.describe("emailed links", () => {
     await expect(sender.getByRole("button", { name: `Copy link for ${plainName}` })).toBeVisible();
   });
 
-  test("a text from /secret can be emailed and shows after the code", async ({
+  test("a text from /send/secret can be emailed and shows after the code", async ({
     demo,
     leaks,
     canary,

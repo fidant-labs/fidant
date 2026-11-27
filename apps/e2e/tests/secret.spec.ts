@@ -20,7 +20,7 @@ function makeText(leaks: Leaks, canary: SeededRandom): string {
   return text;
 }
 
-/** Fills the text and the sender's name on /secret, adds a recipient and returns their link, with its secret watched. */
+/** Fills the text and the sender's name on /send/secret, adds a recipient and returns their link, with its secret watched. */
 async function share(leaks: Leaks, sender: Page, text: string, from: string, name: string) {
   await sender.getByLabel("Your secret").fill(text);
   await expect(sender.getByLabel("Your secret")).toHaveAttribute("writingsuggestions", "false");
@@ -30,7 +30,7 @@ async function share(leaks: Leaks, sender: Page, text: string, from: string, nam
   return addLink(leaks, sender, name);
 }
 
-/** Adds a recipient on /secret and returns their link, with its secret watched. */
+/** Adds a recipient on /send/secret and returns their link, with its secret watched. */
 async function addLink(leaks: Leaks, sender: Page, name: string) {
   await sender.locator("#secret-recipient-name").fill(name);
   await sender.getByRole("button", { name: "Create link", exact: true }).click();
@@ -69,7 +69,7 @@ async function openRecipient(
   return { page, downloads };
 }
 
-test("a text goes from /secret to the recipient, who shows and copies it", async ({
+test("a text goes from /send/secret to the recipient, who shows and copies it", async ({
   actor,
   leaks,
   canary,
