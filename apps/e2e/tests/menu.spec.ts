@@ -85,13 +85,16 @@ test("the menu's Send and the landing page's button open /send", async ({ page }
   await expect(page.getByLabel("Choose a file")).toBeAttached();
 
   await page.goto("/");
+  // Prerendered pages already carry their title, so only a page that didn't reload tests the update.
+  await page.evaluate(() => Object.assign(window, { notReloaded: true }));
   await page.getByRole("main").getByRole("link", { name: "Send a file", exact: true }).click();
   await expect(page).toHaveURL(/\/send$/);
   await expect(page.getByLabel("Choose a file")).toBeAttached();
-  // The tab title follows in-app navigation and a language switch, neither of which reloads.
+  // The tab title follows in-app navigation and a language switch.
   await expect(page).toHaveTitle("Send a file – Fidant");
   await choose(page, "Language", "Svenska");
   await expect(page).toHaveTitle("Skicka en fil – Fidant");
+  expect(await page.evaluate(() => "notReloaded" in window)).toBe(true);
 });
 
 test("the language menu switches language and the choice survives a reload", async ({ page }) => {
