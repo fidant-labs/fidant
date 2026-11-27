@@ -398,11 +398,11 @@ if (tool === "aws" && /^ecr batch-get-image --repository-name fidant-signal --im
 } else if (tool === "docker" && said === "login --username AWS --password-stdin " + registry) {
   if (input !== "password") finish("docker login without the password");
   finish("docker login");
-} else if (tool === "docker" && said === "tag fidant-signal:build " + registry + "/fidant-signal:" + process.env.SHA) {
+} else if (tool === "docker" && said === "tag fidant-signal:build " + registry + "/fidant-signal:v2-" + process.env.SHA) {
   finish("docker tag");
-} else if (tool === "docker" && said === "push --quiet " + registry + "/fidant-signal:" + process.env.SHA) {
+} else if (tool === "docker" && said === "push --quiet " + registry + "/fidant-signal:v2-" + process.env.SHA) {
   state.images.push("sha256:new");
-  state.tags[process.env.SHA] = "sha256:new";
+  state.tags["v2-" + process.env.SHA] = "sha256:new";
   finish("docker push");
 } else {
   finish("unexpected: " + tool + " " + said, undefined, "Unexpected");
@@ -588,7 +588,7 @@ test("the web job hands on the web client built for the signaling name, hidden f
 });
 
 test("the upload puts the assets before the rest with the cache rules the edge test serves, and nothing more after a failed put", () => {
-  const skip = { tags: { [`inputs-${key}`]: "sha256:new", live: "sha256:new" } };
+  const skip = { tags: { [`v2-inputs-${key}`]: "sha256:new", live: "sha256:new" } };
   const upload = (calls: string[]) => calls.filter((call) => call.startsWith("s3 "));
   assert.deepEqual(upload(release(skip).calls), uploaded);
   const failedAssets = release({ ...skip, failUpload: 0 });
@@ -596,10 +596,10 @@ test("the upload puts the assets before the rest with the cache rules the edge t
   assert.deepEqual(upload(failedAssets.calls), uploaded.slice(0, 1));
 });
 
-const skipped = [`batch-get-image imageTag=inputs-${key}`, "batch-get-image imageTag=live"];
+const skipped = [`batch-get-image imageTag=v2-inputs-${key}`, "batch-get-image imageTag=live"];
 
 test("while FidantPages's status ends in _IN_PROGRESS the upload fails before any put, and UPDATE_COMPLETE uploads", () => {
-  const skip = { tags: { [`inputs-${key}`]: "sha256:new", live: "sha256:new" } };
+  const skip = { tags: { [`v2-inputs-${key}`]: "sha256:new", live: "sha256:new" } };
   for (const pages of [
     "CREATE_IN_PROGRESS",
     "UPDATE_IN_PROGRESS",
@@ -621,7 +621,7 @@ test("while FidantPages's status ends in _IN_PROGRESS the upload fails before an
 });
 
 test("an upload that cannot read FidantPages's status fails before any put, and prints nothing aws said", () => {
-  const skip = { tags: { [`inputs-${key}`]: "sha256:new", live: "sha256:new" } };
+  const skip = { tags: { [`v2-inputs-${key}`]: "sha256:new", live: "sha256:new" } };
   const { status, stdout, stderr, calls } = release({ ...skip, pages: "!" });
   assert.equal(status, 1);
   assert.deepEqual(calls, [...skipped, "describe-stacks FidantPages"]);
@@ -652,15 +652,15 @@ test("the upload refuses an unexpected account before it calls aws", () => {
 
 test("a release whose image inputs already have their image, which live names, moves nothing and uploads the web client", () => {
   const { status, calls, tags } = release({
-    tags: { [`inputs-${key}`]: "sha256:new", live: "sha256:new" },
+    tags: { [`v2-inputs-${key}`]: "sha256:new", live: "sha256:new" },
   });
   assert.equal(status, 0);
   assert.deepEqual(calls, [
-    `batch-get-image imageTag=inputs-${key}`,
+    `batch-get-image imageTag=v2-inputs-${key}`,
     "batch-get-image imageTag=live",
     ...uploading,
   ]);
-  assert.deepEqual(tags, { [`inputs-${key}`]: "sha256:new", live: "sha256:new" });
+  assert.deepEqual(tags, { [`v2-inputs-${key}`]: "sha256:new", live: "sha256:new" });
 });
 
 test("a new image is pushed and tagged, and with no service live moves and nothing deploys", () => {
@@ -676,35 +676,58 @@ test("a new image is pushed and tagged, and with no service live moves and nothi
   const { status, calls, tags } = release({ tags: {}, services: [missing] });
   assert.equal(status, 0);
   assert.deepEqual(calls, [
-    `batch-get-image imageTag=inputs-${key}`,
-    `batch-get-image imageTag=${sha}`,
+    `batch-get-image imageTag=v2-inputs-${key}`,
+    `batch-get-image imageTag=v2-${sha}`,
     "docker load",
     "get-login-password",
     "docker login",
     "docker tag",
     "docker push",
-    `batch-get-image imageTag=${sha}`,
-    `put-image inputs-${key} sha256:new`,
-    `batch-get-image imageTag=inputs-${key}`,
+    `batch-get-image imageTag=v2-${sha}`,
+    `put-image v2-inputs-${key} sha256:new`,
+    `batch-get-image imageTag=v2-inputs-${key}`,
     "batch-get-image imageTag=live",
-    `batch-get-image imageTag=failed-${key}`,
+    `batch-get-image imageTag=v2-failed-${key}`,
     "describe-services",
     "batch-get-image imageDigest=sha256:new",
     "put-image live sha256:new",
     ...uploading,
   ]);
   assert.deepEqual(tags, {
-    [sha]: "sha256:new",
-    [`inputs-${key}`]: "sha256:new",
+    [`v2-${sha}`]: "sha256:new",
+    [`v2-inputs-${key}`]: "sha256:new",
     live: "sha256:new",
   });
 });
 
-const before = { [`inputs-${key}`]: "sha256:new", live: "sha256:old" };
+test("a release never reads a tag from before the v2- prefix, so it pushes and tags its own image even when an old tag names another", () => {
+  const old = {
+    [`inputs-${key}`]: "sha256:bad",
+    [sha]: "sha256:bad",
+    [`failed-${key}`]: "sha256:bad",
+  };
+  const { status, calls, tags } = release({
+    tags: { ...old, live: "sha256:bad" },
+    services: [{ services: [], failures: [{ reason: "MISSING" }] }],
+  });
+  assert.equal(status, 0);
+  assert.ok(calls.includes("docker push"));
+  for (const call of calls) {
+    assert.doesNotMatch(call, /imageTag=(inputs-|failed-|[0-9a-f]{40})/);
+  }
+  assert.deepEqual(tags, {
+    ...old,
+    [`v2-${sha}`]: "sha256:new",
+    [`v2-inputs-${key}`]: "sha256:new",
+    live: "sha256:new",
+  });
+});
+
+const before = { [`v2-inputs-${key}`]: "sha256:new", live: "sha256:old" };
 const moved = [
-  `batch-get-image imageTag=inputs-${key}`,
+  `batch-get-image imageTag=v2-inputs-${key}`,
   "batch-get-image imageTag=live",
-  `batch-get-image imageTag=failed-${key}`,
+  `batch-get-image imageTag=v2-failed-${key}`,
   "describe-services",
   "describe-services",
   "describe-stacks",
@@ -787,10 +810,13 @@ test("a release that cannot read FidantSignal's status fails before live moves, 
 
 const failed = service(["ecs-svc/3", "PRIMARY", "IN_PROGRESS"], ["ecs-svc/2", "ACTIVE", "FAILED"]);
 const back = service(["ecs-svc/3", "PRIMARY", "COMPLETED"]);
-const marked = { ...before, [`failed-${key}`]: "sha256:new" };
-const markFailed = ["batch-get-image imageDigest=sha256:new", `put-image failed-${key} sha256:new`];
+const marked = { ...before, [`v2-failed-${key}`]: "sha256:new" };
+const markFailed = [
+  "batch-get-image imageDigest=sha256:new",
+  `put-image v2-failed-${key} sha256:new`,
+];
 
-test("a deployment that fails moves live back to the image the service went back to, tags the new image failed-<key>, and fails", () => {
+test("a deployment that fails moves live back to the image the service went back to, tags the new image v2-failed-<key>, and fails", () => {
   const { status, stdout, calls, tags } = release({
     tags: before,
     services: [steady, steady, rolling, failed, back],
@@ -810,7 +836,7 @@ test("a deployment that fails moves live back to the image the service went back
   assert.match(
     stdout,
     new RegExp(
-      `^::error::the new task failed its health check; the service is going back to sha256:old\nlive names sha256:old again\ntagged sha256:new failed-${key}\n$`,
+      `^::error::the new task failed its health check; the service is going back to sha256:old\nlive names sha256:old again\ntagged sha256:new v2-failed-${key}\n$`,
       "m",
     ),
   );
@@ -846,7 +872,7 @@ test("a later release with the same image inputs moves nothing, starts no deploy
   assert.match(
     again.stdout,
     new RegExp(
-      `^::warning::the server image for these inputs failed before and is not deployed: sha256:new is tagged failed-${key}\\.`,
+      `^::warning::the server image for these inputs failed before and is not deployed: sha256:new is tagged v2-failed-${key}\\.`,
       "m",
     ),
   );
@@ -857,8 +883,8 @@ test("a later release with the same image inputs moves nothing, starts no deploy
 
   const other = "c".repeat(64);
   const earlier = {
-    [`inputs-${other}`]: "sha256:bad",
-    [`failed-${other}`]: "sha256:bad",
+    [`v2-inputs-${other}`]: "sha256:bad",
+    [`v2-failed-${other}`]: "sha256:bad",
     ...before,
   };
   const done = service(["ecs-svc/2", "PRIMARY", "COMPLETED"]);
@@ -872,27 +898,30 @@ test("a later release with the same image inputs moves nothing, starts no deploy
   assert.deepEqual(next.tags, { ...earlier, live: "sha256:new" });
 });
 
-test("a failed-<key> tag that is already there counts only when it names the image that failed", () => {
+test("a v2-failed-<key> tag that is already there counts only when it names the image that failed", () => {
   const rolledBack = {
     tags: before,
     services: [steady, steady, rolling, failed, back],
     update: started,
   };
-  const same = release({ ...rolledBack, lost: { [`failed-${key}`]: "sha256:new" } });
+  const same = release({ ...rolledBack, lost: { [`v2-failed-${key}`]: "sha256:new" } });
   assert.equal(same.status, 1);
-  assert.deepEqual(same.calls.slice(-3), [...markFailed, `batch-get-image imageTag=failed-${key}`]);
+  assert.deepEqual(same.calls.slice(-3), [
+    ...markFailed,
+    `batch-get-image imageTag=v2-failed-${key}`,
+  ]);
   assert.deepEqual(same.tags, marked);
-  assert.match(same.stdout, new RegExp(`^tagged sha256:new failed-${key}$`, "m"));
+  assert.match(same.stdout, new RegExp(`^tagged sha256:new v2-failed-${key}$`, "m"));
 
-  const another = release({ ...rolledBack, lost: { [`failed-${key}`]: "sha256:old" } });
+  const another = release({ ...rolledBack, lost: { [`v2-failed-${key}`]: "sha256:old" } });
   assert.equal(another.status, 1);
   assert.deepEqual(another.calls.slice(-3), [
     ...markFailed,
-    `batch-get-image imageTag=failed-${key}`,
+    `batch-get-image imageTag=v2-failed-${key}`,
   ]);
-  assert.deepEqual(another.tags, { ...before, [`failed-${key}`]: "sha256:old" });
+  assert.deepEqual(another.tags, { ...before, [`v2-failed-${key}`]: "sha256:old" });
   assert.match(another.stdout, /::error::the new task failed its health check/);
-  assert.doesNotMatch(another.stdout, new RegExp(`failed-${key}`));
+  assert.doesNotMatch(another.stdout, new RegExp(`v2-failed-${key}`));
 });
 
 const serviceReplaced = service(["ecs-svc/9", "PRIMARY", "COMPLETED"]);
@@ -956,7 +985,7 @@ test("a rollback that does not settle in time puts live back and tags nothing fa
   });
   assert.equal(status, 1);
   assert.match(stdout, /::error::the service did not settle in time/);
-  assert.doesNotMatch(stdout, new RegExp(`failed-${key}`));
+  assert.doesNotMatch(stdout, new RegExp(`v2-failed-${key}`));
   assert.deepEqual(tags, before);
 });
 
@@ -1030,20 +1059,23 @@ test("a release whose restore fails says live still names the new image and does
 
 test("an image whose commit tag is there but whose inputs tag is not is tagged without a docker load", () => {
   const missing = { services: [], failures: [{ reason: "MISSING" }] };
-  const { status, calls, tags } = release({ tags: { [sha]: "sha256:new" }, services: [missing] });
+  const { status, calls, tags } = release({
+    tags: { [`v2-${sha}`]: "sha256:new" },
+    services: [missing],
+  });
   assert.equal(status, 0);
   assert.ok(!calls.some((call) => call.startsWith("docker")));
   assert.deepEqual(tags, {
-    [sha]: "sha256:new",
-    [`inputs-${key}`]: "sha256:new",
+    [`v2-${sha}`]: "sha256:new",
+    [`v2-inputs-${key}`]: "sha256:new",
     live: "sha256:new",
   });
 });
 
 test("an inputs tag that already names another image fails the release", () => {
   const { status, calls, tags } = release({
-    tags: { [sha]: "sha256:new", other: "sha256:other" },
-    lost: { [`inputs-${key}`]: "sha256:other" },
+    tags: { [`v2-${sha}`]: "sha256:new", other: "sha256:other" },
+    lost: { [`v2-inputs-${key}`]: "sha256:other" },
   });
   assert.equal(status, 1);
   assert.ok(!calls.includes("describe-services"));
@@ -1087,7 +1119,7 @@ test("a release whose image step fails uploads nothing", () => {
     { tags: before, services: [steady], update: "!AccessDeniedException" },
     { tags: before, services: [steady, steady, rolling], update: started, expire: true },
     { tags: before, services: [steady, steady, "!ThrottlingException"], update: started },
-    { tags: { [sha]: "sha256:new" }, lost: { [`inputs-${key}`]: "sha256:other" } },
+    { tags: { [`v2-${sha}`]: "sha256:new" }, lost: { [`v2-inputs-${key}`]: "sha256:other" } },
   ]) {
     const { status, calls } = release(start);
     assert.notEqual(status, 0, JSON.stringify(start));

@@ -200,26 +200,26 @@ jobs:
             fi
           }
 
-          d=$(digest "imageTag=inputs-$KEY")
+          d=$(digest "imageTag=v2-inputs-$KEY")
           if [ "$d" = none ]; then
-            s=$(digest "imageTag=$SHA")
+            s=$(digest "imageTag=v2-$SHA")
             if [ "$s" = none ]; then
               docker load -i "$RUNNER_TEMP/image/image.tar" >/dev/null
               aws ecr get-login-password --region eu-north-1 | docker login --username AWS --password-stdin "$registry" >/dev/null
-              docker tag fidant-signal:build "$registry/$repo:$SHA"
-              docker push --quiet "$registry/$repo:$SHA" >/dev/null
+              docker tag fidant-signal:build "$registry/$repo:v2-$SHA"
+              docker push --quiet "$registry/$repo:v2-$SHA" >/dev/null
             fi
-            tag "imageTag=$SHA" "inputs-$KEY"
-            d=$(digest "imageTag=inputs-$KEY")
+            tag "imageTag=v2-$SHA" "v2-inputs-$KEY"
+            d=$(digest "imageTag=v2-inputs-$KEY")
           fi
           previous=$(digest imageTag=live)
           if [ "$previous" = "$d" ]; then
             echo "live already names $d"
             exit 0
           fi
-          f=$(digest "imageTag=failed-$KEY")
+          f=$(digest "imageTag=v2-failed-$KEY")
           if [ "$f" != none ]; then
-            echo "::warning::the server image for these inputs failed before and is not deployed: $f is tagged failed-$KEY. To try it again, delete that tag as Releasing in AGENTS.md says, then re-run the newest release run, the one for production's tip, or promote a later commit."
+            echo "::warning::the server image for these inputs failed before and is not deployed: $f is tagged v2-failed-$KEY. To try it again, delete that tag as Releasing in AGENTS.md says, then re-run the newest release run, the one for production's tip, or promote a later commit."
             exit 0
           fi
 
@@ -284,8 +284,8 @@ jobs:
               tag "imageDigest=$previous" live
               safe=1
               echo "live names $previous again"
-              tag "imageDigest=$d" "failed-$KEY"
-              echo "tagged $d failed-$KEY"
+              tag "imageDigest=$d" "v2-failed-$KEY"
+              echo "tagged $d v2-failed-$KEY"
               exit 1
               ;;
             None*)
