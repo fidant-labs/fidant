@@ -1,4 +1,4 @@
-import type { RefuseReason } from "@sigill/protocol";
+import type { RefuseReason } from "@fidant/protocol";
 import type { Messages } from "../i18n/en.ts";
 
 /**

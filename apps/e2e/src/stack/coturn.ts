@@ -29,7 +29,7 @@ async function startCoturn(): Promise<RunningService> {
     return { name: "coturn", env: {}, stop: async () => {} };
   }
 
-  const dir = await mkdtemp(join(tmpdir(), "sigill-e2e-coturn-"));
+  const dir = await mkdtemp(join(tmpdir(), "fidant-e2e-coturn-"));
   const removeDir = () => rmSync(dir, { recursive: true, force: true });
   const port = await freePort();
   const master = randomBytes(32).toString("hex");
@@ -170,7 +170,7 @@ export function coturnConfig(options: {
     // Production's file has use-auth-secret but no secret: the box appends its own at first boot
     // (user-data.sh). Without this line every allocation fails authentication.
     `static-auth-secret=${secret}`,
-    "realm=sigill.local",
+    "realm=fidant.local",
     // On loopback, every peer of the local stack is on loopback too.
     ...(loopback ? ["allow-loopback-peers"] : []),
     // ponytail: the loopback stack keeps plain TURN over TCP; TLS is covered by the networks suite.

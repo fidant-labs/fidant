@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { type IceServer, parseIceServers } from "@sigill/protocol";
+import { type IceServer, parseIceServers } from "@fidant/protocol";
 import { relaySecret, sealRelaySecret } from "./relay-secret.ts";
 import { iceServersFor } from "./turn.ts";
 import { turnAllocates } from "./turn-check.ts";

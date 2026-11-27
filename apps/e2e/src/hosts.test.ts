@@ -64,6 +64,6 @@ test("parses the published origin list", () => {
     "https://localhost:51234",
     "http://127.0.0.1:9000",
   ]);
-  assert.throws(() => parseStackOrigins(undefined), /SIGILL_E2E_STACK_ORIGINS/);
-  assert.throws(() => parseStackOrigins(" , "), /SIGILL_E2E_STACK_ORIGINS/);
+  assert.throws(() => parseStackOrigins(undefined), /FIDANT_E2E_STACK_ORIGINS/);
+  assert.throws(() => parseStackOrigins(" , "), /FIDANT_E2E_STACK_ORIGINS/);
 });

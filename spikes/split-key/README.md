@@ -19,7 +19,7 @@ The key split:
 ## Tests
 
 ```sh
-pnpm --filter @sigill/spike-split-key test
+pnpm --filter @fidant/spike-split-key test
 ```
 
 `pnpm check` at the root lints, typechecks and tests this package too.
@@ -27,7 +27,7 @@ pnpm --filter @sigill/spike-split-key test
 ## Bench
 
 ```sh
-pnpm --filter @sigill/spike-split-key bench
+pnpm --filter @fidant/spike-split-key bench
 ```
 
 This builds the bench page into `dist/` and serves it:
@@ -80,8 +80,8 @@ recorder may not see requests a service worker answers.
 ### Runner
 
 ```sh
-pnpm --filter @sigill/spike-split-key bench:run
-pnpm --filter @sigill/spike-split-key bench:run --engines webkit --sizes 1GiB,5GiB
+pnpm --filter @fidant/spike-split-key bench:run
+pnpm --filter @fidant/spike-split-key bench:run --engines webkit --sizes 1GiB,5GiB
 ```
 
 `src/runner/run.ts` builds the page, serves it with `serve.ts` on free
@@ -90,7 +90,7 @@ Playwright, headless. Install the two extra engines once, with the
 repository's Playwright version:
 
 ```sh
-pnpm --filter @sigill/e2e exec playwright install firefox webkit
+pnpm --filter @fidant/e2e exec playwright install firefox webkit
 ```
 
 Per engine it launches a fresh browser with a new persistent profile under

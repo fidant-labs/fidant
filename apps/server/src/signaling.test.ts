@@ -15,7 +15,7 @@ import {
   REFUSED_REASONS,
   type ServerMessage,
   UPGRADE_REJECT_REASONS,
-} from "@sigill/protocol";
+} from "@fidant/protocol";
 import { WebSocket as WsClient } from "ws";
 import type { Mail, Mailer } from "./mail.ts";
 import { attachSignaling, clientAddress, HEARTBEAT_MS, LIMITS } from "./signaling.ts";

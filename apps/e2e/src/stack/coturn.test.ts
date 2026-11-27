@@ -55,7 +55,7 @@ for (const ip of ["127.0.0.1", "198.51.100.20"]) {
       `listening-ip=${ip}`,
       `relay-ip=${ip}`,
       "listening-port=40000",
-      "realm=sigill.local",
+      "realm=fidant.local",
       "pidfile=/tmp/x/turnserver.pid",
       "userdb=/tmp/x/turndb",
       `log-file=${coturnLog}`,
@@ -67,12 +67,12 @@ for (const ip of ["127.0.0.1", "198.51.100.20"]) {
 }
 
 test("the TLS option replaces production's TLS listener and certificate", () => {
-  const tls = { port: 443, cert: "/etc/sigill/turn.crt", pkey: "/etc/sigill/turn.key" };
+  const tls = { port: 443, cert: "/etc/fidant/turn.crt", pkey: "/etc/fidant/turn.key" };
   const lines = coturnConfig({ ip: "198.51.100.20", ...options, tls }).split("\n");
   assert.ok(!lines.includes("no-tls"));
   assert.deepEqual(
     lines.filter((line) => tlsKeys.includes(keyOf(line))),
-    ["tls-listening-port=443", "cert=/etc/sigill/turn.crt", "pkey=/etc/sigill/turn.key"],
+    ["tls-listening-port=443", "cert=/etc/fidant/turn.crt", "pkey=/etc/fidant/turn.key"],
   );
 });
 

@@ -11,7 +11,7 @@ import { readOrCreateMaster } from "./relays.ts";
 const dockerfile = readFileSync(new URL("../Dockerfile", import.meta.url), "utf8");
 const nodeVersion = readFileSync(new URL("../../../.node-version", import.meta.url), "utf8").trim();
 const entrypoint = fileURLToPath(new URL("../entrypoint.sh", import.meta.url));
-const dir = mkdtempSync(join(tmpdir(), "sigill-image-"));
+const dir = mkdtempSync(join(tmpdir(), "fidant-image-"));
 const master = randomBytes(32).toString("hex");
 const { PATH } = process.env;
 const printMaster = [entrypoint, process.execPath, "-p", "process.env.RELAY_MASTER ?? 'gone'"];

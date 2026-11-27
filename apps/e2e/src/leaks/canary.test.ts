@@ -66,15 +66,15 @@ test("draws uniform integers below a bound", () => {
   assert.throws(() => random.int(0));
 });
 
-test("reads the seed from SIGILL_E2E_SEED or makes a random one", () => {
+test("reads the seed from FIDANT_E2E_SEED or makes a random one", () => {
   const hex = formatSeed(seed);
   assert.deepEqual(runSeed(hex), seed);
   assert.deepEqual(runSeed(hex.toUpperCase()), seed);
   assert.equal(runSeed(undefined).length, 32);
   assert.equal(runSeed("").length, 32);
   assert.notDeepEqual(runSeed(undefined), runSeed(undefined));
-  assert.throws(() => runSeed("abc"), /SIGILL_E2E_SEED/);
-  assert.throws(() => runSeed(`${hex.slice(2)}zz`), /SIGILL_E2E_SEED/);
+  assert.throws(() => runSeed("abc"), /FIDANT_E2E_SEED/);
+  assert.throws(() => runSeed(`${hex.slice(2)}zz`), /FIDANT_E2E_SEED/);
 });
 
 test("makes lowercase base32 tokens", () => {
@@ -109,10 +109,10 @@ test("makes a canary file with random bytes, name and type", () => {
   const file = canaryFile(new SeededRandom(seed).fork("file"));
   assert.equal(file.bytes.length, file.size);
   assert.ok(sizeIsCheckable(file.size));
-  assert.match(file.name, /^sigill-[a-z2-7]{16}-räksmörgås\.[a-z]{3}$/);
+  assert.match(file.name, /^fidant-[a-z2-7]{16}-räksmörgås\.[a-z]{3}$/);
   assert.equal(file.name, file.name.normalize("NFC"));
   assert.ok(file.name.includes(file.token));
-  assert.equal(file.mime, `application/x-sigill-${file.mimeToken}`);
+  assert.equal(file.mime, `application/x-fidant-${file.mimeToken}`);
   assert.notEqual(file.token, file.mimeToken);
   assert.deepEqual(canaryFile(new SeededRandom(seed).fork("file")), file);
 });

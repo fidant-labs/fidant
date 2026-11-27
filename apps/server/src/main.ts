@@ -3,7 +3,7 @@ import type { AddressInfo } from "node:net";
 import { networkInterfaces } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseIceServers } from "@sigill/protocol";
+import { parseIceServers } from "@fidant/protocol";
 import { type Mailer, smtpMailer } from "./mail.ts";
 import { loadRelays, type Relays, readOrCreateMaster, startRelays } from "./relays.ts";
 import { startServer } from "./server.ts";
@@ -110,7 +110,7 @@ if (mailUrl || mailFrom || mailPasswordFile) {
 }
 
 // For tests only: how long after start a join for a link nobody hosts is refused as `starting`
-// (default STARTING_MS in @sigill/protocol, docs/decisions/0018-restart-warm-up-window.md).
+// (default STARTING_MS in @fidant/protocol, docs/decisions/0018-restart-warm-up-window.md).
 const startingEnv = process.env.STARTING_MS;
 if (startingEnv !== undefined && !/^\d+$/.test(startingEnv)) {
   console.error("STARTING_MS must be a whole number of milliseconds.");
@@ -154,7 +154,7 @@ process.once("SIGTERM", () => {
 // Only for a person at a terminal. Under systemd stderr goes to the journal, which should hold
 // nothing but the allowlisted log lines, not the box's addresses.
 if (process.stderr.isTTY && site.pages) {
-  console.error("Sigill is running. Open one of these and accept the certificate warning once:");
+  console.error("Fidant is running. Open one of these and accept the certificate warning once:");
   for (const host of ["localhost", ...lanAddresses]) {
     console.error(`  https://${host}:${port}`);
   }

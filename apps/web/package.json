@@ -1,5 +1,5 @@
 {
-  "name": "@sigill/web",
+  "name": "@fidant/web",
   "private": true,
   "type": "module",
   "imports": {
@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",
-    "@sigill/protocol": "workspace:*",
+    "@fidant/protocol": "workspace:*",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.5.2",
     "preact": "^11.2.0",

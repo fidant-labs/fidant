@@ -17,7 +17,7 @@
       "settings": {
         "chromeFlags": "--headless=new --no-sandbox --ignore-certificate-errors"
       },
-      "startServerCommand": "PORT=8444 pnpm --filter @sigill/server start",
+      "startServerCommand": "PORT=8444 pnpm --filter @fidant/server start",
       "startServerReadyPattern": "listening"
     },
     "assert": {

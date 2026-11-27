@@ -33,7 +33,7 @@ import {
 } from "./relays.ts";
 import { turnCredentials } from "./turn.ts";
 
-const dir = mkdtempSync(join(tmpdir(), "sigill-relays-"));
+const dir = mkdtempSync(join(tmpdir(), "fidant-relays-"));
 const spki = (key: KeyObject) => key.export({ type: "spki", format: "pem" }).toString();
 const rsa = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const pem = spki(rsa.publicKey);

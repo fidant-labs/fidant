@@ -366,7 +366,7 @@ export function Footer({ theme, onTheme }: { theme: Theme; onTheme(next: Theme):
               </li>
             ))}
             <li>
-              <a href="https://github.com/sigill-labs/sigill" class={link}>
+              <a href="https://github.com/fidant-labs/fidant" class={link}>
                 {t.footer.source}
               </a>
             </li>
