@@ -18,10 +18,11 @@ import type { RunningService, Service } from "./service.ts";
 // The simulated networks of networks/compose.yaml, and the server on their public network.
 
 const run = promisify(execFile);
+const composeFile = join(e2eDir, "networks", "compose.yaml");
 const compose = [
   "compose",
   "-f",
-  join(e2eDir, "networks", "compose.yaml"),
+  composeFile,
   ...(process.env.FIDANT_E2E_GHA_CACHE
     ? ["-f", join(e2eDir, "networks", "compose.gha-cache.yaml")]
     : []),
@@ -295,6 +296,62 @@ export function assertDocker(): void {
   }
 }
 
+const projectName = "fidant-e2e";
+/** The label on the server container that names the checkout whose run started it. */
+const checkoutLabel = "fidant.e2e.checkout";
+
+/**
+ * Where the networks run that holds the containers comes from, when that is not this checkout.
+ * `projects` is `docker compose ls --all --format json`, `serverCheckout` the server container's
+ * checkout label: undefined without a container, empty for one that carries none.
+ */
+export function otherRun(
+  projects: { Name: string; ConfigFiles: string }[],
+  serverCheckout: string | undefined,
+  own: { composeFile: string; checkout: string },
+): string | undefined {
+  const project = projects.find((p) => p.Name === projectName);
+  if (project && !project.ConfigFiles.split(",").includes(own.composeFile)) {
+    return project.ConfigFiles.split(",")[0];
+  }
+  if (serverCheckout !== undefined && serverCheckout !== own.checkout) {
+    return serverCheckout || `a run that left ${serverName} without a checkout label`;
+  }
+  return undefined;
+}
+
+/**
+ * Fails when another checkout's networks run has containers up. Runs can't overlap: they share
+ * container and network names, subnets and host ports, and setup removes what it finds, which
+ * would kill the other run. This checkout's own leftovers are a killed run's, and setup removes
+ * them. A run still building its images has no containers yet, so two runs started together can
+ * still both pass.
+ */
+export function assertNoOtherRun(): void {
+  const projects = JSON.parse(
+    execFileSync("docker", ["compose", "ls", "--all", "--format", "json"], {
+      encoding: "utf8",
+      timeout: 15_000,
+    }) || "[]",
+  );
+  let serverCheckout: string | undefined;
+  try {
+    serverCheckout = execFileSync(
+      "docker",
+      ["inspect", "-f", `{{index .Config.Labels "${checkoutLabel}"}}`, serverName],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 15_000 },
+    ).trim();
+  } catch {
+    // No server container.
+  }
+  const other = otherRun(projects, serverCheckout, { composeFile, checkout: repo });
+  if (other) {
+    throw new Error(
+      `Another pnpm e2e:networks run, from ${other}, has containers up, and runs on one machine can't overlap. Wait for it to end. If it no longer runs, remove its containers with \`docker rm -f ${serverName}; docker compose -p ${projectName} down --remove-orphans\`.`,
+    );
+  }
+}
+
 /** Removes the server container and everything compose made. Synchronous, so it can run on exit. */
 function down(): void {
   execFileSync("docker", ["rm", "-f", serverName], { stdio: "ignore" });
@@ -418,7 +475,8 @@ async function startNetworks(): Promise<RunningService> {
   ];
   const relaysFile = join(dir, "relays.json");
   try {
-    // Left over from a run that was killed.
+    // Left over from a run of this checkout that was killed: global setup's assertNoOtherRun has
+    // refused any other checkout's.
     down();
     await Promise.all([fetchImages(), timed("web build", buildPages(pagesDir))]);
     await timed(
@@ -519,7 +577,7 @@ export const dockerServer: Service = {
         const secretDir = dirname(env.TURN_SECRET_FILE ?? "");
         // --init: as PID 1 the server would ignore any signal it has no handler for, such as
         // SIGTERM before it listens, so tini takes PID 1 and forwards docker's signals to it.
-        // ponytail: one server container at a time; a second run on this machine replaces it.
+        // ponytail: one server container at a time; assertNoOtherRun refuses a second run.
         return [
           "docker",
           "run",
@@ -527,6 +585,8 @@ export const dockerServer: Service = {
           "--init",
           "--name",
           serverName,
+          "--label",
+          `${checkoutLabel}=${repo}`,
           "--network",
           "fidant-e2e-public",
           "--ip",
