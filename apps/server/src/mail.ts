@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import type { EmailMessage } from "@fidant/protocol";
 import { createTransport } from "nodemailer";
 
@@ -106,4 +107,38 @@ export function smtpMailer(config: {
       throw new Error("mail not sent");
     }
   };
+}
+
+/**
+ * The server's mail, from its environment, or undefined when mail is off. Without MAIL_ENABLED=1
+ * (`site.mail`) the mail settings are ignored, so a box that has them sends nothing
+ * (docs/decisions/0030-email-off-until-verified-transfers.md). Emailed links point at
+ * PUBLIC_ORIGIN, never at whatever Host a request names. Throws with a message that echoes
+ * nothing from the configuration.
+ */
+export function mailService(
+  env: Record<string, string | undefined>,
+  site: { mail: boolean; origin: string | undefined },
+): { send: Mailer; origin: string } | undefined {
+  if (!site.mail) {
+    return undefined;
+  }
+  const { MAIL_SMTP_URL: url, MAIL_FROM: from, MAIL_PASSWORD_FILE: passwordFile } = env;
+  if (!url || !from || !site.origin) {
+    throw new Error(
+      "MAIL_ENABLED=1 needs MAIL_SMTP_URL and MAIL_FROM together with PUBLIC_ORIGIN.",
+    );
+  }
+  let password: string | undefined;
+  if (passwordFile) {
+    try {
+      password = readFileSync(passwordFile, "utf8").trim();
+    } catch {
+      throw new Error("Could not read the file named by MAIL_PASSWORD_FILE.");
+    }
+    if (!password) {
+      throw new Error("The file named by MAIL_PASSWORD_FILE must not be empty.");
+    }
+  }
+  return { send: smtpMailer({ url, from, password }), origin: site.origin };
 }

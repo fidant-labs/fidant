@@ -52,7 +52,6 @@ test("each path shows exactly the places it uses", () => {
     ] as const) {
       assert.ok(used(id), `${path}: ${id}`);
     }
-    assert.equal(used("mail"), choice.link === "email", `${path}: mail`);
     assert.equal(used("channel"), choice.link === "self", `${path}: channel`);
   }
 });

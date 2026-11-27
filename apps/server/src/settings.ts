@@ -7,6 +7,7 @@ export type SiteSettings = {
   proxies: BlockList;
   keepAliveMs: number | undefined;
   stun: string[];
+  mail: boolean;
 };
 
 const badOrigin = "PUBLIC_ORIGIN must be an https:// origin with no path, like https://fidant.se.";
@@ -57,6 +58,12 @@ export function siteSettings(env: Record<string, string | undefined>): SiteSetti
   const only = env.SIGNALING_ONLY;
   if (only && only !== "1") {
     throw new Error("SIGNALING_ONLY must be 1 or unset.");
+  }
+
+  // Email is off until verified transfers need it (docs/decisions/0030-email-off-until-verified-transfers.md).
+  const mail = env.MAIL_ENABLED;
+  if (mail && mail !== "1") {
+    throw new Error("MAIL_ENABLED must be 1 or unset.");
   }
 
   const origin = env.PUBLIC_ORIGIN || undefined;
@@ -118,5 +125,6 @@ export function siteSettings(env: Record<string, string | undefined>): SiteSetti
     proxies,
     keepAliveMs: keepAlive === undefined ? undefined : keepAliveMs,
     stun,
+    mail: mail === "1",
   };
 }
