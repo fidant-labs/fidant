@@ -2,7 +2,13 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import { createServer, defineConfig } from "vite";
-import { LANGUAGE_NAMES, localizedPath, MESSAGES, pathLanguage } from "./src/i18n/language.ts";
+import {
+  LANGUAGE_NAMES,
+  localizedPath,
+  MESSAGES,
+  pathLanguage,
+  SWEDISH_PATHS,
+} from "./src/i18n/language.ts";
 import { pageHtml } from "./src/i18n/preview.ts";
 import { signalingUrlFrom } from "./src/lib/signaling-list.ts";
 import { llmsTxt, pageUrl, sitemap } from "./src/site-files.ts";
@@ -60,6 +66,11 @@ export default defineConfig({
           const { NOT_FOUND, PAGES, renderPage } = (await server.ssrLoadModule(
             "/src/prerender.tsx",
           )) as typeof import("./src/prerender.tsx");
+          for (const path of Object.keys(SWEDISH_PATHS)) {
+            if (!PAGES.includes(path)) {
+              throw new Error(`pages: SWEDISH_PATHS names ${path}, which PAGES lacks`);
+            }
+          }
           const sections = [];
           for (const lang of LANGS) {
             const pages = [];

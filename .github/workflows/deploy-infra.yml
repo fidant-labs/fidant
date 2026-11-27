@@ -44,6 +44,8 @@ jobs:
             account: FIDANT_POC_ACCOUNT
           - stack: FidantSignal
             account: FIDANT_POC_ACCOUNT
+          - stack: FidantPages
+            account: FIDANT_POC_ACCOUNT
     steps:
       # Only the protected files below are on disk, so nothing else in the repo can run here.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

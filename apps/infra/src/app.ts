@@ -18,6 +18,7 @@ import {
 } from "./config.ts";
 import { DnsStack } from "./dns.ts";
 import { DnssecStack } from "./dnssec.ts";
+import { PagesStack } from "./pages.ts";
 import { SignalStack } from "./signal.ts";
 
 export function addStacks(app: App, env: Record<string, string | undefined>): void {
@@ -61,6 +62,12 @@ export function addStacks(app: App, env: Record<string, string | undefined>): vo
       env: { account, region: "eu-north-1" },
       certificates: signals.map((signal) => [signalName(signal.id)]),
     });
+    if (zoneNames.every((zone) => certificateIds.pages[zone])) {
+      new PagesStack(app, "FidantPages", {
+        env: { account, region: "us-east-1" },
+        certificateIds: certificateIds.pages,
+      });
+    }
     const signalCertificate = certificateIds.signal.sto;
     if (signalCertificate) {
       new SignalStack(app, "FidantSignal", {

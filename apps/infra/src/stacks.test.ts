@@ -33,6 +33,7 @@ import {
   zoneNames,
 } from "./config.ts";
 import { DnsStack } from "./dns.ts";
+import { edgeFunctionFile, PagesStack } from "./pages.ts";
 import { metricLine, overageLine, statusLines } from "./relay-cap/cap.mts";
 import { SignalStack } from "./signal.ts";
 import { renderRelayUserData, renderUserData } from "./user-data.ts";
@@ -93,7 +94,7 @@ test("the committed config names the hosted zone that FidantDnssec signs for eve
   }
 });
 
-test("the fidant-poc account gets the CI, app box and certificate stacks, and signaling once its certificate is", () => {
+test("the fidant-poc account gets the CI, app box and certificate stacks, and pages and signaling once their certificates are", () => {
   const stacks = stacksFor(pocAccount);
   assert.deepEqual(
     stacks.map((stack) => [stack.stackName, stack.region]),
@@ -102,6 +103,9 @@ test("the fidant-poc account gets the CI, app box and certificate stacks, and si
       ["FidantApp", "eu-north-1"],
       ["FidantPagesCerts", "us-east-1"],
       ["FidantSignalCerts", "eu-north-1"],
+      ...(zoneNames.every((zone) => certificateIds.pages[zone])
+        ? [["FidantPages", "us-east-1"]]
+        : []),
       ...(certificateIds.signal.sto ? [["FidantSignal", "eu-north-1"]] : []),
     ],
   );
@@ -619,6 +623,342 @@ test("the certificate stacks request DNS-validated certificates, with no zone, o
       })),
     );
   }
+});
+
+const pageCertificates = Object.fromEntries(
+  zoneNames.map((zone, index) => [zone, `${index}a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d`]),
+);
+
+function pagesApp(): { stack: Stack; pages: Template } {
+  const stack = new PagesStack(new App(), "FidantPages", {
+    env: { account: pocAccount, region: "us-east-1" },
+    certificateIds: pageCertificates,
+  });
+  return { stack, pages: Template.fromStack(stack) };
+}
+
+function idOf(template: Template, type: string, pattern: RegExp): string {
+  const ids = Object.keys(template.findResources(type)).filter((id) => pattern.test(id));
+  assert.equal(ids.length, 1, `${type} ${pattern}`);
+  return ids[0] ?? "";
+}
+
+function distributionArn(id: string) {
+  return {
+    "Fn::Join": [
+      "",
+      ["arn:", { Ref: "AWS::Partition" }, `:cloudfront::${pocAccount}:distribution/`, { Ref: id }],
+    ],
+  };
+}
+
+test("FidantPages joins fidant-poc in us-east-1 only once all three certificates are committed", () => {
+  const original = certificateIds.pages;
+  try {
+    for (const count of [0, 2, 3]) {
+      certificateIds.pages = Object.fromEntries(
+        zoneNames.slice(0, count).map((zone) => [zone, pageCertificates[zone] ?? ""]),
+      );
+      const joined = stacksFor(pocAccount).some((child) => child.stackName === "FidantPages");
+      assert.equal(joined, count === zoneNames.length, `${count} certificates`);
+    }
+  } finally {
+    certificateIds.pages = original;
+  }
+  const stack = stacksFor(pocAccount).find((child) => child.stackName === "FidantPages");
+  if (!zoneNames.every((zone) => certificateIds.pages[zone])) {
+    assert.equal(stack, undefined);
+    return;
+  }
+  assert.equal(stack?.region, "us-east-1");
+  for (const zone of zoneNames) {
+    assert.match(
+      certificateIds.pages[zone] ?? "",
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    );
+  }
+});
+
+test("FidantPages holds only the bucket, its policy and per zone a function, a web ACL, a distribution and a plan", () => {
+  const { stack, pages } = pagesApp();
+  const types = Object.values(pages.toJSON().Resources as Record<string, { Type: string }>)
+    .map((resource) => resource.Type)
+    .sort();
+  assert.deepEqual(types, [
+    "AWS::CloudFront::Distribution",
+    "AWS::CloudFront::Distribution",
+    "AWS::CloudFront::Distribution",
+    "AWS::CloudFront::Function",
+    "AWS::CloudFront::Function",
+    "AWS::CloudFront::Function",
+    "AWS::CloudFront::OriginAccessControl",
+    "AWS::PricingPlanManager::Subscription",
+    "AWS::PricingPlanManager::Subscription",
+    "AWS::PricingPlanManager::Subscription",
+    "AWS::S3::Bucket",
+    "AWS::S3::BucketPolicy",
+    "AWS::WAFv2::WebACL",
+    "AWS::WAFv2::WebACL",
+    "AWS::WAFv2::WebACL",
+  ]);
+  assert.deepEqual(stack.dependencies, []);
+  assert.doesNotMatch(JSON.stringify(pages.toJSON()), /Fn::ImportValue/);
+});
+
+test("the pages bucket is private, versioned, encrypted, kept, logs nothing and is the one the release role writes", () => {
+  const { pages } = pagesApp();
+  const bucket = onlyOf(pages, "AWS::S3::Bucket");
+  assert.deepEqual(bucket.properties, {
+    BucketEncryption: {
+      ServerSideEncryptionConfiguration: [
+        { ServerSideEncryptionByDefault: { SSEAlgorithm: "AES256" } },
+      ],
+    },
+    BucketName: `fidant-pages-${pocAccount}`,
+    PublicAccessBlockConfiguration: {
+      BlockPublicAcls: true,
+      BlockPublicPolicy: true,
+      IgnorePublicAcls: true,
+      RestrictPublicBuckets: true,
+    },
+    VersioningConfiguration: { Status: "Enabled" },
+  });
+  pages.hasResource("AWS::S3::Bucket", {
+    DeletionPolicy: "RetainExceptOnCreate",
+    UpdateReplacePolicy: "Retain",
+  });
+  const ci = ciTemplate(pocAccount);
+  const writes = roleStatements(ci, roleNamed(ci, "fidant-release")[0]).filter(
+    (statement: { Action: string | string[] }) =>
+      [statement.Action].flat().some((a) => a.startsWith("s3:")),
+  );
+  assert.deepEqual(
+    writes.map((statement: { Action: string; Resource: string }) => [
+      statement.Action,
+      statement.Resource,
+    ]),
+    [["s3:PutObject", `arn:aws:s3:::${bucket.properties.BucketName}/*`]],
+  );
+});
+
+test("only the fidant.se distribution reads the bucket, over TLS, and the bucket policy grants nothing else", () => {
+  const { pages } = pagesApp();
+  const bucket = { "Fn::GetAtt": [onlyOf(pages, "AWS::S3::Bucket").id, "Arn"] };
+  const objects = { "Fn::Join": ["", [bucket, "/*"]] };
+  const main = idOf(pages, "AWS::CloudFront::Distribution", /^FidantSe/);
+  assert.deepEqual(onlyOf(pages, "AWS::S3::BucketPolicy").properties.PolicyDocument.Statement, [
+    {
+      Action: "s3:*",
+      Condition: { Bool: { "aws:SecureTransport": "false" } },
+      Effect: "Deny",
+      Principal: { AWS: "*" },
+      Resource: [bucket, objects],
+    },
+    {
+      Action: ["s3:GetObject", "s3:ListBucket"],
+      Condition: {
+        StringEquals: {
+          "AWS:SourceArn": {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                { Ref: "AWS::Partition" },
+                ":cloudfront::",
+                { Ref: "AWS::AccountId" },
+                ":distribution/",
+                { Ref: main },
+              ],
+            ],
+          },
+        },
+      },
+      Effect: "Allow",
+      Principal: { Service: "cloudfront.amazonaws.com" },
+      Resource: [objects, bucket],
+    },
+  ]);
+});
+
+test("each zone and its www get a distribution with their own certificate, function and web ACL, and no IPv6, logs or error pages", () => {
+  const { pages } = pagesApp();
+  for (const zone of zoneNames) {
+    const name =
+      zone === "fidant.se" ? "FidantSe" : zone === "fidant.eu" ? "FidantEu" : "FidantOrg";
+    const id = idOf(pages, "AWS::CloudFront::Distribution", new RegExp(`^${name}Distribution`));
+    const config = pages.toJSON().Resources[id].Properties.DistributionConfig;
+    const edge = {
+      "Fn::GetAtt": [
+        idOf(pages, "AWS::CloudFront::Function", new RegExp(`^${name}Function`)),
+        "FunctionARN",
+      ],
+    };
+    const site = zone === "fidant.se";
+    assert.deepEqual(
+      {
+        ...config,
+        CacheBehaviors: undefined,
+        DefaultCacheBehavior: { ...config.DefaultCacheBehavior, TargetOriginId: undefined },
+        Origins: undefined,
+      },
+      {
+        Aliases: [zone, `www.${zone}`],
+        CacheBehaviors: undefined,
+        DefaultCacheBehavior: {
+          AllowedMethods: ["GET", "HEAD"],
+          CachePolicyId: "658327ea-f89d-4fab-a63d-7e88639e58f6",
+          Compress: true,
+          FunctionAssociations: [
+            { EventType: "viewer-request", FunctionARN: edge },
+            ...(site ? [{ EventType: "viewer-response", FunctionARN: edge }] : []),
+          ],
+          TargetOriginId: undefined,
+          ViewerProtocolPolicy: "redirect-to-https",
+        },
+        ...(site && { DefaultRootObject: "pages/index.html" }),
+        Enabled: true,
+        HttpVersion: "http2",
+        IPV6Enabled: false,
+        Origins: undefined,
+        ViewerCertificate: {
+          AcmCertificateArn: {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                { Ref: "AWS::Partition" },
+                `:acm:us-east-1:${pocAccount}:certificate/${pageCertificates[zone]}`,
+              ],
+            ],
+          },
+          MinimumProtocolVersion: "TLSv1.2_2021",
+          SslSupportMethod: "sni-only",
+        },
+        WebACLId: { "Fn::GetAtt": [`${name}Firewall`, "Arn"] },
+      },
+      zone,
+    );
+    const [origin] = config.Origins;
+    if (site) {
+      assert.deepEqual(origin.DomainName, {
+        "Fn::GetAtt": [onlyOf(pages, "AWS::S3::Bucket").id, "RegionalDomainName"],
+      });
+      assert.deepEqual(origin.OriginAccessControlId, {
+        "Fn::GetAtt": [onlyOf(pages, "AWS::CloudFront::OriginAccessControl").id, "Id"],
+      });
+    } else {
+      assert.deepEqual(config.Origins, [
+        {
+          CustomOriginConfig: {
+            OriginProtocolPolicy: "https-only",
+            OriginSSLProtocols: ["TLSv1.2"],
+          },
+          DomainName: "fidant.se",
+          Id: config.DefaultCacheBehavior.TargetOriginId,
+        },
+      ]);
+    }
+  }
+});
+
+test("fidant.se passes /relay-secret/* uncached to the signaling name over HTTPS, GET and HEAD only, with the page function on viewer-request only", () => {
+  const { pages } = pagesApp();
+  const id = idOf(pages, "AWS::CloudFront::Distribution", /^FidantSeDistribution/);
+  const config = pages.toJSON().Resources[id].Properties.DistributionConfig;
+  const [behavior, ...others] = config.CacheBehaviors;
+  assert.deepEqual(others, []);
+  assert.deepEqual(behavior, {
+    AllowedMethods: ["GET", "HEAD"],
+    CachePolicyId: "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
+    Compress: true,
+    FunctionAssociations: [
+      {
+        EventType: "viewer-request",
+        FunctionARN: config.DefaultCacheBehavior.FunctionAssociations[0].FunctionARN,
+      },
+    ],
+    PathPattern: "/relay-secret/*",
+    TargetOriginId: behavior.TargetOriginId,
+    ViewerProtocolPolicy: "redirect-to-https",
+  });
+  assert.deepEqual(
+    config.Origins.find((origin: { Id: string }) => origin.Id === behavior.TargetOriginId),
+    {
+      CustomOriginConfig: { OriginProtocolPolicy: "https-only", OriginSSLProtocols: ["TLSv1.2"] },
+      DomainName: "sto.signal.fidant.se",
+      Id: behavior.TargetOriginId,
+    },
+  );
+  assert.equal(config.Origins.length, 2);
+});
+
+test("every distribution's function runs the edge file on cloudfront-js-2.0 and goes live at once", () => {
+  const { pages } = pagesApp();
+  const functions = Object.values(pages.findResources("AWS::CloudFront::Function"));
+  assert.equal(functions.length, 3);
+  for (const edge of functions) {
+    assert.equal(edge.Properties.FunctionCode, readFileSync(edgeFunctionFile, "utf8"));
+    assert.equal(edge.Properties.FunctionConfig.Runtime, "cloudfront-js-2.0");
+    assert.equal(edge.Properties.AutoPublish, true);
+    assert.equal(edge.Properties.FunctionConfig.KeyValueStoreAssociations, undefined);
+  }
+});
+
+test("every web ACL is for CloudFront, allows everything, has no rules, and samples and measures nothing", () => {
+  const { pages } = pagesApp();
+  for (const name of ["FidantSe", "FidantEu", "FidantOrg"]) {
+    assert.deepEqual(pages.toJSON().Resources[`${name}Firewall`], {
+      Type: "AWS::WAFv2::WebACL",
+      Properties: {
+        DefaultAction: { Allow: {} },
+        Rules: [],
+        Scope: "CLOUDFRONT",
+        VisibilityConfig: {
+          CloudWatchMetricsEnabled: false,
+          MetricName: `${name}Firewall`,
+          SampledRequestsEnabled: false,
+        },
+      },
+    });
+  }
+});
+
+test("each distribution and its own web ACL are on a free flat-rate plan of their own", () => {
+  const { pages } = pagesApp();
+  for (const name of ["FidantSe", "FidantEu", "FidantOrg"]) {
+    const distribution = idOf(
+      pages,
+      "AWS::CloudFront::Distribution",
+      new RegExp(`^${name}Distribution`),
+    );
+    assert.deepEqual(pages.toJSON().Resources[`${name}Plan`], {
+      Type: "AWS::PricingPlanManager::Subscription",
+      Properties: {
+        PlanFamily: "CloudFront",
+        PlanTier: "FREE",
+        ResourceArns: [distributionArn(distribution), { "Fn::GetAtt": [`${name}Firewall`, "Arn"] }],
+        UsageLevel: "DEFAULT",
+      },
+    });
+  }
+});
+
+test("FidantPages outputs only the three distributions' names", () => {
+  const { pages } = pagesApp();
+  assert.deepEqual(
+    Object.entries(pages.toJSON().Outputs),
+    ["FidantSe", "FidantEu", "FidantOrg"].map((name) => [
+      `${name}DistributionName`,
+      {
+        Value: {
+          "Fn::GetAtt": [
+            idOf(pages, "AWS::CloudFront::Distribution", new RegExp(`^${name}Distribution`)),
+            "DomainName",
+          ],
+        },
+      },
+    ]),
+  );
 });
 
 function ciTemplate(currentAccount: string): Template {
