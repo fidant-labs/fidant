@@ -1231,6 +1231,7 @@ export function SendPage({
       )}
 
       <ServerPanel
+        visible={shown}
         details={
           file && !text
             ? [

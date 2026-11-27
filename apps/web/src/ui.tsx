@@ -398,7 +398,7 @@ export function Footer({ theme, onTheme }: { theme: Theme; onTheme(next: Theme):
   );
 }
 
-/** Page content under the fixed header. */
+/** Page content. The sticky header lies over its top padding, so the content starts under the header. */
 export function Page({
   children,
   tall,
@@ -539,7 +539,10 @@ export function ServerPanel({
   emailed,
   kind,
   details,
+  visible = true,
 }: {
+  /** False while the page is hidden. A hidden page closes the drawer, so a modal dialog never stays open in it. */
+  visible?: boolean;
   /** The send page's file facts. When given, even empty, a "Technical details" button opens them and the panel in a drawer. */
   details?: ReadonlyArray<readonly [string, ComponentChildren]>;
   kind: Kind;
@@ -556,6 +559,11 @@ export function ServerPanel({
   const headingId = useId();
   const titleId = useId();
   const drawer = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (!visible) {
+      drawer.current?.close();
+    }
+  }, [visible]);
   const rows: ReadonlyArray<readonly [string, string]> = [
     [t.server.seesLabel, sees],
     [t.server.holdsLabel, holds],
