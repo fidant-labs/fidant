@@ -9,7 +9,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  # A pull request's new push cancels its older run. Each push to main gets its own group,
+  # so no run cancels or replaces it: each scans only its own range for secrets.
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: true
 
 jobs:
