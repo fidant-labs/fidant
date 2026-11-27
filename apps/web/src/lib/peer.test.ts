@@ -1272,6 +1272,25 @@ test("a recipient that took the fallback's restart-offer still answers a recover
   assert.deepEqual(again.closes, []);
 });
 
+test("a second rejoined before the answer makes no second offer, and the answer is applied", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const sender = await openPeer("s");
+  await rejoin(sender);
+  await rejoin(sender);
+  // One restart, one offer: a second would change the credentials the answer was made for.
+  assert.equal(sender.pc.restarts, 1);
+  assert.deepEqual(await kinds(sender, 2), ["offer", "restart-offer"]);
+  const answer = sdpWith(RECIPIENT_FP, "r2");
+  await sender.relay({ kind: "restart-answer", sdp: answer });
+  assert.equal(sender.pc.signalingState, "stable");
+  assert.equal(sender.pc.remoteDescription?.sdp, answer);
+  // The next drop gets its own offer.
+  setState(sender.pc, "connected");
+  await rejoin(sender);
+  assert.equal(sender.pc.restarts, 2);
+  assert.deepEqual(sender.closes, []);
+});
+
 test("both sides close with connection-failed 30 s after a rejoined that never connects", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   for (const side of ["s", "r"] as const) {

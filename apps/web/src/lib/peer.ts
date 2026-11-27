@@ -30,7 +30,7 @@
 // most once, and ignored once ICE is connected or the channel is open. From its
 // first onStalled the recipient answers every restart-offer, and from its first
 // rejoined the sender applies a restart-answer whenever an offer of its own
-// waits for one. Both still refuse another fingerprint. A recovery uses the
+// waits for one, and while a recovery's offer waits it makes no second one. Both still refuse another fingerprint. A recovery uses the
 // TURN URLs of the new servers only if this connection had added the relay;
 // otherwise only their STUN URLs. The first rejoined of a drop starts a
 // deadline of RECOVERY_TIMEOUT_MS, which "connected" ends. While it runs, the
@@ -435,6 +435,8 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
   let relayAdded = false;
   /** Recipient: it called onStalled. Sender: it got a rejoined. The once-only restart rules end here. */
   let recovers = false;
+  /** Sender: a recovery's restart-offer waits for its answer. A later rejoined must not make a second offer: the answer would meet fresh credentials. */
+  let recoveryOffered = false;
   /** Runs from the first rejoined of a drop until the connection is connected. */
   let recoveryTimer: ReturnType<typeof setTimeout> | undefined;
   const pendingCandidates: Array<SignalCandidate | null> = [];
@@ -701,6 +703,7 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
           throw new PeerError("bad-signal", "unexpected restart-answer");
         }
         if (recovers) {
+          recoveryOffered = false;
           if (connection().signalingState !== "have-local-offer") {
             return;
           }
@@ -783,7 +786,10 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
       });
   }
 
-  /** In order with the relayed signals, like fallBackToRelay. */
+  /**
+   * In order with the relayed signals, like fallBackToRelay. The sender makes one offer per
+   * recovery step: a rejoined while its offer waits for the answer only updates the servers.
+   */
   function rejoined(iceServers: RTCIceServer[]): void {
     incoming = incoming
       .then(async () => {
@@ -806,7 +812,8 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
         } catch {
           // The restart runs with the servers the connection has.
         }
-        if (side === "r") {
+        if (side === "r" || recoveryOffered) {
+          // An offer already waits; a lost one or its answer is left to the deadline.
           return;
         }
         try {
@@ -816,6 +823,7 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
           return;
         }
         // An offer lost here is left to the deadline.
+        recoveryOffered = true;
         await sendRestartOffer(false);
       })
       .catch((error: unknown) => {
@@ -852,6 +860,7 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
       } else if (state === "connected") {
         clearTimeout(recoveryTimer);
         recoveryTimer = undefined;
+        recoveryOffered = false;
         if (opened && options.onPath) {
           // ponytail: a restart that never leaves "connected" reports no new path.
           void readPath().then((path) => {
