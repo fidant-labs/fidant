@@ -17,7 +17,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    # By its full path at main, never ./: fidant-release trusts only this file on main.
+    # By its full path at main, never ./: fidant-release trusts only release-jobs.yml on main.
     uses: fidant-labs/fidant/.github/workflows/release-jobs.yml@main
     secrets:
       FIDANT_POC_ACCOUNT: ${{ secrets.FIDANT_POC_ACCOUNT }}

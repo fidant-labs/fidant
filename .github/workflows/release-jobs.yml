@@ -8,6 +8,7 @@ on:
 
 permissions: {}
 
+# Runs as main's copy on the pushed commit's tree, which can be older (0023).
 jobs:
   build:
     runs-on: ubuntu-latest

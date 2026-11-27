@@ -238,7 +238,6 @@ test("the release workflow names what the infra names", () => {
     `repo=${imageRepository}\n`,
     `--cluster ${signalCluster} --services ${signalService}`,
     `--cluster ${signalCluster} --service ${signalService}`,
-    `:role/${releaseRoleName}\n`,
     `role-to-assume: arn:aws:iam::\${{ secrets.FIDANT_POC_ACCOUNT }}:role/${releaseRoleName}\n`,
     `- name: Check the account secret arrived\n        env:\n          ACCOUNT: \${{ secrets.FIDANT_POC_ACCOUNT }}\n`,
     `bucket=s3://${pagesBucket("$ACCOUNT")}\n`,
