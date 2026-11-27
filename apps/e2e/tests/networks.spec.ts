@@ -838,13 +838,15 @@ test.describe("the relay box", () => {
       }
     });
 
-    test("applies a hand-out after a crash empties or removes previous-since", async () => {
+    test("applies a hand-out when previous-since is empty, missing, garbage, zero-led, in the future or oversized", async () => {
       const dir = "/var/lib/fidant-relay";
       const stored = () =>
         inRelay("sqlite3", `${dir}/turndb`, "SELECT value FROM turn_secret ORDER BY value");
       try {
         const future = "echo $(( $(date +%s) + 100000 )) >";
-        for (const lose of [": >", "rm", "echo x >", "echo 08 >", future]) {
+        // Oversized: 11 digits, and 20, which is past what the shell's arithmetic can read.
+        const oversized = ["echo 99999999999 >", "echo 99999999999999999999 >"];
+        for (const lose of [": >", "rm", "echo x >", "echo 08 >", future, ...oversized]) {
           // A crash in a rotation to `rotated`, after current moved to previous.
           await inRelay(
             "sh",
@@ -853,9 +855,11 @@ test.describe("the relay box", () => {
           );
           await applyRelaySecret(rotated);
           expect(await stored(), lose).toBe(`${[secret, rotated].sort().join("\n")}\n`);
-          const since = await inRelay("cat", `${dir}/previous-since`);
-          expect(since, lose).toMatch(/^\d{10}\n$/);
-          expect(Number(since), lose).toBeLessThanOrEqual(Date.now() / 1000 + 5);
+          // The relay's own clock, read after the script wrote the file, so no allowance.
+          const times = await inRelay("sh", "-c", `cat ${dir}/previous-since; date +%s`);
+          expect(times, lose).toMatch(/^\d{10}\n\d{10}\n$/);
+          const [since, now] = times.split("\n").map(Number);
+          expect(since, lose).toBeLessThanOrEqual(now ?? 0);
           await applyRelaySecret(secret);
         }
       } finally {
@@ -1066,6 +1070,10 @@ test.describe("the relay box", () => {
         await resolveTo("198.51.100.99");
         expect(await pid()).toBe(running);
         await resolveTo();
+        expect(await line()).toBe(elsewhere);
+        expect(await pid()).toBe(running);
+        // A loopback answer, as from an installer's `127.0.1.1 <hostname>` line, counts as none.
+        await resolveTo("127.0.1.1");
         expect(await line()).toBe(elsewhere);
         expect(await pid()).toBe(running);
 
