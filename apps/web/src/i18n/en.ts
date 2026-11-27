@@ -1424,7 +1424,7 @@ export const en = {
             ["norelay", "If your page sees a relayed connection anyway: that it ended it."],
             [
               "",
-              "If the route between the browsers drops during the transfer and the recipient's page asks our server again: one more line that a recipient joined, or that it was refused as busy if the link had 10 connection attempts in that half minute, or, if the sender had just given up, one that it joined and one that the sender refused it, and lines for the new setup messages. Together they show that this link's connection dropped, and when. They don't show why, on whose side or whether it came back.",
+              "If the route between the browsers drops during the transfer and the recipient's page asks our server again: one more line that a recipient joined, or that it was refused as busy if the link had 10 connection attempts in that half minute, or, if the sender had just given up, one that it joined and one that the sender refused it, or, on an emailed link, one that it was refused because its token didn't fit, and lines for the new setup messages. Together they show that this link's connection dropped, and when. They don't show why, on whose side or whether it came back.",
             ],
           ],
         },
@@ -1608,9 +1608,9 @@ export const en = {
         ],
         [
           "The file or secret travels",
-          "Nothing of it. Your page reports the route: direct, STUN, relay or failed. If the route drops and the recipient's page asks again, that it asked, which shows that the connection dropped.",
+          "Nothing of it. Your page reports the route once, as it first opened: direct, STUN, relay or failed. If the route drops and the recipient's page asks again, that it asked, which shows that the connection dropped.",
           "Nothing.",
-          "The route. If the recipient's page asked again after a dropped route: that a recipient joined or was refused as busy, and the size of each new setup message.",
+          "The route. If the recipient's page asked again after a dropped route: that a recipient joined or was refused as busy, or, on an emailed link, was refused because its token didn't fit, or, if the sender had just given up, joined and was then refused by the sender, and the size of each new setup message.",
           "On the relay route, the encrypted packets, which it forwards and doesn't store. Both IP addresses whenever the browsers have added the relay. If the route drops, each browser can ask for its public address again, and browsers that had added the relay may reserve relay addresses again.",
         ],
         [
