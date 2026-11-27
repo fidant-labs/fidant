@@ -1,4 +1,4 @@
-# 0030: Starting a secret from Slack or Mattermost
+# 0032: Starting a secret from Slack or Mattermost
 
 - Status: Proposed
 - Date: 2026-11-27
@@ -157,7 +157,7 @@ Option 1 in each of the first four tables. For the install, option 1 if a live t
 
 - Slack posts whatever is typed after `/fidant` or `/secret`. Someone may type the secret itself there by mistake, or paste a Fidant link, key included. Either then reaches our CDN, or the box's Caddy and `apps/server` until the cutover, inside Slack's request. No code of ours reads it, logs it or answers with it.
 - This is a third exception to the first two invariants in `AGENTS.md`: to the one on content and keys, beside the BankID receipt text and an emailed link, and to the one on where keys live, beside the server-held key half and an emailed link.
-- The pull request that ships the endpoint (FID-335) names the exception in both invariants, adds 0030 to the records that `AGENTS.md` says amend 0001, and qualifies every absolute the exception makes untrue, as `AGENTS.md` requires.
+- The pull request that ships the endpoint (FID-335) names the exception in both invariants, adds 0032 to the records that `AGENTS.md` says amend 0001, and qualifies every absolute the exception makes untrue, as `AGENTS.md` requires.
 - 0001 is amended, not superseded, and stays Accepted. Read it with these replacements from that pull request's merge:
 
 | Where 0001 says                                                                                                                              | Read                                                                                                                                                                                                                                                                                                                                                                                                                      |
@@ -191,7 +191,7 @@ Option 1 in each of the first four tables. For the install, option 1 if a live t
   The typed text may hold a secret by mistake (see "Text typed after a command"). The user's click then opens the send page like any other visit.
 - **What we get from Mattermost.** The plugin sends us nothing. Until its issue's test settles it, the customer's server may fetch a preview of the reply's link, which would show us that server's address and the time of each use (see "Its link's preview"). The user's click opens the send page like any other visit. The customer's Mattermost server keeps what it keeps about commands and posts, and fetches link previews unless its admins turn them off.
 - **The text that changes.**
-  - `AGENTS.md` names the third exception in its first two invariants and lists 0030 among the records that amend 0001 (FID-335).
+  - `AGENTS.md` names the third exception in its first two invariants and lists 0032 among the records that amend 0001 (FID-335).
   - `docs/how-fidant-works.md` gains a section on starting from Slack or Mattermost, and its paragraph in "The link" on where the router reads the part after `#` gains the send page.
   - "Where traces are kept" gains rows for Slack's servers, for our CDN (and the box until the cutover) receiving a command, and for the customer's Mattermost server.
   - `/how/traces`, `/privacy` and the `technical` text in `apps/web/src/i18n/en.ts` and `sv.ts` follow, each in the pull request that ships the part it describes.
