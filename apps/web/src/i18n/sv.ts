@@ -1663,7 +1663,7 @@ export const sv: Messages = {
       ],
     ],
     keepHeading: "Vad vi sparar",
-    keep: "Vi har inga konton, ingen databas över personer eller överföringar, inga cookies och ingen spårning. När avsändarens sida har stängts sparas ingenting om dig, inom högst två minuter, förutom loggraderna nedan, en relälogg medan vi åtgärdar ett fel eller stoppar missbruk, våra månatliga trafiksummor, antalet mejl och koder ovan, som finns kvar en timme, och det som vår mejltjänst sparar enligt sina egna regler. Summorna räknar ihop all trafik in och ut genom vår server och vårt relä, och vi sparar dem i upp till 15 månader. De pekar inte ut någon överföring. Men vi sparar en ny summa var 5:e minut, så på ett lugnt relä kan skillnaden mellan två summor visa en överförings storlek och när den skedde.",
+    keep: "Vi har inga konton, ingen databas över personer eller överföringar, inga cookies och ingen spårning. När avsändarens sida har stängts sparas ingenting om dig, inom högst två minuter, förutom loggraderna nedan, en relälogg medan vi åtgärdar ett fel eller stoppar missbruk, våra månatliga trafiksummor, antalet mejl och koder ovan, som finns kvar en timme, och det som vår mejltjänst sparar enligt sina egna regler. Summorna räknar ihop all trafik in och ut genom vår server och vårt relä, och vi sparar dem i upp till 15 månader. De pekar inte ut någon överföring. Men vi sparar en ny summa var 5:e minut, så på ett lugnt relä kan skillnaden mellan två summor visa ungefär hur stor en överföring var och när den skedde.",
     logFields,
     logRetention: "Loggraderna raderas efter 30 dagar.",
     relayLog:

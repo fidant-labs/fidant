@@ -1700,7 +1700,7 @@ export const en = {
       ],
     ] as ReadonlyArray<readonly [string, string]>,
     keepHeading: "What we keep",
-    keep: "We have no accounts, no database of people or transfers, no cookies and no tracking. Once the sender's page is closed, nothing about you is kept, within 2 minutes at most, apart from the log lines below, a relay log while we fix a fault or stop abuse, our monthly traffic totals, the email and code counts above, which last an hour, and whatever our mail service keeps under its own policy. The totals count all traffic in and out of our server and relay, and we keep them for up to 15 months. They name no transfer. But we save a new total every 5 minutes, so on a quiet relay the difference between two totals can show one transfer's size and when it happened.",
+    keep: "We have no accounts, no database of people or transfers, no cookies and no tracking. Once the sender's page is closed, nothing about you is kept, within 2 minutes at most, apart from the log lines below, a relay log while we fix a fault or stop abuse, our monthly traffic totals, the email and code counts above, which last an hour, and whatever our mail service keeps under its own policy. The totals count all traffic in and out of our server and relay, and we keep them for up to 15 months. They name no transfer. But we save a new total every 5 minutes, so on a quiet relay the difference between two totals can show roughly how big one transfer was and when it happened.",
     logFields,
     logRetention: "Log lines are deleted after 30 days.",
     relayLog:
