@@ -13,7 +13,7 @@ COPY apps/server/relays.json apps/server/entrypoint.sh apps/server/
 COPY packages/protocol/src packages/protocol/src
 
 FROM node:26.13.1-alpine3.24@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5
-RUN apk add --no-cache openssl && install -d -o node -g node -m 700 /run/sigill
+RUN apk add --no-cache openssl && install -d -o node -g node -m 700 /run/fidant
 COPY --from=build /app /app
 WORKDIR /app
 USER node
