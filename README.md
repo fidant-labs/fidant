@@ -1,4 +1,4 @@
-# Sigill
+# Fidant
 
 Secure file transfer. Files are encrypted in the sender's browser, and no infrastructure (our servers, hosts, relays, email) can read file content. Verified transfers add BankID identity, a signed receipt, and a tamper-evident audit log.
 
@@ -70,6 +70,6 @@ Server stdout is one JSON object per line, with allowlisted fields only: the eve
 - `pnpm check`: lint, typecheck, unit tests and build. Run it before every commit.
 - `pnpm format`: fixes formatting and safe lint issues.
 - `pnpm build`: builds the web client into `apps/web/dist`.
-- `pnpm e2e`: builds the web client and runs the end-to-end tests, including the first demo, in headless Chromium against the real server, with leak checks. Once per machine, install the browser with `pnpm --filter @sigill/e2e exec playwright install chromium`. `pnpm check` does not run it.
+- `pnpm e2e`: builds the web client and runs the end-to-end tests, including the first demo, in headless Chromium against the real server, with leak checks. Once per machine, install the browser with `pnpm --filter @fidant/e2e exec playwright install chromium`. `pnpm check` does not run it.
 
 See [AGENTS.md](AGENTS.md) for the layout and conventions.

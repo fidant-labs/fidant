@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { type AddressInfo, createServer } from "node:net";
 import { test } from "node:test";
-import { parseClientMessage } from "@sigill/protocol";
+import { parseClientMessage } from "@fidant/protocol";
 import { compose, isLoopback, type Mail, smtpMailer } from "./mail.ts";
 
 const url =

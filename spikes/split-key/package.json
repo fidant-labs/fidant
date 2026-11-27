@@ -1,5 +1,5 @@
 {
-  "name": "@sigill/spike-split-key",
+  "name": "@fidant/spike-split-key",
   "private": true,
   "type": "module",
   "scripts": {

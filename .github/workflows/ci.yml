@@ -74,16 +74,16 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - id: pw
-        run: echo "version=$(pnpm --filter @sigill/e2e exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(pnpm --filter @fidant/e2e exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
       - id: pw-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
       - if: steps.pw-cache.outputs.cache-hit != 'true'
-        run: pnpm --filter @sigill/e2e exec playwright install --with-deps chromium
+        run: pnpm --filter @fidant/e2e exec playwright install --with-deps chromium
       - if: steps.pw-cache.outputs.cache-hit == 'true'
-        run: pnpm --filter @sigill/e2e exec playwright install-deps chromium
+        run: pnpm --filter @fidant/e2e exec playwright install-deps chromium
       # The stack runs its own coturn on a free port, so the system service the package starts does not get in the way.
       - run: sudo apt-get update && sudo apt-get install -y coturn
       # Mailpit catches the server's mail. It is not in apt: a pinned release, checked against its hash.

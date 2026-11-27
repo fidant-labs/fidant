@@ -28,7 +28,7 @@ async function startMailpit(): Promise<RunningService> {
     return { name: "mailpit", env: {}, stop: async () => {} };
   }
 
-  const dir = await mkdtemp(join(tmpdir(), "sigill-e2e-mailpit-"));
+  const dir = await mkdtemp(join(tmpdir(), "fidant-e2e-mailpit-"));
   const smtpPort = await freePort();
   let apiPort = await freePort();
   while (apiPort === smtpPort) {

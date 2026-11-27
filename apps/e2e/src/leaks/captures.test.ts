@@ -82,10 +82,10 @@ test("captures text frames as they are and binary frames decoded", () => {
 });
 
 test("captures a console message's page URL and text", () => {
-  const records: ObservationRecord[] = [{ type: "console", time, url, text: "sigill: key=SECRET" }];
+  const records: ObservationRecord[] = [{ type: "console", time, url, text: "fidant: key=SECRET" }];
   assert.deepEqual(shown(recordCaptures(file, records)), [
     `${file}#1 console.url = ${url}`,
-    `${file}#1 console.text = sigill: key=SECRET`,
+    `${file}#1 console.text = fidant: key=SECRET`,
   ]);
 });
 

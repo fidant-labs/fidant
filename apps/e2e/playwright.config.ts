@@ -17,16 +17,16 @@ import {
 } from "./src/stack/networks.ts";
 
 // `pnpm e2e:networks` runs only tests/networks.spec.ts, in browsers inside Docker networks.
-const networks = Boolean(process.env.SIGILL_E2E_NETWORKS);
-// `SIGILL_E2E_BROWSER=firefox pnpm e2e` picks the engine; unset, Chromium.
-const browser = process.env.SIGILL_E2E_BROWSER || "chromium";
+const networks = Boolean(process.env.FIDANT_E2E_NETWORKS);
+// `FIDANT_E2E_BROWSER=firefox pnpm e2e` picks the engine; unset, Chromium.
+const browser = process.env.FIDANT_E2E_BROWSER || "chromium";
 if (!["chromium", "firefox", "webkit"].includes(browser)) {
   throw new Error(
-    `SIGILL_E2E_BROWSER takes one engine, chromium, firefox or webkit, not "${browser}". Run one engine per invocation: the server respawned after the restart tests keeps its 60 s warm-up (STARTING_MS), which the next engine's early tests would hit.`,
+    `FIDANT_E2E_BROWSER takes one engine, chromium, firefox or webkit, not "${browser}". Run one engine per invocation: the server respawned after the restart tests keeps its 60 s warm-up (STARTING_MS), which the next engine's early tests would hit.`,
   );
 }
 if (networks && browser !== "chromium") {
-  throw new Error("`pnpm e2e:networks` runs in Chromium only. Unset SIGILL_E2E_BROWSER.");
+  throw new Error("`pnpm e2e:networks` runs in Chromium only. Unset FIDANT_E2E_BROWSER.");
 }
 const picked = (projects: Project<PlaywrightTestOptions, PlaywrightWorkerOptions>[]) =>
   projects.filter(({ name }) => name === browser);
@@ -45,7 +45,7 @@ export default defineConfig({
   reporter: [["list"], ["html", { open: "never" }]],
   use: {
     // Set by global setup once the stack is running. Workers start later and inherit it.
-    baseURL: process.env.SIGILL_E2E_BASE_URL,
+    baseURL: process.env.FIDANT_E2E_BASE_URL,
     // A missing element fails within seconds instead of at the test timeout.
     actionTimeout: 5_000,
     navigationTimeout: 15_000,
@@ -76,8 +76,8 @@ export default defineConfig({
               : "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1",
             // TURN over TLS ignores ignoreHTTPSErrors, so trust coturn's per-run certificate by its
             // public key. Set by global setup; workers inherit it.
-            ...(networks && process.env.SIGILL_E2E_TURN_SPKI
-              ? [`--ignore-certificate-errors-spki-list=${process.env.SIGILL_E2E_TURN_SPKI}`]
+            ...(networks && process.env.FIDANT_E2E_TURN_SPKI
+              ? [`--ignore-certificate-errors-spki-list=${process.env.FIDANT_E2E_TURN_SPKI}`]
               : []),
             // Expose real host candidates in WebRTC instead of mDNS names.
             "--disable-features=WebRtcHideLocalIpsWithMdns",

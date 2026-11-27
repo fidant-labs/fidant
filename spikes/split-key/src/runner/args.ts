@@ -42,7 +42,7 @@ const VALUE_FLAGS = [
   "--runs-dir",
 ];
 
-export const USAGE = `Usage: pnpm --filter @sigill/spike-split-key bench:run [flags]
+export const USAGE = `Usage: pnpm --filter @fidant/spike-split-key bench:run [flags]
 
   --engines   chromium,firefox,webkit (default: all three)
   --sizes     plaintext sizes, e.g. 64MiB,1GiB,5GiB (default: 64MiB)

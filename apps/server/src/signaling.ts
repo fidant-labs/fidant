@@ -29,7 +29,7 @@ import {
   SERVICE_RESTART,
   type ServerMessage,
   STARTING_MS,
-} from "@sigill/protocol";
+} from "@fidant/protocol";
 import { type RawData, WebSocket, WebSocketServer } from "ws";
 import type { Mailer } from "./mail.ts";
 

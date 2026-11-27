@@ -56,6 +56,8 @@ Two keys are derived from the secret with HKDF-SHA-256. Both are AES-256-GCM `Cr
 | Signal key | the link ID's 16 bytes                                             | `sigill/v1/signal` | setup messages (SDP and ICE) |
 | File key   | the transfer ID (16 bytes) ‖ the recipient's attempt ID (16 bytes) | `sigill/v2/file`   | every frame after INIT       |
 
+`sigill` in these labels, in the additional data and in the data channel's label is the project's earlier name. They keep it, because a client with other labels couldn't open a link that the current client made (`docs/decisions/0028-fidant-names.md`).
+
 Each side puts a fresh random value of its own into the file key's salt: the sender a new transfer ID for every attempt, sent in INIT, and the recipient a new attempt ID for every join, which the sender learns from `joined`. Both sides number their frames from 0 in every attempt, so each needs a key it has never used: a retry gets one from the new transfer ID, and a recipient shown an INIT replayed from an earlier attempt gets one from its new attempt ID. So no (file key, nonce) pair is ever used twice. A retry that continues a dropped file is such an attempt too, with its own key and frames numbered from 0; only its CHUNKs start partway through the file (see "Continuing after a drop"). Before frame version 3 the salt was the transfer ID alone, and a replayed INIT made the recipient seal its first frame twice under one key and nonce (SIG-231, `docs/decisions/0017-protocol-audit-fixes.md`).
 
 ## Connecting the two browsers

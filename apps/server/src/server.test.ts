@@ -19,16 +19,16 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
-import { parseServerMessage } from "@sigill/protocol";
+import { parseServerMessage } from "@fidant/protocol";
 import { WebSocket as WsClient } from "ws";
 import { relaySecret } from "./relay-secret.ts";
 import { type Relay, startRelays } from "./relays.ts";
 import { ensureCert, serveRelays, serveStatic, startServer } from "./server.ts";
 
-const dir = mkdtempSync(join(tmpdir(), "sigill-server-"));
+const dir = mkdtempSync(join(tmpdir(), "fidant-server-"));
 const root = join(dir, "dist");
 mkdirSync(join(root, "assets"), { recursive: true });
-writeFileSync(join(root, "index.html"), "<!doctype html><title>Sigill</title>");
+writeFileSync(join(root, "index.html"), "<!doctype html><title>Fidant</title>");
 for (const page of ["receive.en", "receive.sv"]) {
   writeFileSync(join(root, `index.${page}.html`), `<!doctype html><title>${page}</title>`);
 }

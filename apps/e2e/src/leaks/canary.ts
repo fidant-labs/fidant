@@ -82,15 +82,15 @@ export class SeededRandom {
 }
 
 /**
- * The run's seed: `SIGILL_E2E_SEED` (64 hex characters) when set, otherwise fresh random bytes.
+ * The run's seed: `FIDANT_E2E_SEED` (64 hex characters) when set, otherwise fresh random bytes.
  * Print it with `formatSeed` so a failure can be replayed.
  */
-export function runSeed(value: string | undefined = process.env.SIGILL_E2E_SEED): Buffer {
+export function runSeed(value: string | undefined = process.env.FIDANT_E2E_SEED): Buffer {
   if (value === undefined || value === "") {
     return randomBytes(seedBytes);
   }
   if (!seedPattern.test(value)) {
-    throw new Error("SIGILL_E2E_SEED must be 64 hex characters.");
+    throw new Error("FIDANT_E2E_SEED must be 64 hex characters.");
   }
   return Buffer.from(value, "hex");
 }
@@ -135,9 +135,9 @@ export function pickCanarySize(random: SeededRandom, options: SizeOptions = {}):
 
 /** A file whose bytes, name, type and size are all random, so any trace of it is a leak. */
 export interface CanaryFile {
-  /** `sigill-<token>-räksmörgås.<ext>`, in NFC. The non-ASCII part exercises NFC/NFD handling. */
+  /** `fidant-<token>-räksmörgås.<ext>`, in NFC. The non-ASCII part exercises NFC/NFD handling. */
   name: string;
-  /** `application/x-sigill-<mimeToken>`. */
+  /** `application/x-fidant-<mimeToken>`. */
   mime: string;
   bytes: Buffer;
   size: number;
@@ -167,8 +167,8 @@ function canaryHead(random: SeededRandom, options: CanaryFileOptions): Omit<Cana
   const mimeToken = base32Token(random);
   const ext = options.ext ?? base32Token(random, 3).replace(/\d/g, "x");
   return {
-    name: `sigill-${token}-räksmörgås.${ext}`.normalize("NFC"),
-    mime: `application/x-sigill-${mimeToken}`,
+    name: `fidant-${token}-räksmörgås.${ext}`.normalize("NFC"),
+    mime: `application/x-fidant-${mimeToken}`,
     size,
     token,
     mimeToken,

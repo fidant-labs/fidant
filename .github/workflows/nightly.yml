@@ -33,8 +33,8 @@ jobs:
           - browser: webkit
             minutes: 30
     env:
-      SIGILL_E2E_BROWSER: ${{ matrix.browser }}
-      SIGILL_E2E_LARGE: ${{ matrix.large }}
+      FIDANT_E2E_BROWSER: ${{ matrix.browser }}
+      FIDANT_E2E_LARGE: ${{ matrix.large }}
       # Outside /home/runner, so the test user needs no access to the runner's home for the browsers.
       PLAYWRIGHT_BROWSERS_PATH: /opt/ms-playwright
     defaults:
@@ -53,7 +53,7 @@ jobs:
       # No cache: Playwright's WebKit build differs per Ubuntu release, which a cache key on runner.os misses.
       - run: |
           sudo install -d -o "$(id -u)" -g "$(id -g)" "$PLAYWRIGHT_BROWSERS_PATH"
-          pnpm --filter @sigill/e2e exec playwright install --with-deps "$SIGILL_E2E_BROWSER"
+          pnpm --filter @fidant/e2e exec playwright install --with-deps "$FIDANT_E2E_BROWSER"
       # The package starts a coturn that relays for anyone as its own user, past the block; the stack runs its own.
       - run: sudo apt-get update && sudo apt-get install -y coturn && sudo systemctl disable --now coturn
       # Mailpit catches the server's mail. It is not in apt: a pinned release, checked against its hash.
@@ -66,19 +66,19 @@ jobs:
         run: |
           df -h
           free -m
-          if [ "$SIGILL_E2E_LARGE" = 1 ]; then
+          if [ "$FIDANT_E2E_LARGE" = 1 ]; then
             df -B1 --output=avail /tmp | awk 'NR == 2 && $1 < 8e9 { print "::error::/tmp has " $1 " bytes free; the large files need 8 GB"; exit 1 }'
           fi
       - name: Create the test user
         run: |
-          sudo useradd --create-home sigill-e2e
+          sudo useradd --create-home fidant-e2e
           dir=$GITHUB_WORKSPACE
           until [ "$dir" = / ]; do
             sudo chmod o+x "$dir"
             dir=$(dirname "$dir")
           done
           # Global setup replaces observations/, and Playwright writes test-results/ and playwright-report/ next to it.
-          sudo chgrp sigill-e2e apps/e2e
+          sudo chgrp fidant-e2e apps/e2e
           sudo chmod g+w apps/e2e
           namei -l "$GITHUB_WORKSPACE/apps/e2e" "$PLAYWRIGHT_BROWSERS_PATH" "$(command -v node)"
       # Some runner images leave this machine's own name out of /etc/hosts, so a lookup of it would reach the resolver.
@@ -93,17 +93,17 @@ jobs:
         id: egress
         run: |
           for ipt in iptables ip6tables; do
-            for chain in sigill-egress sigill-dns; do
+            for chain in fidant-e2e-egress fidant-e2e-dns; do
               sudo "$ipt" -N "$chain"
               sudo "$ipt" -A "$chain" -j LOG --log-uid --log-prefix "$chain: "
               sudo "$ipt" -A "$chain" -j REJECT
             done
             # The 127.0.0.53 stub forwards lookups as another user, so they are refused before loopback is allowed.
-            sudo "$ipt" -I OUTPUT 1 -m owner --uid-owner sigill-e2e -o lo -p udp --dport 53 -j sigill-dns
-            sudo "$ipt" -I OUTPUT 2 -m owner --uid-owner sigill-e2e -o lo -p tcp --dport 53 -j sigill-dns
+            sudo "$ipt" -I OUTPUT 1 -m owner --uid-owner fidant-e2e -o lo -p udp --dport 53 -j fidant-e2e-dns
+            sudo "$ipt" -I OUTPUT 2 -m owner --uid-owner fidant-e2e -o lo -p tcp --dport 53 -j fidant-e2e-dns
             # Linux sends traffic to this machine's own addresses through lo, so ICE host candidates stay allowed.
-            sudo "$ipt" -I OUTPUT 3 -m owner --uid-owner sigill-e2e -o lo -j ACCEPT
-            sudo "$ipt" -I OUTPUT 4 -m owner --uid-owner sigill-e2e -j sigill-egress
+            sudo "$ipt" -I OUTPUT 3 -m owner --uid-owner fidant-e2e -o lo -j ACCEPT
+            sudo "$ipt" -I OUTPUT 4 -m owner --uid-owner fidant-e2e -j fidant-e2e-egress
             sudo "$ipt" -S OUTPUT
           done
           grep -v '^#' /etc/resolv.conf
@@ -111,13 +111,13 @@ jobs:
           sudo ss -tulpn
           logged() {
             for ipt in iptables ip6tables; do
-              for chain in sigill-egress sigill-dns; do sudo "$ipt" -nvxL "$chain"; done
+              for chain in fidant-e2e-egress fidant-e2e-dns; do sudo "$ipt" -nvxL "$chain"; done
             done | awk '$3 == "LOG" { n += $1 } END { print n + 0 }'
           }
           blocked() {
             local before
             before=$(logged)
-            if sudo -u sigill-e2e "$@"; then
+            if sudo -u fidant-e2e "$@"; then
               echo "::error::The test user ran $* past the block"
               exit 1
             fi
@@ -127,7 +127,7 @@ jobs:
           blocked getent hosts example.com
           blocked curl -sS -g --max-time 5 'http://[::1]:53/'
           for ipt in iptables ip6tables; do
-            for chain in sigill-egress sigill-dns; do sudo "$ipt" -Z "$chain"; done
+            for chain in fidant-e2e-egress fidant-e2e-dns; do sudo "$ipt" -Z "$chain"; done
           done
           # journalctl --since counts whole seconds, so this keeps the checks' own lines out of the log printed after the tests.
           sleep 1
@@ -136,41 +136,41 @@ jobs:
       - name: Run the suite as the test user
         working-directory: apps/e2e
         run: |
-          sudo -u sigill-e2e env -i PATH="$PATH" HOME=/home/sigill-e2e LANG="$LANG" CI=true \
+          sudo -u fidant-e2e env -i PATH="$PATH" HOME=/home/fidant-e2e LANG="$LANG" CI=true \
             PLAYWRIGHT_BROWSERS_PATH="$PLAYWRIGHT_BROWSERS_PATH" \
-            SIGILL_E2E_BROWSER="$SIGILL_E2E_BROWSER" SIGILL_E2E_LARGE="$SIGILL_E2E_LARGE" \
-            "$PWD/node_modules/.bin/playwright" test --project="$SIGILL_E2E_BROWSER"
+            FIDANT_E2E_BROWSER="$FIDANT_E2E_BROWSER" FIDANT_E2E_LARGE="$FIDANT_E2E_LARGE" \
+            "$PWD/node_modules/.bin/playwright" test --project="$FIDANT_E2E_BROWSER"
       # A process the suite left running keeps the test user's uid, and could send or plant a symlink after the count and the check.
       - name: Stop every process of the test user
         if: always() && steps.egress.outcome == 'success'
-        run: sudo pkill -KILL -u sigill-e2e || true
+        run: sudo pkill -KILL -u fidant-e2e || true
       - name: Count what the test user sent off loopback
         if: always() && steps.egress.outcome == 'success'
         run: |
           for ipt in iptables ip6tables; do
             sudo "$ipt" -nvxL OUTPUT
-            sudo "$ipt" -nvxL sigill-egress
-            sudo "$ipt" -nvxL sigill-dns
+            sudo "$ipt" -nvxL fidant-e2e-egress
+            sudo "$ipt" -nvxL fidant-e2e-dns
           done
-          sudo journalctl -k -q --no-pager --since "@$EGRESS_SINCE" | grep -E 'sigill-(egress|dns): ' || true
+          sudo journalctl -k -q --no-pager --since "@$EGRESS_SINCE" | grep -E 'fidant-e2e-(egress|dns): ' || true
           count() {
             for ipt in iptables ip6tables; do sudo "$ipt" -nvxL "$1"; done |
               awk '$3 == "LOG" { n += $1 } END { print n + 0 }'
           }
-          sent=$(count sigill-egress)
-          looked=$(count sigill-dns)
-          [ "$sent" -eq 0 ] || { echo "::error::The test user sent $sent packets off loopback; the sigill-egress lines above name each"; exit 1; }
+          sent=$(count fidant-e2e-egress)
+          looked=$(count fidant-e2e-dns)
+          [ "$sent" -eq 0 ] || { echo "::error::The test user sent $sent packets off loopback; the fidant-e2e-egress lines above name each"; exit 1; }
           [ "$looked" -eq 0 ] && exit 0
           # WebKit looks up the other peer's mDNS candidate names (a UUID and .local) through DNS when the machine has no mDNS.
-          if [ "$SIGILL_E2E_BROWSER" = webkit ]; then
+          if [ "$FIDANT_E2E_BROWSER" = webkit ]; then
             echo "::warning::WebKit sent $looked name lookups to the resolver, all refused"
           else
-            echo "::error::The test user sent $looked packets to the resolver; the sigill-dns lines above name each"
+            echo "::error::The test user sent $looked packets to the resolver; the fidant-e2e-dns lines above name each"
             exit 1
           fi
       # The test user opens what it wrote to the upload, which runs as runner; root would follow a symlink it planted.
       - if: failure() || cancelled()
-        run: "[ ! -d apps/e2e/observations ] || sudo -u sigill-e2e chmod -R a+rX apps/e2e/observations"
+        run: "[ ! -d apps/e2e/observations ] || sudo -u fidant-e2e chmod -R a+rX apps/e2e/observations"
       # Same rule as ci.yml's e2e job: only the observations are uploaded, never traces or reports.
       - id: links
         if: failure() || cancelled()
