@@ -886,6 +886,9 @@ const relayIce = (transport: "udp" | "tcp" | "tls", secret: string): RTCIceServe
   ...turnCredentials(secret, Date.now()),
 });
 
+/** The process ID of the relay box's coturn, which changes when coturn restarts. */
+const coturnPid = () => inRelay("systemctl", "show", "-p", "MainPID", "--value", "coturn");
+
 // The standalone relay (networks/relay), set up by apps/infra/relay/install.sh as on a new server.
 test.describe("the relay box", () => {
   test.use({ remoteBrowsers: { sender: remoteBrowsers.a1, recipient: remoteBrowsers.b1 } });
@@ -913,19 +916,14 @@ test.describe("the relay box", () => {
       expect(ufw).toContain(rule);
     }
     expect(await inRelay("ss", "-lnu")).toMatch(/:3478\b/);
-    const pins: [string, string][] = [
-      ["StartLimitIntervalUSec", "0"],
-      ["RestartUSec", "5s"],
-      ["Restart", "on-failure"],
-    ];
-    for (const [property, value] of pins) {
-      expect(await inRelay("systemctl", "show", "-p", property, "--value", "coturn")).toBe(
-        `${value}\n`,
-      );
-    }
+    const pins = "Restart,RestartUSec,StartLimitIntervalUSec";
+    // Sorted: the order of the lines is systemd's.
+    expect(
+      (await inRelay("systemctl", "show", "-p", pins, "coturn")).trim().split("\n").sort(),
+    ).toEqual(["Restart=on-failure", "RestartUSec=5s", "StartLimitIntervalUSec=0"]);
   });
 
-  // Until SIG-153 hands it a secret, the relay answers STUN and refuses every allocation.
+  // Until it is handed a secret, the relay answers STUN and refuses every allocation.
   test("refuses relaying before it has a secret", async ({ actor }) => {
     const server = {
       // By address: Chrome resolves names through --host-resolver-rules for TCP only.
@@ -1007,13 +1005,15 @@ test.describe("the relay box", () => {
       }
     });
 
-    test("applies a hand-out after a crash empties or removes previous-since", async () => {
+    test("applies a hand-out when previous-since is empty, missing, garbage, zero-led, in the future or oversized", async () => {
       const dir = "/var/lib/fidant-relay";
       const stored = () =>
         inRelay("sqlite3", `${dir}/turndb`, "SELECT value FROM turn_secret ORDER BY value");
       try {
         const future = "echo $(( $(date +%s) + 100000 )) >";
-        for (const lose of [": >", "rm", "echo x >", "echo 08 >", future]) {
+        // Oversized: 11 digits, and 20, which is past what the shell's arithmetic can read.
+        const oversized = ["echo 99999999999 >", "echo 99999999999999999999 >"];
+        for (const lose of [": >", "rm", "echo x >", "echo 08 >", future, ...oversized]) {
           // A crash in a rotation to `rotated`, after current moved to previous.
           await inRelay(
             "sh",
@@ -1022,9 +1022,11 @@ test.describe("the relay box", () => {
           );
           await applyRelaySecret(rotated);
           expect(await stored(), lose).toBe(`${[secret, rotated].sort().join("\n")}\n`);
-          const since = await inRelay("cat", `${dir}/previous-since`);
-          expect(since, lose).toMatch(/^\d{10}\n$/);
-          expect(Number(since), lose).toBeLessThanOrEqual(Date.now() / 1000 + 5);
+          // The relay's own clock, read after the script wrote the file, so no allowance.
+          const times = await inRelay("sh", "-c", `cat ${dir}/previous-since; date +%s`);
+          expect(times, lose).toMatch(/^\d{10}\n\d{10}\n$/);
+          const [since, now] = times.split("\n").map(Number);
+          expect(since, lose).toBeLessThanOrEqual(now ?? 0);
           await applyRelaySecret(secret);
         }
       } finally {
@@ -1114,7 +1116,6 @@ test.describe("the relay box", () => {
           `RENEWED_LINEAGE=${lineage} fidant-relay-cert-installed 2>&1; echo "exit $?"`,
         );
       const files = () => inRelay("sh", "-c", `ls ${tls}; sha256sum ${tls}/*`);
-      const pid = () => inRelay("systemctl", "show", "-p", "MainPID", "--value", "coturn");
       const fingerprint = "openssl x509 -noout -fingerprint -sha256";
       const served = () =>
         inRelay(
@@ -1129,9 +1130,9 @@ test.describe("the relay box", () => {
       );
       expect(await files()).toBe(before);
 
-      const running = await pid();
+      const running = await coturnPid();
       expect(await installed("/tmp/lineage")).toBe("exit 0\n");
-      expect(await pid()).toBe(running);
+      expect(await coturnPid()).toBe(running);
       await inRelay("cmp", "/tmp/lineage/fullchain.pem", `${tls}/turn.crt`);
       expect(await inRelay("stat", "-c", "%a %U:%G", `${tls}/turn.key`)).toBe(
         "640 root:turnserver\n",
@@ -1149,7 +1150,6 @@ test.describe("the relay box", () => {
       const tls = "/etc/fidant-relay/tls";
       const saved = "/tmp/first-cert";
       const lineage = `/etc/letsencrypt/live/${relayHost}`;
-      const pid = () => inRelay("systemctl", "show", "-p", "MainPID", "--value", "coturn");
       const fingerprint = "openssl x509 -noout -fingerprint -sha256";
       const served = () =>
         inRelay(
@@ -1165,7 +1165,7 @@ test.describe("the relay box", () => {
         );
         await expect.poll(() => inRelay("ss", "-lnu")).toMatch(/:3478\b/);
         expect(await served()).toBe("");
-        const running = await pid();
+        const running = await coturnPid();
         // As certbot leaves it when the hook never ran: live/ links to the files.
         await inRelay(
           "sh",
@@ -1176,7 +1176,7 @@ test.describe("the relay box", () => {
         expect(await inRelay("sh", "-c", 'fidant-relay-cert 2>&1; echo "exit $?"')).toBe(
           "exit 0\n",
         );
-        expect(await pid()).not.toBe(running);
+        expect(await coturnPid()).not.toBe(running);
         await inRelay("cmp", `${saved}/turn.crt`, `${tls}/turn.crt`);
         const certificate = await inRelay("sh", "-c", `${fingerprint} -in ${saved}/turn.crt`);
         await expect.poll(served).toBe(certificate);
@@ -1199,7 +1199,6 @@ test.describe("the relay box", () => {
       actor,
     }) => {
       const line = () => inRelay("sh", "-c", "grep '^external-ip=' /etc/turnserver.conf || true");
-      const pid = () => inRelay("systemctl", "show", "-p", "MainPID", "--value", "coturn");
       // /etc/hosts is a bind mount, so it is rewritten in place. No ip: the name doesn't resolve.
       const resolveTo = (ip?: string) =>
         inRelay(
@@ -1214,12 +1213,12 @@ test.describe("the relay box", () => {
       );
       await inRelay("cp", "/etc/hosts", "/tmp/hosts");
       try {
-        let running = await pid();
+        let running = await coturnPid();
         const inode = () => inRelay("stat", "-c", "%i", "/etc/turnserver.conf");
         const before = await inode();
         await resolveTo("198.51.100.99");
         expect(await line()).toBe(elsewhere);
-        expect(await pid()).not.toBe(running);
+        expect(await coturnPid()).not.toBe(running);
         // Replaced, never truncated in place: a crash mid-write would leave coturn with no auth.
         expect(await inode()).not.toBe(before);
         expect(await inRelay("stat", "-c", "%a %U:%G", "/etc/turnserver.conf")).toBe(
@@ -1231,16 +1230,20 @@ test.describe("the relay box", () => {
         await inRelay("sh", "-c", "set -a; . /relay-config/env; sh /relay/install.sh");
         expect(await line()).toBe(elsewhere);
 
-        running = await pid();
+        running = await coturnPid();
         await resolveTo("198.51.100.99");
-        expect(await pid()).toBe(running);
+        expect(await coturnPid()).toBe(running);
         await resolveTo();
         expect(await line()).toBe(elsewhere);
-        expect(await pid()).toBe(running);
+        expect(await coturnPid()).toBe(running);
+        // A loopback answer, as from an installer's `127.0.1.1 <hostname>` line, counts as none.
+        await resolveTo("127.0.1.1");
+        expect(await line()).toBe(elsewhere);
+        expect(await coturnPid()).toBe(running);
 
         await resolveTo(relayIp);
         expect(await line()).toBe("");
-        expect(await pid()).not.toBe(running);
+        expect(await coturnPid()).not.toBe(running);
       } finally {
         // Restoring /etc/hosts alone would leave a line behind: the name then doesn't resolve.
         await resolveTo(relayIp);

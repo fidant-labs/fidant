@@ -1108,7 +1108,7 @@ export const sv: Messages = {
       ],
       ice: [
         "Kandidater",
-        "Adresserna där en webbläsare kanske kan nås: på det lokala nätverket, dess offentliga adress eller en adress på ett relä. De två webbläsarna byter kandidater och provar par av dem tills ett fungerar.",
+        "Adresserna där en webbläsare kanske kan nås: på det lokala nätverket, dess offentliga adress eller en adress på ett relä. De två webbläsarna byter kandidater och provar par av dem tills ett fungerar. WebRTC kallar den här processen ICE.",
       ],
       stun: [
         "STUN",
