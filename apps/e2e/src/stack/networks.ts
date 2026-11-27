@@ -62,6 +62,22 @@ export async function routerMode(router: "router-a" | "router-b", mode: RouterMo
   await run("docker", [...compose, "exec", "-T", router, "/net/router.sh", mode]);
 }
 
+/** router-a's address on the public network, which site B sees site A's browsers at. */
+const routerAIp = "198.51.100.2";
+
+/**
+ * Drops UDP between site B and router-a, both ways, as when the route between two browsers goes
+ * away. TCP, so signaling, and UDP to coturn go on. router-b keeps its mode and NAT mappings.
+ */
+export async function cutRoute(): Promise<void> {
+  await run("docker", [...compose, "exec", "-T", "router-b", "/net/router.sh", "cut", routerAIp]);
+}
+
+/** Undoes cutRoute. Does nothing when the route is not cut. */
+export async function restoreRoute(): Promise<void> {
+  await run("docker", [...compose, "exec", "-T", "router-b", "/net/router.sh", "uncut", routerAIp]);
+}
+
 /** Freezes coturn, so STUN and TURN get no answer, as if the relay were down. */
 export async function pauseRelay(): Promise<void> {
   await run("docker", [...compose, "pause", "coturn"]);
