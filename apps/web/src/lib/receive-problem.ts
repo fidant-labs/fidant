@@ -27,6 +27,27 @@ export function peerLostProblem(attempt: {
   return attempt.receiving || attempt.resuming ? "lostReceiving" : "lost";
 }
 
+/** Whether a stalled attempt waits for the sender to allow our relay (decision 0028): only when the server said one is up and the channel hasn't opened. */
+export function waitsForRelay(attempt: {
+  relayUp?: boolean | undefined;
+  channelOpen: boolean;
+}): boolean {
+  return attempt.relayUp === true && !attempt.channelOpen;
+}
+
+/**
+ * What `refused` with `turn` does: nothing once the channel is open, else a new attempt, and after
+ * `max` such restarts the failure view. Our server forwards the message and so can forge it, which
+ * is why the page stops restarting by itself.
+ */
+export function turnRefused(
+  attempt: { channelOpen: boolean },
+  restarts: number,
+  max: number,
+): "ignore" | "restart" | "fail" {
+  return attempt.channelOpen ? "ignore" : restarts < max ? "restart" : "fail";
+}
+
 /** A busy refusal while a part is kept means the sender's page still holds the last connection, so Try again can continue it. */
 export function refusedProblem(
   reason: Exclude<RefuseReason, "drop" | "turn">,

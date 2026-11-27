@@ -281,10 +281,20 @@ test("a sender who is asked and allows the relay: no credentials before, the rel
   expect((await hosts()).every((host) => !("turnLinks" in host))).toBe(true);
 
   const recipient = await relayOnly(actor, "recipient", "udp");
+  await recipient.clock.install();
   await recipient.goto(link);
   for (const page of [sender, recipient]) {
     await expect.poll(async () => (await peerList(page, "peerStates"))?.length).toBeGreaterThan(0);
   }
+  // The recipient's page waits from 3 s after its answer, on its own faked clock.
+  const waiting = recipient.getByText(
+    "Couldn't connect directly. Waiting for the sender to allow our relay.",
+  );
+  await expect(async () => {
+    await recipient.clock.fastForward(3000);
+    await expect(waiting).toBeVisible({ timeout: 500 });
+  }).toPass();
+  await expect(recipient.getByRole("button", { name: "Try again" })).toHaveCount(0);
   // The sender's page asks 3 s after the answer; its clock is faked, so no real wait.
   const allow = sender.getByRole("button", { name: "Allow our relay for Anna", exact: true });
   await expect(async () => {
@@ -336,8 +346,7 @@ test("a sender who is asked and allows the relay: no credentials before, the rel
   );
   const refusal = sent.findIndex((message) => message.t === "refuse" && message.reason === "turn");
   expect(refusal).toBeGreaterThan(sent.findIndex((message) => "turnLinks" in message));
-  // Until the recipient's page joins again by itself, the recipient presses "Try again".
-  await recipient.getByRole("button", { name: "Try again" }).click();
+  // The recipient's page joins again by itself: nothing is pressed there before Download.
   const download = recipient.getByRole("button", { name: "Download" });
   await expect(download).toBeVisible({ timeout: 30_000 });
   const downloading = recipient.waitForEvent("download", { timeout: 60_000 });

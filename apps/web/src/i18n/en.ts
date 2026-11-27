@@ -471,6 +471,7 @@ export const en = {
   },
   receive: {
     connecting: "Connecting to the sender…",
+    askingRelay: "Couldn't connect directly. Waiting for the sender to allow our relay.",
     /** The code step of a link that was emailed. `to` is the masked address, like a***@example.se. */
     verify: {
       title: "Confirm your email to open this link",
@@ -602,7 +603,7 @@ export const en = {
       },
       noRelay: {
         title: "Couldn't connect directly to the sender",
-        body: "The sender doesn't allow our relay, and your networks probably couldn't connect directly. Ask the sender to allow the relay, or try another network, for example your phone's mobile data.",
+        body: "Your networks probably couldn't connect directly, and our relay wasn't used: the sender hasn't allowed it, or it isn't available right now. Try again, or try another network, for example your phone's mobile data.",
       },
       server: {
         title: "Couldn't reach the server",

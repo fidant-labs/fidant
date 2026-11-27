@@ -450,6 +450,7 @@ export const sv: Messages = {
   },
   receive: {
     connecting: "Ansluter till avsändaren…",
+    askingRelay: "Det gick inte att ansluta direkt. Väntar på att avsändaren tillåter vårt relä.",
     verify: {
       title: "Bekräfta din mejladress för att öppna länken",
       body: (to: string) => `Vi mejlar en kod till ${to}.`,
@@ -581,7 +582,7 @@ export const sv: Messages = {
       },
       noRelay: {
         title: "Det gick inte att ansluta direkt till avsändaren",
-        body: "Avsändaren tillåter inte vårt relä, och era nätverk kunde troligen inte ansluta direkt till varandra. Be avsändaren att tillåta reläet, eller prova ett annat nätverk, till exempel mobildata i din telefon.",
+        body: "Era nätverk kunde troligen inte ansluta direkt till varandra, och vårt relä användes inte: avsändaren har inte tillåtit det, eller så är det inte tillgängligt just nu. Försök igen, eller prova ett annat nätverk, till exempel mobildata i din telefon.",
       },
       server: {
         title: "Det gick inte att nå servern",

@@ -355,6 +355,10 @@ export const STATES: readonly DevState[] = [
 
   receive("Receive", "Link malformed", {}),
   receive("Receive", "Connecting", { view: { s: "connecting" }, tie: "unpaired" }),
+  receive("Receive", "Waiting for the sender to allow our relay", {
+    view: { s: "connecting", asking: true },
+    tie: "paired",
+  }),
   receive("Receive", "Email code: not asked yet", verify({ asked: false })),
   receive("Receive", "Email code: sending", verify({ sending: true })),
   ...CODE_RESULTS.map((result) => receive("Receive", `Email code: ${result}`, verify({ result }))),
