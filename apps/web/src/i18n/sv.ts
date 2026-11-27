@@ -1076,7 +1076,7 @@ export const sv: Messages = {
         items: {
           local: {
             heading: "Direkt, på samma nätverk",
-            body: "När båda webbläsarna är på samma lokala nätverk ansluter de över sina lokala adresser. Filen går direkt mellan dem, och vår server och vårt relä ser ingenting av den. Varje webbläsare frågar ändå vår STUN-tjänst om sin offentliga adress.",
+            body: "När båda webbläsarna är på samma lokala nätverk ansluter de över sina lokala adresser. Filen går direkt mellan dem, och vår server och vårt relä ser ingenting av den. Varje webbläsare frågar ändå vår STUN-tjänst om sin offentliga adress. Ett test i vår testsvit sätter båda webbläsarna på ett simulerat nätverk och kontrollerar att de ansluter över sina lokala adresser och att inget lämnar det nätverket utom webbläsarnas anslutningar till vår server och deras STUN-frågor.",
           },
           stun: {
             heading: "Direkt, via offentliga adresser",

@@ -122,6 +122,60 @@ export async function sendToRelay(payload: Uint8Array): Promise<void> {
   await sending;
 }
 
+const edgePcap = "/tmp/edge.pcap";
+
+/**
+ * Starts capturing every packet on router-a's outside interface, site A's edge. `stop` ends the
+ * capture and waits for tcpdump to exit; call it from a `finally`, it is safe to call twice.
+ * `read` prints the packets that match a tcpdump filter, one per line, once it has stopped.
+ */
+export async function captureSiteA(): Promise<{
+  stop: () => Promise<void>;
+  read: (filter: string) => Promise<string[]>;
+}> {
+  const inRouter = (...command: string[]) =>
+    run("docker", [...compose, "exec", "-T", "router-a", ...command]);
+  const stop = () =>
+    inRouter(
+      "sh",
+      "-c",
+      "pkill -INT tcpdump; for i in $(seq 100); do pgrep tcpdump >/dev/null || exit 0; sleep 0.1; done; exit 1",
+    ).then(() => undefined);
+  // A file left from an earlier capture would pass the wait below before tcpdump starts.
+  await inRouter("rm", "-f", edgePcap);
+  await run("docker", [
+    ...compose,
+    "exec",
+    "-d",
+    "router-a",
+    "/net/router.sh",
+    "capture",
+    edgePcap,
+  ]);
+  // tcpdump writes the file's header once it is capturing.
+  try {
+    await inRouter(
+      "sh",
+      "-c",
+      `for i in $(seq 100); do test -s ${edgePcap} && exit 0; sleep 0.1; done; exit 1`,
+    );
+  } catch (error) {
+    // The caller gets no stop() when this rejects, so tcpdump must not outlive it on the shared router.
+    // A failed stop must not hide why the capture never started.
+    await stop().catch((stopError) => {
+      throw new AggregateError([error, stopError], "the edge capture never started");
+    });
+    throw error;
+  }
+  return {
+    stop,
+    read: async (filter) => {
+      const { stdout } = await inRouter("tcpdump", "-r", edgePcap, "-nn", filter);
+      return stdout.split("\n").filter(Boolean);
+    },
+  };
+}
+
 async function inService(service: "box" | "relay" | "signal", command: string[]): Promise<string> {
   const { stdout } = await run("docker", [...compose, "exec", "-T", service, ...command], {
     maxBuffer: 64 * 1024 * 1024,
