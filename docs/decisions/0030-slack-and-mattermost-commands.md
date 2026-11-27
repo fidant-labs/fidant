@@ -95,15 +95,16 @@ Option 1 in each of the first four tables. For the install, option 1 if a live t
 
 - **The commands.** `/fidant` and `/secret`. Slack doesn't namespace slash commands, and when two apps register the same name the one installed last wins, so help text always names `/fidant secret`.
 - **The reply.** One fixed reply, the same bytes for every request. It goes in the HTTP response body with `response_type` set to `ephemeral`, in Slack's `mrkdwn`:
-  - one line in English with a plain link to `https://fidant.se/send/secret#chat`
-  - one line in Swedish with a plain link to `https://fidant.se/sv/skicka/hemlighet#chat`
+  - a line in English and Swedish with one plain link, to `https://fidant.se/send/secret#chat`
   - a line saying never to type a secret or a link after the command
+
+  One link serves both languages. The page's pre-paint script opens the Swedish twin, `/sv/skicka/hemlighet#chat`, when the stored language choice is Swedish, or nothing is stored and the browser's language is, and it keeps the part after `#` (`apps/web/src/prepaint.js`).
 
   The reply sets `unfurl_links` and `unfurl_media` to `false`. If Slack previews the link anyway, its crawler requests `/send/secret`, which tells us no more than the command already did.
 
   The endpoint reads no field of the request. `/fidant secret`, `/fidant` and `/fidant` followed by anything else all get the same reply, and so do Slack's `ssl_check` requests.
 
-  The two links are a lasting contract once installed, above all in Mattermost plugin releases that admins upload and keep, so the send page keeps answering them.
+  The link is a lasting contract once installed, above all in Mattermost plugin releases that admins upload and keep, so the send page keeps answering it.
 - **Where.** `POST https://fidant.se/slack/command`.
   - After the cutover, the edge function answers it on a new `FidantPages` behaviour for `/slack/command`, the only one that allows POST. The function returns the reply itself, so the request never reaches the origin.
   - Until the cutover, and on the local stack, `apps/server` answers the same path with the same bytes. It reads no body: it answers at once and closes the connection, so it needs no size cap, and it has no rate limit, like every page.
@@ -121,10 +122,10 @@ Option 1 in each of the first four tables. For the install, option 1 if a live t
 - **What the app never has.** Each of these would send our server more than the command. Items 2 and 4 would send it a link's key, and item 1 might:
   1. unfurl domains, which bring `link_shared`
   2. a message shortcut
-  3. a bot user, or any message the app posts
+  3. a bot user, or any message the app posts besides the ephemeral reply
   4. event subscriptions, or any scope beyond `commands`
   5. an `in_channel` reply, which also shows the user's command to everyone in the channel
-  6. a query string on the reply's links (anything the page needs goes after `#`)
+  6. a query string on the reply's link (anything the page needs goes after `#`)
   7. Block Kit buttons, or an interactivity request URL
   8. a global shortcut, which can show nothing without a token
 - **The install.** A new public page, `/slack` (`/sv/slack`), explains the command, says what Slack and we see in the words of `/privacy`, and has an "Add to Slack" link for the `commands` scope. The OAuth redirect URL is `https://fidant.se/slack/installed`. Public distribution is on, with no Marketplace listing. FID-337 tests, with a second workspace, whether the install completes when the redirect page never exchanges the code.
@@ -137,7 +138,7 @@ Option 1 in each of the first four tables. For the install, option 1 if a live t
 - The router reads the part after `#` on the send page too, and the send page looks only for `#chat` there. The send page's own address never holds a key. "The link" in `docs/how-fidant-works.md` says so.
 - With the marker, the send page in secret mode:
   - makes "Create link with safety number" the first button, as it is for email in 0024
-  - makes each card's copy button copy the link together with one fixed line the recipient can act on, in the page's language. The line names nobody, because whatever is copied stays in the conversation.
+  - makes each card's copy button copy the link together with one fixed line, in the page's language, that tells the recipient to open it now: it works once, and only while the sender's Fidant tab is open. For example: "Open this while I'm online: it works once, and only while my Fidant tab is open." The line names nobody, because whatever is copied stays in the conversation.
 - Without the marker, nothing changes. The line about keeping the tab open and the offer of the delivery notification show for every sender already.
 - Swedish and English, as every page.
 
@@ -158,7 +159,7 @@ Option 1 in each of the first four tables. For the install, option 1 if a live t
 ### Mattermost
 
 - **A server plugin.** It lives in this repository and is built after Slack works.
-- **What it does.** It registers `/fidant` and `/secret`, and answers inside the Mattermost server with an ephemeral reply that carries the same text and links as Slack's, in Mattermost's Markdown.
+- **What it does.** It registers `/fidant` and `/secret`, and answers inside the Mattermost server with an ephemeral reply that carries the same text and link as Slack's, in Mattermost's Markdown.
 - **What it never does.** It makes no network request, has no settings, reads no post, and implements no hook besides activating and answering its command. A hook that sees posts as they are written would see every link's key.
 - **How it ships.** A file attached to a GitHub release, which an admin installs by upload, from its URL or from the command line. A Marketplace listing is a later decision.
 - **Its link's preview.** The plugin issue tests, on a Mattermost server with link previews on, whether the server fetches a preview of the link in the plugin's ephemeral reply. If it does, each use shows our CDN the customer server's address and the time. The issue then looks for a reply that Mattermost won't preview, or this record is amended to say so.
@@ -185,6 +186,7 @@ Option 1 in each of the first four tables. For the install, option 1 if a live t
   - `/how/traces`, `/privacy` and the `technical` text in `apps/web/src/i18n/en.ts` and `sv.ts` follow, each in the pull request that ships the part it describes.
 
   No transfer path, signaling message or log event is added, so `packages/protocol/src/transfer-paths.test.ts` needs no change.
+- **Live only in a chat that often isn't.** Slack and Mattermost conversations are often answered hours later. A link opened after the sender closed the tab fails, and the recipient's first sight of Fidant is a link that didn't work. The copied line says so before the recipient clicks, and the delivery notification tells the sender when to close the tab. Storing a secret for later is outside this project (decided 2026-11-26).
 - **Absolutes.** Copy that says our infrastructure never receives a secret, or receives nothing about one, is qualified for the typed text. The command's request also tells us that someone in a given workspace is about to share a secret.
 - **The issues.**
   - FID-367 gave the send page's modes their own addresses (merged).
