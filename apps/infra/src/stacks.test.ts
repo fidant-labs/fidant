@@ -26,6 +26,7 @@ import {
   mailFrom,
   relayAddresses,
   relayMasterGeneration,
+  relayName,
   relays,
   signalName,
   signals,
@@ -52,7 +53,7 @@ const dns = Template.fromStack(
       dmarc: "v=DMARC1; p=quarantine",
     },
     boxAddress: "192.0.2.10",
-    relayAddresses: { sto: "198.51.100.7" },
+    relayAddresses: { sto: "198.51.100.7", fra: "198.51.100.8" },
     signalTargets: { sto: "fidant-signal-1.eu-north-1.elb.amazonaws.com" },
     certificateRecords: [],
   }),
@@ -1677,23 +1678,29 @@ test("only fidant.se gets the relay name, pointing at the box over IPv4", () => 
   );
 });
 
-test("only fidant.se gets a relay record per relay, over IPv4 only", () => {
+test("only fidant.se gets a record per relay box, each pointing at its own address over IPv4 only", () => {
   const relay = Object.values(dns.findResources(recordSet)).filter((record) =>
     String(record.Properties.Name).includes(".relay."),
   );
   assert.deepEqual(
     relay.map(({ Properties: p }) => [p.HostedZoneId, p.Name, p.Type, p.ResourceRecords]),
-    [[zoneRef("fidant.se"), "sto.relay.fidant.se.", "A", ["198.51.100.7"]]],
+    [
+      [zoneRef("fidant.se"), "sto.relay.fidant.se.", "A", ["198.51.100.7"]],
+      [zoneRef("fidant.se"), "fra.relay.fidant.se.", "A", ["198.51.100.8"]],
+    ],
   );
 });
 
-test("the committed config points sto.relay.fidant.se at the relay box and no other zone has a relay record", () => {
+test("the committed config points every relay's name at its relay box over IPv4, and no other zone has a relay record", () => {
+  for (const { id } of relays) {
+    assert.equal(isIP(relayAddresses[id] ?? ""), 4, id);
+  }
   const records = Object.values(committed.findResources(recordSet)).filter((record) =>
     String(record.Properties.Name).includes(".relay."),
   );
   assert.deepEqual(
-    records.map(({ Properties: p }) => [p.Name, p.Type, p.ResourceRecords]),
-    [["sto.relay.fidant.se.", "A", ["13.51.1.111"]]],
+    records.map(({ Properties: p }) => [p.Name, p.Type, p.ResourceRecords]).sort(),
+    relays.map(({ id }) => [`${relayName(id)}.`, "A", [relayAddresses[id]]]).sort(),
   );
 });
 
