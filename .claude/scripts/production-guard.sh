@@ -21,7 +21,7 @@ get='(^|[[:space:]/])gh[[:space:]]+api[[:space:]]+(-X|--method)([[:space:]]+|=)?
 notget='(^|[[:space:]])(-[[:alpha:]]*X|--method)([[:space:]]+|=)?([^G=[:space:]]|G[^E]|GE[^T]|GET[^[:space:]])'
 base='(^|[[:space:]/])gh[[:space:]]+pr[[:space:]]+(create|edit)[[:space:]](.*[[:space:]])?(-[[:alpha:]]*B|--base)(=|[[:space:]]+)?(refs/heads/)?production([[:space:]]|$)'
 block() {
-  echo "Blocked: agents never update the production branch, and a local production branch blocks every push; a maintainer promotes releases (AGENTS.md, Releasing). If the command only mentions it in text, pass that text in a file." >&2
+  echo "Blocked: agents never update the production branch, and a local production branch blocks every push; promote.yml promotes each merge and a maintainer promotes by hand (AGENTS.md, Releasing). If the command only mentions it in text, pass that text in a file." >&2
   exit 2
 }
 gitcmd='(^|[[:space:]/])git[[:space:]]'
