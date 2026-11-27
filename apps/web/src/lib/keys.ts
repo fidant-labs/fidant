@@ -6,7 +6,7 @@
 // Both are AES-GCM-256 CryptoKeys, non-extractable, used only for encrypt and
 // decrypt. The salt holds a value each side picks: the sender's fresh 16-byte
 // transferId (sent in clear in INIT) and the recipient's attempt ID for this
-// join (16 bytes, the base64url text decoded; the sender learns it from
+// attempt (16 bytes, the base64url text decoded; the sender learns it from
 // `joined`). Both sides number their frames from 0 in every attempt, so each
 // needs a key it has never used before: a sender restarting a transfer gets
 // one from its new transferId, and a recipient shown a replayed INIT gets one
@@ -17,7 +17,7 @@
 // Sealed signal = base64url(iv(12 random) || AES-GCM ciphertext with 16-byte tag)
 // over the UTF-8 JSON payload, AAD "sigill/v1/signal|<linkId>|<attempt>|<dir>".
 // The direction in the AAD stops the server from reflecting a message back to
-// the side that sent it. The attempt is the recipient's random ID for one join
+// the side that sent it. The attempt is the recipient's random ID for one attempt
 // (fresh per page load and per "Try again"), so the server cannot replay
 // signals recorded in one attempt into another: an old offer sealed for an
 // earlier attempt does not open in the recipient's current one.

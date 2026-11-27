@@ -39,7 +39,7 @@
 //
 // The file key comes from the link secret, the sender's transferId in INIT and
 // this attempt's own attempt ID (see keys.ts). The attempt ID is fresh for
-// every join, so an INIT and META replayed from an earlier attempt give a key
+// every attempt (a repeated `join` keeps it, see below), so an INIT and META replayed from an earlier attempt give a key
 // this recipient has never sealed a frame under: META fails to decrypt and
 // nothing is sent back.
 //
@@ -96,7 +96,11 @@ export type ReceiveFileOptions = {
   maxMessageSize: number;
   /** The link secret from the URL fragment. */
   secret: string;
-  /** The attempt ID this join sent in `join`. Must be fresh for every join. */
+  /**
+   * The attempt ID this attempt sent in `join`. Must be fresh for every attempt. A `join` sent
+   * again on the same socket (decision 0029) carries the same ID and keeps the same file key on
+   * purpose: the frames go on from the next sequence number, so no nonce repeats.
+   */
   attempt: string;
   /** Aborting stops the transfer; receiveFile then rejects. */
   signal: AbortSignal;

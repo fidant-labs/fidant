@@ -49,8 +49,9 @@
 //   the same `join` again on the same socket after STARTING_RETRY_MS, and each
 //   `join` re-arms the connect timeout, so the server decides when waiting
 //   ends (decision 0018). `refused: unknown` always ends the attempt. Once the
-//   channel is open the transfer no longer needs the server, so a drop then
-//   only closes the signaling client.
+//   channel is open the transfer needs the server only to recover a dropped
+//   route (decision 0029), so a drop then closes the signaling client, and the
+//   page can no longer restart ICE after a dropped route.
 //   Reaching the code step resets the rejoin count (a token holder's rejoins
 //   do not), and the code field survives a rejoin. A `failed` or `expired`
 //   code result asks the gate again, so a binding that is gone ends as "no
