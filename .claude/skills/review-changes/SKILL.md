@@ -22,7 +22,7 @@ Run this from the **main session**. Subagents cannot launch subagents, so the re
 
 Write a briefing of at most 15 lines to the session's scratchpad (never inside the repo). Every reviewer and verifier gets it verbatim:
 
-- **Intent:** what the change is for, from the Linear issue (the `SIG-` key in the branch name), the agreed spec or the conversation. Include the issue's "Done when" criteria.
+- **Intent:** what the change is for, from the Linear issue (the `FID-` key, or an older `SIG-` key, in the branch name), the agreed spec or the conversation. Include the issue's "Done when" criteria.
 - **Repo rules:** the `AGENTS.md` invariants and conventions that apply to the touched paths.
 - **Access model**, only when the diff touches identity, sessions, routing, keys or data access: who can do what, and where that is enforced. Read the code to write this; do not guess.
 

@@ -323,6 +323,8 @@ describe("Linear reminder", () => {
 
   test("does not ask for Done while auto-merge is only queued", () => {
     assert.match(remind("gh pr merge 5 --auto --squash"), /only queued/);
+    assert.match(remind("gh pr merge 5 --auto --squash"), /FID key/);
+    assert.match(remind("gh pr merge 5 --squash"), /FID key/);
     assert.match(remind("gh pr merge 5 --squash"), /to Done\./);
   });
 
