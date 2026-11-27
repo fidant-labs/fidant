@@ -792,6 +792,85 @@ test("refuses a link's joins as busy past its pairings per window, so a guest ca
   assert.equal((await pair()).t, "joined");
 });
 
+test("answers a bound guest's repeated join with fresh ICE servers, charged as a pairing (0028)", async (t) => {
+  const limited = createServer();
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const heartbeatMs = 1000;
+  const lines: string[] = [];
+  let minted = 0;
+  const signaling = attachSignaling(limited, {
+    log: (event, fields) => lines.push(JSON.stringify({ event, ...fields })),
+    heartbeatMs,
+    startingMs: 0,
+    limits: { pairingsPerLink: 3 },
+    // A new username each time, as a credential minted in a later second has.
+    iceServers: (turn) =>
+      turn
+        ? [{ urls: ["turn:relay.example:3478"], username: String(++minted), credential: "hmac" }]
+        : [],
+  });
+  t.after(() => {
+    signaling.close();
+    limited.close();
+  });
+  await new Promise<void>((done) => limited.listen(0, done));
+  const url = `ws://localhost:${(limited.address() as AddressInfo).port}/signal`;
+  const [link, other] = [linkId(), linkId()];
+  const host = await connect(url);
+  host.send({ t: "host", links: [link, other], turn: true });
+  const guest = await connect(url);
+  const attempt = linkId();
+  const join = { t: "join", link, attempt };
+  /** Sends the join and checks that the guest and then the host get the same `joined`. */
+  const joined = async () => {
+    guest.send(join);
+    const reply = await guest.next();
+    assert.ok(reply.t === "joined" && reply.link === link && reply.attempt === attempt);
+    assert.deepEqual(await host.next(), reply);
+    return reply;
+  };
+  /** Checks the guest is still bound: its relay reaches the host. */
+  const stillBound = async () => {
+    guest.send({ t: "relay", link, data: "eA" });
+    assert.deepEqual(await host.next(), { t: "relay", link, data: "eA" });
+  };
+  const relay = { urls: ["turn:relay.example:3478"], credential: "hmac" };
+  assert.deepEqual((await joined()).iceServers, [{ ...relay, username: "1" }]);
+  assert.deepEqual((await joined()).iceServers, [{ ...relay, username: "2" }]);
+  // The same line as a first join, and nothing else.
+  const line = JSON.stringify({ event: "joined", link: link.slice(0, 6) });
+  assert.deepEqual(lines, [JSON.stringify({ event: "host", links: 2 }), line, line]);
+
+  // Only its own join may come again: another attempt or another link is still an error.
+  guest.send({ t: "join", link, attempt: linkId() });
+  assert.deepEqual(await guest.next(), { t: "error", code: "already-joined" });
+  guest.send({ t: "join", link: other, attempt });
+  assert.deepEqual(await guest.next(), { t: "error", code: "already-joined" });
+  await stillBound();
+  // Another socket can't use the bound guest's attempt ID to reach the host.
+  const second = await connect(url);
+  second.send(join);
+  assert.deepEqual(await second.next(), { t: "refused", reason: "busy" });
+
+  // The answer carries the sender's relay choice as it stands now.
+  host.send({ t: "host", links: [link, other], turn: false });
+  assert.deepEqual(await joined(), { t: "joined", link, attempt, iceServers: [], turn: false });
+  assert.equal(minted, 2);
+
+  // The first join and two repeats used up the window. The next is refused, and stays bound.
+  guest.send(join);
+  assert.deepEqual(await guest.next(), { t: "refused", reason: "busy" });
+  await stillBound();
+  t.mock.timers.tick(heartbeatMs);
+  await joined();
+
+  // Once the host is gone the guest is unbound, and its join is a first join again.
+  host.socket.close();
+  assert.deepEqual(await guest.next(), { t: "host-gone" });
+  guest.send(join);
+  assert.deepEqual(await guest.next(), { t: "refused", reason: "unknown" });
+});
+
 /**
  * Hosts a link on a server with a low buffer limit, joins a ws guest, and returns a function that
  * relays large messages to the guest until `relay-dropped` is logged or `rounds` run out.
@@ -1624,6 +1703,28 @@ test("lets a verified browser join its emailed link again, and no other link", a
   late.send({ t: "join", link, attempt: linkId() });
   assert.deepEqual(await late.next(), { t: "refused", reason: "unknown" });
   assert.equal(await gateOf(late, link, mark), "");
+});
+
+test("checks the token of a repeated join on an emailed link, as on a first join (0028)", async (t) => {
+  const { url, mails } = await mailServer(t);
+  const link = linkId();
+  const host = await mailHost(url, link);
+  const mark = await emailLink(host, link);
+  const guest = await connect(url, true);
+  const token = await tokenFor(guest, host, link, mails, mark);
+  const attempt = await mailJoin(guest, host, link, token);
+  guest.send({ t: "join", link, attempt });
+  assert.deepEqual(await guest.next(), { t: "gate", link, to: "" });
+  guest.send({ t: "join", link, attempt, token: linkId() });
+  assert.deepEqual(await guest.next(), { t: "gate", link, to: "" });
+  // The host heard neither, and the guest it had is still bound.
+  guest.send({ t: "relay", link, data: "eA" });
+  assert.deepEqual(await host.next(), { t: "relay", link, data: "eA" });
+
+  guest.send({ t: "join", link, attempt, token });
+  const joined = { t: "joined", link, attempt, iceServers: [], turn: true };
+  assert.deepEqual(await guest.next(), joined);
+  assert.deepEqual(await host.next(), joined);
 });
 
 test("forgets an emailed link's codes and tokens when it is unhosted", async (t) => {

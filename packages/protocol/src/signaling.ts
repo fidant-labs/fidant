@@ -145,8 +145,10 @@ export type LogFields = {
 export type HostMessage = { t: "host"; links: string[]; turn: boolean };
 /**
  * A recipient asks to be connected to the sender hosting a link. `attempt` is a fresh random ID
- * (same shape as a link ID) for this join, so a refusal can name the attempt it refuses. It is
+ * (same shape as a link ID) for this attempt, so a refusal can name the attempt it refuses. It is
  * not secret, but the server never logs it. `token`, the answer to a right code, is never logged.
+ * A bound recipient sends the same message again, on the same socket, to get fresh ICE servers
+ * when its open connection dropped (decision 0028).
  */
 export type JoinMessage = { t: "join"; link: string; attempt: string; token?: string };
 /** An encrypted payload for the other end of a link. */
@@ -202,7 +204,8 @@ export type IceServer =
 /**
  * Pairs a recipient with the sender on a link: sent to the recipient first (its join ack), then
  * to the sender. Both get the ICE servers to use for this one connection, and in `turn` the
- * sender's relay choice as it stood when this recipient joined.
+ * sender's relay choice as it stood when this recipient joined. Sent again, with fresh ICE
+ * servers and the sender's choice as it stands then, each time the recipient repeats its `join`.
  */
 export type JoinedMessage = {
   t: "joined";
