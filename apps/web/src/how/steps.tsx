@@ -48,11 +48,10 @@ export const STEPS = [
     slug: "link",
     art: "link",
     detail: [
-      { modes: "link", cards: ["link", "emailed"] },
+      { modes: "link", cards: ["link"] },
       { section: "link" },
       { table: "linkRisks" },
       { section: "recipients", art: "recipients" },
-      { section: "email" },
     ],
   },
   { id: "open", slug: "connect", art: "open", detail: [{ section: "signal", art: "signal" }] },
