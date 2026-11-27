@@ -99,7 +99,7 @@ export const ERROR_CODES = [
 export type ErrorCode = (typeof ERROR_CODES)[number];
 
 /** Why the server rejects a WebSocket upgrade. */
-export const UPGRADE_REJECT_REASONS = ["path", "origin", "full", "address"] as const;
+export const UPGRADE_REJECT_REASONS = ["path", "origin", "full", "forwarded", "address"] as const;
 export type UpgradeRejectReason = (typeof UPGRADE_REJECT_REASONS)[number];
 
 /** Every value the server may write in a log line's `reason` field. */

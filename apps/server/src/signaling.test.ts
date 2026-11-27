@@ -500,7 +500,7 @@ test("closes the socket with 1008 on an invalid message", async () => {
 
 function upgradeStatus(
   path: string,
-  headers: Record<string, string> = {},
+  headers: Record<string, string | string[]> = {},
   to: { host: string; port: number } = { host: "localhost", port },
 ): Promise<number> {
   return new Promise((done, fail) => {
@@ -724,11 +724,40 @@ test("counts a socket behind a configured proxy against the forwarded address", 
   const trusting = await limitedServer(t, { socketsPerAddress: 1 }, { host: lan, proxies });
   const plain = await limitedServer(t, { socketsPerAddress: 1 }, { host: lan });
   const forwarded = { "x-forwarded-for": "198.51.100.1" };
+  const twoLines = { "x-forwarded-for": ["203.0.113.9", "198.51.100.2"] };
   await connect(`ws://${lan}:${trusting.port}/signal`);
   assert.equal(await upgradeStatus("/signal", {}, trusting), 429);
   assert.equal(await upgradeStatus("/signal", forwarded, trusting), 101);
+  assert.equal(await upgradeStatus("/signal", twoLines, trusting), 400);
   await connect(`ws://${lan}:${plain.port}/signal`);
   assert.equal(await upgradeStatus("/signal", forwarded, plain), 429);
+  assert.equal(await upgradeStatus("/signal", twoLines, plain), 429);
+});
+
+test("refuses more than one X-Forwarded-For line from a trusted proxy before counting it", async (t) => {
+  assert.equal(
+    await upgradeStatus("/signal", { "X-Forwarded-For": ["198.51.100.3", "198.51.100.4"] }),
+    400,
+  );
+  assert.ok(
+    logLines.some(
+      (line) => line.event === "upgrade-rejected" && line.fields?.reason === "forwarded",
+    ),
+  );
+  const limited = await limitedServer(t, { socketsPerAddress: 1 });
+  const url = `ws://127.0.0.1:${limited.port}/signal`;
+  await connect(url);
+  const held = new WsClient(url, { headers: { "x-forwarded-for": "198.51.100.1" } });
+  t.after(() => held.terminate());
+  await new Promise((done) => held.once("open", done));
+  assert.equal(await upgradeStatus("/signal", {}, limited), 429);
+  const twoLines = (last: string) => ({ "x-forwarded-for": ["203.0.113.9", last] });
+  assert.equal(await upgradeStatus("/signal", twoLines("198.51.100.1"), limited), 400);
+  assert.equal(await upgradeStatus("/signal", twoLines("198.51.100.2"), limited), 400);
+  assert.equal(await upgradeStatus("/signal", { "x-forwarded-for": "198.51.100.2" }, limited), 101);
+  const oneLine = (entries: string) => ({ "x-forwarded-for": entries });
+  assert.equal(await upgradeStatus("/signal", oneLine("203.0.113.9, 198.51.100.1"), limited), 429);
+  assert.equal(await upgradeStatus("/signal", oneLine("198.51.100.1, 198.51.100.3"), limited), 101);
 });
 
 /** Retries an upgrade until the server has noticed a close and freed the slot. */
