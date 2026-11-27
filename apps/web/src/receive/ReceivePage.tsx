@@ -779,8 +779,15 @@ export function ReceivePage({
     }
     start();
     // Once the page is really going, close the peer so the sender hears it now, not when ICE
-    // consent runs out about 15 s later.
-    const onPageHide = () => attemptRef.current?.peer?.close();
+    // consent runs out about 15 s later. Unless the page may come back from the back-forward
+    // cache, also close signaling with 1000, so the server frees the attempt at once instead of
+    // holding it for a takeover (0032).
+    const onPageHide = (event: PageTransitionEvent) => {
+      attemptRef.current?.peer?.close();
+      if (!event.persisted) {
+        attemptRef.current?.signaling.close();
+      }
+    };
     addEventListener("pagehide", onPageHide);
     return () => {
       removeEventListener("pagehide", onPageHide);

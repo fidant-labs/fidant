@@ -634,11 +634,16 @@ export function SendPage({
     };
     window.addEventListener("beforeunload", onBeforeUnload);
     // Once the page is really going, close the peers so recipients hear it now, not when ICE
-    // consent runs out about 15 s later.
-    const onPageHide = () => {
+    // consent runs out about 15 s later. Unless the page may come back from the back-forward
+    // cache, also close signaling with 1000, so the server frees every attempt at once instead
+    // of holding it for a takeover (0032).
+    const onPageHide = (event: PageTransitionEvent) => {
       clearRefusals();
       for (const linkId of [...connectionsRef.current.keys()]) {
         closeConnection(linkId);
+      }
+      if (!event.persisted) {
+        signaling.close();
       }
     };
     window.addEventListener("pagehide", onPageHide);
