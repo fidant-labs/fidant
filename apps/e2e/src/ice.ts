@@ -19,6 +19,19 @@ export interface PeerConnectionRecord {
   pwd?: string | undefined;
   /** The type of every local candidate it gathered, kept after ICE drops the candidate. */
   gathered: string[];
+  /**
+   * Every connection and signaling state change. `pwd` is the password of `currentLocalDescription`,
+   * which changes only once a restart's offer and answer are both set (`localDescription` already
+   * carries a pending offer's new one).
+   */
+  events: ConnectionEvent[];
+}
+
+export interface ConnectionEvent {
+  at: number;
+  state: RTCPeerConnectionState;
+  signalingState: RTCSignalingState;
+  pwd?: string | undefined;
 }
 
 type PageGlobals = typeof globalThis & {
@@ -54,7 +67,7 @@ export async function recordPeerConnections(context: BrowserContext): Promise<vo
       #timer: ReturnType<typeof setInterval> | undefined;
       constructor(config?: RTCConfiguration) {
         super(config);
-        const record: PeerConnectionRecord = { stats: [], gathered: [] };
+        const record: PeerConnectionRecord = { stats: [], gathered: [], events: [] };
         records.push(record);
         this.addEventListener("icecandidate", ({ candidate }) => {
           if (candidate?.type) {
@@ -74,7 +87,16 @@ export async function recordPeerConnections(context: BrowserContext): Promise<vo
           }
           record.stats = stats;
         };
+        const note = () =>
+          record.events.push({
+            at: Date.now(),
+            state: this.connectionState,
+            signalingState: this.signalingState,
+            pwd: /^a=ice-pwd:(\S+)/m.exec(this.currentLocalDescription?.sdp ?? "")?.[1],
+          });
+        this.addEventListener("signalingstatechange", note);
         this.addEventListener("connectionstatechange", () => {
+          note();
           if (this.connectionState === "connected") {
             record.pwd = /^a=ice-pwd:(\S+)/m.exec(this.localDescription?.sdp ?? "")?.[1];
             void snapshot();

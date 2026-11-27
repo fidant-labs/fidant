@@ -13,9 +13,34 @@
 //   sender → recipient   relay seal_s({kind:"offer", sdp, check})
 //   recipient → sender   relay seal_r({kind:"answer", sdp})   its fingerprint must match the commit
 //   both directions      relay seal({kind:"ice", candidate})   (trickle; null = end)
-//   sender → recipient   relay seal_s({kind:"restart-offer", sdp})   (TURN fallback, at most once)
+//   sender → recipient   relay seal_s({kind:"restart-offer", sdp})   (TURN fallback, at most once; see below)
 //   recipient → sender   relay seal_r({kind:"restart-answer", sdp})   both keep the first fingerprints
 //   sender ⇄ recipient   data channel "fidant" opens → onOpen(channel, info)
+//
+// Recovering a dropped route (decision 0031), only after the channel opened:
+//
+//   recipient            connectionState "disconnected", or "failed" while a
+//                        deadline runs → onStalled()   ("failed" with none closes)
+//   recipient → server   the same join again   (the page, from onStalled)
+//   server → both        joined, with new ICE servers → the page calls rejoined(iceServers)
+//   sender → recipient   relay seal_s({kind:"restart-offer", sdp})   after restartIce()
+//   recipient → sender   relay seal_r({kind:"restart-answer", sdp})
+//   both                 connected again → onPath(path)
+//
+// Until then the restart signals follow the fallback's rules: each is taken at
+// most once, and ignored once ICE is connected or the channel is open. From its
+// first onStalled the recipient answers every restart-offer, and from its
+// first rejoined the sender applies a restart-answer whenever an offer of its
+// own waits for one. While a recovery's offer waits, the sender makes no second
+// one; only its restart-answer ends that wait. Both still
+// refuse another fingerprint. A recovery uses the TURN URLs of the new servers
+// only if this connection had added the relay; otherwise only their STUN URLs.
+// The first rejoined of a drop starts a deadline of RECOVERY_TIMEOUT_MS, which
+// "connected" ends. A deadline started while the connection was still
+// connected starts again in full when the connection next leaves "connected".
+// While it runs, the browser's "failed" doesn't close the peer; when it runs
+// out and the connection is not connected, the peer closes with
+// "connection-failed". Without it, "failed" closes at once.
 //
 // The version marker is an `ice` signal whose empty candidate has the username
 // fragment "fidant-v<FRAME_VERSION>". The sender reads the recipient's before the
@@ -70,6 +95,9 @@ const PATH_RECHECK_MS = 1000;
 
 /** How long the sender lets ICE try without the relay, from applying the answer. */
 export const RELAY_FALLBACK_MS = 3000;
+
+/** How long a dropped connection gets to come back, from the first rejoined of the drop. */
+export const RECOVERY_TIMEOUT_MS = 30_000;
 
 export type PeerCloseReason =
   /** The data channel closed (the other side went away or closed it). */
@@ -127,6 +155,16 @@ export type PeerOptions = {
    * is a caught error's name (see errorName), safe to log.
    */
   onClose(reason: PeerCloseReason, detail?: string, name?: string): void;
+  /**
+   * Recipient only: the connection went "disconnected", or "failed" while a
+   * recovery deadline runs, after the channel opened, and the peer stays open.
+   * A "failed" with no deadline closes the peer instead. Send the same `join`
+   * again. Called once per such state change, never on a timer: each join is a
+   * pairing on the server.
+   */
+  onStalled?(): void;
+  /** The connection is connected again after the channel opened: how it runs now. */
+  onPath?(path: OpenPath): void;
 };
 
 export type Peer = {
@@ -138,6 +176,13 @@ export type Peer = {
   handleRelay(data: string): Promise<void>;
   /** Recipient only: the answer went out, so this connection's safety number is fixed. */
   readonly answered: boolean;
+  /**
+   * A repeated `joined` for this attempt arrived, with its ICE servers. Does
+   * nothing before the channel opened, or on a recipient that never called
+   * onStalled. Otherwise it starts the recovery deadline unless one runs, and
+   * the sender restarts ICE and sends a restart-offer.
+   */
+  rejoined(iceServers: RTCIceServer[]): void;
   /** Closes the channel and the connection. Safe to call more than once. */
   close(): void;
 };
@@ -346,6 +391,12 @@ function toCandidate(candidate: RTCIceCandidate): SignalCandidate {
 
 const urlsOf = (server: RTCIceServer) => [server.urls].flat();
 
+function stunOf(servers: RTCIceServer[]): RTCIceServer[] {
+  return servers
+    .map((server) => ({ urls: urlsOf(server).filter((url) => url.startsWith("stun:")) }))
+    .filter((server) => server.urls.length > 0);
+}
+
 function isConnected(state: RTCIceConnectionState): boolean {
   return state === "connected" || state === "completed";
 }
@@ -353,9 +404,7 @@ function isConnected(state: RTCIceConnectionState): boolean {
 function startPeer(options: PeerOptions, side: Direction): Peer {
   const { signaling, linkId, attempt, signalKey } = options;
   const other: Direction = side === "s" ? "r" : "s";
-  const stunOnly = options.iceServers
-    .map((server) => ({ urls: urlsOf(server).filter((url) => url.startsWith("stun:")) }))
-    .filter((server) => server.urls.length > 0);
+  const stunOnly = stunOf(options.iceServers);
   const hasTurn = options.iceServers.some((server) =>
     urlsOf(server).some((url) => url.startsWith("turn:") || url.startsWith("turns:")),
   );
@@ -388,6 +437,24 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
   /** Set when a restart signal arrived with the path already up; later ones are ignored too. */
   let ignoredRestart = false;
   let relayTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Whether this connection got the TURN servers; a recovery uses TURN only then. */
+  let relayAdded = false;
+  /** Recipient: it called onStalled. Sender: it got a rejoined. The once-only restart rules end here. */
+  let recovers = false;
+  /**
+   * Sender: a recovery's restart-offer waits for its answer, and only that answer ends the wait.
+   * A later rejoined must not make a second offer: the answer would meet fresh credentials.
+   * ponytail: a lost answer leaves this set, so later drops in the attempt end at the deadline;
+   * tag offers and answers with a counter if that matters.
+   */
+  let recoveryOffered = false;
+  /** Runs from the first rejoined of a drop until the connection is connected. */
+  let recoveryTimer: ReturnType<typeof setTimeout> | undefined;
+  /** The deadline started while the connection was connected: no drop needed it yet, so leaving "connected" starts it again. */
+  let deadlineEarly = false;
+  /** Counts path reads, so that one a newer read overtook reports nothing stale. */
+  let pathReads = 0;
+  let newestPath: Promise<OpenPath> | undefined;
   const pendingCandidates: Array<SignalCandidate | null> = [];
   let outgoing: Promise<void> = Promise.resolve();
   let incoming: Promise<void> = Promise.resolve();
@@ -395,6 +462,7 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
   function teardown(): void {
     closed = true;
     clearTimeout(relayTimer);
+    clearTimeout(recoveryTimer);
     if (channel) {
       channel.onopen = null;
       channel.onclose = null;
@@ -478,7 +546,17 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
     next.onclose = () => fail("channel-closed");
   }
 
-  async function readPath(): Promise<OpenPath> {
+  /** The newest read wins: an older one that ends later resolves to the newest one's path. */
+  function readPath(): Promise<OpenPath> {
+    const read = ++pathReads;
+    const path = readPathOnce().then((value) =>
+      read === pathReads || !newestPath ? value : newestPath,
+    );
+    newestPath = path;
+    return path;
+  }
+
+  async function readPathOnce(): Promise<OpenPath> {
     const read = () =>
       connection()
         .getStats()
@@ -611,23 +689,26 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
         return;
       }
       case "restart-offer": {
-        if (side !== "r" || !answered || restarted) {
+        if (side !== "r" || !answered || (restarted && !recovers)) {
           throw new PeerError("bad-signal", "unexpected restart-offer");
         }
-        // An honest offer can cross the channel opening; an open path stays as it is.
-        if (ignoredRestart) {
-          return;
-        }
-        if (isConnected(connection().iceConnectionState) || channel?.readyState === "open") {
-          ignoredRestart = true;
-          return;
+        if (!recovers) {
+          // An honest offer can cross the channel opening; an open path stays as it is.
+          if (ignoredRestart) {
+            return;
+          }
+          if (isConnected(connection().iceConnectionState) || channel?.readyState === "open") {
+            ignoredRestart = true;
+            return;
+          }
         }
         restarted = true;
         const theirs = remoteFingerprint(payload.sdp);
         if (theirs !== theirFingerprint) {
           throw new PeerError("bad-signal", "the restart names another certificate");
         }
-        if (hasTurn) {
+        // A recovery never adds the relay; rejoined set its servers.
+        if (hasTurn && !recovers) {
           try {
             addRelay();
           } catch {
@@ -639,19 +720,27 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
         if (answer.fingerprint !== ownFingerprint) {
           throw new PeerError("setup-failed", "the answer names another certificate");
         }
-        sendSignal({ kind: "restart-answer", sdp: answer.sdp }, true);
+        // An answer lost in a recovery is left to the deadline.
+        sendSignal({ kind: "restart-answer", sdp: answer.sdp }, !recovers);
         return;
       }
       case "restart-answer": {
-        if (side !== "s" || !restarted || gotRestartAnswer) {
+        if (side !== "s" || (!recovers && (!restarted || gotRestartAnswer))) {
           throw new PeerError("bad-signal", "unexpected restart-answer");
         }
-        if (ignoredRestart) {
-          return;
-        }
-        if (isConnected(connection().iceConnectionState) || channel?.readyState === "open") {
-          ignoredRestart = true;
-          return;
+        if (recovers) {
+          recoveryOffered = false;
+          if (connection().signalingState !== "have-local-offer") {
+            return;
+          }
+        } else {
+          if (ignoredRestart) {
+            return;
+          }
+          if (isConnected(connection().iceConnectionState) || channel?.readyState === "open") {
+            ignoredRestart = true;
+            return;
+          }
         }
         gotRestartAnswer = true;
         const theirs = remoteFingerprint(payload.sdp);
@@ -687,6 +776,16 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
   function addRelay(): void {
     const pc = connection();
     pc.setConfiguration({ ...pc.getConfiguration(), iceServers: options.iceServers });
+    relayAdded = true;
+  }
+
+  /** Makes the offer that follows restartIce() and sends it as restart-offer. */
+  async function sendRestartOffer(required: boolean): Promise<void> {
+    const offer = await describe("offer");
+    if (offer.fingerprint !== offerFingerprint) {
+      throw new PeerError("setup-failed", "the restart offer names another certificate");
+    }
+    sendSignal({ kind: "restart-offer", sdp: offer.sdp }, required);
   }
 
   /** Adds TURN and restarts ICE, in order with the relayed signals, unless ICE connected or the channel opened. */
@@ -706,15 +805,66 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
           return;
         }
         restarted = true;
-        const offer = await describe("offer");
-        if (offer.fingerprint !== offerFingerprint) {
-          throw new PeerError("setup-failed", "the restart offer names another certificate");
-        }
-        sendSignal({ kind: "restart-offer", sdp: offer.sdp }, true);
+        await sendRestartOffer(true);
       })
       .catch((error: unknown) => {
         failWith(error, "setup-failed");
       });
+  }
+
+  /**
+   * In order with the relayed signals, like fallBackToRelay. The sender makes one offer per
+   * recovery step: a rejoined while its offer waits for the answer only updates the servers.
+   */
+  function rejoined(iceServers: RTCIceServer[]): void {
+    incoming = incoming
+      .then(async () => {
+        if (closed || !opened || (side === "r" && !recovers)) {
+          return;
+        }
+        const pc = connection();
+        recovers = true;
+        if (recoveryTimer === undefined) {
+          startDeadline(pc.connectionState === "connected");
+        }
+        try {
+          pc.setConfiguration({
+            ...pc.getConfiguration(),
+            iceServers: relayAdded ? iceServers : stunOf(iceServers),
+          });
+        } catch {
+          // The restart runs with the servers the connection has.
+        }
+        if (side === "r" || recoveryOffered) {
+          // An offer already waits; a lost one or its answer is left to the deadline.
+          return;
+        }
+        try {
+          pc.restartIce();
+        } catch {
+          // An old browser: the deadline ends it unless the route comes back by itself.
+          return;
+        }
+        // An offer lost here is left to the deadline.
+        await sendRestartOffer(false);
+        recoveryOffered = true;
+      })
+      .catch((error: unknown) => {
+        failWith(error, "setup-failed");
+      });
+  }
+
+  /** Starts a full recovery deadline, in place of any that runs. `early`: the connection is still connected. */
+  function startDeadline(early: boolean): void {
+    clearTimeout(recoveryTimer);
+    deadlineEarly = early;
+    recoveryTimer = setTimeout(() => {
+      recoveryTimer = undefined;
+      deadlineEarly = false;
+      if (connection().connectionState !== "connected") {
+        fail("connection-failed");
+      }
+    }, RECOVERY_TIMEOUT_MS);
   }
 
   async function setup(): Promise<void> {
@@ -740,10 +890,34 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
     };
 
     next.onconnectionstatechange = () => {
-      if (next.connectionState === "failed") {
-        fail("connection-failed");
-      } else if (next.connectionState === "closed") {
+      const state = next.connectionState;
+      if (state === "closed") {
         fail("connection-closed");
+      } else if (state === "connected") {
+        clearTimeout(recoveryTimer);
+        recoveryTimer = undefined;
+        deadlineEarly = false;
+        if (opened && options.onPath) {
+          // ponytail: a restart that never leaves "connected" reports no new path.
+          const path = readPath();
+          const read = pathReads;
+          void path.then((value) => {
+            if (!closed && read === pathReads) {
+              options.onPath?.(value);
+            }
+          });
+        }
+      } else if (state === "disconnected" || state === "failed") {
+        if (deadlineEarly) {
+          startDeadline(false);
+        }
+        if (state === "failed" && recoveryTimer === undefined) {
+          // No repeated joined in this drop: the other page is gone.
+          fail("connection-failed");
+        } else if (side === "r" && opened && options.onStalled) {
+          recovers = true;
+          options.onStalled();
+        }
       }
     };
 
@@ -808,6 +982,7 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
     get answered() {
       return answered;
     },
+    rejoined,
     close() {
       if (!closed) {
         teardown();

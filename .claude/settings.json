@@ -14,6 +14,18 @@
       "Bash(pnpm test)",
       "Bash(pnpm format)",
       "Bash(bash .claude/scripts/review-gate.sh mark)"
+    ],
+    "deny": [
+      "Bash(*modern-web-guidance@*)",
+      "Bash(npx *modern-web-guidance*)",
+      "Bash(npx.cmd *modern-web-guidance*)",
+      "Bash(pnpx *modern-web-guidance*)",
+      "Bash(pnpm dlx *modern-web-guidance*)",
+      "Bash(pnpm exec *modern-web-guidance*)",
+      "Bash(npm exec *modern-web-guidance*)",
+      "Bash(npm x *modern-web-guidance*)",
+      "Bash(bunx *modern-web-guidance*)",
+      "Bash(yarn dlx *modern-web-guidance*)"
     ]
   },
   "hooks": {
