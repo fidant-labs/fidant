@@ -26,6 +26,7 @@ import {
   mailFrom,
   relayAddresses,
   relayMasterGeneration,
+  relayName,
   relays,
   signalName,
   signals,
@@ -52,7 +53,7 @@ const dns = Template.fromStack(
       dmarc: "v=DMARC1; p=quarantine",
     },
     boxAddress: "192.0.2.10",
-    relayAddresses: { sto: "198.51.100.7" },
+    relayAddresses: { sto: "198.51.100.7", fra: "198.51.100.8" },
     signalTargets: { sto: "fidant-signal-1.eu-north-1.elb.amazonaws.com" },
     certificateRecords: [],
   }),
@@ -1218,7 +1219,7 @@ test("the relay keeps the app box's coturn hardening and peer denials, and no st
   const userData = renderRelayUserData({ id: "sto" });
   const start = userData.indexOf('\ncat >>"$tmp" <<EOF\n');
   assert.ok(start > 0);
-  assert.doesNotMatch(userData, /turnserver\.conf\.(?!XXXXXX)[A-Za-z]/);
+  assert.doesNotMatch(userData, /(turnserver\.conf|\$conf)\.(?!XXXXXX)[A-Za-z]/);
   const relay = userData.slice(start, userData.indexOf("\nEOF\n", start)).split("\n").slice(2);
   const box = readFileSync(new URL("../box/turnserver.conf", import.meta.url), "utf8").split("\n");
   assert.equal(deny(box).length, 13);
@@ -1236,6 +1237,24 @@ test("the relay keeps the app box's coturn hardening and peer denials, and no st
 
 test("the relay's scripts that handle a secret or a key run with set -eu and never trace", () => {
   const script = readFileSync(new URL("../relay/install.sh", import.meta.url), "utf8");
+  // A script run as its own process doesn't inherit the install's -x, so only its own set or
+  // a shell started with -x traces it. Only options right after the shell's name count, so
+  // `sh -c 'tar -xf a'` passes.
+  const setTrace = /\bset\b[^\n;]*[\s"']-[A-Za-z]*x|xtrace/;
+  const shTrace = /\b(?:ba|da)?sh\b(?:\s+-[A-Za-z]+)*\s+["']?-[A-Za-z]*x/;
+  for (const line of ["set -x", "set -Cx", 'set "-x"', "set -eu -x", "set -o xtrace"]) {
+    assert.match(line, setTrace);
+  }
+  for (const line of ["set -eu", "set -C", "set +x", "unset -x", "set -e; tar -xf a"]) {
+    assert.doesNotMatch(line, setTrace);
+  }
+  for (const line of ["sh -x script", "/bin/sh -eux script", 'sh -e "-x" script', "bash -x a"]) {
+    assert.match(line, shTrace);
+  }
+  for (const line of ["sh -c 'true'", "sh -c 'tar -xf a'", "ssh -x host", "#!/bin/sh\nset -eux"]) {
+    assert.doesNotMatch(line, shTrace);
+  }
+  assert.doesNotMatch(script, shTrace);
   for (const name of [
     "fidant-relay-apply-secret",
     "fidant-relay-secret",
@@ -1248,7 +1267,7 @@ test("the relay's scripts that handle a secret or a key run with set -eu and nev
       script.indexOf("\nEOF\n", start),
     );
     assert.match(body, /^#!\/bin\/sh\nset -eu\n/, name);
-    assert.doesNotMatch(body, /\bset\b[^\n;]*\s-[a-z]*x|xtrace/, name);
+    assert.doesNotMatch(body, setTrace, name);
   }
 });
 
@@ -1659,23 +1678,29 @@ test("only fidant.se gets the relay name, pointing at the box over IPv4", () => 
   );
 });
 
-test("only fidant.se gets a relay record per relay, over IPv4 only", () => {
+test("only fidant.se gets a record per relay box, each pointing at its own address over IPv4 only", () => {
   const relay = Object.values(dns.findResources(recordSet)).filter((record) =>
     String(record.Properties.Name).includes(".relay."),
   );
   assert.deepEqual(
     relay.map(({ Properties: p }) => [p.HostedZoneId, p.Name, p.Type, p.ResourceRecords]),
-    [[zoneRef("fidant.se"), "sto.relay.fidant.se.", "A", ["198.51.100.7"]]],
+    [
+      [zoneRef("fidant.se"), "sto.relay.fidant.se.", "A", ["198.51.100.7"]],
+      [zoneRef("fidant.se"), "fra.relay.fidant.se.", "A", ["198.51.100.8"]],
+    ],
   );
 });
 
-test("the committed config points sto.relay.fidant.se at the relay box and no other zone has a relay record", () => {
+test("the committed config points every relay's name at its relay box over IPv4, and no other zone has a relay record", () => {
+  for (const { id } of relays) {
+    assert.equal(isIP(relayAddresses[id] ?? ""), 4, id);
+  }
   const records = Object.values(committed.findResources(recordSet)).filter((record) =>
     String(record.Properties.Name).includes(".relay."),
   );
   assert.deepEqual(
-    records.map(({ Properties: p }) => [p.Name, p.Type, p.ResourceRecords]),
-    [["sto.relay.fidant.se.", "A", ["13.51.1.111"]]],
+    records.map(({ Properties: p }) => [p.Name, p.Type, p.ResourceRecords]).sort(),
+    relays.map(({ id }) => [`${relayName(id)}.`, "A", [relayAddresses[id]]]).sort(),
   );
 });
 
