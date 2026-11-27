@@ -34,7 +34,8 @@ const loopbackRelay =
   "Firefox pairs the local coturn's 127.0.0.1 relay candidates with no LAN candidate and ends ICE at once, before the sender falls back to the relay";
 
 const sha256Hex = (data: Uint8Array) => createHash("sha256").update(data).digest("hex");
-const panel = (page: Page) => page.getByRole("region", { name: "What our server has right now" });
+const panel = (page: Page) =>
+  page.getByRole("region", { name: "What our server has right now", includeHidden: true });
 const relayed =
   "None. The browsers couldn't connect directly, so the file passes encrypted through our relay instead.";
 
@@ -169,10 +170,13 @@ for (const transport of ["udp", "tcp"] as const) {
       await expect(panel(page)).not.toContainText("goes directly between browsers");
       // The panel and the Why? text also say "through our relay".
       await expect(page.getByText("Through our relay", { exact: true })).toBeVisible();
-      await page.getByText("Why?", { exact: true }).click();
-      await expect(
-        page.getByText("So the file goes through our relay in Stockholm."),
-      ).toBeVisible();
+      // The send page shows the link at once; the receive page explains under "Why?".
+      if (page === recipient) {
+        await page.getByText("Why?", { exact: true }).click();
+        await expect(
+          page.getByText("So the file goes through our relay in Stockholm."),
+        ).toBeVisible();
+      }
       await expect(page.getByRole("link", { name: /More about how it works/ })).toHaveAttribute(
         "href",
         "/how#relay",
