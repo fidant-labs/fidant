@@ -5,7 +5,7 @@
 // for a moment after it shows a recipient, so a click already on its way cannot answer the new one.
 //
 // A link that couldn't connect directly while a relay is up asks the sender to allow our relay
-// (decision 0027): the status line says so, and the button sits outside it, so a screen reader
+// (decision 0028): the status line says so, and the button sits outside it, so a screen reader
 // hears the sentence once. Focus stays where the sender has it.
 //
 // Only the status sentence, the email line, the safety number and the check's

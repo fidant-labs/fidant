@@ -119,7 +119,7 @@
 //   like a timeout, with `noRelay` if it stalled. This is a backstop for a recipient that
 //   uses a relay on its own side: the sender's peer has no TURN server then,
 //   and an honest server gives the recipient none either.
-// - The ask (decision 0027). `turn-up` records that the server said a relay is
+// - The ask (decision 0028). `turn-up` records that the server said a relay is
 //   up for the current attempt. `stalled` means the sender's peer, which has no
 //   relay, had nothing connected RELAY_FALLBACK_MS after the answer. With
 //   `turn-up`, the attempt ends: the recipient returns to "waiting" with `ask`,

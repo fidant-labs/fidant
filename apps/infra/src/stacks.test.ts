@@ -52,6 +52,7 @@ const dns = Template.fromStack(
     },
     boxAddress: "192.0.2.10",
     relayAddresses: { sto: "198.51.100.7" },
+    signalTargets: { sto: "fidant-signal-1.eu-north-1.elb.amazonaws.com" },
     certificateRecords: [],
   }),
 );
@@ -1335,6 +1336,34 @@ test("the committed config points sto.relay.fidant.se at the relay box and no ot
   assert.deepEqual(
     records.map(({ Properties: p }) => [p.Name, p.Type, p.ResourceRecords]),
     [["sto.relay.fidant.se.", "A", ["13.51.1.111"]]],
+  );
+});
+
+test("only fidant.se gets a signaling name per target, pointing at its load balancer for 60 seconds", () => {
+  const records = Object.values(dns.findResources(recordSet)).filter((record) =>
+    String(record.Properties.Name).includes(".signal."),
+  );
+  assert.deepEqual(
+    records.map(({ Properties: p }) => [p.HostedZoneId, p.Name, p.Type, p.ResourceRecords, p.TTL]),
+    [
+      [
+        zoneRef("fidant.se"),
+        "sto.signal.fidant.se.",
+        "CNAME",
+        ["fidant-signal-1.eu-north-1.elb.amazonaws.com"],
+        "60",
+      ],
+    ],
+  );
+});
+
+test("the committed config points sto.signal.fidant.se at the signaling load balancer and has no other signaling name", () => {
+  const records = Object.values(committed.findResources(recordSet)).filter((record) =>
+    /^[a-z]+\.signal\./.test(String(record.Properties.Name)),
+  );
+  assert.deepEqual(
+    records.map(({ Properties: p }) => [p.Name, p.Type, p.ResourceRecords]),
+    [["sto.signal.fidant.se.", "CNAME", ["fidant-signal-1565593186.eu-north-1.elb.amazonaws.com"]]],
   );
 });
 

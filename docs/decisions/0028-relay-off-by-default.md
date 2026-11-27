@@ -1,4 +1,4 @@
-# 0027: The relay off by default, allowed per link when asked
+# 0028: The relay off by default, allowed per link when asked
 
 - Status: Proposed
 - Date: 2026-11-26

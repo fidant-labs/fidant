@@ -36,7 +36,7 @@
 //   (refusesRelay) counts as failed too, and the reducer then ends the
 //   attempt. An open channel's path also goes to the reducer, for the
 //   recipient's card.
-// - The relay is off unless the sender allows it (decision 0027). The server's
+// - The relay is off unless the sender allows it (decision 0028). The server's
 //   `turn-up` → reducer `turn-up`; the peer's onStalled → reducer `stalled`,
 //   which with a relay up ends the attempt and asks the sender on the card.
 //   The page reports that attempt's path as failed. The card's button, or
@@ -259,9 +259,13 @@ export function SendPage({
   const [textLength, setTextLength] = useState(0);
   const [canAskToNotify, setCanAskToNotify] = useState(false);
   const [notifyAnswer, setNotifyAnswer] = useState<"on" | "blocked" | undefined>(undefined);
-  // Once, when the answer replaces the button that held focus.
+  // When the answer replaces the button, it takes the focus the button (or nothing) held.
   useEffect(() => {
-    if (notifyAnswer && document.activeElement === document.body) {
+    const active = document.activeElement;
+    if (
+      notifyAnswer &&
+      (active === document.body || active === document.getElementById(id("notify-me")))
+    ) {
       document.getElementById(id("notify-answer"))?.focus();
     }
   }, [notifyAnswer]);
@@ -435,7 +439,7 @@ export function SendPage({
         if (connectionsRef.current.get(linkId) !== connection) {
           return;
         }
-        // With a relay up the reducer ends the attempt here and asks the sender (decision 0027).
+        // With a relay up the reducer ends the attempt here and asks the sender (decision 0028).
         const latest = findRecipient(senderRef.current, linkId);
         if (latest?.status === "connecting" && latest.turn === false && latest.turnUp) {
           sendPath(linkId, connection, "failed");
@@ -512,7 +516,7 @@ export function SendPage({
       const words = text ? t.secret : t.send;
       notify(
         all ? t.send.doneTitle : t.send.delivered,
-        all ? words.allDone : words.summary(done, recipients.length),
+        all ? `${words.allDone}. ${t.send.closeTab}.` : words.summary(done, recipients.length),
       );
     }
     for (const effect of next.effects) {
@@ -902,11 +906,11 @@ export function SendPage({
       close();
     };
   }, [asking]);
+  const sendingText = t.send.sendingBar(delivered, sender.recipients.length);
+  const doneText = (text ? t.secret : t.send).allDone;
   const barText = unfinished
-    ? t.send.sendingBar(delivered, sender.recipients.length)
-    : text
-      ? t.secret.allDone
-      : t.send.allDone;
+    ? `${sendingText}. ${t.send.keepOpen}.`
+    : `${doneText}. ${t.send.closeTab}.`;
   const goToRecipients = () =>
     requestAnimationFrame(() => {
       const target = document.getElementById(id("recipients"));
@@ -1354,57 +1358,94 @@ export function SendPage({
           data-bottom-bar
           data-page-bar
           // White on emerald-700 is 5.5:1.
-          class={`fixed inset-x-0 bottom-0 z-40 border-t p-4 transition-colors ${unfinished ? "border-border/60 bg-background/80 backdrop-blur-xl" : "border-emerald-700 bg-emerald-700 text-white"}`}
+          class={`fixed inset-x-0 bottom-0 z-40 overflow-hidden bg-background/80 p-4 backdrop-blur-xl transition-colors duration-700 motion-reduce:transition-none ${unfinished ? "" : "text-white"}`}
         >
-          {/* A thin line along the bar's top: what has gone through all links together. */}
-          {unfinished && (
+          {/* The green that takes the bar once every link has delivered. It waits above the bar and
+              slides down from the progress line, its soft lower edge first; 60 % of its height is
+              solid, which covers the whole bar when it has landed. */}
+          <div
+            class={`absolute inset-x-0 top-0 h-[170%] bg-linear-to-b from-emerald-700 from-60% to-transparent transition-transform duration-700 ease-out motion-reduce:transition-none ${unfinished ? "-translate-y-full" : "translate-y-0"}`}
+            aria-hidden="true"
+          />
+          {/* The bar's top edge: a track that fills with what has gone through all links together.
+              It is always there, and stays full in a lighter green once every link has delivered, so
+              the bar never changes height. */}
+          <div class="absolute inset-x-0 top-0 h-1 bg-border" aria-hidden="true">
             <div
-              class="absolute top-0 left-0 h-1 bg-emerald-600 transition-[width] motion-reduce:transition-none"
+              class={`h-full transition-[width,background-color] motion-reduce:transition-none ${unfinished ? "bg-emerald-600" : "bg-emerald-400"}`}
               style={{ width: `${progress * 100}%` }}
-              aria-hidden="true"
             />
-          )}
+          </div>
           <div class="relative mx-auto flex max-w-xl items-center gap-3">
-            <p
-              class="m-0 flex flex-1 items-center gap-2 text-[0.9rem] font-medium"
-              aria-hidden="true"
-            >
-              {unfinished ? (
-                <span
-                  class="size-2 flex-none animate-pulse rounded-full bg-primary"
-                  aria-hidden="true"
-                />
-              ) : (
+            {/* Both texts share one grid cell, the hidden one keeping its space, so the bar is as tall
+                while sending as when done, whichever text wraps to more lines (see SwapLabel). */}
+            <p class="m-0 grid flex-1 text-[0.9rem] font-medium" aria-hidden="true">
+              <span
+                class={`col-start-1 row-start-1 flex items-center gap-3 ${unfinished ? "" : "invisible"}`}
+              >
+                {/* In a box as wide as the check that replaces it, so the text starts at the same place. */}
+                <span class="flex size-4 flex-none items-center justify-center">
+                  <span class="size-2 animate-pulse rounded-full bg-primary motion-reduce:animate-none" />
+                </span>
+                <span>
+                  <span class="block">{sendingText}</span>
+                  <span class="block font-normal text-muted-foreground">{t.send.keepOpen}</span>
+                </span>
+              </span>
+              <span
+                class={`col-start-1 row-start-1 flex items-center gap-3 ${unfinished ? "invisible" : ""}`}
+              >
                 <Icon name="check" class="size-4 flex-none" />
-              )}
-              {barText}
+                <span>
+                  <span class="block">{doneText}</span>
+                  <span class="block font-normal">{t.send.closeTab}</span>
+                </span>
+              </span>
             </p>
-            {unfinished && canAskToNotify && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={async () => {
-                  const answer = await askToNotify();
-                  if (answer !== "default") {
-                    setCanAskToNotify(false);
-                    setNotifyAnswer(answer === "granted" ? "on" : "blocked");
-                  }
-                }}
-              >
-                {t.send.notifyMe}
-              </Button>
-            )}
-            {notifyAnswer && (
-              // Takes the focus the button held, and tells the sender what the browser answered.
-              <p
-                id={id("notify-answer")}
-                tabIndex={-1}
-                role="status"
-                class="m-0 text-[0.8rem] text-muted-foreground"
-              >
-                {notifyAnswer === "on" ? t.send.notifyOn : t.send.notifyBlocked}
-              </p>
+            {/* Once the button was offered its place stays: the button and the browser's answer share
+                one grid cell, the hidden one keeping its space, so the bar's text wraps the same and
+                the bar keeps its height when the button goes (see SwapLabel). */}
+            {(canAskToNotify || notifyAnswer) && (
+              <div class="grid flex-none items-center justify-items-end">
+                <Button
+                  id={id("notify-me")}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className={`col-start-1 row-start-1 ${unfinished && canAskToNotify ? "" : "invisible"}`}
+                  onClick={async () => {
+                    const answer = await askToNotify();
+                    if (answer !== "default") {
+                      setCanAskToNotify(false);
+                      setNotifyAnswer(answer === "granted" ? "on" : "blocked");
+                    }
+                  }}
+                >
+                  {t.send.notifyMe}
+                </Button>
+                {/* Size the cell for the widest text, so the answer arriving changes no width. */}
+                {[t.send.notifyOn, t.send.notifyBlocked].map((text) => (
+                  <span
+                    key={text}
+                    aria-hidden="true"
+                    class="invisible col-start-1 row-start-1 text-[0.8rem]"
+                  >
+                    {text}
+                  </span>
+                ))}
+                {notifyAnswer && (
+                  // Takes the focus the button held, and tells the sender what the browser answered.
+                  // Invisible while the button is offered again after an earlier answer.
+                  <p
+                    id={id("notify-answer")}
+                    tabIndex={-1}
+                    role="status"
+                    class={`col-start-1 row-start-1 m-0 text-[0.8rem] ${canAskToNotify ? "invisible" : ""} ${unfinished ? "text-muted-foreground" : ""}`}
+                  >
+                    {notifyAnswer === "on" ? t.send.notifyOn : t.send.notifyBlocked}
+                  </p>
+                )}
+              </div>
             )}
           </div>
         </div>

@@ -229,7 +229,7 @@ export function attachSignaling(
     limits?: Partial<typeof LIMITS>;
     /** Minted once per pairing, so TURN credentials are fresh. Never logged. */
     iceServers?: (turn: boolean) => IceServer[];
-    /** Whether a relay could be handed out now. It must mint no credential (decision 0027). */
+    /** Whether a relay could be handed out now. It must mint no credential (decision 0028). */
     relayUp?: () => boolean;
     /** Sends notices that link to `${origin}/r/<link>#e.<mark>.<secret>`. Without it, no mail goes out. */
     mail?: { send: Mailer; origin: string } | undefined;
@@ -508,7 +508,7 @@ export function attachSignaling(
     };
     send(socket, joined);
     send(hostSocket, joined);
-    // Tells both pages that asking the sender is worth it. Never logged (decision 0027).
+    // Tells both pages that asking the sender is worth it. Never logged (decision 0028).
     if (!turn && relayUp()) {
       const turnUp: ServerMessage = { t: "turn-up", link, attempt };
       send(socket, turnUp);
@@ -557,7 +557,7 @@ export function attachSignaling(
       guestPeer.joined = undefined;
       guestPeer.attempt = undefined;
     }
-    // The relay choice is never logged (decision 0027).
+    // The relay choice is never logged (decision 0028).
     if (reason !== "turn") {
       log("refused", { link: short(link), reason });
     }

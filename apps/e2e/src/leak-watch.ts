@@ -1,7 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { basename, join, relative } from "node:path";
 import { setTimeout } from "node:timers/promises";
-import type { CanaryFile, CanaryKey } from "./leaks/canary.ts";
+import type { CanaryFile, CanaryKey, LargeCanaryFile } from "./leaks/canary.ts";
 import {
   bodyLimits,
   type LogSlice,
@@ -32,11 +32,11 @@ import type { Recorder } from "./recorder.ts";
 /** What a test uses to register its secrets and check for leaks. */
 export interface Leaks {
   /**
-   * Watches a canary file: its bytes, their SHA-256, the tokens in its name and type, the SHA-256
-   * of its name, and its size. `label` names it in findings; default `file#1`, `file#2`, ….
-   * Returns the file.
+   * Watches a canary file: its bytes (a large file's sampled bytes), their SHA-256, the tokens in
+   * its name and type, the SHA-256 of its name, and its size. `label` names it in findings;
+   * default `file#1`, `file#2`, …. Returns the file.
    */
-  watch(file: CanaryFile, label?: string): CanaryFile;
+  watch<Watched extends CanaryFile | LargeCanaryFile>(file: Watched, label?: string): Watched;
   /**
    * Watches a key: raw bytes, or text such as a fragment secret, searched as text and as every
    * byte value its hex, base64url or base64 decodes to. Each byte value, and each text form of
@@ -131,7 +131,10 @@ export class LeakWatch implements Leaks {
     );
   }
 
-  watch(file: CanaryFile, label = `file#${++this.#files}`): CanaryFile {
+  watch<Watched extends CanaryFile | LargeCanaryFile>(
+    file: Watched,
+    label = `file#${++this.#files}`,
+  ): Watched {
     this.#add(fileSecrets(label, file));
     return file;
   }

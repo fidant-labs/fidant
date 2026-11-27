@@ -102,7 +102,7 @@ test("fails counts that are not non-negative integers", () => {
 
 test("fails an unknown reason or code", () => {
   assert.deepEqual(rules(line({ event: "refused", reason: "gone" })), ["reason"]);
-  // The relay choice is never logged (decision 0027).
+  // The relay choice is never logged (decision 0028).
   assert.deepEqual(rules(line({ event: "refused", reason: "turn" })), ["reason"]);
   assert.deepEqual(rules(line({ event: "error", code: "oops" })), ["code"]);
   assert.deepEqual(rules(line({ event: "error", code: null })), ["code"]);

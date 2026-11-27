@@ -330,9 +330,13 @@ export const en = {
     addEmailCheck: "Create and email link with safety number",
     share: "Share",
     shareFor: (name: string) => `Share link for ${name}`,
+    // No-break spaces keep the count on one line.
     sendingBar: (delivered: number, total: number) =>
-      `Sending from this tab · ${delivered} of ${total} delivered · keep it open`,
-    allDone: "Every link has delivered the file. You can close this tab.",
+      `${delivered}\u00a0of\u00a0${total}\u00a0delivered`,
+    keepOpen: "Keep the tab open",
+    // The bar shows these as two lines without full stops; a sentence built from them adds its own.
+    allDone: "Every link has delivered the file",
+    closeTab: "You can close this tab",
     notifyMe: "Notify me",
     notifyOn: "Notifications on",
     notifyBlocked: "Notifications blocked",
@@ -659,7 +663,7 @@ export const en = {
     first: "Write or paste the secret first.",
     locked: "Remove everyone to change your name or secret.",
     lockedDelivered: "Reload the page to change your name or secret.",
-    allDone: "Every link has delivered the secret. You can close this tab.",
+    allDone: "Every link has delivered the secret",
     summary: (done: number, total: number) => `${done} of ${total} links have delivered the secret`,
     emailNotice:
       "Our server will see this link's key once, to write the email. It doesn't store or log the key, but our mail service and anyone who reads the email on its way can see the key too. The link, key included, stays in the recipient's mailbox: anyone who can read that mailbox could receive the secret. For this link, our server could also put itself between you and the recipient. To see if it does, create the link with a safety number and compare it with the recipient. Sending the link yourself avoids all of this.",

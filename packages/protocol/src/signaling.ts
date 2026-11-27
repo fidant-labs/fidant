@@ -53,7 +53,7 @@ const BASE64URL_PATTERN = /^[A-Za-z0-9_-]+$/;
 /**
  * Why a sender's page may turn a recipient away. `drop`: the sender gave up on the attempt; the
  * link still works. `turn`: the sender allowed our relay for the link, so join again (decision
- * 0027). The server never logs `turn`.
+ * 0028). The server never logs `turn`.
  */
 export const REFUSE_REASONS = ["used", "busy", "unknown", "drop", "turn"] as const;
 export type RefuseReason = (typeof REFUSE_REASONS)[number];
@@ -106,7 +106,7 @@ export type ErrorCode = (typeof ERROR_CODES)[number];
 export const UPGRADE_REJECT_REASONS = ["path", "origin", "full", "address"] as const;
 export type UpgradeRejectReason = (typeof UPGRADE_REJECT_REASONS)[number];
 
-/** Every value the server may write in a log line's `reason` field. Never `turn` (decision 0027). */
+/** Every value the server may write in a log line's `reason` field. Never `turn` (decision 0028). */
 export type LogReason =
   | Exclude<RefusedReason, "turn">
   | UpgradeRejectReason
@@ -149,7 +149,7 @@ export type LogFields = {
 /**
  * The sender announces its full list of link IDs, and in `turn` whether recipients who join from
  * now on may use our TURN relay. `turnLinks` lists the links whose recipients may use it even when
- * `turn` is false (decision 0027); each is also in `links`. Re-sent whenever any of them changes.
+ * `turn` is false (decision 0028); each is also in `links`. Re-sent whenever any of them changes.
  * The server never logs `turn` or `turnLinks`.
  */
 export type HostMessage = { t: "host"; links: string[]; turn: boolean; turnLinks?: string[] };
@@ -223,7 +223,7 @@ export type JoinedMessage = {
 };
 /**
  * Tells both pages, after a `joined` whose `turn` is false, that a relay is up, so asking the
- * sender to allow it is worth it (decision 0027). Never logged.
+ * sender to allow it is worth it (decision 0028). Never logged.
  */
 export type TurnUpMessage = { t: "turn-up"; link: string; attempt: string };
 /** Tells the sender that the recipient on a link went away. */
