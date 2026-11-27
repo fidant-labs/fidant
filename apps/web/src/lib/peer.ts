@@ -19,7 +19,8 @@
 //
 // Recovering a dropped route (decision 0029), only after the channel opened:
 //
-//   recipient            connectionState "disconnected" or "failed" → onStalled()
+//   recipient            connectionState "disconnected", or "failed" while a
+//                        deadline runs → onStalled()   ("failed" with none closes)
 //   recipient → server   the same join again   (the page, from onStalled)
 //   server → both        joined, with new ICE servers → the page calls rejoined(iceServers)
 //   sender → recipient   relay seal_s({kind:"restart-offer", sdp})   after restartIce()
@@ -28,15 +29,18 @@
 //
 // Until then the restart signals follow the fallback's rules: each is taken at
 // most once, and ignored once ICE is connected or the channel is open. From its
-// first onStalled the recipient answers every restart-offer, and from its first
-// rejoined the sender applies a restart-answer whenever an offer of its own
-// waits for one, and while a recovery's offer waits it makes no second one. Both still refuse another fingerprint. A recovery uses the
-// TURN URLs of the new servers only if this connection had added the relay;
-// otherwise only their STUN URLs. The first rejoined of a drop starts a
-// deadline of RECOVERY_TIMEOUT_MS, which "connected" ends. While it runs, the
-// browser's "failed" doesn't close the peer; when it runs out and the
-// connection is not connected, the peer closes with "connection-failed".
-// Without it, "failed" closes at once.
+// first onStalled the recipient answers every restart-offer, and from its
+// first rejoined the sender applies a restart-answer whenever an offer of its
+// own waits for one. While a recovery's offer waits, the sender makes no second
+// one, and "connected" ends that wait only with no offer pending. Both still
+// refuse another fingerprint. A recovery uses the TURN URLs of the new servers
+// only if this connection had added the relay; otherwise only their STUN URLs.
+// The first rejoined of a drop starts a deadline of RECOVERY_TIMEOUT_MS, which
+// "connected" ends. A deadline started while the connection was still
+// connected starts again in full when the connection next leaves "connected".
+// While it runs, the browser's "failed" doesn't close the peer; when it runs
+// out and the connection is not connected, the peer closes with
+// "connection-failed". Without it, "failed" closes at once.
 //
 // The version marker is an `ice` signal whose empty candidate has the username
 // fragment "fidant-v<FRAME_VERSION>". The sender reads the recipient's before the
@@ -152,9 +156,11 @@ export type PeerOptions = {
    */
   onClose(reason: PeerCloseReason, detail?: string, name?: string): void;
   /**
-   * Recipient only: the connection went "disconnected" or "failed" after the
-   * channel opened, and the peer stays open. Send the same `join` again. Called
-   * once per such state change, never on a timer: each join is a pairing on the server.
+   * Recipient only: the connection went "disconnected", or "failed" while a
+   * recovery deadline runs, after the channel opened, and the peer stays open.
+   * A "failed" with no deadline closes the peer instead. Send the same `join`
+   * again. Called once per such state change, never on a timer: each join is a
+   * pairing on the server.
    */
   onStalled?(): void;
   /** The connection is connected again after the channel opened: how it runs now. */
@@ -439,6 +445,11 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
   let recoveryOffered = false;
   /** Runs from the first rejoined of a drop until the connection is connected. */
   let recoveryTimer: ReturnType<typeof setTimeout> | undefined;
+  /** The deadline started while the connection was connected: no drop needed it yet, so leaving "connected" starts it again. */
+  let deadlineEarly = false;
+  /** Counts path reads, so that one a newer read overtook reports nothing stale. */
+  let pathReads = 0;
+  let newestPath: Promise<OpenPath> | undefined;
   const pendingCandidates: Array<SignalCandidate | null> = [];
   let outgoing: Promise<void> = Promise.resolve();
   let incoming: Promise<void> = Promise.resolve();
@@ -530,7 +541,17 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
     next.onclose = () => fail("channel-closed");
   }
 
-  async function readPath(): Promise<OpenPath> {
+  /** The newest read wins: an older one that ends later resolves to the newest one's path. */
+  function readPath(): Promise<OpenPath> {
+    const read = ++pathReads;
+    const path = readPathOnce().then((value) =>
+      read === pathReads || !newestPath ? value : newestPath,
+    );
+    newestPath = path;
+    return path;
+  }
+
+  async function readPathOnce(): Promise<OpenPath> {
     const read = () =>
       connection()
         .getStats()
@@ -798,12 +819,9 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
         }
         const pc = connection();
         recovers = true;
-        recoveryTimer ??= setTimeout(() => {
-          recoveryTimer = undefined;
-          if (pc.connectionState !== "connected") {
-            fail("connection-failed");
-          }
-        }, RECOVERY_TIMEOUT_MS);
+        if (recoveryTimer === undefined) {
+          startDeadline(pc.connectionState === "connected");
+        }
         try {
           pc.setConfiguration({
             ...pc.getConfiguration(),
@@ -822,13 +840,27 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
           // An old browser: the deadline ends it unless the route comes back by itself.
           return;
         }
-        // An offer lost here is left to the deadline.
-        recoveryOffered = true;
+        // An offer lost here is left to the deadline. Set once the offer is
+        // made, so a "connected" before then can't clear it in "stable".
         await sendRestartOffer(false);
+        recoveryOffered = true;
       })
       .catch((error: unknown) => {
         failWith(error, "setup-failed");
       });
+  }
+
+  /** Starts a full recovery deadline, in place of any that runs. `early`: the connection is still connected. */
+  function startDeadline(early: boolean): void {
+    clearTimeout(recoveryTimer);
+    deadlineEarly = early;
+    recoveryTimer = setTimeout(() => {
+      recoveryTimer = undefined;
+      deadlineEarly = false;
+      if (connection().connectionState !== "connected") {
+        fail("connection-failed");
+      }
+    }, RECOVERY_TIMEOUT_MS);
   }
 
   async function setup(): Promise<void> {
@@ -860,26 +892,32 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
       } else if (state === "connected") {
         clearTimeout(recoveryTimer);
         recoveryTimer = undefined;
-        recoveryOffered = false;
+        deadlineEarly = false;
+        // An offer that still waits keeps waiting: its answer is applied by restart-answer.
+        if (next.signalingState === "stable") {
+          recoveryOffered = false;
+        }
         if (opened && options.onPath) {
           // ponytail: a restart that never leaves "connected" reports no new path.
-          void readPath().then((path) => {
-            if (!closed) {
-              options.onPath?.(path);
+          const path = readPath();
+          const read = pathReads;
+          void path.then((value) => {
+            if (!closed && read === pathReads) {
+              options.onPath?.(value);
             }
           });
         }
-      } else if (state === "failed" && recoveryTimer === undefined) {
-        // No repeated joined in this drop: the other page is gone.
-        fail("connection-failed");
-      } else if (
-        (state === "disconnected" || state === "failed") &&
-        side === "r" &&
-        opened &&
-        options.onStalled
-      ) {
-        recovers = true;
-        options.onStalled();
+      } else if (state === "disconnected" || state === "failed") {
+        if (deadlineEarly) {
+          startDeadline(false);
+        }
+        if (state === "failed" && recoveryTimer === undefined) {
+          // No repeated joined in this drop: the other page is gone.
+          fail("connection-failed");
+        } else if (side === "r" && opened && options.onStalled) {
+          recovers = true;
+          options.onStalled();
+        }
       }
     };
 
