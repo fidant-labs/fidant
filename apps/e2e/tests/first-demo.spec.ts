@@ -7,6 +7,7 @@ import {
   canaryFile,
   canaryKey,
   chooseFile,
+  continueToLinks,
   delivered,
   expect,
   fakeSavePicker,
@@ -513,6 +514,12 @@ test("the sender's name must fit with the file name, and stray drops are ignored
   await page.goto("/send");
   await page.getByLabel("Your name").fill("x".repeat(100));
   await chooseFile(page, { name: file.name, mimeType: file.mime, buffer: file.bytes });
+  // Continue glides to step 2, which starts below the fold.
+  await expect(page.getByRole("heading", { name: "Create a link for each person" })).toBeInViewport(
+    {
+      ratio: 1,
+    },
+  );
   // Whether a dragover and a drop of what `fill` adds (nothing: no DataTransfer) onto `selector` are cancelled.
   const cancelled = async (selector: string, fill = "") => {
     const results = [];
@@ -2106,6 +2113,7 @@ test.describe("emailed links", () => {
     const sender = await demo.open("sender");
     await sender.goto("/send/secret");
     await sender.getByLabel("Your secret").fill(text);
+    await continueToLinks(sender);
     await sender.getByLabel("Email the link for me (less private)").check();
     const email = sender.getByLabel("Their email address");
     await expect(email).toHaveId("secret-recipient-email");

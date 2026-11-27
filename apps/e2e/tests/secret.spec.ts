@@ -3,6 +3,7 @@ import {
   type Actor,
   allowClipboard,
   breakableSender,
+  continueToLinks,
   delivered,
   expect,
   type Leaks,
@@ -20,13 +21,14 @@ function makeText(leaks: Leaks, canary: SeededRandom): string {
   return text;
 }
 
-/** Fills the text and the sender's name on /send/secret, adds a recipient and returns their link, with its secret watched. */
+/** Fills the text and the sender's name on /send/secret, continues to step 2, adds a recipient and returns their link, with its secret watched. */
 async function share(leaks: Leaks, sender: Page, text: string, from: string, name: string) {
   await sender.getByLabel("Your secret").fill(text);
   await expect(sender.getByLabel("Your secret")).toHaveAttribute("writingsuggestions", "false");
   if (from) {
     await sender.locator("#secret-from").fill(from);
   }
+  await continueToLinks(sender);
   return addLink(leaks, sender, name);
 }
 
@@ -215,6 +217,10 @@ test("a pasted text over 10,000 characters stays whole and can't be shared until
   const add = sender.getByRole("button", { name: "Create link", exact: true });
   await expect(live).toBeAttached();
   await expect(live).toBeEmpty();
+  // Step 2 stays once shown, so the secret can grow too long after Continue.
+  await field.fill("x");
+  await continueToLinks(sender);
+  await field.fill("");
 
   await field.focus();
   // The editing path a paste takes; maxlength used to cut it here without a word.
@@ -227,6 +233,7 @@ test("a pasted text over 10,000 characters stays whole and can't be shared until
     "12,000 of 10,000 characters. Shorten the secret to share it. Up to 10,000 characters.",
   );
   await expect(add).toBeDisabled();
+  await expect(sender.getByRole("button", { name: "Continue" })).toBeDisabled();
   await expect(sender.locator("#secret-recipient-name")).toBeDisabled();
   await expect(sender.locator("#secret-recipient-hint")).toHaveText(
     "Shorten the secret to share it.",
