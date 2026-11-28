@@ -304,7 +304,7 @@ export const sv: Messages = {
     },
     continue: "Fortsätt",
     title: "Skicka en fil",
-    lede: "Välj en fil och skapa sedan en länk till varje person. Din fil skickas från den här webbläsaren till dem. Den är krypterad hela vägen och laddas aldrig upp eller sparas.",
+    lede: "Välj en fil och lägg sedan till varje person du vill skicka den till. Din fil skickas från den här webbläsaren till dem. Den är krypterad hela vägen och laddas aldrig upp eller sparas.",
     step: (n: number) => `Steg ${n} av 3`,
     peopleHeading: "Lägg till mottagare",
     peopleLede:
@@ -371,7 +371,7 @@ export const sv: Messages = {
     emailLabel: "Mottagarens mejladress",
     emailError: "Skriv en giltig mejladress, till exempel namn@example.se.",
     emailNotice:
-      "Vår server ser den här länkens nyckel en gång, för att skriva mejlet. Den sparar eller loggar inte nyckeln, men vår mejltjänst och den som läser mejlet på vägen kan också se nyckeln. Länken, med nyckeln, ligger kvar i mottagarens inkorg: den som kan läsa den inkorgen kan ta emot filen. Vår server skulle också kunna ställa sig mellan er för den här länken. Lägg till mottagaren med kontrollnummer och jämför det med mottagaren, så ser du om servern gör det. Om du skickar länken själv slipper du allt detta.",
+      "Vår server ser den här länkens nyckel en gång, för att skriva mejlet. Den sparar eller loggar inte nyckeln, men vår mejltjänst och den som läser mejlet på vägen kan också se nyckeln. Länken, med nyckeln, ligger kvar i mottagarens inkorg: den som kan läsa den inkorgen kan ta emot filen. Vår server skulle också kunna ställa sig mellan er för den här länken. Lägg till med kontrollnummer och jämför numret med mottagaren, så ser du om servern gör det. Om du skickar länken själv slipper du allt detta.",
     check: {
       hint: (kind: Kind) =>
         `Med kontrollnummer jämför ni sex siffror i telefon eller på plats innan ${items[kind].the} skickas, så att du vet att ingen är emellan.`,
@@ -645,7 +645,7 @@ export const sv: Messages = {
     summary: (done: number, total: number) =>
       `${done} av ${total} länkar har levererat hemligheten`,
     emailNotice:
-      "Vår server ser den här länkens nyckel en gång, för att skriva mejlet. Den sparar eller loggar inte nyckeln, men vår mejltjänst och den som läser mejlet på vägen kan också se nyckeln. Länken, med nyckeln, ligger kvar i mottagarens inkorg: den som kan läsa den inkorgen kan ta emot hemligheten. Vår server skulle också kunna ställa sig mellan er för den här länken. Lägg till mottagaren med kontrollnummer och jämför det med mottagaren, så ser du om servern gör det. Om du skickar länken själv slipper du allt detta.",
+      "Vår server ser den här länkens nyckel en gång, för att skriva mejlet. Den sparar eller loggar inte nyckeln, men vår mejltjänst och den som läser mejlet på vägen kan också se nyckeln. Länken, med nyckeln, ligger kvar i mottagarens inkorg: den som kan läsa den inkorgen kan ta emot hemligheten. Vår server skulle också kunna ställa sig mellan er för den här länken. Lägg till med kontrollnummer och jämför numret med mottagaren, så ser du om servern gör det. Om du skickar länken själv slipper du allt detta.",
     status: {
       declined: (name: string) =>
         `Länken till ${name} öppnades och hemligheten avböjdes. Länken fungerar fortfarande.`,
