@@ -1254,6 +1254,10 @@ export const sv: Messages = {
               "secret",
               "Hemligheten, i sin textruta tills du stänger fliken. Webbläsaren kan också spara den med sessionen, för att återställa den efter en krasch eller en återöppnad flik.",
             ],
+            [
+              "",
+              "Flikens ikon som den senast var, en grön prick medan en överföring pågick eller en bock när den var klar, i webbläsarens lager av sidikoner bredvid historiken, tills du rensar den.",
+            ],
             ["", "Ditt val av tema och språk, i webbläsarens lokala lagring, tills du rensar den."],
             [
               "",
@@ -1457,6 +1461,10 @@ export const sv: Messages = {
             [
               "",
               "När anslutningen öppnas: ett slumpmässigt värde från vår server, bara i sidans minne, så att sidan kan ta tillbaka sin plats om dess anslutning till vår server bryts. Ett nytt ersätter det varje gång sidan tar tillbaka sin plats, och det försvinner när överföringen slutar eller fliken stängs.",
+            ],
+            [
+              "",
+              "Flikens ikon som den senast var, en grön prick medan överföringen pågick eller en bock när den kommit fram, i webbläsarens lager av sidikoner bredvid länken i historiken, tills den rensas.",
             ],
             ["", "Deras val av tema och språk, i webbläsarens lokala lagring, tills de rensas."],
           ],

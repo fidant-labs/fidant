@@ -1300,6 +1300,10 @@ export const en = {
             ],
             [
               "",
+              "The tab's icon as it last was, a green dot while a transfer was open or a check once it was done, in the browser's store of page icons beside its history, until you clear it.",
+            ],
+            [
+              "",
               "Your theme and language choice, in the browser's local storage, until you clear it.",
             ],
             [
@@ -1491,6 +1495,10 @@ export const en = {
             [
               "",
               "Once the connection opens: a random token from our server, in the page's memory only, so the page can take its place back if its connection to our server drops. A new one replaces it each time the page takes its place back; it is gone when the transfer ends or the tab closes.",
+            ],
+            [
+              "",
+              "The tab's icon as it last was, a green dot while the transfer was open or a check once it arrived, in the browser's store of page icons beside the link in its history, until cleared.",
             ],
             ["", "Their theme and language choice, in the browser's local storage, until cleared."],
           ],
