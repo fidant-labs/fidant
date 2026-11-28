@@ -1254,6 +1254,10 @@ export const sv: Messages = {
               "secret",
               "Hemligheten, i sin textruta tills du stänger fliken. Webbläsaren kan också spara den med sessionen, för att återställa den efter en krasch eller en återöppnad flik.",
             ],
+            [
+              "",
+              "Flikens ikon som den senast var, en grön prick medan en överföring pågick eller en bock när den var klar, bland webbläsarens sparade webbplatsikoner, bredvid historikposten för varje sida fliken visade, tills du rensar historiken.",
+            ],
             ["", "Ditt val av tema och språk, i webbläsarens lokala lagring, tills du rensar den."],
             [
               "",
@@ -1432,7 +1436,7 @@ export const sv: Messages = {
           name: "Mottagarens webbläsare",
           kept: "Mest tills fliken stängs",
           never:
-            "Fidant sparar ingen nyckel på deras enhet, utöver det webbläsarens historik sparar.",
+            "Fidant sparar ingen nyckel på deras enhet, utöver det webbläsaren sparar med sin historik: länken och flikens ikon som sparas för den.",
           lines: [
             [
               "",
@@ -1457,6 +1461,10 @@ export const sv: Messages = {
             [
               "",
               "När anslutningen öppnas: ett slumpmässigt värde från vår server, bara i sidans minne, så att sidan kan ta tillbaka sin plats om dess anslutning till vår server bryts. Ett nytt ersätter det varje gång sidan tar tillbaka sin plats, och det försvinner när överföringen slutar eller fliken stängs.",
+            ],
+            [
+              "",
+              "Flikens ikon som den senast var, en grön prick medan överföringen pågick eller en bock när den kommit fram, bland webbläsarens sparade webbplatsikoner, bredvid historikposten för varje sida fliken visade, länken också, tills historiken rensas.",
             ],
             ["", "Deras val av tema och språk, i webbläsarens lokala lagring, tills de rensas."],
           ],
