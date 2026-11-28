@@ -31,10 +31,16 @@ test("the Privacy page opens without a secure connection", async ({ page }) => {
   await page.addInitScript(() =>
     Object.defineProperty(window, "isSecureContext", { value: false }),
   );
+  const icon = page.locator('link[rel="icon"][type="image/svg+xml"]');
   await page.goto("/send");
   await expect(page.locator("main h1")).toHaveText("This page needs a secure connection");
+  // The tab names the screen it shows (WCAG 2.4.2) and its icon is the red stop sign.
+  await expect(page).toHaveTitle("Secure connection needed – Fidant");
+  await expect(icon).toHaveAttribute("href", /%23dc2626/);
   await page.goto("/privacy");
   await expect(page.locator("main h1")).toHaveText("Privacy");
+  await expect(page).toHaveTitle("Privacy – Fidant");
+  await expect(icon).not.toHaveAttribute("href", /%23dc2626/);
 });
 
 test("leaving /send for Privacy and going back keeps the file and recipient", async ({

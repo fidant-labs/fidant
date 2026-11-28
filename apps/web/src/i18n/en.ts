@@ -108,6 +108,7 @@ export const en = {
     terms: "Terms of use – Fidant",
     security: "Security – Fidant",
     notFound: "Page not found – Fidant",
+    insecure: "Secure connection needed – Fidant",
   },
   notFound: {
     title: "Page not found",

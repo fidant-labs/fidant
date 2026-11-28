@@ -89,6 +89,7 @@ export const sv: Messages = {
     terms: "Användarvillkor – Fidant",
     security: "Säkerhet – Fidant",
     notFound: "Sidan finns inte – Fidant",
+    insecure: "Säker anslutning krävs – Fidant",
   },
   notFound: {
     title: "Sidan finns inte",

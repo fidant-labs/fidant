@@ -169,12 +169,16 @@ export function App({
       setPlace(where());
     }
   }, [path, place]);
-  const status = overallStatus([sendStatus, secretStatus, receiveStatus]);
+  // Without Web Crypto the send, secret and receive pages show only the secure-connection screen.
+  const insecureShown = !secure && (route === "send" || route === "secret" || route === "receive");
+  const icon = insecureShown
+    ? "insecure"
+    : overallStatus([sendStatus, secretStatus, receiveStatus]);
   useEffect(() => {
     document
       .querySelector('link[rel="icon"][type="image/svg+xml"]')
-      ?.setAttribute("href", faviconHref(status));
-  }, [status]);
+      ?.setAttribute("href", faviconHref(icon));
+  }, [icon]);
   // Holds the key, so it stays out of the DOM: the link back shows only the path.
   const receiveUrl = useRef("");
   const away =
@@ -199,7 +203,7 @@ export function App({
   }, [lang]);
 
   useEffect(() => {
-    document.title = pageTitle(t, path);
+    document.title = insecureShown ? t.tabTitles.insecure : pageTitle(t, path);
     const description = pageDescription(t, path);
     document.querySelector('meta[name="description"]')?.setAttribute("content", description);
     if (route !== "receive" && route !== "notFound") {
@@ -210,7 +214,7 @@ export function App({
       set('link[rel="alternate"][hreflang="sv"]', "sv");
       set('link[rel="alternate"][hreflang="x-default"]', "en");
     }
-  }, [path, route, t, lang]);
+  }, [path, route, t, lang, insecureShown]);
 
   // A page change hides the focused link, so focus moves to the new page's or section's heading.
   const firstRoute = useRef(true);
@@ -236,8 +240,7 @@ export function App({
     heading.focus({ preventScroll: target !== null });
   }, [place]);
 
-  const holdsTransfer = route === "send" || route === "secret" || route === "receive";
-  if (holdsTransfer) {
+  if (route === "send" || route === "secret" || route === "receive") {
     kept.current.add(route);
   }
   if (route === "receive" && !receiveUrl.current) {
@@ -256,7 +259,7 @@ export function App({
           <InfoPage page={route} />
         )}
         {route === "notFound" && <NotFoundPage />}
-        {!secure && holdsTransfer && <InsecurePage />}
+        {insecureShown && <InsecurePage />}
         {secure && kept.current.has("receive") && (
           <div id="receive" hidden={route !== "receive"}>
             <ReceivePage onStatus={setReceiveStatus} preview={preview?.receive} />
