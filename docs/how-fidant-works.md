@@ -452,7 +452,7 @@ On the relay box (see "The relay box"):
 
 ## What stays on the two devices
 
-`apps/web/src/theme.ts`, `apps/web/src/i18n/language.ts`, `apps/web/src/prepaint.js`, `apps/web/src/send/SendPage.tsx`, `apps/web/src/receive/ReceivePage.tsx`, `apps/web/src/lib/notify.ts`
+`apps/web/src/theme.ts`, `apps/web/src/i18n/language.ts`, `apps/web/src/prepaint.js`, `apps/web/src/send/SendPage.tsx`, `apps/web/src/receive/ReceivePage.tsx`, `apps/web/src/lib/notify.ts`, `apps/web/src/lib/favicon.ts`
 
 - Both pages keep the links, keys, transfers and file data only in memory. Fidant writes only two things to storage that outlasts the tab: the chosen theme and language, in `localStorage`. Two more things can outlast the tab: the tab's status icon, which the browser keeps with its history, and, outside the browser's storage, a delivery notification, if the sender allowed them (both below).
 - Sender: the file is read from where it is and copied nowhere else. A shared secret is typed into a `<textarea>`, whose value a browser can save with its session. A link the sender copies is on their clipboard.
