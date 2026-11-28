@@ -237,7 +237,8 @@ test("scrolling over the details drawer leaves the page behind it where it was",
   await page.setViewportSize({ width: 1000, height: 400 });
   await page.goto("/send");
   const button = page.getByRole("button", { name: "Technical details" });
-  await button.scrollIntoViewIfNeeded();
+  // The button is on the bar fixed to the screen's bottom, so scroll the page itself.
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
   const before = await page.evaluate(() => window.scrollY);
   expect(before).toBeGreaterThan(0);
   await button.click();
@@ -269,5 +270,7 @@ test("scrolling over the details drawer leaves the page behind it where it was",
   await expect(drawer).toBeVisible();
   await drawer.getByRole("button", { name: "Close" }).click();
   await expect(drawer).toBeHidden();
+  // Closing gives the focus back to the button that opened the drawer.
+  await expect(button).toBeFocused();
   expect(await page.evaluate(() => window.scrollY)).toBe(before);
 });

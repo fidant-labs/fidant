@@ -1309,35 +1309,6 @@ export function SendPage({
         </section>
       )}
 
-      <ServerDrawer
-        visible={shown}
-        facts={
-          file && !text
-            ? [
-                [t.common.size, t.format.bytes(file.size)],
-                [t.common.type, file.type || t.common.typeMissing],
-                ["SHA-256", hash.status === "ready" ? <code>{hash.hex}</code> : t.send.hashPending],
-              ]
-            : []
-        }
-        sees={t.server.seesSender}
-        holds={t.server.senderHolds({
-          online: !lostServer,
-          links: hostedLinks(sender).length,
-          connected,
-          relay: allowRelay,
-          emailed: emailed.length,
-          sending: emailed.filter((r) => r.mail === "sending").length,
-          mailed,
-          kind: text ? "secret" : "file",
-        })}
-        relayed={relayed}
-        afterwards={t.server.senderAfterwards(!lostServer, mailed)}
-        viaRelay={viaRelay}
-        emailed={mailed}
-        kind={text ? "secret" : "file"}
-      />
-
       <p class="sr-only" role="status">
         {cue?.kind === "file" && t.send.fileChosen(cue.name, formatBytes(cue.size, lang))}
         {cue?.kind === "links" && hasRecipients && `${t.send.step(3)}: ${t.send.linksHeading}`}
@@ -1450,6 +1421,39 @@ export function SendPage({
               )}
             </div>
           )}
+          {/* At the bar's end on every step; a closed dialog takes no space, an open one is in the top layer. */}
+          <ServerDrawer
+            onGreen={allDone}
+            visible={shown}
+            facts={
+              file && !text
+                ? [
+                    [t.common.size, t.format.bytes(file.size)],
+                    [t.common.type, file.type || t.common.typeMissing],
+                    [
+                      "SHA-256",
+                      hash.status === "ready" ? <code>{hash.hex}</code> : t.send.hashPending,
+                    ],
+                  ]
+                : []
+            }
+            sees={t.server.seesSender}
+            holds={t.server.senderHolds({
+              online: !lostServer,
+              links: hostedLinks(sender).length,
+              connected,
+              relay: allowRelay,
+              emailed: emailed.length,
+              sending: emailed.filter((r) => r.mail === "sending").length,
+              mailed,
+              kind: text ? "secret" : "file",
+            })}
+            relayed={relayed}
+            afterwards={t.server.senderAfterwards(!lostServer, mailed)}
+            viaRelay={viaRelay}
+            emailed={mailed}
+            kind={text ? "secret" : "file"}
+          />
         </div>
       </div>
     </Page>

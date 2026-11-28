@@ -1,5 +1,6 @@
 // Pieces shared by the pages.
 
+import { cn } from "cn";
 import type { AnchorHTMLAttributes, ComponentChildren } from "preact";
 import { useEffect, useId, useRef, useState } from "preact/hooks";
 import { DropdownMenu } from "radix-ui";
@@ -88,6 +89,13 @@ export const ICONS = {
     <>
       <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
       <circle cx="12" cy="12" r="3" />
+    </>
+  ),
+  footprints: (
+    <>
+      <path d="M4 16v-2.38C4 11.5 2.97 10.5 3 8c.03-2.72 1.49-6 4.5-6C9.37 2 10 3.8 10 5.5c0 3.11-2 5.66-2 8.68V16a2 2 0 1 1-4 0Z" />
+      <path d="M20 20v-2.38c0-2.12 1.03-3.12 1-5.62-.03-2.72-1.49-6-4.5-6C14.63 6 14 7.8 14 9.5c0 3.11 2 5.66 2 8.68V20a2 2 0 1 0 4 0Z" />
+      <path d="M16 17h4M4 13h4" />
     </>
   ),
 };
@@ -604,16 +612,19 @@ export function ServerPanel(props: ServerPanelProps) {
   );
 }
 
-/** The send page's "Technical details": a button that opens the file facts and the server facts in a drawer. */
+/** The send page's "Technical details": an icon button, for the bottom bar, that opens the file facts and the server facts in a drawer. */
 export function ServerDrawer({
   facts,
   visible,
+  onGreen,
   ...panel
 }: ServerPanelProps & {
   /** The file's facts, shown above the server's; empty for a secret. */
   facts: ReadonlyArray<readonly [string, ComponentChildren]>;
   /** False while the page is hidden. A hidden page closes the drawer, so a modal dialog never stays open in it. */
   visible: boolean;
+  /** True while the bar behind the button is green, with white text. */
+  onGreen: boolean;
 }) {
   const { t, lang } = useI18n();
   const headingId = useId();
@@ -628,15 +639,23 @@ export function ServerDrawer({
   }, [visible]);
   return (
     <>
-      <p class="mt-10 mb-0 text-[0.9rem]">
-        <button
-          type="button"
-          class="cursor-pointer rounded-sm font-medium text-muted-foreground underline underline-offset-4"
-          onClick={() => drawer.current?.showModal()}
-        >
-          {t.common.techDetails}
-        </button>
-      </p>
+      {/* 40 × 40, no taller than the bar's two lines of text. showModal from the button returns
+          focus to it when the drawer closes. */}
+      <button
+        type="button"
+        aria-label={t.common.techDetails}
+        title={t.common.techDetails}
+        class={cn(
+          buttonVariants({ variant: "ghost", size: "icon" }),
+          "size-10 cursor-pointer",
+          onGreen
+            ? "text-white hover:bg-white/15 hover:text-white focus-visible:border-white focus-visible:ring-white/60 dark:hover:bg-white/15"
+            : "text-muted-foreground",
+        )}
+        onClick={() => drawer.current?.showModal()}
+      >
+        <Icon name="footprints" class="size-5" />
+      </button>
       {/* A native dialog, like the safety number's: it holds focus and dims the page without
           injecting a style, which the CSP blocks. A drawer from the right; on a phone it covers
           the screen. Its content stays rendered while closed. */}
