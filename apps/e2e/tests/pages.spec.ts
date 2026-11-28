@@ -1,4 +1,4 @@
-import { choose, expect, makeName, test } from "../src/fixtures.ts";
+import { choose, continueToLinks, expect, makeName, test } from "../src/fixtures.ts";
 
 test.describe("without JavaScript", () => {
   test.use({ javaScriptEnabled: false });
@@ -167,6 +167,7 @@ test("switching language while sharing keeps the share, and the recipient still 
   const { page: sender } = await actor("sender");
   await sender.goto("/send/secret");
   await sender.getByLabel("Your secret").fill(text);
+  await continueToLinks(sender);
   await sender.locator("#secret-recipient-name").fill(name);
   await sender.getByRole("button", { name: "Create link", exact: true }).click();
   const link = (await sender.getByLabel(`Link for ${name}`, { exact: true }).textContent()) ?? "";

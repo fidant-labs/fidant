@@ -19,6 +19,7 @@ import {
   canaryFile,
   canaryKey,
   chooseFile,
+  continueToLinks,
   delivered as deliveredRow,
   expect,
   type Leaks,
@@ -354,6 +355,7 @@ for (const row of scenarios) {
           leaks.watchContent("text", sent);
           await sender.page.goto("/send/secret");
           await sender.page.getByLabel("Your secret").fill(sent);
+          await continueToLinks(sender.page);
         } else {
           const file = leaks.watch(canaryFile(canary.fork("file"), { size }));
           sent = sha256Hex(file.bytes);
