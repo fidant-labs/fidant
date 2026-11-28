@@ -72,7 +72,7 @@ export async function routerMode(router: "router-a" | "router-b", mode: RouterMo
 }
 
 /** router-a's address on the public network, which site B sees site A's browsers at. */
-const routerAIp = "198.51.100.2";
+export const routerAIp = "198.51.100.2";
 
 /**
  * Drops UDP between site B and router-a, both ways, as when the route between two browsers goes
@@ -85,6 +85,41 @@ export async function cutRoute(): Promise<void> {
 /** Undoes cutRoute. Does nothing when the route is not cut. */
 export async function restoreRoute(): Promise<void> {
   await run("docker", [...compose, "exec", "-T", "router-b", "/net/router.sh", "uncut", routerAIp]);
+}
+
+/** router-b's address on the public network, which every other site sees site B's browser at. */
+export const routerBIp = "198.51.100.3";
+/** The address renumberSiteB moves router-b to. Free on the public network (compose.yaml). */
+export const routerBNewIp = "198.51.100.4";
+
+/**
+ * Moves router-b to routerBNewIp and flushes its NAT mappings, as when site B's ISP hands out a
+ * new address. b1's open TCP connections and UDP flows go on from the new address with their old
+ * ports, where nothing expects them. router-b keeps its mode.
+ */
+export async function renumberSiteB(): Promise<void> {
+  await run("docker", [
+    ...compose,
+    "exec",
+    "-T",
+    "router-b",
+    "/net/router.sh",
+    "renumber",
+    routerBNewIp,
+  ]);
+}
+
+/** Undoes renumberSiteB, flushing the NAT mappings again. Safe when site B was not renumbered. */
+export async function restoreSiteB(): Promise<void> {
+  await run("docker", [
+    ...compose,
+    "exec",
+    "-T",
+    "router-b",
+    "/net/router.sh",
+    "renumber",
+    routerBIp,
+  ]);
 }
 
 /** Freezes coturn, so STUN and TURN get no answer, as if the relay were down. */
@@ -127,16 +162,16 @@ export async function sendToRelay(payload: Uint8Array): Promise<void> {
 const edgePcap = "/tmp/edge.pcap";
 
 /**
- * Starts capturing every packet on router-a's outside interface, site A's edge. `stop` ends the
+ * Starts capturing every packet on a router's outside interface, its site's edge. `stop` ends the
  * capture and waits for tcpdump to exit; call it from a `finally`, it is safe to call twice.
  * `read` prints the packets that match a tcpdump filter, one per line, once it has stopped.
  */
-export async function captureSiteA(): Promise<{
+export async function captureEdge(router: "router-a" | "router-b"): Promise<{
   stop: () => Promise<void>;
   read: (filter: string) => Promise<string[]>;
 }> {
   const inRouter = (...command: string[]) =>
-    run("docker", [...compose, "exec", "-T", "router-a", ...command]);
+    run("docker", [...compose, "exec", "-T", router, ...command]);
   const stop = () =>
     inRouter(
       "sh",
@@ -145,15 +180,7 @@ export async function captureSiteA(): Promise<{
     ).then(() => undefined);
   // A file left from an earlier capture would pass the wait below before tcpdump starts.
   await inRouter("rm", "-f", edgePcap);
-  await run("docker", [
-    ...compose,
-    "exec",
-    "-d",
-    "router-a",
-    "/net/router.sh",
-    "capture",
-    edgePcap,
-  ]);
+  await run("docker", [...compose, "exec", "-d", router, "/net/router.sh", "capture", edgePcap]);
   // tcpdump writes the file's header once it is capturing.
   try {
     await inRouter(

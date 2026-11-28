@@ -36,7 +36,7 @@ import {
   albIp,
   applyRelaySecret,
   boxOrigin,
-  captureSiteA,
+  captureEdge,
   clientAddresses,
   cutRoute,
   inBox,
@@ -48,8 +48,12 @@ import {
   relayHost,
   relayIp,
   remoteBrowsers,
+  renumberSiteB,
   restoreRoute,
+  restoreSiteB,
   resumeRelay,
+  routerAIp,
+  routerBNewIp,
   routerMode,
   sendToRelay,
   serverIp,
@@ -343,7 +347,7 @@ for (const row of scenarios) {
       // ponytail: 512 KiB: SCTP over this link moves about 50 KB/s, and it still shows 10 steps.
       const size = row.progress ? 512 * 1024 + 1 : 300_001;
       const name = makeName(leaks, canary, "Anna");
-      const edge = row.staysInSite ? await captureSiteA() : undefined;
+      const edge = row.staysInSite ? await captureEdge("router-a") : undefined;
 
       try {
         const sender = await actor("sender");
@@ -563,6 +567,221 @@ test.describe("a route cut mid-transfer", () => {
     await expect
       .poll(async () => `${await pathOf(sender.page)} ${await pathOf(recipient.page)}`)
       .toMatch(/^srflx\/(srflx|prflx) srflx\/(srflx|prflx)$/);
+    await expectSignaling(observed, baseURL);
+  });
+});
+
+// Decision 0033: site B's public address changes mid-transfer, so b1's signaling socket and its
+// peer-to-peer flow both die at once. Its page takes its attempt back on a new socket, and the
+// sender's ICE restart (0031) finds the new address. On the pages of the edge function, so b1's
+// socket goes through alb, the stand-in for the load balancer, as it will on fidant.se.
+test.describe("a public address that changes mid-transfer", () => {
+  test.use({
+    baseURL: boxOrigin,
+    hostRules: `MAP fidant.se ${pagesIp}`,
+    remoteBrowsers: { sender: remoteBrowsers.a1, recipient: remoteBrowsers.b1 },
+  });
+
+  test("is recovered by a socket takeover and an ICE restart, without starting over", async ({
+    actor,
+    observed,
+    leaks,
+    canary,
+    baseURL,
+  }) => {
+    await routerMode("router-b", "lossy");
+    // As in the route cut: about 20 s over `lossy`, so the change lands mid-transfer, and the
+    // outage still fits the 60 s download wait and expectHonestProgress's deadline.
+    const size = 1024 * 1024 + 1;
+    const file = leaks.watch(canaryFile(canary.fork("file"), { size }));
+    const name = makeName(leaks, canary, "Anna");
+
+    const sender = await actor("sender");
+    await recordPeerConnections(sender.context);
+    await sender.page.goto("/send");
+    await chooseFile(sender.page, { name: file.name, mimeType: file.mime, buffer: file.bytes });
+    // Only the new address can carry the rest of the file, not a relay.
+    await sender.page.getByText("Connection options", { exact: true }).press("Enter");
+    await sender.page.getByLabel("Use our relay if needed").uncheck();
+    await sender.page.getByLabel("Who is it for?").fill(name);
+    await sender.page.getByRole("button", { name: "Create link", exact: true }).click();
+    const link =
+      (await sender.page.getByLabel(`Link for ${name}`, { exact: true }).textContent()) ?? "";
+    leaks.watchKey("link secret", new URL(link).hash.slice(1));
+
+    const recipient = await actor("recipient");
+    await recordPeerConnections(recipient.context);
+    await recipient.page.goto(link);
+    const downloading = recipient.page.waitForEvent("download", { timeout: 60_000 });
+    const downloadButton = recipient.page.getByRole("button", { name: "Download" });
+    await expect(downloadButton).toBeVisible({ timeout: 45_000 });
+    await downloadButton.click();
+
+    const frames = async (who: string, direction: "frame-sent" | "frame-received") =>
+      (await observed(who).records()).flatMap((record) =>
+        record.type === direction && !record.base64
+          ? [JSON.parse(record.payload) as Record<string, unknown> & { t: string }]
+          : [],
+      );
+    const sockets = async (who: string) =>
+      (await observed(who).records()).filter((record) => record.type === "websocket-open");
+    const received = async () =>
+      (
+        await recipient.page
+          .getByLabel("Download progress", { exact: true })
+          .evaluateAll((els) => els.map((el) => (el as HTMLProgressElement).value))
+      )[0] ?? 0;
+
+    const progress = expectHonestProgress(sender.page, recipient.page, size, name);
+    // Awaited below, once the file is in.
+    progress.catch(() => {});
+    await expect.poll(received, { timeout: 30_000 }).toBeGreaterThan(0);
+    expect(await sockets("recipient")).toHaveLength(1);
+
+    // The routers are shared across the run, so site B gets its address back whatever happens.
+    const edge = await captureEdge("router-b");
+    let stalled = 0;
+    try {
+      await renumberSiteB();
+      // A new socket from the new address, which took the attempt back.
+      await expect
+        .poll(async () => (await sockets("recipient")).length, { timeout: 45_000 })
+        .toBe(2);
+      stalled = await received();
+      await expect
+        .poll(
+          async () =>
+            (await frames("recipient", "frame-sent")).filter((m) => m.t === "resume").length,
+          {
+            timeout: 15_000,
+          },
+        )
+        .toBe(1);
+      // The rest of the file arrives over the new address, on top of what came before.
+      await expect.poll(received, { timeout: 45_000 }).toBeGreaterThan(stalled);
+      await progress;
+      await edge.stop();
+
+      // 0033's assumption: the old TCP connection's next segment, now from the new address,
+      // matched nothing at alb and got a reset (RFC 9293, section 3.10.7.1).
+      expect(
+        await edge.read(
+          `tcp and src host ${albIp} and src port 443 and dst host ${routerBNewIp} and tcp[tcpflags] & tcp-rst != 0`,
+        ),
+        "a reset from alb to the new address",
+      ).not.toEqual([]);
+      // The new socket and the peer-to-peer flow left from the new address.
+      expect(
+        await edge.read(`tcp and src host ${routerBNewIp} and dst host ${albIp} and dst port 443`),
+        "signaling from the new address",
+      ).not.toEqual([]);
+      expect(
+        await edge.read(`udp and src host ${routerBNewIp} and dst host ${routerAIp}`),
+        "peer-to-peer from the new address",
+      ).not.toEqual([]);
+
+      // Checked before site B gets its address back: the recipient's page keeps its connection
+      // open for a few seconds after the file, and the restore would break its route again.
+      await expect(recipient.page.getByText(verifiedText)).toBeVisible();
+      const download = await downloading;
+      expect(sha256Hex(await buffer(await download.createReadStream()))).toBe(
+        sha256Hex(file.bytes),
+      );
+      await expect(recipient.page.getByRole("button", { name: "Try again" })).toHaveCount(0);
+      await expect(
+        sender.page.getByText(`The transfer through ${name}'s link was interrupted`),
+      ).toHaveCount(0);
+      for (const who of ["sender", "recipient"]) {
+        const hosts = new Set((await sockets(who)).map((record) => new URL(record.url).host));
+        expect([...hosts], `${who} socket hosts`).toEqual([signalHost]);
+      }
+      expect(await sockets("sender"), "sender sockets").toHaveLength(1);
+
+      // One attempt: every join is the first one again, and every message names one attempt.
+      const sentByRecipient = await frames("recipient", "frame-sent");
+      const joins = sentByRecipient.filter((m) => m.t === "join").map((m) => JSON.stringify(m));
+      expect(new Set(joins).size, "every join is the first one again").toBe(1);
+      const got = {
+        sender: await frames("sender", "frame-received"),
+        recipient: await frames("recipient", "frame-received"),
+      };
+      expect(
+        got.recipient.filter((m) => m.t === "host-gone"),
+        "host-gone",
+      ).toHaveLength(0);
+      const attempts = new Set(
+        [...got.sender, ...got.recipient, ...sentByRecipient]
+          .filter((m) => ["join", "joined", "resume"].includes(m.t))
+          .map((m) => m.attempt),
+      );
+      expect([...attempts], "attempt IDs").toHaveLength(1);
+
+      for (const [who, page] of [
+        ["sender", sender.page],
+        ["recipient", recipient.page],
+      ] as const) {
+        // One connection per page, which got a new ICE password: the restart, not a new attempt.
+        const connections = await readPeerConnections(page);
+        expect(connections.length, `${who} peer connections`).toBe(1);
+        const events = connections[0]?.events ?? [];
+        const before = events.find((event) => event.state === "connected")?.pwd;
+        const after = events.at(-1);
+        expect(before, `${who} ICE password before the change`).toBeTruthy();
+        expect(after?.state, `${who} ends connected`).toBe("connected");
+        expect(after?.pwd, `${who} ICE password after the change`).toBeTruthy();
+        expect(after?.pwd, `${who} ICE password after the change`).not.toBe(before);
+        for (const pwd of new Set(events.map((event) => event.pwd))) {
+          if (pwd) {
+            leaks.watchKey(`${who} ICE pwd`, pwd);
+          }
+        }
+        expect(
+          connections.flatMap((pc) => pc.gathered),
+          `${who} gathered`,
+        ).not.toContain("relay");
+      }
+      await expect
+        .poll(async () => `${await pathOf(sender.page)} ${await pathOf(recipient.page)}`)
+        .toMatch(/^srflx\/(srflx|prflx) srflx\/(srflx|prflx)$/);
+    } finally {
+      try {
+        await edge.stop();
+      } finally {
+        await restoreSiteB();
+      }
+    }
+
+    // Each resume token may appear only in the `resume` frames about its link, and the signaling
+    // container logs a `resumed` line but never a token.
+    const tokens = [
+      ...(await frames("sender", "frame-received")),
+      ...(await frames("recipient", "frame-received")),
+    ].flatMap((m) =>
+      m.t === "resume" && typeof m.token === "string"
+        ? [{ token: m.token, link: String(m.link) }]
+        : [],
+    );
+    expect(tokens, "resume tokens handed out").toHaveLength(3);
+    let lines: string[] = [];
+    await expect
+      .poll(async () => {
+        const logs = await signalLogs();
+        await writeFile(signalLog, logs);
+        lines = logs.split("\n").filter(Boolean);
+        return lines.some((line) => line.startsWith('{"event":"resumed"'));
+      })
+      .toBe(true);
+    expect(checkServerLog(lines, serverLogAllowlist)).toEqual([]);
+    for (const [index, { token, link: id }] of tokens.entries()) {
+      leaks.watchKey(`resume token ${index}`, token, "K", {
+        link: id,
+        frames: ["received resume", "sent resume"],
+      });
+      expect(
+        lines.some((line) => line.includes(token)),
+        `resume token ${index} in the log`,
+      ).toBe(false);
+    }
     await expectSignaling(observed, baseURL);
   });
 });
