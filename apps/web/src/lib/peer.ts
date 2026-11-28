@@ -27,6 +27,10 @@
 //   recipient → sender   relay seal_r({kind:"restart-answer", sdp})
 //   both                 connected again → onPath(path)
 //
+// The sender's connection going "disconnected" after the channel opened only
+// calls onDisconnected: its page re-sends `host`, so a dead signaling socket
+// surfaces and can take its attempt back (decision 0032).
+//
 // Until then the restart signals follow the fallback's rules: each is taken at
 // most once, and ignored once ICE is connected or the channel is open. From its
 // first onStalled the recipient answers every restart-offer, and from its
@@ -163,6 +167,11 @@ export type PeerOptions = {
    * pairing on the server.
    */
   onStalled?(): void;
+  /**
+   * Sender only: the connection went "disconnected" after the channel opened.
+   * Called once per such state change; the recipient's onStalled starts the recovery.
+   */
+  onDisconnected?(): void;
   /** The connection is connected again after the channel opened: how it runs now. */
   onPath?(path: OpenPath): void;
 };
@@ -917,6 +926,8 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
         } else if (side === "r" && opened && options.onStalled) {
           recovers = true;
           options.onStalled();
+        } else if (side === "s" && opened && state === "disconnected") {
+          options.onDisconnected?.();
         }
       }
     };

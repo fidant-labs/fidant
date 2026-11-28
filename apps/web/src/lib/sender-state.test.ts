@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { type EmailStatus, MAX_LINKS } from "@fidant/protocol";
 import { createLink, type Link } from "./link.ts";
 import {
+  armedLinks,
   CHECK_ATTEMPTS,
   CHECK_DIFFERS,
   CHECK_EXPIRED,
@@ -493,6 +494,98 @@ test("server-lost resets connecting recipients without blaming the relay", () =>
   assert.equal(update(result.state, { type: "server-lost" }).state, result.state);
 });
 
+/** An emailed recipient whose server answered with a mark, so the server holds its email binding. */
+function emailed(name: string) {
+  const link = createLink(ORIGIN);
+  const { state } = run(
+    initialSenderState,
+    { type: "add", link, name, email: `${name.toLowerCase()}@example.se` },
+    { type: "email", linkId: link.linkId, status: "sent", mark: "m".repeat(22) },
+  );
+  return { link, recipient: findRecipient(state, link.linkId) as Recipient };
+}
+
+test("armedLinks names the hosted links whose current attempt a held token is for", () => {
+  const a = createLink(ORIGIN);
+  const b = createLink(ORIGIN);
+  const c = createLink(ORIGIN);
+  const { state } = run(
+    initialSenderState,
+    { type: "add", link: a, name: "Anna" },
+    { type: "add", link: b, name: "Erik" },
+    { type: "add", link: c, name: "Mia" },
+    joined(a.linkId, A),
+    { type: "channel-open", linkId: a.linkId },
+    joined(b.linkId, B),
+    { type: "channel-open", linkId: b.linkId },
+  );
+  const tokens = new Map([
+    [a.linkId, { attempt: A }],
+    // A token for another attempt than the current one, and one for a link without an attempt.
+    [b.linkId, { attempt: A }],
+    [c.linkId, { attempt: A }],
+    [createLink(ORIGIN).linkId, { attempt: A }],
+  ]);
+  assert.deepEqual(armedLinks(state, tokens), [a.linkId]);
+  assert.deepEqual(armedLinks(state, new Map()), []);
+  // Delivery keeps the attempt, so the server may still hold it; an unbound link is not hosted.
+  const delivered = run(
+    state,
+    { type: "accepted", linkId: a.linkId },
+    { type: "receipt", linkId: a.linkId, match: true },
+  ).state;
+  assert.deepEqual(armedLinks(delivered, tokens), [a.linkId]);
+  const unbound = {
+    recipients: state.recipients.map((r) =>
+      r.linkId === a.linkId ? { ...r, unbound: true as const } : r,
+    ),
+  };
+  assert.deepEqual(armedLinks(unbound, tokens), []);
+});
+
+test("server-lost leaves an armed recipient as it is, and resume-refused then does what it would have", () => {
+  const anna = emailed("Anna");
+  const erik = emailed("Erik");
+  let state: SenderState = {
+    recipients: [
+      { ...anna.recipient, status: "receiving", attempt: A, turn: true, bytesSent: 5 },
+      { ...erik.recipient, status: "receiving", attempt: B, turn: true, bytesSent: 5 },
+    ],
+  };
+  const lost = update(state, { type: "server-lost", armed: [anna.link.linkId] });
+  assert.deepEqual(lost.effects, []);
+  // The card shows no interruption while the next socket takes the attempt back.
+  assert.equal(findRecipient(lost.state, anna.link.linkId), state.recipients[0]);
+  assert.equal(findRecipient(lost.state, erik.link.linkId)?.unbound, true);
+  assert.deepEqual(hostedLinks(lost.state), [anna.link.linkId]);
+  // A takeover that succeeds changes nothing more; a refused one unbinds the link.
+  state = lost.state;
+  const refused = update(state, { type: "resume-refused", linkId: anna.link.linkId });
+  assert.deepEqual(refused.effects, []);
+  const after = findRecipient(refused.state, anna.link.linkId);
+  assert.equal(after?.unbound, true);
+  assert.equal(after?.status, "receiving");
+  assert.equal(after?.error, undefined);
+  assert.deepEqual(hostedLinks(refused.state), []);
+  // Once unbound, a second refusal changes nothing.
+  assert.equal(
+    update(refused.state, { type: "resume-refused", linkId: anna.link.linkId }).state,
+    refused.state,
+  );
+});
+
+test("resume-refused sends a connecting recipient back to waiting and closes it, as server-lost does", () => {
+  const { state: s0, linkId } = withRecipient();
+  const connecting = run(s0, joined(linkId, A)).state;
+  const kept = update(connecting, { type: "server-lost", armed: [linkId] });
+  assert.equal(kept.state, connecting);
+  assert.deepEqual(kept.effects, []);
+  const refused = update(connecting, { type: "resume-refused", linkId });
+  assert.deepEqual(refused, update(connecting, { type: "server-lost" }));
+  assert.equal(statusOf(refused.state, linkId), "waiting");
+  assert.deepEqual(refused.effects, [{ type: "close", linkId }]);
+});
+
 test("left once the channel is open is ignored; a receipt after it still delivers", () => {
   const { state: s0, linkId } = withRecipient();
   const offered = run(s0, joined(linkId, A), { type: "channel-open", linkId }).state;
@@ -591,6 +684,7 @@ test("events that do not fit the current status are ignored", () => {
     { type: "declined", linkId },
     { type: "unsendable", linkId },
     { type: "outdated", linkId, older: "sender" },
+    { type: "resume-refused", linkId },
   ];
   for (const action of outOfPlace) {
     const result = update(waiting, action);
