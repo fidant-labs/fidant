@@ -1344,7 +1344,7 @@ function ShownText({ blob, onUnreadable }: { blob: Blob; onUnreadable(): void })
   return (
     <div class="my-4 flex flex-col gap-3">
       <section
-        class="max-h-52 overflow-y-auto rounded-lg border border-input px-2.5 py-2 text-base transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-input/30"
+        class="max-h-[66dvh] overflow-y-auto rounded-lg border border-input px-2.5 py-2 text-base transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-input/30"
         aria-label={t.secret.textLabel}
         // biome-ignore lint/a11y/noNoninteractiveTabindex: the box scrolls, so keyboard users must reach it.
         tabIndex={0}
