@@ -90,23 +90,19 @@ test("the send page's toggle switches between a file and a secret, and the addre
   const details = bar.getByRole("button", { name: "Technical details" });
   await expect(details).toBeVisible();
   await expect(details).toHaveAttribute("title", "Technical details");
-  // The bar's texts, which keep the height of their tallest, two lines.
-  const texts = bar.locator("p").first();
+  // The bar is one height at every width, so the button never makes it taller.
+  let barHeight: number | undefined;
   const insideBar = async () => {
-    const [outer, inner, text] = await Promise.all([
-      bar.boundingBox(),
-      details.boundingBox(),
-      texts.boundingBox(),
-    ]);
-    expect(outer && inner && text).toBeTruthy();
-    if (outer && inner && text) {
+    const [outer, inner] = await Promise.all([bar.boundingBox(), details.boundingBox()]);
+    expect(outer && inner).toBeTruthy();
+    if (outer && inner) {
       expect(inner.width).toBeGreaterThanOrEqual(40);
       expect(inner.x).toBeGreaterThanOrEqual(outer.x);
       expect(inner.x + inner.width).toBeLessThanOrEqual(outer.x + outer.width);
       expect(inner.y).toBeGreaterThanOrEqual(outer.y);
       expect(inner.y + inner.height).toBeLessThanOrEqual(outer.y + outer.height);
-      // No taller than the texts, so the button never makes the bar taller.
-      expect(inner.height).toBeLessThanOrEqual(text.height);
+      barHeight ??= outer.height;
+      expect(outer.height).toBe(barHeight);
     }
   };
   await insideBar();
@@ -233,7 +229,7 @@ test("switching language while sharing keeps the share, and the recipient still 
   await sender.getByLabel("Your secret").fill(text);
   await continueToLinks(sender);
   await sender.locator("#secret-recipient-name").fill(name);
-  await sender.getByRole("button", { name: "Create link", exact: true }).click();
+  await sender.getByRole("button", { name: "Add", exact: true }).click();
   const link = (await sender.getByLabel(`Link for ${name}`, { exact: true }).textContent()) ?? "";
   leaks.watchKey("link secret", new URL(link).hash.slice(1));
 

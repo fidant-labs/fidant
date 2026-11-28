@@ -14,6 +14,10 @@ import { type DevState, STATES } from "./states.ts";
 
 const STATE_KEY = "dev-state";
 const OPEN_KEY = "dev-open";
+/** Bars the panel can hide, by their `data-banner` value, so a screenshot shows the page alone. */
+const BANNERS = { localhost: "Localhost bar", "lost-server": "Server lost bar" } as const;
+type Banner = keyof typeof BANNERS;
+const hiddenKey = (banner: Banner) => `dev-hide-${banner}`;
 const PLAY_MS = 1500;
 const GROUPS = [...new Set(STATES.map((s) => s.group))];
 const HREF: Record<DevState["page"], string> = {
@@ -60,6 +64,9 @@ export function DevApp(props: { secure: boolean; theme: Theme }) {
   const [index, setIndex] = useState(() => Number(read(STATE_KEY) ?? -1));
   const [open, setOpen] = useState(() => read(OPEN_KEY) !== "no");
   const [playing, setPlaying] = useState(false);
+  const [hidden, setHidden] = useState(
+    () => new Set((Object.keys(BANNERS) as Banner[]).filter((b) => read(hiddenKey(b)) === "yes")),
+  );
   const state = STATES[index];
   // A page keeps its last state while another page is picked, so it never goes back to connecting.
   const previews = useRef<NonNullable<Parameters<typeof App>[0]["preview"]>>({});
@@ -76,6 +83,16 @@ export function DevApp(props: { secure: boolean; theme: Theme }) {
     write(STATE_KEY, String(next));
   };
   const step = (by: number) => pick((index + by + STATES.length) % STATES.length);
+  const showBanner = (banner: Banner, show: boolean) => {
+    const next = new Set(hidden);
+    if (show) {
+      next.delete(banner);
+    } else {
+      next.add(banner);
+    }
+    setHidden(next);
+    write(hiddenKey(banner), show ? undefined : "yes");
+  };
   const toggle = () => {
     setOpen(!open);
     write(OPEN_KEY, open ? "no" : undefined);
@@ -104,6 +121,11 @@ export function DevApp(props: { secure: boolean; theme: Theme }) {
   return (
     <>
       <App {...props} preview={preview} />
+      {hidden.size > 0 && (
+        <style>
+          {[...hidden].map((banner) => `[data-banner="${banner}"]{display:none}`).join("")}
+        </style>
+      )}
       <button
         type="button"
         class="fixed top-1/2 right-0 z-[70] rounded-l-lg border border-r-0 border-border cursor-pointer bg-popover px-10 py-1.5 text-xs font-semibold text-popover-foreground shadow-lg [writing-mode:vertical-rl]"
@@ -164,6 +186,19 @@ export function DevApp(props: { secure: boolean; theme: Theme }) {
               Back to live
             </button>
           </div>
+          <fieldset class="m-0 flex flex-col gap-1 border-0 p-0">
+            <legend class="mb-1 p-0 font-semibold">Show</legend>
+            {(Object.keys(BANNERS) as Banner[]).map((banner) => (
+              <label key={banner} class="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={!hidden.has(banner)}
+                  onChange={(event) => showBanner(banner, event.currentTarget.checked)}
+                />
+                {BANNERS[banner]}
+              </label>
+            ))}
+          </fieldset>
           <p class="m-0 text-muted-foreground">
             {state
               ? "The page shows this state and connects to nothing."

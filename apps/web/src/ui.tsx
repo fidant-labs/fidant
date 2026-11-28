@@ -274,7 +274,11 @@ export function LocalhostBar() {
     return null;
   }
   return (
-    <p role="note" class="m-0 bg-yellow-300 px-4 py-1.5 text-center text-sm text-black">
+    <p
+      role="note"
+      data-banner="localhost"
+      class="m-0 bg-yellow-300 px-4 py-1.5 text-center text-sm text-black"
+    >
       {t.common.localhost}
     </p>
   );

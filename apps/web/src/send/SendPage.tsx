@@ -957,6 +957,16 @@ export function SendPage({
   const stepText = continued
     ? `${t.send.step(2)}: ${t.send.peopleHeading}`
     : `${t.send.step(1)}: ${text ? t.menu.secret : t.send.title}`;
+  // Step 2's explanation says what the hint would say before anything goes wrong, so the hint only reports problems.
+  const recipientHint = !file
+    ? text
+      ? tooLong
+        ? t.secret.tooLong
+        : t.secret.first
+      : t.send.fileFirst
+    : full
+      ? t.send.full(MAX_LINKS)
+      : undefined;
   const goToRecipients = () => {
     setContinued(true);
     // The frame comes after the render that adds step 2.
@@ -980,6 +990,7 @@ export function SendPage({
           // height only, and nothing on it ends up under the bar.
           <p
             role="alert"
+            data-banner="lost-server"
             class="sticky top-[calc(4rem+1px)] z-40 mt-[calc(4rem+1px)] -mb-[calc(4rem+1px)] bg-red-700 px-4 py-1.5 text-center text-sm text-white"
           >
             {text ? t.secret.lostServer : t.send.lostServer}
@@ -988,7 +999,9 @@ export function SendPage({
       }
     >
       <section id={id("choose")} aria-labelledby={id("send-title")}>
-        <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+        {/* On a phone the title and the toggle don't fit side by side, so the toggle spans the page above
+            the title. Only the look moves: the heading stays first for keyboards and screen readers. */}
+        <div class="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p class={stepLabel}>{t.send.step(1)}</p>
             <h1 id={id("send-title")} class="mt-0">
@@ -999,14 +1012,14 @@ export function SendPage({
             aria-label={t.send.mode.label}
             // ponytail: a native tooltip, which touch and keyboard never show; a visible note if that matters
             title={unfinished ? t.send.mode.locked : undefined}
-            class={`inline-flex flex-none gap-0.5 rounded-xl border border-border p-0.5 ${unfinished ? "cursor-not-allowed" : ""}`}
+            class={`flex gap-0.5 rounded-xl border border-border p-0.5 max-sm:order-first sm:flex-none ${unfinished ? "cursor-not-allowed" : ""}`}
           >
             {(["file", "secret"] as const).map((mode) => {
               const current = (mode === "secret") === text;
-              const look = buttonVariants({
+              const look = `${buttonVariants({
                 variant: current ? "secondary" : "ghost",
                 size: "sm",
-              });
+              })} flex-1 sm:flex-none`;
               const label = (
                 <>
                   <Icon name={mode === "secret" ? "key" : "file"} class="size-4" />
@@ -1197,9 +1210,10 @@ export function SendPage({
           aria-labelledby={id("recipients-heading")}
         >
           <p class={stepLabel}>{t.send.step(2)}</p>
-          <h2 id={id("recipients-heading")} class="mt-0 mb-6 text-[1.75rem] font-bold">
+          <h2 id={id("recipients-heading")} class="m-0 text-[1.75rem] font-bold">
             {t.send.peopleHeading}
           </h2>
+          <p class={lede}>{t.send.peopleLede}</p>
           <form
             class={formRows}
             onSubmit={onAdd}
@@ -1224,7 +1238,9 @@ export function SendPage({
                 onInput={() => setNameError("")}
                 aria-invalid={nameError ? "true" : "false"}
                 aria-describedby={
-                  nameError ? `${id("name-error")} ${id("recipient-hint")}` : id("recipient-hint")
+                  [nameError && id("name-error"), recipientHint && id("recipient-hint")]
+                    .filter(Boolean)
+                    .join(" ") || undefined
                 }
               />
               {nameError && (
@@ -1324,17 +1340,11 @@ export function SendPage({
               {t.send.check.hint(text ? "secret" : "file")}
             </p>
           )}
-          <p id={id("recipient-hint")} class={hint}>
-            {!file
-              ? text
-                ? tooLong
-                  ? t.secret.tooLong
-                  : t.secret.first
-                : t.send.fileFirst
-              : full
-                ? t.send.full(MAX_LINKS)
-                : t.send.oneLinkEach}
-          </p>
+          {recipientHint && (
+            <p id={id("recipient-hint")} class={hint}>
+              {recipientHint}
+            </p>
+          )}
           <details class="mt-6 text-[0.9rem]">
             <summary class="cursor-pointer text-muted-foreground">
               {t.send.connectionOptions}
@@ -1400,7 +1410,7 @@ export function SendPage({
         data-bottom-bar
         data-page-bar
         // White on emerald-700 is 5.5:1.
-        class={`fixed inset-x-0 bottom-0 z-40 overflow-hidden bg-background/80 p-4 backdrop-blur-xl transition-colors duration-700 motion-reduce:transition-none ${allDone ? "text-white" : ""}`}
+        class={`fixed inset-x-0 bottom-0 z-40 overflow-hidden bg-background/80 px-4 py-1.5 backdrop-blur-xl transition-colors duration-700 motion-reduce:transition-none ${allDone ? "text-white" : ""}`}
       >
         {/* The green that takes the bar once every link has delivered. It waits above the bar and
             slides down from the progress line, its soft lower edge first; 60 % of its height is
@@ -1421,11 +1431,13 @@ export function SendPage({
             />
           )}
         </div>
-        <div class="relative mx-auto flex max-w-xl items-center gap-3">
+        {/* As tall at every step: two lines of text with room around them, and three lines, which a
+            phone beside Notify me needs, in the same height with less room. */}
+        <div class="relative mx-auto flex min-h-[3.95rem] max-w-xl items-center gap-3">
           {/* All three texts share one grid cell, the hidden ones keeping their space, so the bar is
               as tall at a step as while sending and when done, whichever text wraps to more lines
               (see SwapLabel). */}
-          <p class="m-0 grid flex-1 text-[0.9rem] font-medium" aria-hidden="true">
+          <p class="m-0 grid flex-1 text-[0.9rem] leading-snug font-medium" aria-hidden="true">
             <span
               class={`col-start-1 row-start-1 flex items-center gap-3 ${hasRecipients ? "invisible" : ""}`}
             >
@@ -1451,7 +1463,9 @@ export function SendPage({
             >
               <Icon name="check" class="size-4 flex-none" />
               <span>
-                <span class="block">{doneText}</span>
+                {/* Short, like "0 of 1 delivered" before it, so it fits beside Notify me on a phone;
+                    the status line says it in full. */}
+                <span class="block">{t.send.doneTitle}</span>
                 <span class="block font-normal">{t.send.closeTab}</span>
               </span>
             </span>
@@ -1477,16 +1491,6 @@ export function SendPage({
               >
                 {t.send.notifyMe}
               </Button>
-              {/* Size the cell for the widest text, so the answer arriving changes no width. */}
-              {[t.send.notifyOn, t.send.notifyBlocked].map((text) => (
-                <span
-                  key={text}
-                  aria-hidden="true"
-                  class="invisible col-start-1 row-start-1 text-[0.8rem]"
-                >
-                  {text}
-                </span>
-              ))}
               {notifyAnswer && (
                 // Takes the focus the button held, and tells the sender what the browser answered.
                 // Invisible while the button is offered again after an earlier answer.
@@ -1494,7 +1498,9 @@ export function SendPage({
                   id={id("notify-answer")}
                   tabIndex={-1}
                   role="status"
-                  class={`col-start-1 row-start-1 m-0 text-[0.8rem] ${canAskToNotify ? "invisible" : ""} ${unfinished ? "text-muted-foreground" : ""}`}
+                  // As wide as the button, which keeps its place, so the answer wraps instead of
+                  // taking width from the bar's text.
+                  class={`col-start-1 row-start-1 m-0 w-0 min-w-full text-right text-[0.8rem] leading-tight ${canAskToNotify ? "invisible" : ""} ${unfinished ? "text-muted-foreground" : ""}`}
                 >
                   {notifyAnswer === "on" ? t.send.notifyOn : t.send.notifyBlocked}
                 </p>

@@ -502,11 +502,11 @@ export const barText = (page: Page, text: string) =>
 
 /** Clicks Continue in step 1, which reveals step 2, and waits for the frame that focuses its name field. Step 2 is absent until then, and the bottom bar names step 1 until it opens. */
 export async function continueToLinks(page: Page): Promise<void> {
-  const heading = page.getByRole("heading", { name: "Create a link for each person" });
+  const heading = page.getByRole("heading", { name: "Add recipients" });
   await expect(heading).toHaveCount(0);
-  await expect(barText(page, "Step 2 of 3: Create a link for each person")).toHaveCount(0);
+  await expect(barText(page, "Step 2 of 3: Add recipients")).toHaveCount(0);
   await page.getByRole("button", { name: "Continue" }).click();
-  await expect(barText(page, "Step 2 of 3: Create a link for each person")).toBeInViewport();
+  await expect(barText(page, "Step 2 of 3: Add recipients")).toBeInViewport();
   await expect(page.getByRole("textbox", { name: "Who is it for?" })).toBeFocused();
   await expectStepAtTop(heading);
   await expect(page.getByRole("heading", { name: "Share the links" })).toHaveCount(0);
