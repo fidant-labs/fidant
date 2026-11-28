@@ -1308,6 +1308,10 @@ export const en = {
               "direct,relay",
               "While our relay is available: credentials for it, made for this pair of browsers, in memory while the page is open. A relay connection can start with them for 5 minutes.",
             ],
+            [
+              "",
+              "Once a recipient's connection opens: a random token from our server for that link, in this tab's memory only, so the page can take its place back if its connection to our server drops. A new one replaces it each time the page takes its place back. It stays until the page's next connection to our server uses it, the link connects again or you close the tab.",
+            ],
           ],
         },
         channel: {
@@ -1481,6 +1485,10 @@ export const en = {
             [
               "direct,relay",
               "While our relay is available: credentials for it, made for this pair of browsers, in memory while the page is open. A relay connection can start with them for 5 minutes.",
+            ],
+            [
+              "",
+              "Once the connection opens: a random token from our server, in the page's memory only, so the page can take its place back if its connection to our server drops. A new one replaces it each time the page takes its place back; it is gone when the transfer ends or the tab closes.",
             ],
             ["", "Their theme and language choice, in the browser's local storage, until cleared."],
           ],

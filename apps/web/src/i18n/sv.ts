@@ -1261,6 +1261,10 @@ export const sv: Messages = {
               "direct,relay",
               "Så länge vårt relä är tillgängligt: inloggningsuppgifter till reläet, gjorda för det här paret av webbläsare, i minnet medan sidan är öppen. Med dem kan en reläanslutning starta i 5 minuter.",
             ],
+            [
+              "",
+              "När en mottagares anslutning öppnas: ett slumpmässigt värde från vår server för den länken, bara i den här flikens minne, så att sidan kan ta tillbaka sin plats om dess anslutning till vår server bryts. Ett nytt ersätter det varje gång sidan tar tillbaka sin plats. Det finns kvar tills sidans nästa anslutning till vår server använder det, länken ansluter igen eller du stänger fliken.",
+            ],
           ],
         },
         channel: {
@@ -1447,6 +1451,10 @@ export const sv: Messages = {
             [
               "direct,relay",
               "Så länge vårt relä är tillgängligt: inloggningsuppgifter till reläet, gjorda för det här paret av webbläsare, i minnet medan sidan är öppen. Med dem kan en reläanslutning starta i 5 minuter.",
+            ],
+            [
+              "",
+              "När anslutningen öppnas: ett slumpmässigt värde från vår server, bara i sidans minne, så att sidan kan ta tillbaka sin plats om dess anslutning till vår server bryts. Ett nytt ersätter det varje gång sidan tar tillbaka sin plats, och det försvinner när överföringen slutar eller fliken stängs.",
             ],
             ["", "Deras val av tema och språk, i webbläsarens lokala lagring, tills de rensas."],
           ],
