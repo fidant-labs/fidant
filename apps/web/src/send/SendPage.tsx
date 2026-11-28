@@ -990,6 +990,7 @@ export function SendPage({
           // height only, and nothing on it ends up under the bar.
           <p
             role="alert"
+            data-banner="lost-server"
             class="sticky top-[calc(4rem+1px)] z-40 mt-[calc(4rem+1px)] -mb-[calc(4rem+1px)] bg-red-700 px-4 py-1.5 text-center text-sm text-white"
           >
             {text ? t.secret.lostServer : t.send.lostServer}
