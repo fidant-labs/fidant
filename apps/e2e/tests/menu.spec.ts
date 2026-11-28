@@ -253,6 +253,20 @@ test("scrolling over the details drawer leaves the page behind it where it was",
     () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
   );
   expect(await page.evaluate(() => window.scrollY)).toBe(before);
+  // A text selection that ends on the dimmed page keeps the drawer open; a click there closes it.
+  const box = await drawer.getByRole("heading", { name: "Technical details" }).boundingBox();
+  if (!box) {
+    throw new Error("the drawer's heading has no box");
+  }
+  await page.mouse.move(box.x + 5, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(100, 200);
+  await page.mouse.up();
+  await expect(drawer).toBeVisible();
+  await page.mouse.click(100, 200);
+  await expect(drawer).toBeHidden();
+  await button.click();
+  await expect(drawer).toBeVisible();
   await drawer.getByRole("button", { name: "Close" }).click();
   await expect(drawer).toBeHidden();
   expect(await page.evaluate(() => window.scrollY)).toBe(before);

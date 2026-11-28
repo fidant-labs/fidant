@@ -616,6 +616,8 @@ export function ServerDrawer({
   const headingId = useId();
   const titleId = useId();
   const drawer = useRef<HTMLDialogElement>(null);
+  // Whether the last press began on the dimmed page, so a text selection dragged out of the drawer doesn't close it.
+  const pressedOutside = useRef(false);
   useEffect(() => {
     if (!visible) {
       drawer.current?.close();
@@ -640,11 +642,15 @@ export function ServerDrawer({
         ref={drawer}
         aria-labelledby={titleId}
         class="m-0 ml-auto h-dvh max-h-none w-full max-w-none overflow-y-auto border-border bg-popover text-[0.9rem] text-popover-foreground shadow-xl backdrop:bg-black/50 open:animate-in open:slide-in-from-right motion-reduce:animate-none sm:w-[28rem] sm:border-l [&_code]:text-[0.85rem]"
-        // The padding is on the inner box, so a click on the dialog itself is a click on the dimmed page.
+        // The padding is on the inner box, so a press on the dialog itself is a press on the dimmed page.
+        onPointerDown={(event) => {
+          pressedOutside.current = event.target === event.currentTarget;
+        }}
         onClick={(event) => {
-          if (event.target === event.currentTarget) {
+          if (pressedOutside.current && event.target === event.currentTarget) {
             event.currentTarget.close();
           }
+          pressedOutside.current = false;
         }}
       >
         <div class="min-h-full p-6">
