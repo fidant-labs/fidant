@@ -251,6 +251,48 @@ test("a pasted text over 10,000 characters stays whole and can't be shared until
   await expect(add).toBeEnabled();
 });
 
+test("a long text grows both boxes to two thirds of the window, and a short one keeps six rows", async ({
+  actor,
+  leaks,
+  canary,
+}) => {
+  const random = canary.fork("long lines");
+  const lines = Array.from({ length: 160 }, () => base32Token(random, 64));
+  const long = lines.join("\n").slice(0, 10_000);
+  leaks.watchContent("long text", long);
+  const box = async (locator: ReturnType<Page["locator"]>) =>
+    await locator.evaluate((el) => ({
+      height: el.getBoundingClientRect().height,
+      line: Number.parseFloat(getComputedStyle(el).lineHeight),
+      window: innerHeight,
+      scrolls: el.scrollHeight > el.clientHeight,
+    }));
+
+  const { page: sender } = await actor("sender");
+  // A phone's window for the sender, a laptop's for the recipient.
+  await sender.setViewportSize({ width: 390, height: 844 });
+  await sender.goto("/send/secret");
+  const field = sender.getByLabel("Your secret");
+  await field.fill("one line");
+  // Six lines, the padding and the border: the height the box had before it grew.
+  const short = await box(field);
+  expect(short.height).toBeCloseTo(6 * short.line + 18, 0);
+  expect(short.scrolls).toBe(false);
+  const link = await share(leaks, sender, long, "", makeName(leaks, canary, "Anna"));
+  const grown = await box(field);
+  expect(grown.height).toBeCloseTo(grown.window * 0.66, 0);
+  expect(grown.scrolls).toBe(true);
+
+  const { page } = await openRecipient(actor, link);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.getByRole("button", { name: "Show", exact: true }).click();
+  const shown = page.getByRole("region", { name: "The secret", exact: true });
+  await expect.poll(() => shown.evaluate((el) => el.textContent)).toBe(long);
+  const received = await box(shown);
+  expect(received.height).toBeCloseTo(received.window * 0.66, 0);
+  expect(received.scrolls).toBe(true);
+});
+
 test("declining a text keeps the link working", async ({ actor, leaks, canary }) => {
   const text = makeText(leaks, canary);
   const name = makeName(leaks, canary, "Erik");

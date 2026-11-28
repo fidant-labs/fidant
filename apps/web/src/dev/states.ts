@@ -133,6 +133,13 @@ const send = (name: string, preview: () => SendPreview): DevState => ({
 });
 
 const SECRET = "correct horse battery staple";
+// A secret at the length limit, in lines like a pasted key, so the boxes reach their cap.
+const LONG_SECRET = Array.from(
+  { length: 200 },
+  (_, i) => `${String(i + 1).padStart(3, "0")} ${"0Ol1Il".repeat(8)}`,
+)
+  .join("\n")
+  .slice(0, MAX_TEXT_LENGTH);
 const secret = (name: string, preview: () => SendPreview): DevState => ({
   group: "Send a secret",
   name,
@@ -331,6 +338,12 @@ export const STATES: readonly DevState[] = [
     preview: () => ({ text: "x".repeat(MAX_TEXT_LENGTH + 1) }),
   },
   secret("Typed", () => ({})),
+  {
+    group: "Send a secret",
+    name: "Typed, long",
+    page: "secret",
+    preview: () => ({ file: textFile(LONG_SECRET), text: LONG_SECRET }),
+  },
   secret("Waiting for the recipient", () => ({ sender: build([{ name: "Anna" }]) })),
   secret("Every link status", () => ({
     sender: build([
@@ -393,6 +406,16 @@ export const STATES: readonly DevState[] = [
   }),
   receive("Receive", "Secret shown", {
     view: { s: "done", offer: TEXT_OFFER, blob: new Blob([SECRET]), sha256: SHA256 },
+    path: "direct",
+    tie: "closed",
+  }),
+  receive("Receive", "Long secret shown", {
+    view: {
+      s: "done",
+      offer: { ...TEXT_OFFER, size: LONG_SECRET.length },
+      blob: new Blob([LONG_SECRET]),
+      sha256: SHA256,
+    },
     path: "direct",
     tie: "closed",
   }),
