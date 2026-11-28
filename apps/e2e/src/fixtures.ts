@@ -498,12 +498,9 @@ export async function chooseFile(
 export async function continueToLinks(page: Page): Promise<void> {
   const heading = page.getByRole("heading", { name: "Create a link for each person" });
   await expect(heading).toHaveCount(0);
-  // Reduced motion makes the page jump to step 2 instead of gliding, so the next click does not wait for the scroll to settle.
-  await page.emulateMedia({ reducedMotion: "reduce" });
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByRole("textbox", { name: "Who is it for?" })).toBeFocused();
   await expect(heading).toBeInViewport();
-  await page.emulateMedia({ reducedMotion: null });
 }
 
 /** Runs in the page through addInitScript, so it may use nothing from this module: `cut()` closes its peers, `stalled` (set after `stallAt` CHUNKs) drops what its channels send, `held` queues it for `release()`, and `sent` counts frames by kind. */

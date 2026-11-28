@@ -1,6 +1,9 @@
 import type { Page } from "@playwright/test";
 import { allowClipboard, expect, test } from "../src/fixtures.ts";
 
+// The drawings animate, which the config's reduced motion would turn off.
+test.use({ reducedMotion: "no-preference" });
+
 const SECTIONS = [
   "stays",
   "encryption",
