@@ -118,6 +118,9 @@ type Hash =
   | { status: "ready"; hex: string }
   | { status: "failed" };
 
+/** What the page's status region says, kept as data so its text follows a language switch. */
+type Cue = { kind: "file"; name: string; size: number } | null;
+
 type Connection = {
   abort: AbortController;
   peer?: Peer;
@@ -251,6 +254,8 @@ export function SendPage({
   const [canAskToNotify, setCanAskToNotify] = useState(false);
   // Step 2 appears on Continue and stays: its links outlive any later change to step 1.
   const [continued, setContinued] = useState(false);
+  // Screen readers hear it; focus moves on, so nothing else would say what happened.
+  const [cue, setCue] = useState<Cue>(null);
   const [notifyAnswer, setNotifyAnswer] = useState<"on" | "blocked" | undefined>(undefined);
   // When the answer replaces the button, it takes the focus the button (or nothing) held.
   useEffect(() => {
@@ -740,6 +745,7 @@ export function SendPage({
       input.value = "";
     }
     prepare(fits ? chosen : undefined);
+    setCue(fits && chosen ? { kind: "file", name: chosen.name, size: chosen.size } : null);
     if (fits && chosen) {
       // The name is the next field of this step; Continue leads on to the links.
       requestAnimationFrame(() => document.getElementById(id("from"))?.focus());
@@ -1317,6 +1323,9 @@ export function SendPage({
         kind={text ? "secret" : "file"}
       />
 
+      <p class="sr-only" role="status">
+        {cue?.kind === "file" && t.send.fileChosen(cue.name, formatBytes(cue.size, lang))}
+      </p>
       <p class="sr-only" role="status">
         {hasRecipients && barText}
       </p>

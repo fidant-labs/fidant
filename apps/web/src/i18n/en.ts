@@ -370,6 +370,7 @@ export const en = {
         "This file name contains characters that can't be sent, or three or more spaces in a row. Rename the file and try again.",
       tooLong: "This file name is too long to send. Rename the file and try again.",
     },
+    fileChosen: (name: string, size: string) => `File chosen: ${name}, ${size}`,
     preparing: "Getting the file ready…",
     readFailed: "Couldn't read the file. Choose it again.",
     hashPending: "Not ready yet",

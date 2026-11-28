@@ -350,6 +350,7 @@ export const sv: Messages = {
         "Filnamnet innehåller tecken som inte kan skickas, eller tre eller fler mellanslag i rad. Byt namn på filen och försök igen.",
       tooLong: "Filnamnet är för långt för att kunna skickas. Byt namn på filen och försök igen.",
     },
+    fileChosen: (name: string, size: string) => `Vald fil: ${name}, ${size}`,
     preparing: "Gör i ordning filen…",
     readFailed: "Det gick inte att läsa filen. Välj den igen.",
     hashPending: "Inte klar än",

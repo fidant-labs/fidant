@@ -520,6 +520,10 @@ test("the sender's name must fit with the file name, and stray drops are ignored
   await page.goto("/send");
   await page.getByLabel("Your name").fill("x".repeat(100));
   await chooseFile(page, { name: file.name, mimeType: file.mime, buffer: file.bytes });
+  // Focus moved on to step 2, so the status region says which file was taken.
+  await expect(page.getByRole("status").filter({ hasText: "File chosen:" })).toHaveText(
+    `File chosen: ${file.name}, 5 bytes`,
+  );
   // Whether a dragover and a drop of what `fill` adds (nothing: no DataTransfer) onto `selector` are cancelled.
   const cancelled = async (selector: string, fill = "") => {
     const results = [];
