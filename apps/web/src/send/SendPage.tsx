@@ -119,7 +119,7 @@ type Hash =
   | { status: "failed" };
 
 /** What the page's status region says, kept as data so its text follows a language switch. */
-type Cue = { kind: "file"; name: string; size: number } | null;
+type Cue = { kind: "file"; name: string; size: number } | { kind: "links" } | null;
 
 type Connection = {
   abort: AbortController;
@@ -152,6 +152,8 @@ const fieldError = "m-0 text-destructive";
 const hint = "text-[0.9rem] text-muted-foreground";
 const stepLabel = "m-0 mb-1 text-[0.85rem] font-medium text-muted-foreground";
 const GLIDE_MS = 450;
+/** On the last open step: tall enough to the page's end that a glide always brings its top to its scroll margin. */
+const lastStep = "min-h-[calc(100dvh-6rem)]";
 
 /** Scrolls the window to `el` with an ease-in-out curve; stops if the user scrolls, jumps if they prefer less motion. */
 function glideTo(el: HTMLElement) {
@@ -790,6 +792,7 @@ export function SendPage({
       }
       fromRef.current = typed;
     }
+    const first = sender.recipients.length === 0;
     const link = createLink(location.origin);
     const submitter = (event as SubmitEvent).submitter;
     const check = submitter instanceof HTMLButtonElement ? submitter.value === "check" : !!email;
@@ -812,6 +815,10 @@ export function SendPage({
     }
     form.reset();
     input.focus();
+    if (first) {
+      // Step 3 appears below; the page stays where it is and focus stays for the next name.
+      setCue({ kind: "links" });
+    }
   };
 
   const onRemove = (linkId: string) => {
@@ -878,6 +885,15 @@ export function SendPage({
     });
   };
 
+  const goToLinks = () => {
+    const target = document.getElementById(id("links"));
+    if (target) {
+      glideTo(target);
+      // Like step 1's Continue: on to the first control of the next step, the first card's button.
+      target.querySelector<HTMLElement>("button")?.focus({ preventScroll: true });
+    }
+  };
+
   return (
     <Page
       banner={
@@ -895,7 +911,7 @@ export function SendPage({
         )
       }
     >
-      <section aria-labelledby={id("send-title")}>
+      <section id={id("choose")} aria-labelledby={id("send-title")}>
         <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
           <div>
             <p class={stepLabel}>{t.send.step(1)}</p>
@@ -1101,7 +1117,7 @@ export function SendPage({
       {continued && (
         <section
           id={id("recipients")}
-          class="mt-10 scroll-mt-24 border-t border-border pt-8"
+          class={`mt-10 scroll-mt-24 border-t border-border pt-8 ${hasRecipients ? "" : lastStep}`}
           aria-labelledby={id("recipients-heading")}
         >
           <p class={stepLabel}>{t.send.step(2)}</p>
@@ -1243,6 +1259,11 @@ export function SendPage({
                 ? t.send.full(MAX_LINKS)
                 : t.send.oneLinkEach}
           </p>
+          {/* Like step 1's Continue, which sits 1rem below an unmargined hint: this hint keeps its
+              0.5rem bottom margin, so the button adds the other half. */}
+          <Button type="button" className="mt-2" disabled={!hasRecipients} onClick={goToLinks}>
+            {t.send.continue}
+          </Button>
           <details class="mt-6 text-[0.9rem]">
             <summary class="cursor-pointer text-muted-foreground">
               {t.send.connectionOptions}
@@ -1275,7 +1296,11 @@ export function SendPage({
       )}
 
       {hasRecipients && (
-        <section class="mt-12 border-t border-border pt-8" aria-labelledby={id("links-heading")}>
+        <section
+          id={id("links")}
+          class={`mt-12 scroll-mt-24 border-t border-border pt-8 ${lastStep}`}
+          aria-labelledby={id("links-heading")}
+        >
           <p class={stepLabel}>{t.send.step(3)}</p>
           <h2 id={id("links-heading")} class="m-0 text-[1.75rem] font-bold">
             {t.send.linksHeading}
@@ -1325,6 +1350,7 @@ export function SendPage({
 
       <p class="sr-only" role="status">
         {cue?.kind === "file" && t.send.fileChosen(cue.name, formatBytes(cue.size, lang))}
+        {cue?.kind === "links" && hasRecipients && `${t.send.step(3)}: ${t.send.linksHeading}`}
       </p>
       <p class="sr-only" role="status">
         {hasRecipients && barText}

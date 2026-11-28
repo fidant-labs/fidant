@@ -5,6 +5,7 @@ import {
   type BrowserContextOptions,
   test as base,
   expect,
+  type Locator,
   type Page,
 } from "@playwright/test";
 import { parseStackOrigins } from "./hosts.ts";
@@ -500,7 +501,29 @@ export async function continueToLinks(page: Page): Promise<void> {
   await expect(heading).toHaveCount(0);
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByRole("textbox", { name: "Who is it for?" })).toBeFocused();
-  await expect(heading).toBeInViewport();
+  await expectStepAtTop(heading);
+  await expect(page.getByRole("heading", { name: "Share the links" })).toHaveCount(0);
+}
+
+/** Expects the glide to the step that `heading` heads to have ended with the step's top at its scroll margin, and the heading just under the header. */
+export async function expectStepAtTop(heading: Locator): Promise<void> {
+  await expect
+    .poll(() =>
+      heading.evaluate((element) => {
+        const step = element.closest("section");
+        const header = document.querySelector("header");
+        if (!step || !header) {
+          return "no step or no header";
+        }
+        const off =
+          step.getBoundingClientRect().top - parseFloat(getComputedStyle(step).scrollMarginTop);
+        const below = element.getBoundingClientRect().top - header.getBoundingClientRect().bottom;
+        return Math.abs(off) <= 2 && below >= 0 && below <= 120
+          ? "at the top"
+          : `step ${off}px from its scroll margin, heading ${below}px below the header`;
+      }),
+    )
+    .toBe("at the top");
 }
 
 /** Runs in the page through addInitScript, so it may use nothing from this module: `cut()` closes its peers, `stalled` (set after `stallAt` CHUNKs) drops what its channels send, `held` queues it for `release()`, and `sent` counts frames by kind. */
