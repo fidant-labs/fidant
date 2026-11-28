@@ -31,7 +31,7 @@ import {
   TOO_SMALL_FOR_TEXT,
   unmarked,
 } from "../lib/sender-state.ts";
-import { CheckNumber, Icon, PathLine, SwapLabel, useCopyNote } from "../ui.tsx";
+import { CheckNumber, Icon, PathNote, SwapLabel, useCopyNote } from "../ui.tsx";
 
 const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
 
@@ -119,7 +119,6 @@ type Props = {
   recipients: readonly Recipient[];
   fileSize: number;
   statusText: StatusText;
-  summary(done: number, total: number): string;
   onRemove(linkId: string): void;
   /** Open checks by link ID. */
   checks: Readonly<Record<string, CheckView>>;
@@ -135,7 +134,6 @@ export function RecipientList({
   recipients,
   fileSize,
   statusText,
-  summary,
   onRemove,
   checks,
   onCheck,
@@ -210,9 +208,6 @@ export function RecipientList({
   const ordered = [...recipients.filter((r) => r.status !== "delivered"), ...done];
   return (
     <>
-      {recipients.length > 1 && (
-        <p class="mt-6 mb-0 font-semibold">{summary(done.length, recipients.length)}</p>
-      )}
       <ul class="mt-3 mb-4 grid gap-3" aria-label={t.send.recipients}>
         {ordered.map((recipient) => (
           <RecipientRow
@@ -429,7 +424,7 @@ function RecipientRow({ recipient, fileSize, statusText, onRemove, check, onComp
               {t.send.mail[lost ? "lost" : mail](maskAddress(email))}
             </p>
           )}
-          {path && <PathLine path={path} plain />}
+          {path && <PathNote path={path} />}
           {status === "checking" && (
             <p class="mt-2 mb-0 text-[0.9rem] text-muted-foreground empty:sr-only" role="status">
               {check?.said && t.send.check.waiting}

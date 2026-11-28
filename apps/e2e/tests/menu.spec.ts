@@ -237,7 +237,8 @@ test("scrolling over the details drawer leaves the page behind it where it was",
   await page.setViewportSize({ width: 1000, height: 400 });
   await page.goto("/send");
   const button = page.getByRole("button", { name: "Technical details" });
-  await button.scrollIntoViewIfNeeded();
+  // The button is on the bar fixed to the screen's bottom, so scroll the page itself.
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
   const before = await page.evaluate(() => window.scrollY);
   expect(before).toBeGreaterThan(0);
   await button.click();
@@ -253,7 +254,23 @@ test("scrolling over the details drawer leaves the page behind it where it was",
     () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
   );
   expect(await page.evaluate(() => window.scrollY)).toBe(before);
+  // A text selection that ends on the dimmed page keeps the drawer open; a click there closes it.
+  const box = await drawer.getByRole("heading", { name: "Technical details" }).boundingBox();
+  if (!box) {
+    throw new Error("the drawer's heading has no box");
+  }
+  await page.mouse.move(box.x + 5, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(100, 200);
+  await page.mouse.up();
+  await expect(drawer).toBeVisible();
+  await page.mouse.click(100, 200);
+  await expect(drawer).toBeHidden();
+  await button.click();
+  await expect(drawer).toBeVisible();
   await drawer.getByRole("button", { name: "Close" }).click();
   await expect(drawer).toBeHidden();
+  // Closing gives the focus back to the button that opened the drawer.
+  await expect(button).toBeFocused();
   expect(await page.evaluate(() => window.scrollY)).toBe(before);
 });

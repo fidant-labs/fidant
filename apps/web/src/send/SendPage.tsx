@@ -126,7 +126,7 @@ import {
   lede,
   Page,
   SECRET_HREF,
-  ServerPanel,
+  ServerDrawer,
 } from "../ui.tsx";
 import { type CheckView, RecipientList } from "./RecipientList.tsx";
 
@@ -135,6 +135,9 @@ type Hash =
   | { status: "preparing" }
   | { status: "ready"; hex: string }
   | { status: "failed" };
+
+/** What the page's status region says, kept as data so its text follows a language switch. */
+type Cue = { kind: "file"; name: string; size: number } | { kind: "links" } | null;
 
 type Connection = {
   abort: AbortController;
@@ -167,6 +170,8 @@ const fieldError = "m-0 text-destructive";
 const hint = "text-[0.9rem] text-muted-foreground";
 const stepLabel = "m-0 mb-1 text-[0.85rem] font-medium text-muted-foreground";
 const GLIDE_MS = 450;
+/** On the last open step: tall enough to the page's end that a glide always brings its top to its scroll margin. Step 3 takes it over from step 2, so the page doesn't shrink and jump when the first link opens step 3. */
+const lastStep = "min-h-[calc(100dvh-4rem)]";
 
 /** Scrolls the window to `el` with an ease-in-out curve; stops if the user scrolls, jumps if they prefer less motion. */
 function glideTo(el: HTMLElement) {
@@ -269,6 +274,8 @@ export function SendPage({
   const [canAskToNotify, setCanAskToNotify] = useState(false);
   // Step 2 appears on Continue and stays: its links outlive any later change to step 1.
   const [continued, setContinued] = useState(false);
+  // Screen readers hear it; focus moves on, so nothing else would say what happened.
+  const [cue, setCue] = useState<Cue>(null);
   const [notifyAnswer, setNotifyAnswer] = useState<"on" | "blocked" | undefined>(undefined);
   // When the answer replaces the button, it takes the focus the button (or nothing) held.
   useEffect(() => {
@@ -820,6 +827,7 @@ export function SendPage({
       input.value = "";
     }
     prepare(fits ? chosen : undefined);
+    setCue(fits && chosen ? { kind: "file", name: chosen.name, size: chosen.size } : null);
     if (fits && chosen) {
       // The name is the next field of this step; Continue leads on to the links.
       requestAnimationFrame(() => document.getElementById(id("from"))?.focus());
@@ -864,6 +872,7 @@ export function SendPage({
       }
       fromRef.current = typed;
     }
+    const first = sender.recipients.length === 0;
     const link = createLink(location.origin);
     const submitter = (event as SubmitEvent).submitter;
     const check = submitter instanceof HTMLButtonElement ? submitter.value === "check" : !!email;
@@ -886,6 +895,10 @@ export function SendPage({
     }
     form.reset();
     input.focus();
+    if (first) {
+      // Step 3 appears below; the page stays where it is and focus stays for the next name.
+      setCue({ kind: "links" });
+    }
   };
 
   const onRemove = (linkId: string) => {
@@ -940,6 +953,10 @@ export function SendPage({
   const barText = unfinished
     ? `${sendingText}. ${t.send.keepOpen}.`
     : `${doneText}. ${t.send.closeTab}.`;
+  // Before the first link the bar names the open step, as its label and heading do.
+  const stepText = continued
+    ? `${t.send.step(2)}: ${t.send.peopleHeading}`
+    : `${t.send.step(1)}: ${text ? t.menu.secret : t.send.title}`;
   const goToRecipients = () => {
     setContinued(true);
     // The frame comes after the render that adds step 2.
@@ -953,8 +970,24 @@ export function SendPage({
   };
 
   return (
-    <Page>
-      <section aria-labelledby={id("send-title")}>
+    <Page
+      full
+      banner={
+        lostServer && (
+          // A bar like the localhost bar, just below the header and held there while the page
+          // scrolls. The header gives its height back to the page, so the top margin puts the bar
+          // under it, and the bottom margin gives that back too: the page moves down by the bar's
+          // height only, and nothing on it ends up under the bar.
+          <p
+            role="alert"
+            class="sticky top-[calc(4rem+1px)] z-40 mt-[calc(4rem+1px)] -mb-[calc(4rem+1px)] bg-red-700 px-4 py-1.5 text-center text-sm text-white"
+          >
+            {text ? t.secret.lostServer : t.send.lostServer}
+          </p>
+        )
+      }
+    >
+      <section id={id("choose")} aria-labelledby={id("send-title")}>
         <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
           <div>
             <p class={stepLabel}>{t.send.step(1)}</p>
@@ -970,7 +1003,10 @@ export function SendPage({
           >
             {(["file", "secret"] as const).map((mode) => {
               const current = (mode === "secret") === text;
-              const look = buttonVariants({ variant: current ? "secondary" : "ghost", size: "sm" });
+              const look = buttonVariants({
+                variant: current ? "secondary" : "ghost",
+                size: "sm",
+              });
               const label = (
                 <>
                   <Icon name={mode === "secret" ? "key" : "file"} class="size-4" />
@@ -1004,7 +1040,7 @@ export function SendPage({
         <p class={lede}>{text ? t.secret.lede : t.send.lede}</p>
 
         {text && (
-          <div class={`my-4 ${field}`}>
+          <div class={`my-8 ${field}`}>
             <Label htmlFor="secret-text">{t.secret.label}</Label>
             <textarea
               id="secret-text"
@@ -1117,7 +1153,12 @@ export function SendPage({
             {mail && ` ${t.send.fromHintEmail}`}
           </p>
         </div>
-        <Button type="button" className="mt-4" disabled={!file || tooLong} onClick={goToRecipients}>
+        <Button
+          type="button"
+          className="mt-4"
+          disabled={!file || tooLong || hasRecipients}
+          onClick={goToRecipients}
+        >
           {t.send.continue}
         </Button>
         {(file || text) && (
@@ -1147,30 +1188,18 @@ export function SendPage({
             )}
           </p>
         )}
-        {/* Until step 2 shows, its warning that no link can be made sits here. */}
-        {lostServer && !continued && (
-          <Alert variant="destructive" className="my-4">
-            <AlertDescription>{text ? t.secret.lostServer : t.send.lostServer}</AlertDescription>
-          </Alert>
-        )}
       </section>
 
       {continued && (
         <section
           id={id("recipients")}
-          class="mt-10 scroll-mt-24 border-t border-border pt-8"
+          class={`mt-10 scroll-mt-16 border-t border-border pt-8 ${hasRecipients ? "" : lastStep}`}
           aria-labelledby={id("recipients-heading")}
         >
           <p class={stepLabel}>{t.send.step(2)}</p>
           <h2 id={id("recipients-heading")} class="mt-0 mb-6 text-[1.75rem] font-bold">
             {t.send.peopleHeading}
           </h2>
-          {lostServer && (
-            <Alert variant="destructive" className="my-4">
-              <AlertDescription>{text ? t.secret.lostServer : t.send.lostServer}</AlertDescription>
-            </Alert>
-          )}
-
           <form
             class={formRows}
             onSubmit={onAdd}
@@ -1338,7 +1367,11 @@ export function SendPage({
       )}
 
       {hasRecipients && (
-        <section class="mt-12 border-t border-border pt-8" aria-labelledby={id("links-heading")}>
+        <section
+          id={id("links")}
+          class={`mt-12 scroll-mt-16 border-t border-border pt-8 ${lastStep}`}
+          aria-labelledby={id("links-heading")}
+        >
           <p class={stepLabel}>{t.send.step(3)}</p>
           <h2 id={id("links-heading")} class="m-0 text-[1.75rem] font-bold">
             {t.send.linksHeading}
@@ -1347,7 +1380,6 @@ export function SendPage({
             recipients={sender.recipients}
             fileSize={file?.size ?? 0}
             statusText={text ? { ...t.send.status, ...t.secret.status } : t.send.status}
-            summary={(text ? t.secret : t.send).summary}
             onRemove={onRemove}
             checks={checks}
             onCheck={onCheck}
@@ -1357,135 +1389,153 @@ export function SendPage({
         </section>
       )}
 
-      <ServerPanel
-        visible={shown}
-        details={
-          file && !text
-            ? [
-                [t.common.size, t.format.bytes(file.size)],
-                [t.common.type, file.type || t.common.typeMissing],
-                ["SHA-256", hash.status === "ready" ? <code>{hash.hex}</code> : t.send.hashPending],
-              ]
-            : []
-        }
-        sees={t.server.seesSender}
-        holds={t.server.senderHolds({
-          online: !lostServer,
-          links: hostedLinks(sender).length,
-          connected,
-          relay: allowRelay,
-          emailed: emailed.length,
-          sending: emailed.filter((r) => r.mail === "sending").length,
-          mailed,
-          kind: text ? "secret" : "file",
-        })}
-        relayed={relayed}
-        afterwards={t.server.senderAfterwards(!lostServer, mailed)}
-        viaRelay={viaRelay}
-        emailed={mailed}
-        kind={text ? "secret" : "file"}
-      />
-
+      <p class="sr-only" role="status">
+        {cue?.kind === "file" && t.send.fileChosen(cue.name, formatBytes(cue.size, lang))}
+        {cue?.kind === "links" && hasRecipients && `${t.send.step(3)}: ${t.send.linksHeading}`}
+      </p>
       <p class="sr-only" role="status">
         {hasRecipients && barText}
       </p>
-      {hasRecipients && (
+      <div
+        data-bottom-bar
+        data-page-bar
+        // White on emerald-700 is 5.5:1.
+        class={`fixed inset-x-0 bottom-0 z-40 overflow-hidden bg-background/80 p-4 backdrop-blur-xl transition-colors duration-700 motion-reduce:transition-none ${allDone ? "text-white" : ""}`}
+      >
+        {/* The green that takes the bar once every link has delivered. It waits above the bar and
+            slides down from the progress line, its soft lower edge first; 60 % of its height is
+            solid, which covers the whole bar when it has landed. */}
         <div
-          data-bottom-bar
-          data-page-bar
-          // White on emerald-700 is 5.5:1.
-          class={`fixed inset-x-0 bottom-0 z-40 overflow-hidden bg-background/80 p-4 backdrop-blur-xl transition-colors duration-700 motion-reduce:transition-none ${unfinished ? "" : "text-white"}`}
-        >
-          {/* The green that takes the bar once every link has delivered. It waits above the bar and
-              slides down from the progress line, its soft lower edge first; 60 % of its height is
-              solid, which covers the whole bar when it has landed. */}
-          <div
-            class={`absolute inset-x-0 top-0 h-[170%] bg-linear-to-b from-emerald-700 from-60% to-transparent transition-transform duration-700 ease-out motion-reduce:transition-none ${unfinished ? "-translate-y-full" : "translate-y-0"}`}
-            aria-hidden="true"
-          />
-          {/* The bar's top edge: a track that fills with what has gone through all links together.
-              It is always there, and stays full in a lighter green once every link has delivered, so
-              the bar never changes height. */}
-          <div class="absolute inset-x-0 top-0 h-1 bg-border" aria-hidden="true">
+          class={`absolute inset-x-0 top-0 h-[170%] bg-linear-to-b from-emerald-700 from-60% to-transparent transition-transform duration-700 ease-out motion-reduce:transition-none ${allDone ? "translate-y-0" : "-translate-y-full"}`}
+          aria-hidden="true"
+        />
+        {/* The bar's top edge: a track that fills with what has gone through all links together.
+            It is always there, and stays full in a lighter green once every link has delivered, so
+            the bar never changes height. Its fill comes with the first link: the page is prerendered
+            without links, and the CSP blocks the style attribute that sets the fill's width. */}
+        <div class="absolute inset-x-0 top-0 h-1 bg-border" aria-hidden="true">
+          {hasRecipients && (
             <div
-              class={`h-full transition-[width,background-color] motion-reduce:transition-none ${unfinished ? "bg-emerald-600" : "bg-emerald-400"}`}
+              class={`h-full transition-[width,background-color] motion-reduce:transition-none ${allDone ? "bg-emerald-400" : "bg-emerald-600"}`}
               style={{ width: `${progress * 100}%` }}
             />
-          </div>
-          <div class="relative mx-auto flex max-w-xl items-center gap-3">
-            {/* Both texts share one grid cell, the hidden one keeping its space, so the bar is as tall
-                while sending as when done, whichever text wraps to more lines (see SwapLabel). */}
-            <p class="m-0 grid flex-1 text-[0.9rem] font-medium" aria-hidden="true">
-              <span
-                class={`col-start-1 row-start-1 flex items-center gap-3 ${unfinished ? "" : "invisible"}`}
-              >
-                {/* In a box as wide as the check that replaces it, so the text starts at the same place. */}
-                <span class="flex size-4 flex-none items-center justify-center">
-                  <span class="size-2 animate-pulse rounded-full bg-primary motion-reduce:animate-none" />
-                </span>
-                <span>
-                  <span class="block">{sendingText}</span>
-                  <span class="block font-normal text-muted-foreground">{t.send.keepOpen}</span>
-                </span>
-              </span>
-              <span
-                class={`col-start-1 row-start-1 flex items-center gap-3 ${unfinished ? "invisible" : ""}`}
-              >
-                <Icon name="check" class="size-4 flex-none" />
-                <span>
-                  <span class="block">{doneText}</span>
-                  <span class="block font-normal">{t.send.closeTab}</span>
-                </span>
-              </span>
-            </p>
-            {/* Once the button was offered its place stays: the button and the browser's answer share
-                one grid cell, the hidden one keeping its space, so the bar's text wraps the same and
-                the bar keeps its height when the button goes (see SwapLabel). */}
-            {(canAskToNotify || notifyAnswer) && (
-              <div class="grid flex-none items-center justify-items-end">
-                <Button
-                  id={id("notify-me")}
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className={`col-start-1 row-start-1 ${unfinished && canAskToNotify ? "" : "invisible"}`}
-                  onClick={async () => {
-                    const answer = await askToNotify();
-                    if (answer !== "default") {
-                      setCanAskToNotify(false);
-                      setNotifyAnswer(answer === "granted" ? "on" : "blocked");
-                    }
-                  }}
-                >
-                  {t.send.notifyMe}
-                </Button>
-                {/* Size the cell for the widest text, so the answer arriving changes no width. */}
-                {[t.send.notifyOn, t.send.notifyBlocked].map((text) => (
-                  <span
-                    key={text}
-                    aria-hidden="true"
-                    class="invisible col-start-1 row-start-1 text-[0.8rem]"
-                  >
-                    {text}
-                  </span>
-                ))}
-                {notifyAnswer && (
-                  // Takes the focus the button held, and tells the sender what the browser answered.
-                  // Invisible while the button is offered again after an earlier answer.
-                  <p
-                    id={id("notify-answer")}
-                    tabIndex={-1}
-                    role="status"
-                    class={`col-start-1 row-start-1 m-0 text-[0.8rem] ${canAskToNotify ? "invisible" : ""} ${unfinished ? "text-muted-foreground" : ""}`}
-                  >
-                    {notifyAnswer === "on" ? t.send.notifyOn : t.send.notifyBlocked}
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
+          )}
         </div>
-      )}
+        <div class="relative mx-auto flex max-w-xl items-center gap-3">
+          {/* All three texts share one grid cell, the hidden ones keeping their space, so the bar is
+              as tall at a step as while sending and when done, whichever text wraps to more lines
+              (see SwapLabel). */}
+          <p class="m-0 grid flex-1 text-[0.9rem] font-medium" aria-hidden="true">
+            <span
+              class={`col-start-1 row-start-1 flex items-center gap-3 ${hasRecipients ? "invisible" : ""}`}
+            >
+              <span class="flex size-4 flex-none items-center justify-center">
+                <span class="size-2 rounded-full bg-muted-foreground" />
+              </span>
+              <span>{stepText}</span>
+            </span>
+            <span
+              class={`col-start-1 row-start-1 flex items-center gap-3 ${unfinished ? "" : "invisible"}`}
+            >
+              {/* In a box as wide as the check that replaces it, so the text starts at the same place. */}
+              <span class="flex size-4 flex-none items-center justify-center">
+                <span class="size-2 animate-pulse rounded-full bg-primary motion-reduce:animate-none" />
+              </span>
+              <span>
+                <span class="block">{sendingText}</span>
+                <span class="block font-normal text-muted-foreground">{t.send.keepOpen}</span>
+              </span>
+            </span>
+            <span
+              class={`col-start-1 row-start-1 flex items-center gap-3 ${allDone ? "" : "invisible"}`}
+            >
+              <Icon name="check" class="size-4 flex-none" />
+              <span>
+                <span class="block">{doneText}</span>
+                <span class="block font-normal">{t.send.closeTab}</span>
+              </span>
+            </span>
+          </p>
+          {/* Once the button was offered its place stays: the button and the browser's answer share
+              one grid cell, the hidden one keeping its space, so the bar's text wraps the same and
+              the bar keeps its height when the button goes (see SwapLabel). */}
+          {(canAskToNotify || notifyAnswer) && (
+            <div class="grid flex-none items-center justify-items-end">
+              <Button
+                id={id("notify-me")}
+                type="button"
+                variant="outline"
+                size="sm"
+                className={`col-start-1 row-start-1 ${unfinished && canAskToNotify ? "" : "invisible"}`}
+                onClick={async () => {
+                  const answer = await askToNotify();
+                  if (answer !== "default") {
+                    setCanAskToNotify(false);
+                    setNotifyAnswer(answer === "granted" ? "on" : "blocked");
+                  }
+                }}
+              >
+                {t.send.notifyMe}
+              </Button>
+              {/* Size the cell for the widest text, so the answer arriving changes no width. */}
+              {[t.send.notifyOn, t.send.notifyBlocked].map((text) => (
+                <span
+                  key={text}
+                  aria-hidden="true"
+                  class="invisible col-start-1 row-start-1 text-[0.8rem]"
+                >
+                  {text}
+                </span>
+              ))}
+              {notifyAnswer && (
+                // Takes the focus the button held, and tells the sender what the browser answered.
+                // Invisible while the button is offered again after an earlier answer.
+                <p
+                  id={id("notify-answer")}
+                  tabIndex={-1}
+                  role="status"
+                  class={`col-start-1 row-start-1 m-0 text-[0.8rem] ${canAskToNotify ? "invisible" : ""} ${unfinished ? "text-muted-foreground" : ""}`}
+                >
+                  {notifyAnswer === "on" ? t.send.notifyOn : t.send.notifyBlocked}
+                </p>
+              )}
+            </div>
+          )}
+          {/* At the bar's end on every step; a closed dialog takes no space, an open one is in the top layer. */}
+          <ServerDrawer
+            onGreen={allDone}
+            visible={shown}
+            facts={
+              file && !text
+                ? [
+                    [t.common.size, t.format.bytes(file.size)],
+                    [t.common.type, file.type || t.common.typeMissing],
+                    [
+                      "SHA-256",
+                      hash.status === "ready" ? <code>{hash.hex}</code> : t.send.hashPending,
+                    ],
+                  ]
+                : []
+            }
+            sees={t.server.seesSender}
+            holds={t.server.senderHolds({
+              online: !lostServer,
+              links: hostedLinks(sender).length,
+              connected,
+              relay: allowRelay,
+              emailed: emailed.length,
+              sending: emailed.filter((r) => r.mail === "sending").length,
+              mailed,
+              kind: text ? "secret" : "file",
+            })}
+            relayed={relayed}
+            afterwards={t.server.senderAfterwards(!lostServer, mailed)}
+            viaRelay={viaRelay}
+            emailed={mailed}
+            kind={text ? "secret" : "file"}
+          />
+        </div>
+      </div>
     </Page>
   );
 }

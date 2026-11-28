@@ -272,6 +272,8 @@ export const sv: Messages = {
     typeMissing: "Inte angiven",
     you: "Du",
     sender: "Avsändare",
+    localhost:
+      "Sidan är öppnad på localhost, så länkarna fungerar inte på andra datorer. Öppna i stället nätverksadressen som servern skrev ut.",
   },
   connection: {
     why: "Varför?",
@@ -325,8 +327,6 @@ export const sv: Messages = {
     notifyMe: "Meddela mig",
     notifyOn: "Notiser på",
     notifyBlocked: "Notiser blockerade",
-    localhost:
-      "Sidan är öppnad på localhost, så länkarna fungerar inte på andra datorer. Öppna i stället nätverksadressen som servern skrev ut.",
     lostServer:
       "Anslutningen till servern bröts. Försöker ansluta igen… Filer som redan är på väg kan komma fram. Ingen ny kan ansluta förrän den är tillbaka, så håll sidan öppen.",
     fromLabel: "Ditt namn",
@@ -350,6 +350,7 @@ export const sv: Messages = {
         "Filnamnet innehåller tecken som inte kan skickas, eller tre eller fler mellanslag i rad. Byt namn på filen och försök igen.",
       tooLong: "Filnamnet är för långt för att kunna skickas. Byt namn på filen och försök igen.",
     },
+    fileChosen: (name: string, size: string) => `Vald fil: ${name}, ${size}`,
     preparing: "Gör i ordning filen…",
     readFailed: "Det gick inte att läsa filen. Välj den igen.",
     hashPending: "Inte klar än",

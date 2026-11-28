@@ -1,5 +1,6 @@
 // Pieces shared by the pages.
 
+import { cn } from "cn";
 import type { AnchorHTMLAttributes, ComponentChildren } from "preact";
 import { useEffect, useId, useRef, useState } from "preact/hooks";
 import { DropdownMenu } from "radix-ui";
@@ -88,6 +89,13 @@ export const ICONS = {
     <>
       <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
       <circle cx="12" cy="12" r="3" />
+    </>
+  ),
+  footprints: (
+    <>
+      <path d="M4 16v-2.38C4 11.5 2.97 10.5 3 8c.03-2.72 1.49-6 4.5-6C9.37 2 10 3.8 10 5.5c0 3.11-2 5.66-2 8.68V16a2 2 0 1 1-4 0Z" />
+      <path d="M20 20v-2.38c0-2.12 1.03-3.12 1-5.62-.03-2.72-1.49-6-4.5-6C14.63 6 14 7.8 14 9.5c0 3.11 2 5.66 2 8.68V20a2 2 0 1 0 4 0Z" />
+      <path d="M16 17h4M4 13h4" />
     </>
   ),
 };
@@ -267,7 +275,7 @@ export function LocalhostBar() {
   }
   return (
     <p role="note" class="m-0 bg-yellow-300 px-4 py-1.5 text-center text-sm text-black">
-      {t.send.localhost}
+      {t.common.localhost}
     </p>
   );
 }
@@ -404,15 +412,26 @@ export function Footer({ theme, onTheme }: { theme: Theme; onTheme(next: Theme):
 export function Page({
   children,
   tall,
+  full,
+  banner,
 }: {
   children: ComponentChildren;
   /** At least a screen high, so only the top of the footer shows. */
   tall?: boolean;
+  /** At least a full screen high, so the footer starts below the first screen. */
+  full?: boolean;
+  /** A full-width bar just below the header, outside the page's column. */
+  banner?: ComponentChildren;
 }) {
   return (
-    <main class={`mx-auto px-4 pt-24 pb-16 max-w-xl ${tall ? "min-h-[calc(100dvh-4.5rem)]" : ""}`}>
-      {children}
-    </main>
+    <>
+      {banner}
+      <main
+        class={`mx-auto px-4 pt-24 pb-16 max-w-xl ${full ? "min-h-dvh" : tall ? "min-h-[calc(100dvh-4.5rem)]" : ""}`}
+      >
+        {children}
+      </main>
+    </>
   );
 }
 
@@ -495,27 +514,31 @@ export function TechDetails({
   );
 }
 
+/** How a connection runs, on the send card: one line with a link to /how and nothing to open. */
+export function PathNote({ path }: { path: OpenPath }) {
+  const { t } = useI18n();
+  const kind = path === "relay" ? "relay" : "direct";
+  return (
+    <p class="mt-2 mb-0 text-[0.9rem]">
+      <span class="font-medium">{t.connection[kind].label}</span>{" "}
+      <Link
+        href={`/how#${kind}`}
+        class="rounded-sm text-muted-foreground underline underline-offset-4"
+      >
+        {t.connection.more}
+      </Link>
+    </p>
+  );
+}
+
 /**
  * How a connection runs, with a "Why?" that explains it. The summary holds the label too, so it
- * makes sense on its own. `plain`, on the send page, is one line with a link to /how and nothing to open.
+ * makes sense on its own.
  */
-export function PathLine({ path, plain }: { path: OpenPath; plain?: boolean }) {
+export function PathLine({ path }: { path: OpenPath }) {
   const { t } = useI18n();
   const kind = path === "relay" ? "relay" : "direct";
   const { label, explain } = t.connection[kind];
-  if (plain) {
-    return (
-      <p class="mt-2 mb-0 text-[0.9rem]">
-        <span class="font-medium">{label}</span>{" "}
-        <Link
-          href={`/how#${kind}`}
-          class="rounded-sm text-muted-foreground underline underline-offset-4"
-        >
-          {t.connection.more}
-        </Link>
-      </p>
-    );
-  }
   return (
     <details class="mt-2 text-[0.9rem]">
       <summary class="cursor-pointer">
@@ -532,21 +555,7 @@ export function PathLine({ path, plain }: { path: OpenPath; plain?: boolean }) {
   );
 }
 
-export function ServerPanel({
-  sees,
-  holds,
-  relayed,
-  afterwards,
-  viaRelay,
-  emailed,
-  kind,
-  details,
-  visible = true,
-}: {
-  /** False while the page is hidden. A hidden page closes the drawer, so a modal dialog never stays open in it. */
-  visible?: boolean;
-  /** The send page's file facts. When given, even empty, a "Technical details" button opens them and the panel in a drawer. */
-  details?: ReadonlyArray<readonly [string, ComponentChildren]>;
+type ServerPanelProps = {
   kind: Kind;
   sees: string;
   holds: string;
@@ -556,17 +565,15 @@ export function ServerPanel({
   viaRelay: boolean;
   /** The server got the key of a link on this page, to email it. */
   emailed: boolean;
-}) {
-  const { t, lang } = useI18n();
-  const headingId = useId();
-  const titleId = useId();
-  const drawer = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    if (!visible) {
-      drawer.current?.close();
-    }
-  }, [visible]);
-  const rows: ReadonlyArray<readonly [string, string]> = [
+};
+
+/** What our server and relay see, hold and keep, as rows for `Facts`. */
+function serverRows(
+  t: ReturnType<typeof useI18n>["t"],
+  lang: Lang,
+  { sees, holds, relayed, afterwards, viaRelay, emailed, kind }: ServerPanelProps,
+): ReadonlyArray<readonly [string, string]> {
+  return [
     [t.server.seesLabel, sees],
     [t.server.holdsLabel, holds],
     [
@@ -587,67 +594,108 @@ export function ServerPanel({
         ] as const)
       : []),
   ];
-  if (details) {
-    return (
-      <>
-        <p class="mt-10 mb-0 text-[0.9rem]">
-          <button
-            type="button"
-            class="cursor-pointer rounded-sm font-medium text-muted-foreground underline underline-offset-4"
-            onClick={() => drawer.current?.showModal()}
-          >
-            {t.common.techDetails}
-          </button>
-        </p>
-        {/* A native dialog, like the safety number's: it holds focus and dims the page without
-            injecting a style, which the CSP blocks. A drawer from the right; on a phone it covers
-            the screen. Its content stays rendered while closed. */}
-        {/* biome-ignore lint/a11y/useKeyWithClickEvents: the click is on the dimmed page; Escape and the Close button close it from the keyboard */}
-        <dialog
-          ref={drawer}
-          aria-labelledby={titleId}
-          class="m-0 ml-auto h-dvh max-h-none w-full max-w-none overflow-y-auto border-border bg-popover text-[0.9rem] text-popover-foreground shadow-xl backdrop:bg-black/50 open:animate-in open:slide-in-from-right motion-reduce:animate-none sm:w-[28rem] sm:border-l [&_code]:text-[0.85rem]"
-          // The padding is on the inner box, so a click on the dialog itself is a click on the dimmed page.
-          onClick={(event) => {
-            if (event.target === event.currentTarget) {
-              event.currentTarget.close();
-            }
-          }}
-        >
-          <div class="min-h-full p-6">
-            <div class="flex items-center justify-between gap-4">
-              <h2 id={titleId} class="m-0 text-[1.25rem] font-bold">
-                {t.common.techDetails}
-              </h2>
-              <button
-                type="button"
-                class={buttonVariants({ variant: "ghost", size: "sm" })}
-                onClick={() => drawer.current?.close()}
-              >
-                {t.common.close}
-              </button>
-            </div>
-            {details.length > 0 && <Facts rows={details} />}
-            <section class="mt-6" aria-labelledby={headingId}>
-              <h3 id={headingId} class="m-0 text-[length:inherit] font-semibold">
-                {t.server.heading}
-              </h3>
-              <Facts rows={rows} />
-            </section>
-          </div>
-        </dialog>
-      </>
-    );
-  }
+}
+
+/** The receive page's server facts: a section with a disclosure. */
+export function ServerPanel(props: ServerPanelProps) {
+  const { t, lang } = useI18n();
+  const headingId = useId();
   return (
     <section class="mt-10 text-[0.9rem]" aria-labelledby={headingId}>
       <details>
         <summary id={headingId} class="cursor-pointer font-medium text-muted-foreground">
           {t.server.heading}
         </summary>
-        <Facts rows={rows} />
+        <Facts rows={serverRows(t, lang, props)} />
       </details>
     </section>
+  );
+}
+
+/** The send page's "Technical details": an icon button, for the bottom bar, that opens the file facts and the server facts in a drawer. */
+export function ServerDrawer({
+  facts,
+  visible,
+  onGreen,
+  ...panel
+}: ServerPanelProps & {
+  /** The file's facts, shown above the server's; empty for a secret. */
+  facts: ReadonlyArray<readonly [string, ComponentChildren]>;
+  /** False while the page is hidden. A hidden page closes the drawer, so a modal dialog never stays open in it. */
+  visible: boolean;
+  /** True while the bar behind the button is green, with white text. */
+  onGreen: boolean;
+}) {
+  const { t, lang } = useI18n();
+  const headingId = useId();
+  const titleId = useId();
+  const drawer = useRef<HTMLDialogElement>(null);
+  // Whether the last press began on the dimmed page, so a text selection dragged out of the drawer doesn't close it.
+  const pressedOutside = useRef(false);
+  useEffect(() => {
+    if (!visible) {
+      drawer.current?.close();
+    }
+  }, [visible]);
+  return (
+    <>
+      {/* 40 × 40, no taller than the bar's two lines of text. showModal from the button returns
+          focus to it when the drawer closes. */}
+      <button
+        type="button"
+        aria-label={t.common.techDetails}
+        title={t.common.techDetails}
+        class={cn(
+          buttonVariants({ variant: "ghost", size: "icon" }),
+          "size-10 cursor-pointer",
+          onGreen
+            ? "text-white hover:bg-white/15 hover:text-white focus-visible:border-white focus-visible:ring-white/60 dark:hover:bg-white/15"
+            : "text-muted-foreground",
+        )}
+        onClick={() => drawer.current?.showModal()}
+      >
+        <Icon name="footprints" class="size-5" />
+      </button>
+      {/* A native dialog, like the safety number's: it holds focus and dims the page without
+          injecting a style, which the CSP blocks. A drawer from the right; on a phone it covers
+          the screen. Its content stays rendered while closed. */}
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: the click is on the dimmed page; Escape and the Close button close it from the keyboard */}
+      <dialog
+        ref={drawer}
+        aria-labelledby={titleId}
+        class="m-0 ml-auto h-dvh max-h-none w-full max-w-none overflow-y-auto border-border bg-popover text-[0.9rem] text-popover-foreground shadow-xl backdrop:bg-black/50 open:animate-in open:slide-in-from-right motion-reduce:animate-none sm:w-[28rem] sm:border-l [&_code]:text-[0.85rem]"
+        // The padding is on the inner box, so a press on the dialog itself is a press on the dimmed page.
+        onPointerDown={(event) => {
+          pressedOutside.current = event.target === event.currentTarget;
+        }}
+        onClick={(event) => {
+          if (pressedOutside.current && event.target === event.currentTarget) {
+            event.currentTarget.close();
+          }
+          pressedOutside.current = false;
+        }}
+      >
+        <div class="min-h-full p-6">
+          <div class="flex items-center justify-between gap-4">
+            <h2 id={titleId} class="m-0 text-[1.25rem] font-bold">
+              {t.common.techDetails}
+            </h2>
+            <form method="dialog">
+              <button type="submit" class={buttonVariants({ variant: "ghost", size: "sm" })}>
+                {t.common.close}
+              </button>
+            </form>
+          </div>
+          {facts.length > 0 && <Facts rows={facts} />}
+          <section class="mt-6" aria-labelledby={headingId}>
+            <h3 id={headingId} class="m-0 text-[length:inherit] font-semibold">
+              {t.server.heading}
+            </h3>
+            <Facts rows={serverRows(t, lang, panel)} />
+          </section>
+        </div>
+      </dialog>
+    </>
   );
 }
 

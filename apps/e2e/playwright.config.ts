@@ -54,6 +54,8 @@ export default defineConfig({
     ignoreHTTPSErrors: true,
     // The app picks Swedish for a Swedish browser; the specs check the English text.
     locale: "en-US",
+    // Pages jump instead of gliding, so a click never waits for a scroll to settle. how.spec.ts opts back in.
+    reducedMotion: "reduce",
     // Service-worker traffic is a routing blind spot for the recorder. Revisit if FID-7 adds a worker.
     serviceWorkers: "block",
   },

@@ -1,4 +1,4 @@
-import { choose, continueToLinks, expect, makeName, test } from "../src/fixtures.ts";
+import { barText, choose, continueToLinks, expect, makeName, test } from "../src/fixtures.ts";
 
 test.describe("without JavaScript", () => {
   test.use({ javaScriptEnabled: false });
@@ -66,6 +66,10 @@ test("the not-found page says so and links home", async ({ page }) => {
   await page.goto("/no-such-page");
   await expect(page.locator("main h1")).toHaveText("Page not found");
   await expect(page).toHaveTitle("Page not found – Fidant");
+  // The localhost bar's text is shared, not the send page's, so every page can show it.
+  await expect(
+    page.getByRole("note").filter({ hasText: "This page is open on localhost" }),
+  ).toBeVisible();
   await page.getByRole("main").getByRole("link", { name: "Go to the front page" }).click();
   await expect(page).toHaveURL(/\/$/);
 });
@@ -74,13 +78,73 @@ test("the send page's toggle switches between a file and a secret, and the addre
   actor,
 }) => {
   const { page } = await actor("sender");
+  // Taller than step 1, so the footer would show on the first screen without the page's height.
+  await page.setViewportSize({ width: 1280, height: 1600 });
   await page.goto("/send/secret");
   await expect(page.getByLabel("Your secret")).toBeVisible();
+  await expect(page.locator("footer")).not.toBeInViewport();
+  // The bottom bar shows from the first step, before there is a link.
+  await expect(barText(page, "Step 1 of 3: Share a secret")).toBeInViewport();
+  // The details open from an icon button at the bar's end, inside it at a phone's width too.
+  const bar = page.locator("[data-page-bar]").filter({ visible: true });
+  const details = bar.getByRole("button", { name: "Technical details" });
+  await expect(details).toBeVisible();
+  await expect(details).toHaveAttribute("title", "Technical details");
+  // The bar's texts, which keep the height of their tallest, two lines.
+  const texts = bar.locator("p").first();
+  const insideBar = async () => {
+    const [outer, inner, text] = await Promise.all([
+      bar.boundingBox(),
+      details.boundingBox(),
+      texts.boundingBox(),
+    ]);
+    expect(outer && inner && text).toBeTruthy();
+    if (outer && inner && text) {
+      expect(inner.width).toBeGreaterThanOrEqual(40);
+      expect(inner.x).toBeGreaterThanOrEqual(outer.x);
+      expect(inner.x + inner.width).toBeLessThanOrEqual(outer.x + outer.width);
+      expect(inner.y).toBeGreaterThanOrEqual(outer.y);
+      expect(inner.y + inner.height).toBeLessThanOrEqual(outer.y + outer.height);
+      // No taller than the texts, so the button never makes the bar taller.
+      expect(inner.height).toBeLessThanOrEqual(text.height);
+    }
+  };
+  await insideBar();
+  // Focus scrolls a control to above the bar, not under it.
+  const scrollPadding = () =>
+    page.evaluate(() => getComputedStyle(document.documentElement).scrollPaddingBottom);
+  expect(await scrollPadding()).toBe("96px");
+  // The space above and below the box that holds the secret or the file, up to the name field.
+  const gaps = () =>
+    page
+      .getByLabel("Your name")
+      .filter({ visible: true })
+      .evaluate((input) => {
+        const field = input.parentElement;
+        const box = field?.previousElementSibling;
+        const above = box?.previousElementSibling;
+        if (!field || !box || !above) {
+          return [];
+        }
+        return [
+          box.getBoundingClientRect().top - above.getBoundingClientRect().bottom,
+          field.getBoundingClientRect().top - box.getBoundingClientRect().bottom,
+        ];
+      });
+  const secretGaps = await gaps();
   const toggle = page.getByRole("navigation", { name: "What to send" }).filter({ visible: true });
   await toggle.getByRole("link", { name: "File" }).click();
   await expect(page).toHaveURL(/\/send\/file$/);
   await expect(page.getByLabel("Your secret")).toBeHidden();
+  // Both boxes sit the same way, so the toggle moves nothing around them.
+  expect(await gaps()).toEqual(secretGaps);
   await expect(page).toHaveTitle("Send a file – Fidant");
+  await expect(barText(page, "Step 1 of 3: Send a file")).toBeInViewport();
+  await page.setViewportSize({ width: 360, height: 1600 });
+  await insideBar();
+  expect(await scrollPadding()).toBe("96px");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
+  await page.setViewportSize({ width: 1280, height: 1600 });
   await toggle.getByRole("link", { name: "Secret" }).click();
   await expect(page).toHaveURL(/\/send\/secret$/);
   await expect(page.getByLabel("Your secret")).toBeVisible();

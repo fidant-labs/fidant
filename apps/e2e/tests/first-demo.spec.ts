@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { maskAddress } from "@fidant/protocol";
 import type { Download, Locator, Page } from "@playwright/test";
 import {
+  barText,
   breakableSender,
   canaryFile,
   canaryKey,
@@ -166,9 +167,9 @@ async function receive(
   await expect(page.getByText(sizeText, { exact: true })).toBeVisible();
   await page.getByText("Technical details").click();
   await expect(page.getByText(`${file.size.toLocaleString("en-US")} bytes`)).toBeVisible();
-  await expect(
-    page.getByRole("region", { name: "What our server has right now", includeHidden: true }),
-  ).toContainText("this page is connected to the sender");
+  await expect(page.getByRole("region", { name: "What our server has right now" })).toContainText(
+    "this page is connected to the sender",
+  );
   if (sender) {
     await expect(
       sender.getByRole("region", { name: "What our server has right now", includeHidden: true }),
@@ -251,6 +252,8 @@ test("delivers a file to two recipients with a verified checksum", async ({
       "/how#direct",
     );
   }
+  // The send page has no "Why?" to open.
+  await expect(sender.getByText("Why?", { exact: true })).toHaveCount(0);
 
   const panel = sender.getByRole("region", {
     name: "What our server has right now",
@@ -261,7 +264,6 @@ test("delivers a file to two recipients with a verified checksum", async ({
 
   const recipientPanel = received[0]?.page.getByRole("region", {
     name: "What our server has right now",
-    includeHidden: true,
   });
   if (!recipientPanel) {
     throw new Error("no recipient");
@@ -401,10 +403,34 @@ test("a declined offer shows as declined, and the link can be reopened", async (
 // No one joins here, so the sender receives no signaling and the demo fixture's frame checks don't apply.
 harness("a held Enter on Remove removes only one recipient", async ({ actor, leaks, canary }) => {
   const demo: Demo = { open: async (name) => (await actor(name)).page };
-  const sender = await openSender(demo, makeFile(leaks, canary, 10));
+  // A tall window, where the page ends soon after step 2 unless it leaves room for the glide that
+  // continueToLinks checks.
+  const sender = await openSender(demo, makeFile(leaks, canary, 10), "", (page) =>
+    page.setViewportSize({ width: 1280, height: 1600 }),
+  );
   const anna = makeName(leaks, canary, "Anna");
   const erik = makeName(leaks, canary, "Erik");
+  const proceed = sender.getByRole("button", { name: "Continue" });
+  const who = sender.getByLabel("Who is it for?");
+  const links = sender.getByRole("heading", { name: "Share the links" });
+  // Where the name field sits in the window once filling has scrolled it into view. Step 1 gets
+  // shorter when the list locks the file, so scrollY changes, but scroll anchoring keeps the view.
+  const at = async () => (await who.boundingBox())?.y;
+  await who.fill(anna);
+  const before = await at();
   await addRecipient(leaks, sender, anna);
+  // Step 2 is open and holds a link, so step 1's Continue has nothing left to do.
+  await expect(proceed).toBeDisabled();
+  // The first link opens step 3 and says so, but the page stays put and focus stays for the next name.
+  await expect(links).toBeAttached();
+  await expect(sender.getByRole("status").filter({ hasText: "Step 3 of 3" })).toHaveText(
+    "Step 3 of 3: Share the links",
+  );
+  // The bottom bar, which named step 2, now tells the sender to keep the tab open.
+  await expect(barText(sender, "Keep the tab open")).toBeInViewport();
+  await expect(barText(sender, "Step 2 of 3: Create a link for each person")).toHaveCount(0);
+  await expect(who).toBeFocused();
+  expect(await at()).toBe(before);
   await addRecipient(leaks, sender, erik);
 
   await sender.getByRole("button", { name: `Remove ${anna}` }).focus();
@@ -417,10 +443,12 @@ harness("a held Enter on Remove removes only one recipient", async ({ actor, lea
 
   await sender.keyboard.down("Enter");
   await expect(recipientRow(sender, erik)).toHaveCount(0);
-  await expect(sender.getByLabel("Who is it for?")).toBeFocused();
+  await expect(who).toBeFocused();
   await sender.keyboard.down("Enter"); // the repeat lands on the empty name field
   await sender.keyboard.up("Enter");
   await expect(sender.getByText("Enter a name.")).toHaveCount(0);
+  await expect(proceed).toBeEnabled();
+  await expect(links).toHaveCount(0);
 });
 
 harness("a recipient gives up connecting after 30 seconds", async ({ actor, leaks, canary }) => {
@@ -514,6 +542,10 @@ test("the sender's name must fit with the file name, and stray drops are ignored
   await page.goto("/send");
   await page.getByLabel("Your name").fill("x".repeat(100));
   await chooseFile(page, { name: file.name, mimeType: file.mime, buffer: file.bytes });
+  // Focus moved on to step 2, so the status region says which file was taken.
+  await expect(page.getByRole("status").filter({ hasText: "File chosen:" })).toHaveText(
+    `File chosen: ${file.name}, 5 bytes`,
+  );
   // Whether a dragover and a drop of what `fill` adds (nothing: no DataTransfer) onto `selector` are cancelled.
   const cancelled = async (selector: string, fill = "") => {
     const results = [];
@@ -569,7 +601,7 @@ test("a waiting recipient sees when the sender goes offline", async ({ demo, lea
   await sender.close();
   await expect(recipient.getByText("The sender's page is closed")).toBeVisible();
   await expect(
-    recipient.getByRole("region", { name: "What our server has right now", includeHidden: true }),
+    recipient.getByRole("region", { name: "What our server has right now" }),
   ).toContainText("Nothing about this page once it notices the connection has closed");
 });
 
