@@ -28,16 +28,21 @@ test("this checkout's leftovers with the CI cache file are not another run", () 
 
 test("another checkout's compose project is another run", () => {
   const projects = [{ Name: "unrelated", Status: "running(1)", ConfigFiles: own }, running];
-  assert.deepEqual(otherRun(projects, own), { file: theirs, running: true });
+  assert.deepEqual(otherRun(projects, own), { file: theirs, stopped: false });
 });
 
 test("another checkout's stopped project is a run that no longer runs", () => {
-  assert.deepEqual(otherRun([stopped], own), { file: theirs, running: false });
+  assert.deepEqual(otherRun([stopped], own), { file: theirs, stopped: true });
+});
+
+test("a project whose containers are still being created is not stopped", () => {
+  const created = { ...running, Status: "created(9)" };
+  assert.deepEqual(otherRun([created], own), { file: theirs, stopped: false });
 });
 
 test("a project partly stopped still runs", () => {
   const partly = { ...running, Status: "running(2), exited(7)" };
-  assert.deepEqual(otherRun([partly], own), { file: theirs, running: true });
+  assert.deepEqual(otherRun([partly], own), { file: theirs, stopped: false });
 });
 
 test("a project with no compose file listed is another run", () => {
@@ -70,11 +75,33 @@ test("the wait says what it waits for, and starts once the other run ends", asyn
   assert.match(lines[2] ?? "", /^The other pnpm e2e:networks run ended after \d+ s; starting\.$/);
 });
 
-test("the wait fails at once on a run that left only stopped containers", async () => {
+test("the wait fails on a run that left only stopped containers on two checks", async () => {
+  const lists = [[running], [stopped], [stopped]];
   await assert.rejects(
-    waitForOtherRun({ ...fast, list: () => [stopped], log: () => {} }),
-    /left stopped containers.*docker compose -p fidant-e2e down/,
+    waitForOtherRun({ ...fast, list: () => lists.shift() ?? [running], log: () => {} }),
+    /left stopped containers, on two checks.*docker compose -p fidant-e2e down/,
   );
+  assert.deepEqual(lists, []);
+});
+
+test("the wait goes on through one check of stopped containers, as in a teardown", async () => {
+  const lists = [[running], [stopped], []];
+  await waitForOtherRun({ ...fast, list: () => lists.shift() ?? [running], log: () => {} });
+  assert.deepEqual(lists, []);
+});
+
+test("the wait logs once per logEveryMs, not once per check", async () => {
+  const lists = [[running], [running], [running], [running], []];
+  const lines: string[] = [];
+  await waitForOtherRun({
+    intervalMs: 1,
+    logEveryMs: 60_000,
+    list: () => lists.shift() ?? [],
+    log: (line) => lines.push(line),
+  });
+  assert.equal(lines.length, 2);
+  assert.match(lines[0] ?? "", /^Waiting for another/);
+  assert.match(lines[1] ?? "", /^The other pnpm e2e:networks run ended/);
 });
 
 test("the wait gives up on a run that outlasts the timeout", async () => {

@@ -6,6 +6,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
+import { setTimeout as sleep } from "node:timers/promises";
 import { promisify } from "node:util";
 // ponytail: relative import, not a workspace dependency on the server, for two small functions.
 import { relaySecret, sealRelaySecret } from "../../../server/src/relay-secret.ts";
@@ -303,18 +304,21 @@ export const projectName = "fidant-e2e";
 type Project = { Name: string; Status: string; ConfigFiles: string };
 
 /**
- * Another checkout's networks run that has containers, running or stopped: its compose file, and
- * whether any of its containers runs (`Status` is like `running(9)` or `exited(9)`). The server
- * container needs no check of its own: it starts after the project is up and stops before it.
+ * Another checkout's networks run that has containers: its compose file, and whether all of them
+ * are stopped. `Status` counts containers per state, like `running(9)`, `created(9)` while compose
+ * creates them, or `running(2), exited(7)`. The server container needs no check of its own: it
+ * starts after the project is up and stops before it.
  */
 export function otherRun(
   projects: Project[],
   ownFile: string,
-): { file: string; running: boolean } | undefined {
+): { file: string; stopped: boolean } | undefined {
   const project = projects.find((p) => p.Name === projectName);
   const files = project?.ConfigFiles.split(",") ?? [];
   if (project && !files.includes(ownFile)) {
-    return { file: files[0] || "an unknown checkout", running: project.Status.includes("running") };
+    const states = project.Status.split(",").map((state) => state.trim().replace(/\(\d+\)$/, ""));
+    const stopped = states.every((state) => state === "exited" || state === "dead");
+    return { file: files[0] || "an unknown checkout", stopped };
   }
   return undefined;
 }
@@ -323,11 +327,12 @@ const removeCommand = `\`docker rm -f ${serverName}; docker compose -p ${project
 
 /**
  * Waits while another checkout's networks run is going, and fails when one has only stopped
- * containers, a dead run's, or still runs after `timeoutMs`. Runs can't overlap: they share
- * container and network names, subnets and host ports, and setup removes what it finds, which
- * would kill the other run. This checkout's own leftovers are a killed run's, and setup removes
- * them. A run still building its images has no containers yet, so two runs started together, or
- * two waiting for the same run, can still both go ahead.
+ * containers on two checks in a row, a dead run's, or still runs after `timeoutMs`. One check
+ * isn't enough: a run's own teardown passes through stopped containers on its way out. Runs can't
+ * overlap: they share container and network names, subnets and host ports, and setup removes what
+ * it finds, which would kill the other run. This checkout's own leftovers are a killed run's, and
+ * setup removes them. A run still building its images has no containers yet, so two runs started
+ * together, or two waiting for the same run, can still both go ahead.
  */
 export async function waitForOtherRun({
   list = listProjects,
@@ -344,6 +349,7 @@ export async function waitForOtherRun({
 } = {}): Promise<void> {
   const start = Date.now();
   let logged: number | undefined;
+  let stoppedChecks = 0;
   for (;;) {
     const other = otherRun(list(), composeFile);
     const waited = Date.now() - start;
@@ -355,9 +361,10 @@ export async function waitForOtherRun({
       }
       return;
     }
-    if (!other.running) {
+    stoppedChecks = other.stopped ? stoppedChecks + 1 : 0;
+    if (stoppedChecks >= 2) {
       throw new Error(
-        `A pnpm e2e:networks run from ${other.file} left stopped containers, and runs on one machine can't overlap. Remove them with ${removeCommand}.`,
+        `A pnpm e2e:networks run from ${other.file} left stopped containers, on two checks ${Math.round(intervalMs / 1000)} s apart, and runs on one machine can't overlap. Remove them with ${removeCommand}.`,
       );
     }
     if (waited >= timeoutMs) {
@@ -371,7 +378,7 @@ export async function waitForOtherRun({
       );
       logged = Date.now();
     }
-    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    await sleep(intervalMs);
   }
 }
 
