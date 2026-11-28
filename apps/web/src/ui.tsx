@@ -267,7 +267,7 @@ export function LocalhostBar() {
   }
   return (
     <p role="note" class="m-0 bg-yellow-300 px-4 py-1.5 text-center text-sm text-black">
-      {t.send.localhost}
+      {t.common.localhost}
     </p>
   );
 }

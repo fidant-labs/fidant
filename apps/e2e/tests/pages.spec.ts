@@ -66,6 +66,10 @@ test("the not-found page says so and links home", async ({ page }) => {
   await page.goto("/no-such-page");
   await expect(page.locator("main h1")).toHaveText("Page not found");
   await expect(page).toHaveTitle("Page not found – Fidant");
+  // The localhost bar's text is shared, not the send page's, so every page can show it.
+  await expect(
+    page.getByRole("note").filter({ hasText: "This page is open on localhost" }),
+  ).toBeVisible();
   await page.getByRole("main").getByRole("link", { name: "Go to the front page" }).click();
   await expect(page).toHaveURL(/\/$/);
 });

@@ -292,6 +292,8 @@ export const en = {
     typeMissing: "Not given",
     you: "You",
     sender: "Sender",
+    localhost:
+      "This page is open on localhost, so the links won't work on other computers. Open the network address the server printed instead.",
   },
   connection: {
     why: "Why?",
@@ -345,8 +347,6 @@ export const en = {
     summary: (done: number, total: number) => `${done} of ${total} links have delivered the file`,
     delivered: "Delivered",
     doneTitle: "All delivered",
-    localhost:
-      "This page is open on localhost, so the links won't work on other computers. Open the network address the server printed instead.",
     lostServer:
       "Lost the connection to the server. Trying to reconnect… Files already on their way can finish. Nobody new can connect until it's back, so keep this page open.",
     fromLabel: "Your name",
