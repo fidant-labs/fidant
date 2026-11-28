@@ -36,7 +36,7 @@ import {
   albIp,
   applyRelaySecret,
   boxOrigin,
-  captureSiteA,
+  captureEdge,
   clientAddresses,
   cutRoute,
   inBox,
@@ -343,7 +343,7 @@ for (const row of scenarios) {
       // ponytail: 512 KiB: SCTP over this link moves about 50 KB/s, and it still shows 10 steps.
       const size = row.progress ? 512 * 1024 + 1 : 300_001;
       const name = makeName(leaks, canary, "Anna");
-      const edge = row.staysInSite ? await captureSiteA() : undefined;
+      const edge = row.staysInSite ? await captureEdge("router-a") : undefined;
 
       try {
         const sender = await actor("sender");
