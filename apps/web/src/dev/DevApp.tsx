@@ -131,7 +131,9 @@ export function DevApp(props: { secure: boolean; theme: Theme }) {
   const button = "rounded border border-border px-2 py-0.5 hover:bg-muted disabled:opacity-50";
   return (
     <>
-      <App {...props} secure={props.secure && !insecure} preview={preview} />
+      {/* A new App when the box changes: without HTTPS no transfer page mounts, so no status
+          a picked state reported may outlive its page. */}
+      <App key={String(insecure)} {...props} secure={props.secure && !insecure} preview={preview} />
       {hidden.size > 0 && (
         <style>
           {[...hidden].map((banner) => `[data-banner="${banner}"]{display:none}`).join("")}
