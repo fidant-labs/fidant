@@ -896,6 +896,7 @@ export function SendPage({
 
   return (
     <Page
+      full
       banner={
         lostServer && (
           // A bar like the localhost bar, just below the header and held there while the page

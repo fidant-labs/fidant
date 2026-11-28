@@ -78,8 +78,11 @@ test("the send page's toggle switches between a file and a secret, and the addre
   actor,
 }) => {
   const { page } = await actor("sender");
+  // Taller than step 1, so the footer would show on the first screen without the page's height.
+  await page.setViewportSize({ width: 1280, height: 1600 });
   await page.goto("/send/secret");
   await expect(page.getByLabel("Your secret")).toBeVisible();
+  await expect(page.locator("footer")).not.toBeInViewport();
   // The space above and below the box that holds the secret or the file, up to the name field.
   const gaps = () =>
     page

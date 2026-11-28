@@ -404,11 +404,14 @@ export function Footer({ theme, onTheme }: { theme: Theme; onTheme(next: Theme):
 export function Page({
   children,
   tall,
+  full,
   banner,
 }: {
   children: ComponentChildren;
   /** At least a screen high, so only the top of the footer shows. */
   tall?: boolean;
+  /** At least a full screen high, so the footer starts below the first screen. */
+  full?: boolean;
   /** A full-width bar just below the header, outside the page's column. */
   banner?: ComponentChildren;
 }) {
@@ -416,7 +419,7 @@ export function Page({
     <>
       {banner}
       <main
-        class={`mx-auto px-4 pt-24 pb-16 max-w-xl ${tall ? "min-h-[calc(100dvh-4.5rem)]" : ""}`}
+        class={`mx-auto px-4 pt-24 pb-16 max-w-xl ${full ? "min-h-dvh" : tall ? "min-h-[calc(100dvh-4.5rem)]" : ""}`}
       >
         {children}
       </main>
