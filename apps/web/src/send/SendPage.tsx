@@ -1408,7 +1408,7 @@ export function SendPage({
         data-bottom-bar
         data-page-bar
         // White on emerald-700 is 5.5:1.
-        class={`fixed inset-x-0 bottom-0 z-40 overflow-hidden bg-background/80 p-4 backdrop-blur-xl transition-colors duration-700 motion-reduce:transition-none ${allDone ? "text-white" : ""}`}
+        class={`fixed inset-x-0 bottom-0 z-40 overflow-hidden bg-background/80 px-4 py-1.5 backdrop-blur-xl transition-colors duration-700 motion-reduce:transition-none ${allDone ? "text-white" : ""}`}
       >
         {/* The green that takes the bar once every link has delivered. It waits above the bar and
             slides down from the progress line, its soft lower edge first; 60 % of its height is
@@ -1429,11 +1429,13 @@ export function SendPage({
             />
           )}
         </div>
-        <div class="relative mx-auto flex max-w-xl items-center gap-3">
+        {/* As tall at every step: two lines of text with room around them, and three lines, which a
+            phone beside Notify me needs, in the same height with less room. */}
+        <div class="relative mx-auto flex min-h-[3.95rem] max-w-xl items-center gap-3">
           {/* All three texts share one grid cell, the hidden ones keeping their space, so the bar is
               as tall at a step as while sending and when done, whichever text wraps to more lines
               (see SwapLabel). */}
-          <p class="m-0 grid flex-1 text-[0.9rem] font-medium" aria-hidden="true">
+          <p class="m-0 grid flex-1 text-[0.9rem] leading-snug font-medium" aria-hidden="true">
             <span
               class={`col-start-1 row-start-1 flex items-center gap-3 ${hasRecipients ? "invisible" : ""}`}
             >
@@ -1459,7 +1461,9 @@ export function SendPage({
             >
               <Icon name="check" class="size-4 flex-none" />
               <span>
-                <span class="block">{doneText}</span>
+                {/* Short, like "0 of 1 delivered" before it, so it fits beside Notify me on a phone;
+                    the status line says it in full. */}
+                <span class="block">{t.send.doneTitle}</span>
                 <span class="block font-normal">{t.send.closeTab}</span>
               </span>
             </span>
@@ -1485,16 +1489,6 @@ export function SendPage({
               >
                 {t.send.notifyMe}
               </Button>
-              {/* Size the cell for the widest text, so the answer arriving changes no width. */}
-              {[t.send.notifyOn, t.send.notifyBlocked].map((text) => (
-                <span
-                  key={text}
-                  aria-hidden="true"
-                  class="invisible col-start-1 row-start-1 text-[0.8rem]"
-                >
-                  {text}
-                </span>
-              ))}
               {notifyAnswer && (
                 // Takes the focus the button held, and tells the sender what the browser answered.
                 // Invisible while the button is offered again after an earlier answer.
@@ -1502,7 +1496,9 @@ export function SendPage({
                   id={id("notify-answer")}
                   tabIndex={-1}
                   role="status"
-                  class={`col-start-1 row-start-1 m-0 text-[0.8rem] ${canAskToNotify ? "invisible" : ""} ${unfinished ? "text-muted-foreground" : ""}`}
+                  // As wide as the button, which keeps its place, so the answer wraps instead of
+                  // taking width from the bar's text.
+                  class={`col-start-1 row-start-1 m-0 w-0 min-w-full text-right text-[0.8rem] leading-tight ${canAskToNotify ? "invisible" : ""} ${unfinished ? "text-muted-foreground" : ""}`}
                 >
                   {notifyAnswer === "on" ? t.send.notifyOn : t.send.notifyBlocked}
                 </p>
