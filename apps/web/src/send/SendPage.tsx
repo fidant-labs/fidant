@@ -1055,7 +1055,12 @@ export function SendPage({
             {mail && ` ${t.send.fromHintEmail}`}
           </p>
         </div>
-        <Button type="button" className="mt-4" disabled={!file || tooLong} onClick={goToRecipients}>
+        <Button
+          type="button"
+          className="mt-4"
+          disabled={!file || tooLong || hasRecipients}
+          onClick={goToRecipients}
+        >
           {t.send.continue}
         </Button>
         {(file || text) && (

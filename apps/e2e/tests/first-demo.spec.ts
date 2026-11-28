@@ -406,7 +406,10 @@ harness("a held Enter on Remove removes only one recipient", async ({ actor, lea
   const sender = await openSender(demo, makeFile(leaks, canary, 10));
   const anna = makeName(leaks, canary, "Anna");
   const erik = makeName(leaks, canary, "Erik");
+  const proceed = sender.getByRole("button", { name: "Continue" });
   await addRecipient(leaks, sender, anna);
+  // Step 2 is open and holds a link, so Continue has nothing left to do.
+  await expect(proceed).toBeDisabled();
   await addRecipient(leaks, sender, erik);
 
   await sender.getByRole("button", { name: `Remove ${anna}` }).focus();
@@ -423,6 +426,7 @@ harness("a held Enter on Remove removes only one recipient", async ({ actor, lea
   await sender.keyboard.down("Enter"); // the repeat lands on the empty name field
   await sender.keyboard.up("Enter");
   await expect(sender.getByText("Enter a name.")).toHaveCount(0);
+  await expect(proceed).toBeEnabled();
 });
 
 harness("a recipient gives up connecting after 30 seconds", async ({ actor, leaks, canary }) => {
