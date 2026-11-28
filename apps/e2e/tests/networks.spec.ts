@@ -590,7 +590,9 @@ test.describe("a public address that changes mid-transfer", () => {
     baseURL,
   }) => {
     await routerMode("router-b", "lossy");
-    const size = 2 * 1024 * 1024 + 1;
+    // As in the route cut: about 20 s over `lossy`, so the change lands mid-transfer, and the
+    // outage still fits the 60 s download wait and expectHonestProgress's deadline.
+    const size = 1024 * 1024 + 1;
     const file = leaks.watch(canaryFile(canary.fork("file"), { size }));
     const name = makeName(leaks, canary, "Anna");
 
@@ -610,7 +612,7 @@ test.describe("a public address that changes mid-transfer", () => {
     const recipient = await actor("recipient");
     await recordPeerConnections(recipient.context);
     await recipient.page.goto(link);
-    const downloading = recipient.page.waitForEvent("download", { timeout: 90_000 });
+    const downloading = recipient.page.waitForEvent("download", { timeout: 60_000 });
     const downloadButton = recipient.page.getByRole("button", { name: "Download" });
     await expect(downloadButton).toBeVisible({ timeout: 45_000 });
     await downloadButton.click();
