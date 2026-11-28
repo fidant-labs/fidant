@@ -1,6 +1,6 @@
 #!/bin/sh
 # NAT router between a site network (10.89.x.0/24) and the public network (198.51.100.0/24).
-# Usage: router.sh init | cone | symmetric | udp-blocked | tcp-443 | lossy | cut <address> | uncut <address> | capture <file>
+# Usage: router.sh init | cone | symmetric | udp-blocked | tcp-443 | lossy | cut <address> | uncut <address> | renumber <address> | capture <file>
 set -eu
 
 # Docker does not keep eth0/eth1 in a stable order, so find each side by its subnet.
@@ -81,13 +81,28 @@ case "${1:-}" in
     while iptables -D FORWARD -p udp -s "${2:?}" -j DROP 2>/dev/null; do :; done
     while iptables -D FORWARD -p udp -d "$2" -j DROP 2>/dev/null; do :; done
     ;;
+  renumber)
+    # Moves the router to another public address, as when an ISP hands out a new one, on top of
+    # the current mode. The new address goes on before the old ones come off, and conntrack is
+    # flushed: the mappings would otherwise keep the old address. So a flow already open, TCP
+    # included, leaves from the new address with its old ports. Safe to run twice.
+    ip addr replace "${2:?}/24" dev "$wan"
+    ip -o -4 addr show dev "$wan" | awk -v keep="$2/24" '$4 != keep { print $4 }' |
+      while read -r old; do
+        # Deleting the primary address also deletes the secondary ones of its subnet, unless
+        # promote_secondaries is set, which needs a writable /proc/sys. Add the new one back.
+        ip addr del "$old" dev "$wan"
+        ip addr replace "$2/24" dev "$wan"
+      done
+    conntrack -F 2>/dev/null || true
+    ;;
   capture)
     # Every packet that crosses the site's edge, for a test that checks what left the site.
     # --immediate-mode: without it libpcap holds up to a second of packets, which a stop drops.
     exec tcpdump -i "$wan" --immediate-mode -U -w "$2"
     ;;
   *)
-    echo "usage: router.sh init|cone|symmetric|udp-blocked|tcp-443|lossy|cut <address>|uncut <address>|capture <file>" >&2
+    echo "usage: router.sh init|cone|symmetric|udp-blocked|tcp-443|lossy|cut <address>|uncut <address>|renumber <address>|capture <file>" >&2
     exit 2
     ;;
 esac

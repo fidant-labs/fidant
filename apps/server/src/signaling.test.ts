@@ -603,7 +603,11 @@ test("heartbeat lets the panel promise a dropped connection is noticed within a 
 
 test("terminates a guest that never answers pings and tells the host it left", async (t) => {
   const quickServer = createServer();
-  const quickSignaling = attachSignaling(quickServer, { log: () => {}, heartbeatMs: 20 });
+  // The test, not the clock, decides when a heartbeat runs, so a busy machine can't make the host
+  // miss a pong too.
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const heartbeatMs = 1000;
+  const quickSignaling = attachSignaling(quickServer, { log: () => {}, heartbeatMs });
   t.after(() => {
     quickSignaling.close();
     quickServer.close();
@@ -614,16 +618,27 @@ test("terminates a guest that never answers pings and tells the host it left", a
   const link = linkId();
   const host = await connect(url);
   host.send({ t: "host", links: [link], turn: true });
-  host.send({ t: "relay", link: linkId(), data: "sync" });
-  assert.deepEqual(await host.next(), { t: "error", code: "not-on-link" });
+  /** A round trip: whatever the host sent before it, a pong included, has reached the server. */
+  const sync = async () => {
+    host.send({ t: "relay", link: linkId(), data: "sync" });
+    assert.deepEqual(await host.next(), { t: "error", code: "not-on-link" });
+  };
+  await sync();
 
   const guest = new WsClient(url, { autoPong: false });
   const attempt = linkId();
   guest.on("open", () => guest.send(JSON.stringify({ t: "join", link, attempt })));
   assert.deepEqual(await host.next(), { t: "joined", link, attempt, iceServers: [], turn: true });
-  const joinedAt = performance.now();
+
+  // The first heartbeat pings both. The host's first reply after it comes after the ping, so its
+  // pong is written by then, and the second round trip makes sure the server has read it.
+  t.mock.timers.tick(heartbeatMs);
+  await sync();
+  await sync();
+  // The second heartbeat ends the guest, which never answered, and keeps the host.
+  t.mock.timers.tick(heartbeatMs);
   assert.deepEqual(await host.next(), { t: "left", link });
-  assert.ok(performance.now() - joinedAt < 200, "the silent guest outlived two heartbeats");
+  await sync();
 });
 
 test("close() closes every socket with 4012, so clients know the server is restarting", async (t) => {
