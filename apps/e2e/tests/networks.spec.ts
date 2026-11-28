@@ -677,6 +677,70 @@ test.describe("a public address that changes mid-transfer", () => {
         await edge.read(`udp and src host ${routerBNewIp} and dst host ${routerAIp}`),
         "peer-to-peer from the new address",
       ).not.toEqual([]);
+
+      // Checked before site B gets its address back: the recipient's page keeps its connection
+      // open for a few seconds after the file, and the restore would break its route again.
+      await expect(recipient.page.getByText(verifiedText)).toBeVisible();
+      const download = await downloading;
+      expect(sha256Hex(await buffer(await download.createReadStream()))).toBe(
+        sha256Hex(file.bytes),
+      );
+      await expect(recipient.page.getByRole("button", { name: "Try again" })).toHaveCount(0);
+      await expect(
+        sender.page.getByText(`The transfer through ${name}'s link was interrupted`),
+      ).toHaveCount(0);
+      for (const who of ["sender", "recipient"]) {
+        const hosts = new Set((await sockets(who)).map((record) => new URL(record.url).host));
+        expect([...hosts], `${who} socket hosts`).toEqual([signalHost]);
+      }
+      expect(await sockets("sender"), "sender sockets").toHaveLength(1);
+
+      // One attempt: every join is the first one again, and every message names one attempt.
+      const sentByRecipient = await frames("recipient", "frame-sent");
+      const joins = sentByRecipient.filter((m) => m.t === "join").map((m) => JSON.stringify(m));
+      expect(new Set(joins).size, "every join is the first one again").toBe(1);
+      const got = {
+        sender: await frames("sender", "frame-received"),
+        recipient: await frames("recipient", "frame-received"),
+      };
+      expect(
+        got.recipient.filter((m) => m.t === "host-gone"),
+        "host-gone",
+      ).toHaveLength(0);
+      const attempts = new Set(
+        [...got.sender, ...got.recipient, ...sentByRecipient]
+          .filter((m) => ["join", "joined", "resume"].includes(m.t))
+          .map((m) => m.attempt),
+      );
+      expect([...attempts], "attempt IDs").toHaveLength(1);
+
+      for (const [who, page] of [
+        ["sender", sender.page],
+        ["recipient", recipient.page],
+      ] as const) {
+        // One connection per page, which got a new ICE password: the restart, not a new attempt.
+        const connections = await readPeerConnections(page);
+        expect(connections.length, `${who} peer connections`).toBe(1);
+        const events = connections[0]?.events ?? [];
+        const before = events.find((event) => event.state === "connected")?.pwd;
+        const after = events.at(-1);
+        expect(before, `${who} ICE password before the change`).toBeTruthy();
+        expect(after?.state, `${who} ends connected`).toBe("connected");
+        expect(after?.pwd, `${who} ICE password after the change`).toBeTruthy();
+        expect(after?.pwd, `${who} ICE password after the change`).not.toBe(before);
+        for (const pwd of new Set(events.map((event) => event.pwd))) {
+          if (pwd) {
+            leaks.watchKey(`${who} ICE pwd`, pwd);
+          }
+        }
+        expect(
+          connections.flatMap((pc) => pc.gathered),
+          `${who} gathered`,
+        ).not.toContain("relay");
+      }
+      await expect
+        .poll(async () => `${await pathOf(sender.page)} ${await pathOf(recipient.page)}`)
+        .toMatch(/^srflx\/(srflx|prflx) srflx\/(srflx|prflx)$/);
     } finally {
       try {
         await edge.stop();
@@ -685,69 +749,12 @@ test.describe("a public address that changes mid-transfer", () => {
       }
     }
 
-    await expect(recipient.page.getByText(verifiedText)).toBeVisible();
-    const download = await downloading;
-    expect(sha256Hex(await buffer(await download.createReadStream()))).toBe(sha256Hex(file.bytes));
-    await expect(recipient.page.getByRole("button", { name: "Try again" })).toHaveCount(0);
-    await expect(
-      sender.page.getByText(`The transfer through ${name}'s link was interrupted`),
-    ).toHaveCount(0);
-    for (const who of ["sender", "recipient"]) {
-      const hosts = new Set((await sockets(who)).map((record) => new URL(record.url).host));
-      expect([...hosts], `${who} socket hosts`).toEqual([signalHost]);
-    }
-    expect(await sockets("sender"), "sender sockets").toHaveLength(1);
-
-    // One attempt: every join is the first one again, and every message names one attempt.
-    const sentByRecipient = await frames("recipient", "frame-sent");
-    const joins = sentByRecipient.filter((m) => m.t === "join").map((m) => JSON.stringify(m));
-    expect(new Set(joins).size, "every join is the first one again").toBe(1);
-    const got = {
-      sender: await frames("sender", "frame-received"),
-      recipient: await frames("recipient", "frame-received"),
-    };
-    expect(
-      got.recipient.filter((m) => m.t === "host-gone"),
-      "host-gone",
-    ).toHaveLength(0);
-    const attempts = new Set(
-      [...got.sender, ...got.recipient, ...sentByRecipient]
-        .filter((m) => ["join", "joined", "resume"].includes(m.t))
-        .map((m) => m.attempt),
-    );
-    expect([...attempts], "attempt IDs").toHaveLength(1);
-
-    for (const [who, page] of [
-      ["sender", sender.page],
-      ["recipient", recipient.page],
-    ] as const) {
-      // One connection per page, which got a new ICE password: the restart, not a new attempt.
-      const connections = await readPeerConnections(page);
-      expect(connections.length, `${who} peer connections`).toBe(1);
-      const events = connections[0]?.events ?? [];
-      const before = events.find((event) => event.state === "connected")?.pwd;
-      const after = events.at(-1);
-      expect(before, `${who} ICE password before the change`).toBeTruthy();
-      expect(after?.state, `${who} ends connected`).toBe("connected");
-      expect(after?.pwd, `${who} ICE password after the change`).toBeTruthy();
-      expect(after?.pwd, `${who} ICE password after the change`).not.toBe(before);
-      for (const pwd of new Set(events.map((event) => event.pwd))) {
-        if (pwd) {
-          leaks.watchKey(`${who} ICE pwd`, pwd);
-        }
-      }
-      expect(
-        connections.flatMap((pc) => pc.gathered),
-        `${who} gathered`,
-      ).not.toContain("relay");
-    }
-    await expect
-      .poll(async () => `${await pathOf(sender.page)} ${await pathOf(recipient.page)}`)
-      .toMatch(/^srflx\/(srflx|prflx) srflx\/(srflx|prflx)$/);
-
     // Each resume token may appear only in the `resume` frames about its link, and the signaling
     // container logs a `resumed` line but never a token.
-    const tokens = [...got.sender, ...got.recipient].flatMap((m) =>
+    const tokens = [
+      ...(await frames("sender", "frame-received")),
+      ...(await frames("recipient", "frame-received")),
+    ].flatMap((m) =>
       m.t === "resume" && typeof m.token === "string"
         ? [{ token: m.token, link: String(m.link) }]
         : [],
