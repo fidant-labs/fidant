@@ -1296,7 +1296,6 @@ export function SendPage({
             recipients={sender.recipients}
             fileSize={file?.size ?? 0}
             statusText={text ? { ...t.send.status, ...t.secret.status } : t.send.status}
-            summary={(text ? t.secret : t.send).summary}
             onRemove={onRemove}
             checks={checks}
             onCheck={onCheck}
