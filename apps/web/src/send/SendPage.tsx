@@ -24,8 +24,11 @@
 // - When the data channel opens, sendFile runs the transfer and reports
 //   accepted, progress, declined and receipt back to the reducer.
 // - In secret mode, a connection whose max message size can't carry every text in
-//   one chunk (textFitsOneChunk) gets nothing: reducer `unsendable` fails the
-//   recipient's card and refuses the joiner.
+//   one chunk (textFitsOneChunk) gets no META: reducer `unsendable` fails the
+//   recipient's card and refuses the joiner. Without the check that happens as
+//   the channel opens, before INIT; with it, sendFile sends INIT and runs the
+//   check first and ends with `too-small` once both confirmed, as a file would
+//   get that far, so a link's holder can't tell a secret from a file before that.
 // - A peer that closes on another frame version → `outdated`; onClose here, not the reducer,
 //   refuses the joiner at the join deadline, so a joiner still bound then is unbound as a silent one is.
 // - A peer that closes or fails before delivery → `dropped`; a data channel
@@ -95,7 +98,7 @@ import {
 } from "../lib/sender-state.ts";
 import { addRelay, NO_RELAYS } from "../lib/server-facts.ts";
 import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
-import { MAX_TEXT_LENGTH, textFile, textFitsOneChunk } from "../lib/text-secret.ts";
+import { MAX_TEXT_BYTES, MAX_TEXT_LENGTH, textFile, textFitsOneChunk } from "../lib/text-secret.ts";
 import {
   FILE_HREF,
   field,
@@ -363,7 +366,9 @@ export function SendPage({
         clearTimeout(connection.deadline);
         void info.path.then(onPath);
         // Judged by the longest text, so a refusal says nothing about this text's length.
-        if (text && !textFitsOneChunk(info.maxMessageSize)) {
+        // With the check on, sendFile refuses after both confirmed instead, so a
+        // link's holder can't tell a secret from a file before that.
+        if (text && !info.check && !textFitsOneChunk(info.maxMessageSize)) {
           dispatch({ type: "unsendable", linkId });
           return;
         }
@@ -399,6 +404,7 @@ export function SendPage({
           attempt,
           sha256: chosen.sha256,
           signal: connection.abort.signal,
+          ...(text && { minChunkBytes: MAX_TEXT_BYTES }),
           ...(confirm && {
             confirm,
             onChecked: () => {
@@ -416,6 +422,8 @@ export function SendPage({
               dispatch({ type: "declined", linkId });
             } else if (result.type === "receipt") {
               dispatch({ type: "receipt", linkId, match: result.match });
+            } else if (result.type === "too-small") {
+              dispatch({ type: "unsendable", linkId });
             }
           },
           () => {

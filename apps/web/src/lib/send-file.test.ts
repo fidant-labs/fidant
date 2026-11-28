@@ -32,7 +32,13 @@ import {
   hashFile,
   sendFile,
 } from "./send-file.ts";
-import { MAX_TEXT_BYTES, MAX_TEXT_LENGTH, TEXT_TYPE, textFile } from "./text-secret.ts";
+import {
+  MAX_TEXT_BYTES,
+  MAX_TEXT_LENGTH,
+  TEXT_TYPE,
+  textFile,
+  textFitsOneChunk,
+} from "./text-secret.ts";
 
 /** The recipient's attempt ID (22 base64url characters, like a link ID). */
 const ATTEMPT = "A".repeat(22);
@@ -567,4 +573,77 @@ test("the sender refuses a connection too small for the smallest chunk a recipie
   await fake.done();
   assert.deepEqual(result, { type: "receipt", match: true });
   assert.equal(fake.received.meta?.chunkSize, MIN_CHUNK_BYTES);
+});
+
+test("a shared secret on a connection too small for one chunk gets INIT and the check, as a file does", async () => {
+  const maxMessageSize = 32_831;
+  assert.equal(textFitsOneChunk(maxMessageSize), false);
+  const file = textFile("x");
+  assert.ok(file);
+  const bytes = new Uint8Array(await file.arrayBuffer());
+
+  const { secret } = createLink("https://localhost");
+  const fake = fakeChannel(secret, "accept");
+  const o = options(fake.channel, secret, bytes);
+  const own = confirmation();
+  let checked = 0;
+  const sending = sendFile({
+    ...o.value,
+    file,
+    maxMessageSize,
+    minChunkBytes: MAX_TEXT_BYTES,
+    confirm: own.promise,
+    onChecked: () => checked++,
+  });
+  await until(() => fake.received.kinds.length >= 1);
+  assert.deepEqual(fake.received.kinds, [SenderKind.INIT]);
+
+  own.resolve(true);
+  await until(() => fake.received.kinds.length >= 2);
+  assert.deepEqual(fake.received.kinds, [SenderKind.INIT, SenderKind.CHECK]);
+
+  await fake.check(true);
+  assert.deepEqual(await sending, { type: "too-small" });
+  assert.equal(checked, 1);
+  await settle();
+  assert.deepEqual(fake.received.kinds, [SenderKind.INIT, SenderKind.CHECK]);
+  assert.equal(fake.received.meta, undefined);
+
+  // The same run as a file goes on to META.
+  const plain = fakeChannel(secret, "accept");
+  const p = options(plain.channel, secret, bytes);
+  const asFile = sendFile({ ...p.value, file, maxMessageSize, confirm: Promise.resolve(true) });
+  await plain.check(true);
+  assert.deepEqual(await asFile, { type: "receipt", match: true });
+  assert.deepEqual(plain.received.kinds.slice(0, 3), [
+    SenderKind.INIT,
+    SenderKind.CHECK,
+    SenderKind.META,
+  ]);
+  assert.equal(plain.received.meta?.chunkSize, 32_767);
+});
+
+test("a shared secret ends too-small exactly where textFitsOneChunk refuses", async () => {
+  const file = textFile("x");
+  assert.ok(file);
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  for (const maxMessageSize of [32_831, 32_832]) {
+    const { secret } = createLink("https://localhost");
+    const fake = fakeChannel(secret, "accept");
+    const o = options(fake.channel, secret, bytes);
+    const sending = sendFile({
+      ...o.value,
+      file,
+      maxMessageSize,
+      minChunkBytes: MAX_TEXT_BYTES,
+      confirm: Promise.resolve(true),
+    });
+    await fake.check(true);
+    const result = await sending;
+    assert.equal(
+      result.type === "too-small",
+      !textFitsOneChunk(maxMessageSize),
+      `max message size ${maxMessageSize}`,
+    );
+  }
 });
