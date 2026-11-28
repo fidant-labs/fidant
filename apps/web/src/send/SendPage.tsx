@@ -873,6 +873,10 @@ export function SendPage({
   const barText = unfinished
     ? `${sendingText}. ${t.send.keepOpen}.`
     : `${doneText}. ${t.send.closeTab}.`;
+  // Before the first link the bar names the open step, as its label and heading do.
+  const stepText = continued
+    ? `${t.send.step(2)}: ${t.send.peopleHeading}`
+    : `${t.send.step(1)}: ${text ? t.menu.secret : t.send.title}`;
   const goToRecipients = () => {
     setContinued(true);
     // The frame comes after the render that adds step 2.
@@ -1341,103 +1345,113 @@ export function SendPage({
       <p class="sr-only" role="status">
         {hasRecipients && barText}
       </p>
-      {hasRecipients && (
+      <div
+        data-bottom-bar
+        data-page-bar
+        // White on emerald-700 is 5.5:1.
+        class={`fixed inset-x-0 bottom-0 z-40 overflow-hidden bg-background/80 p-4 backdrop-blur-xl transition-colors duration-700 motion-reduce:transition-none ${allDone ? "text-white" : ""}`}
+      >
+        {/* The green that takes the bar once every link has delivered. It waits above the bar and
+            slides down from the progress line, its soft lower edge first; 60 % of its height is
+            solid, which covers the whole bar when it has landed. */}
         <div
-          data-bottom-bar
-          data-page-bar
-          // White on emerald-700 is 5.5:1.
-          class={`fixed inset-x-0 bottom-0 z-40 overflow-hidden bg-background/80 p-4 backdrop-blur-xl transition-colors duration-700 motion-reduce:transition-none ${unfinished ? "" : "text-white"}`}
-        >
-          {/* The green that takes the bar once every link has delivered. It waits above the bar and
-              slides down from the progress line, its soft lower edge first; 60 % of its height is
-              solid, which covers the whole bar when it has landed. */}
-          <div
-            class={`absolute inset-x-0 top-0 h-[170%] bg-linear-to-b from-emerald-700 from-60% to-transparent transition-transform duration-700 ease-out motion-reduce:transition-none ${unfinished ? "-translate-y-full" : "translate-y-0"}`}
-            aria-hidden="true"
-          />
-          {/* The bar's top edge: a track that fills with what has gone through all links together.
-              It is always there, and stays full in a lighter green once every link has delivered, so
-              the bar never changes height. */}
-          <div class="absolute inset-x-0 top-0 h-1 bg-border" aria-hidden="true">
+          class={`absolute inset-x-0 top-0 h-[170%] bg-linear-to-b from-emerald-700 from-60% to-transparent transition-transform duration-700 ease-out motion-reduce:transition-none ${allDone ? "translate-y-0" : "-translate-y-full"}`}
+          aria-hidden="true"
+        />
+        {/* The bar's top edge: a track that fills with what has gone through all links together.
+            It is always there, and stays full in a lighter green once every link has delivered, so
+            the bar never changes height. Its fill comes with the first link: the page is prerendered
+            without links, and the CSP blocks the style attribute that sets the fill's width. */}
+        <div class="absolute inset-x-0 top-0 h-1 bg-border" aria-hidden="true">
+          {hasRecipients && (
             <div
-              class={`h-full transition-[width,background-color] motion-reduce:transition-none ${unfinished ? "bg-emerald-600" : "bg-emerald-400"}`}
+              class={`h-full transition-[width,background-color] motion-reduce:transition-none ${allDone ? "bg-emerald-400" : "bg-emerald-600"}`}
               style={{ width: `${progress * 100}%` }}
             />
-          </div>
-          <div class="relative mx-auto flex max-w-xl items-center gap-3">
-            {/* Both texts share one grid cell, the hidden one keeping its space, so the bar is as tall
-                while sending as when done, whichever text wraps to more lines (see SwapLabel). */}
-            <p class="m-0 grid flex-1 text-[0.9rem] font-medium" aria-hidden="true">
-              <span
-                class={`col-start-1 row-start-1 flex items-center gap-3 ${unfinished ? "" : "invisible"}`}
-              >
-                {/* In a box as wide as the check that replaces it, so the text starts at the same place. */}
-                <span class="flex size-4 flex-none items-center justify-center">
-                  <span class="size-2 animate-pulse rounded-full bg-primary motion-reduce:animate-none" />
-                </span>
-                <span>
-                  <span class="block">{sendingText}</span>
-                  <span class="block font-normal text-muted-foreground">{t.send.keepOpen}</span>
-                </span>
-              </span>
-              <span
-                class={`col-start-1 row-start-1 flex items-center gap-3 ${unfinished ? "invisible" : ""}`}
-              >
-                <Icon name="check" class="size-4 flex-none" />
-                <span>
-                  <span class="block">{doneText}</span>
-                  <span class="block font-normal">{t.send.closeTab}</span>
-                </span>
-              </span>
-            </p>
-            {/* Once the button was offered its place stays: the button and the browser's answer share
-                one grid cell, the hidden one keeping its space, so the bar's text wraps the same and
-                the bar keeps its height when the button goes (see SwapLabel). */}
-            {(canAskToNotify || notifyAnswer) && (
-              <div class="grid flex-none items-center justify-items-end">
-                <Button
-                  id={id("notify-me")}
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className={`col-start-1 row-start-1 ${unfinished && canAskToNotify ? "" : "invisible"}`}
-                  onClick={async () => {
-                    const answer = await askToNotify();
-                    if (answer !== "default") {
-                      setCanAskToNotify(false);
-                      setNotifyAnswer(answer === "granted" ? "on" : "blocked");
-                    }
-                  }}
-                >
-                  {t.send.notifyMe}
-                </Button>
-                {/* Size the cell for the widest text, so the answer arriving changes no width. */}
-                {[t.send.notifyOn, t.send.notifyBlocked].map((text) => (
-                  <span
-                    key={text}
-                    aria-hidden="true"
-                    class="invisible col-start-1 row-start-1 text-[0.8rem]"
-                  >
-                    {text}
-                  </span>
-                ))}
-                {notifyAnswer && (
-                  // Takes the focus the button held, and tells the sender what the browser answered.
-                  // Invisible while the button is offered again after an earlier answer.
-                  <p
-                    id={id("notify-answer")}
-                    tabIndex={-1}
-                    role="status"
-                    class={`col-start-1 row-start-1 m-0 text-[0.8rem] ${canAskToNotify ? "invisible" : ""} ${unfinished ? "text-muted-foreground" : ""}`}
-                  >
-                    {notifyAnswer === "on" ? t.send.notifyOn : t.send.notifyBlocked}
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
+          )}
         </div>
-      )}
+        <div class="relative mx-auto flex max-w-xl items-center gap-3">
+          {/* All three texts share one grid cell, the hidden ones keeping their space, so the bar is
+              as tall at a step as while sending and when done, whichever text wraps to more lines
+              (see SwapLabel). */}
+          <p class="m-0 grid flex-1 text-[0.9rem] font-medium" aria-hidden="true">
+            <span
+              class={`col-start-1 row-start-1 flex items-center gap-3 ${hasRecipients ? "invisible" : ""}`}
+            >
+              <span class="flex size-4 flex-none items-center justify-center">
+                <span class="size-2 rounded-full bg-muted-foreground" />
+              </span>
+              <span>{stepText}</span>
+            </span>
+            <span
+              class={`col-start-1 row-start-1 flex items-center gap-3 ${unfinished ? "" : "invisible"}`}
+            >
+              {/* In a box as wide as the check that replaces it, so the text starts at the same place. */}
+              <span class="flex size-4 flex-none items-center justify-center">
+                <span class="size-2 animate-pulse rounded-full bg-primary motion-reduce:animate-none" />
+              </span>
+              <span>
+                <span class="block">{sendingText}</span>
+                <span class="block font-normal text-muted-foreground">{t.send.keepOpen}</span>
+              </span>
+            </span>
+            <span
+              class={`col-start-1 row-start-1 flex items-center gap-3 ${allDone ? "" : "invisible"}`}
+            >
+              <Icon name="check" class="size-4 flex-none" />
+              <span>
+                <span class="block">{doneText}</span>
+                <span class="block font-normal">{t.send.closeTab}</span>
+              </span>
+            </span>
+          </p>
+          {/* Once the button was offered its place stays: the button and the browser's answer share
+              one grid cell, the hidden one keeping its space, so the bar's text wraps the same and
+              the bar keeps its height when the button goes (see SwapLabel). */}
+          {(canAskToNotify || notifyAnswer) && (
+            <div class="grid flex-none items-center justify-items-end">
+              <Button
+                id={id("notify-me")}
+                type="button"
+                variant="outline"
+                size="sm"
+                className={`col-start-1 row-start-1 ${unfinished && canAskToNotify ? "" : "invisible"}`}
+                onClick={async () => {
+                  const answer = await askToNotify();
+                  if (answer !== "default") {
+                    setCanAskToNotify(false);
+                    setNotifyAnswer(answer === "granted" ? "on" : "blocked");
+                  }
+                }}
+              >
+                {t.send.notifyMe}
+              </Button>
+              {/* Size the cell for the widest text, so the answer arriving changes no width. */}
+              {[t.send.notifyOn, t.send.notifyBlocked].map((text) => (
+                <span
+                  key={text}
+                  aria-hidden="true"
+                  class="invisible col-start-1 row-start-1 text-[0.8rem]"
+                >
+                  {text}
+                </span>
+              ))}
+              {notifyAnswer && (
+                // Takes the focus the button held, and tells the sender what the browser answered.
+                // Invisible while the button is offered again after an earlier answer.
+                <p
+                  id={id("notify-answer")}
+                  tabIndex={-1}
+                  role="status"
+                  class={`col-start-1 row-start-1 m-0 text-[0.8rem] ${canAskToNotify ? "invisible" : ""} ${unfinished ? "text-muted-foreground" : ""}`}
+                >
+                  {notifyAnswer === "on" ? t.send.notifyOn : t.send.notifyBlocked}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
     </Page>
   );
 }

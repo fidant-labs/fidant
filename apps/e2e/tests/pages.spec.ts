@@ -1,4 +1,4 @@
-import { choose, continueToLinks, expect, makeName, test } from "../src/fixtures.ts";
+import { barText, choose, continueToLinks, expect, makeName, test } from "../src/fixtures.ts";
 
 test.describe("without JavaScript", () => {
   test.use({ javaScriptEnabled: false });
@@ -83,6 +83,8 @@ test("the send page's toggle switches between a file and a secret, and the addre
   await page.goto("/send/secret");
   await expect(page.getByLabel("Your secret")).toBeVisible();
   await expect(page.locator("footer")).not.toBeInViewport();
+  // The bottom bar shows from the first step, before there is a link.
+  await expect(barText(page, "Step 1 of 3: Share a secret")).toBeInViewport();
   // The space above and below the box that holds the secret or the file, up to the name field.
   const gaps = () =>
     page
@@ -108,6 +110,7 @@ test("the send page's toggle switches between a file and a secret, and the addre
   // Both boxes sit the same way, so the toggle moves nothing around them.
   expect(await gaps()).toEqual(secretGaps);
   await expect(page).toHaveTitle("Send a file – Fidant");
+  await expect(barText(page, "Step 1 of 3: Send a file")).toBeInViewport();
   await toggle.getByRole("link", { name: "Secret" }).click();
   await expect(page).toHaveURL(/\/send\/secret$/);
   await expect(page.getByLabel("Your secret")).toBeVisible();

@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { maskAddress } from "@fidant/protocol";
 import type { Download, Locator, Page } from "@playwright/test";
 import {
+  barText,
   breakableSender,
   canaryFile,
   canaryKey,
@@ -425,6 +426,9 @@ harness("a held Enter on Remove removes only one recipient", async ({ actor, lea
   await expect(sender.getByRole("status").filter({ hasText: "Step 3 of 3" })).toHaveText(
     "Step 3 of 3: Share the links",
   );
+  // The bottom bar, which named step 2, now tells the sender to keep the tab open.
+  await expect(barText(sender, "Keep the tab open")).toBeInViewport();
+  await expect(barText(sender, "Step 2 of 3: Create a link for each person")).toHaveCount(0);
   await expect(who).toBeFocused();
   expect(await at()).toBe(before);
   await addRecipient(leaks, sender, erik);
