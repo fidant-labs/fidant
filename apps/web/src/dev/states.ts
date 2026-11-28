@@ -139,7 +139,6 @@ const LONG_SECRET = Array.from(
   (_, i) => `${String(i + 1).padStart(3, "0")} ${"0Ol1Il".repeat(8)}`,
 )
   .join("\n")
-  .padEnd(MAX_TEXT_LENGTH, "x")
   .slice(0, MAX_TEXT_LENGTH);
 const secret = (name: string, preview: () => SendPreview): DevState => ({
   group: "Send a secret",
