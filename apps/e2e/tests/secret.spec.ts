@@ -328,6 +328,7 @@ for (const check of [false, true]) {
     });
     await sender.goto("/send/secret");
     await sender.getByLabel("Your secret").fill(text);
+    await continueToLinks(sender);
     const link = await addLink(leaks, sender, name, check);
 
     const { page } = await openRecipient(actor, link);
