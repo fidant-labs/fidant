@@ -167,9 +167,9 @@ async function receive(
   await expect(page.getByText(sizeText, { exact: true })).toBeVisible();
   await page.getByText("Technical details").click();
   await expect(page.getByText(`${file.size.toLocaleString("en-US")} bytes`)).toBeVisible();
-  await expect(
-    page.getByRole("region", { name: "What our server has right now", includeHidden: true }),
-  ).toContainText("this page is connected to the sender");
+  await expect(page.getByRole("region", { name: "What our server has right now" })).toContainText(
+    "this page is connected to the sender",
+  );
   if (sender) {
     await expect(
       sender.getByRole("region", { name: "What our server has right now", includeHidden: true }),
@@ -264,7 +264,6 @@ test("delivers a file to two recipients with a verified checksum", async ({
 
   const recipientPanel = received[0]?.page.getByRole("region", {
     name: "What our server has right now",
-    includeHidden: true,
   });
   if (!recipientPanel) {
     throw new Error("no recipient");
@@ -609,7 +608,7 @@ test("a waiting recipient sees when the sender goes offline", async ({ demo, lea
   await sender.close();
   await expect(recipient.getByText("The sender's page is closed")).toBeVisible();
   await expect(
-    recipient.getByRole("region", { name: "What our server has right now", includeHidden: true }),
+    recipient.getByRole("region", { name: "What our server has right now" }),
   ).toContainText("Nothing about this page once it notices the connection has closed");
 });
 

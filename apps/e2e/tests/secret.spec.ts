@@ -132,7 +132,6 @@ test("a text goes from /send/secret to the recipient, who shows and copies it", 
   await expect(page.getByRole("heading", { name: `${from} sent you a secret` })).toBeFocused();
   const recipientPanel = page.getByRole("region", {
     name: "What our server has right now",
-    includeHidden: true,
   });
   await expect(recipientPanel).toContainText("None. The secret goes directly between browsers.");
   await expect(recipientPanel).not.toContainText(/\bfiles?\b/i);

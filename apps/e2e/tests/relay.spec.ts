@@ -34,8 +34,9 @@ const loopbackRelay =
   "Firefox pairs the local coturn's 127.0.0.1 relay candidates with no LAN candidate and ends ICE at once, before the sender falls back to the relay";
 
 const sha256Hex = (data: Uint8Array) => createHash("sha256").update(data).digest("hex");
-const panel = (page: Page) =>
-  page.getByRole("region", { name: "What our server has right now", includeHidden: true });
+/** The sender's panel is in its closed drawer, so only its lookup includes hidden elements. */
+const panel = (page: Page, sender: boolean) =>
+  page.getByRole("region", { name: "What our server has right now", includeHidden: sender });
 const relayed =
   "None. The browsers couldn't connect directly, so the file passes encrypted through our relay instead.";
 
@@ -165,9 +166,10 @@ for (const transport of ["udp", "tcp"] as const) {
     expect(sha256Hex(await readFile(await download.path()))).toBe(sha256Hex(file.bytes));
 
     for (const page of [sender, recipient]) {
-      await expect(panel(page)).toContainText(relayed);
-      await expect(panel(page)).toContainText("Our relay sees");
-      await expect(panel(page)).not.toContainText("goes directly between browsers");
+      const facts = panel(page, page === sender);
+      await expect(facts).toContainText(relayed);
+      await expect(facts).toContainText("Our relay sees");
+      await expect(facts).not.toContainText("goes directly between browsers");
       // The panel and the Why? text also say "through our relay".
       await expect(page.getByText("Through our relay", { exact: true })).toBeVisible();
       // The send page shows the link at once; the receive page explains under "Why?".
