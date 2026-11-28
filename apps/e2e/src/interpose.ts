@@ -153,6 +153,11 @@ function middleman() {
       namedCurve: "P-256",
     } as EcKeyGenParams);
     const pc = new RTCPeerConnection({ certificates: [cert] });
+    // Chromium was seen handing a supplied certificate to the transport asynchronously, and an
+    // offer applied before that fails with "Fingerprint provided but no identity available", for
+    // good. getStats queues behind the hand-off: on Linux 29 of 48,000 offers failed without it,
+    // none with it (FID-194).
+    await pc.getStats();
     peers.set(leg, pc);
     pc.onicecandidate = ({ candidate: c }) => {
       const candidate = c && {
