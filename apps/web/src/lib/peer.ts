@@ -535,6 +535,7 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
       // onOpen must not wait for the path: the other side may send at once,
       // and messages that arrive before onmessage is set are lost.
       // Chromium has been seen to fire open twice on one channel; a second reader fails the transfer.
+      // Between the two, readyState reads "connecting", which channel-open.ts waits out.
       if (!closed && !opened) {
         opened = true;
         options.onOpen(next, {

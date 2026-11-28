@@ -38,6 +38,7 @@
 // No DOM or UI here beyond the data channel API, so tests can drive it with a
 // fake channel. The file name only travels inside the encrypted META frame.
 
+import { sendWhenOpen, whenOpen } from "./channel-open.ts";
 import {
   decodeAccept,
   decodeCheck,
@@ -143,19 +144,21 @@ export async function sendFile(options: SendFileOptions): Promise<SendResult> {
   let progressTimer: ReturnType<typeof setInterval> | undefined;
 
   try {
-    if (channel.readyState !== "open") {
-      throw new Error("data channel is not open");
+    // Only a channel that reads "connecting" after open waits; an open one goes on at once.
+    const reopened = whenOpen(channel, signal);
+    if (reopened) {
+      await reopened;
     }
     channel.bufferedAmountLowThreshold = BUFFER_LOW_BYTES;
 
     const send = (frame: Uint8Array<ArrayBuffer>) => {
       signal.throwIfAborted();
       assertFrameFits(maxMessageSize, frame.byteLength);
-      channel.send(frame);
+      return sendWhenOpen(channel, frame, signal);
     };
 
     const transferId = createTransferId();
-    send(encodeInit(transferId));
+    await send(encodeInit(transferId));
     const key = await abortable(deriveFileKey(secret, transferId, attempt), signal);
     const writer = new FrameWriter(key, "s");
     inbox.start(new FrameReader(key, "r"));
@@ -182,7 +185,7 @@ export async function sendFile(options: SendFileOptions): Promise<SendResult> {
       throw new Error("max message size too small");
     }
     const meta = { name: file.name, size: file.size, type: file.type, chunkSize, from };
-    send(await writer.encrypt(SenderKind.META, encodeMeta(meta)));
+    await send(await writer.encrypt(SenderKind.META, encodeMeta(meta)));
 
     const answer = await inbox.next();
     if (answer.kind === RecipientKind.DECLINE) {
@@ -253,12 +256,12 @@ export async function sendFile(options: SendFileOptions): Promise<SendResult> {
         const end = Math.min(offset + chunkSize, file.size);
         body.set(new Uint8Array(await abortable(file.slice(offset, end).arrayBuffer(), signal)));
       }
-      send(await writer.encrypt(SenderKind.CHUNK, body));
+      await send(await writer.encrypt(SenderKind.CHUNK, body));
       sent += body.length;
     }
 
     const sha256 = await abortable(options.sha256, signal);
-    send(await writer.encrypt(SenderKind.END, encodeEnd(sha256, file.size)));
+    await send(await writer.encrypt(SenderKind.END, encodeEnd(sha256, file.size)));
     ended = true;
 
     const theirs = await abortable(receipt, signal);
@@ -293,7 +296,7 @@ export async function exchangeCheck(
     channel: Pick<FrameChannel, "readyState" | "addEventListener" | "removeEventListener">;
     inbox: Inbox;
     writer: FrameWriter;
-    send(frame: Uint8Array<ArrayBuffer>): void;
+    send(frame: Uint8Array<ArrayBuffer>): Promise<void>;
     signal: AbortSignal;
   },
 ): Promise<"sender" | "recipient" | undefined> {
@@ -313,7 +316,7 @@ export async function exchangeCheck(
     return SIDE[other];
   }
   const matches = "mine" in first ? first.mine : await abortable(own, io.signal);
-  io.send(await io.writer.encrypt(CHECK_OF[mine], encodeCheck(matches)));
+  await io.send(await io.writer.encrypt(CHECK_OF[mine], encodeCheck(matches)));
   if (!matches) {
     await closedOrLater(io.channel, io.signal);
     return SIDE[mine];
@@ -336,7 +339,7 @@ function closedOrLater(
     const timer = setTimeout(done, CHECK_LINGER_MS);
     channel.addEventListener("close", done);
     signal.addEventListener("abort", done);
-    if (channel.readyState !== "open" || signal.aborted) {
+    if (channel.readyState === "closing" || channel.readyState === "closed" || signal.aborted) {
       done();
     }
   });

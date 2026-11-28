@@ -441,7 +441,7 @@ function logPeerFailures() {
     try {
       Reflect.apply(send, this, [data]);
     } catch (error) {
-      log(`channel send() threw in ${this.readyState}: ${describe(error)}`);
+      log(`channel ${channelTag(this)} send() threw in ${this.readyState}: ${describe(error)}`);
       throw error;
     }
     note(this, "out", data);
