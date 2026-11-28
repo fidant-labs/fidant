@@ -31,7 +31,7 @@ import {
   TOO_SMALL_FOR_TEXT,
   unmarked,
 } from "../lib/sender-state.ts";
-import { CheckNumber, Icon, PathLine, SwapLabel, useCopyNote } from "../ui.tsx";
+import { CheckNumber, Icon, PathNote, SwapLabel, useCopyNote } from "../ui.tsx";
 
 const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
 
@@ -429,7 +429,7 @@ function RecipientRow({ recipient, fileSize, statusText, onRemove, check, onComp
               {t.send.mail[lost ? "lost" : mail](maskAddress(email))}
             </p>
           )}
-          {path && <PathLine path={path} plain />}
+          {path && <PathNote path={path} />}
           {status === "checking" && (
             <p class="mt-2 mb-0 text-[0.9rem] text-muted-foreground empty:sr-only" role="status">
               {check?.said && t.send.check.waiting}

@@ -251,6 +251,8 @@ test("delivers a file to two recipients with a verified checksum", async ({
       "/how#direct",
     );
   }
+  // The send page has no "Why?" to open.
+  await expect(sender.getByText("Why?", { exact: true })).toHaveCount(0);
 
   const panel = sender.getByRole("region", {
     name: "What our server has right now",

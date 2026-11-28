@@ -503,27 +503,31 @@ export function TechDetails({
   );
 }
 
+/** How a connection runs, on the send card: one line with a link to /how and nothing to open. */
+export function PathNote({ path }: { path: OpenPath }) {
+  const { t } = useI18n();
+  const kind = path === "relay" ? "relay" : "direct";
+  return (
+    <p class="mt-2 mb-0 text-[0.9rem]">
+      <span class="font-medium">{t.connection[kind].label}</span>{" "}
+      <Link
+        href={`/how#${kind}`}
+        class="rounded-sm text-muted-foreground underline underline-offset-4"
+      >
+        {t.connection.more}
+      </Link>
+    </p>
+  );
+}
+
 /**
  * How a connection runs, with a "Why?" that explains it. The summary holds the label too, so it
- * makes sense on its own. `plain`, on the send page, is one line with a link to /how and nothing to open.
+ * makes sense on its own.
  */
-export function PathLine({ path, plain }: { path: OpenPath; plain?: boolean }) {
+export function PathLine({ path }: { path: OpenPath }) {
   const { t } = useI18n();
   const kind = path === "relay" ? "relay" : "direct";
   const { label, explain } = t.connection[kind];
-  if (plain) {
-    return (
-      <p class="mt-2 mb-0 text-[0.9rem]">
-        <span class="font-medium">{label}</span>{" "}
-        <Link
-          href={`/how#${kind}`}
-          class="rounded-sm text-muted-foreground underline underline-offset-4"
-        >
-          {t.connection.more}
-        </Link>
-      </p>
-    );
-  }
   return (
     <details class="mt-2 text-[0.9rem]">
       <summary class="cursor-pointer">
