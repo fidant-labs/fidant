@@ -139,7 +139,12 @@ type Armed = {
   attempt: string;
   hostToken: string;
   guestToken: string;
-  /** Whether the recipient sent a repeated `join` while the sender's side was held. */
+  /**
+   * Whether the bound recipient sent a repeated `join` that the sender has not answered yet:
+   * set at each such join, held sender or not, and cleared when the sender next relays to it.
+   * A sender's takeover then sends `joined` to both, since the `joined` of that join may have
+   * gone to a socket that only looked open.
+   */
   asked: boolean;
   /** The sender's relay choice for this attempt, from the socket that hosted it when armed. */
   turn: boolean;
@@ -551,9 +556,10 @@ export function attachSignaling(
     const hostSocket = hosts.get(link);
     const paired = pairings.get(link) ?? 0;
     const bound = guests.get(link);
-    // The sender's side is held (0032): its page may take it back and restart ICE if asked.
+    // The bound recipient asks for a restart (0031). Its sender's side may be held, or its
+    // socket may only look open, so a takeover of that side restarts ICE (0032).
     const record = armed.get(link);
-    if (record?.hostHeld && bound === socket) {
+    if (record && bound === socket && record.attempt === attempt) {
       record.asked = true;
     }
     // A repeated join that is refused here keeps its binding.
@@ -670,12 +676,12 @@ export function attachSignaling(
     }
     log("resumed", { link: short(link) });
     send(socket, { t: "resume", link, attempt, token: fresh });
-    // The old socket is still open on the server: it is ended as a close other than 1000, so its
-    // idle links are unhosted and its other armed attempts held, not as one the server ended.
+    // The old socket is still open on the server: it is ended as a close with no frame (1006), so
+    // its idle links are unhosted and its other armed attempts held, not as one the server ended.
     if (oldPeer) {
       old.terminate();
     }
-    // The recipient asked while the sender's side was held: the sender restarts ICE (0031).
+    // The recipient asked and the sender has not answered: the sender restarts ICE (0031).
     const guest = guests.get(link);
     if (side === "host" && record.asked && guest && peers.has(guest)) {
       record.asked = false;
@@ -709,6 +715,11 @@ export function attachSignaling(
     }
     log("relay", { link: short(link), bytes: data.length });
     send(target, { t: "relay", link, data });
+    // The sender answered the recipient's last repeated join, so a takeover has nothing to restart.
+    const record = peer.hosted.has(link) ? armed.get(link) : undefined;
+    if (record) {
+      record.asked = false;
+    }
   }
 
   function refuse(
@@ -1024,9 +1035,10 @@ export function attachSignaling(
     } else {
       perAddress.delete(peer.address);
     }
-    // A page that left on purpose, a socket the server ended and a server that stops hold
-    // nothing (decision 0032).
-    const held = code !== 1000 && !ended.has(socket) && !stopping;
+    // Only a socket that closed with no close frame, as when the network goes, is held. A page
+    // that left (1000, or 1001 when its tab closes), a socket the server ended and a server that
+    // stops hold nothing (decision 0032).
+    const held = code === 1006 && !ended.has(socket) && !stopping;
     if (peer.hosted.size > 0) {
       log("host-closed", { links: peer.hosted.size });
       for (const link of peer.hosted) {
