@@ -8,9 +8,9 @@ import { repoRoot, resetObservations, runDir } from "./src/paths.ts";
 import { startStack } from "./src/stack/index.ts";
 import {
   assertDocker,
-  assertNoOtherRun,
   dockerNetworks,
   dockerServer,
+  waitForOtherRun,
 } from "./src/stack/networks.ts";
 import { sweepRun } from "./src/sweep.ts";
 
@@ -18,7 +18,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   const networks = Boolean(process.env.FIDANT_E2E_NETWORKS);
   if (networks) {
     assertDocker();
-    assertNoOtherRun();
+    await waitForOtherRun();
   }
   if (!existsSync(join(repoRoot, "apps", "web", "dist", "index.html"))) {
     throw new Error("The web client is not built. Run `pnpm e2e` from the repository root.");

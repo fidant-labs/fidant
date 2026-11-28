@@ -3,7 +3,7 @@
 ## Claude Code
 
 - In a new git worktree, run `pnpm install` first. It installs dependencies and the git hooks for that worktree.
-- When several worktrees run the app at once, give each its own `PORT`. `pnpm e2e:networks` can't run in two worktrees at once: it refuses to start while another worktree's run has containers, running or stopped (`apps/e2e/README.md`).
+- When several worktrees run the app at once, give each its own `PORT`. `pnpm e2e:networks` can't run in two worktrees at once: it waits, logging every 30 s, while another worktree's run is going, and refuses to start over one that left stopped containers (`apps/e2e/README.md`).
 - Edited files are formatted automatically by a hook in `.claude/settings.json`.
 - The review flow is the `review-changes` skill. Run it before calling a change done, before opening a pull request, and before pushing finished work to an open one. It dispatches the reviewer agents in `.claude/agents/`, fixes blockers and majors, runs `pnpm check` and marks the diff clean. A hook blocks `gh pr create` until the mark matches the branch's diff.
 - Other hooks: a warning before `git push` or `gh pr create` when the branch is behind `origin/main`, a block on the common `git push`, `gh api` and `gh pr` commands that would move the `production` branch (`docs/decisions/0020-deploy-from-production.md` lists what it blocks and what it misses), a Linear reminder after `gh pr create` and `gh pr merge`, and a hook that names the session after the issue the `next-issue` skill picked, on the user's next message.

@@ -299,45 +299,91 @@ export function assertDocker(): void {
 // Must match `name:` in networks/compose.yaml (networks.test.ts checks).
 export const projectName = "fidant-e2e";
 
+/** One row of `docker compose ls --all --format json`. */
+type Project = { Name: string; Status: string; ConfigFiles: string };
+
 /**
- * The compose file of the networks run that has containers, running or stopped, when it is not
- * `ownFile`.
- * `projects` is `docker compose ls --all --format json`. The server container needs no check of
- * its own: it starts after the project is up and stops before it.
+ * Another checkout's networks run that has containers, running or stopped: its compose file, and
+ * whether any of its containers runs (`Status` is like `running(9)` or `exited(9)`). The server
+ * container needs no check of its own: it starts after the project is up and stops before it.
  */
 export function otherRun(
-  projects: { Name: string; ConfigFiles: string }[],
+  projects: Project[],
   ownFile: string,
-): string | undefined {
+): { file: string; running: boolean } | undefined {
   const project = projects.find((p) => p.Name === projectName);
   const files = project?.ConfigFiles.split(",") ?? [];
   if (project && !files.includes(ownFile)) {
-    return files[0] || "an unknown checkout";
+    return { file: files[0] || "an unknown checkout", running: project.Status.includes("running") };
   }
   return undefined;
 }
 
+const removeCommand = `\`docker rm -f ${serverName}; docker compose -p ${projectName} down --remove-orphans\``;
+
 /**
- * Fails when another checkout's networks run has containers, running or stopped. Runs can't
- * overlap: they share container and network names, subnets and host ports, and setup removes what
- * it finds, which would kill the other run. This checkout's own leftovers are a killed run's, and
- * setup removes them. A run still building its images has no containers yet, so two runs started
- * together can still both pass.
+ * Waits while another checkout's networks run is going, and fails when one has only stopped
+ * containers, a dead run's, or still runs after `timeoutMs`. Runs can't overlap: they share
+ * container and network names, subnets and host ports, and setup removes what it finds, which
+ * would kill the other run. This checkout's own leftovers are a killed run's, and setup removes
+ * them. A run still building its images has no containers yet, so two runs started together, or
+ * two waiting for the same run, can still both go ahead.
  */
-export function assertNoOtherRun(): void {
-  const projects =
+export async function waitForOtherRun({
+  list = listProjects,
+  log = (line: string) => console.log(line),
+  intervalMs = 10_000,
+  logEveryMs = 30_000,
+  timeoutMs = 15 * 60_000,
+}: {
+  list?: () => Project[];
+  log?: (line: string) => void;
+  intervalMs?: number;
+  logEveryMs?: number;
+  timeoutMs?: number;
+} = {}): Promise<void> {
+  const start = Date.now();
+  let logged: number | undefined;
+  for (;;) {
+    const other = otherRun(list(), composeFile);
+    const waited = Date.now() - start;
+    if (!other) {
+      if (logged !== undefined) {
+        log(
+          `The other pnpm e2e:networks run ended after ${Math.round(waited / 1000)} s; starting.`,
+        );
+      }
+      return;
+    }
+    if (!other.running) {
+      throw new Error(
+        `A pnpm e2e:networks run from ${other.file} left stopped containers, and runs on one machine can't overlap. Remove them with ${removeCommand}.`,
+      );
+    }
+    if (waited >= timeoutMs) {
+      throw new Error(
+        `Another pnpm e2e:networks run, from ${other.file}, still runs after ${Math.round(timeoutMs / 60_000)} min of waiting. If it no longer runs, remove its containers with ${removeCommand}.`,
+      );
+    }
+    if (logged === undefined || Date.now() - logged >= logEveryMs) {
+      log(
+        `Waiting for another pnpm e2e:networks run, from ${other.file}, to end: runs on one machine can't overlap (${Math.round(waited / 1000)} s so far, gives up after ${Math.round(timeoutMs / 60_000)} min).`,
+      );
+      logged = Date.now();
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+}
+
+function listProjects(): Project[] {
+  return (
     JSON.parse(
       execFileSync("docker", ["compose", "ls", "--all", "--format", "json"], {
         encoding: "utf8",
         timeout: 15_000,
       }) || "[]",
-    ) ?? [];
-  const other = otherRun(projects, composeFile);
-  if (other) {
-    throw new Error(
-      `Another pnpm e2e:networks run, from ${other}, has containers, running or stopped, and runs on one machine can't overlap. Wait for it to end. If it no longer runs, remove its containers with \`docker rm -f ${serverName}; docker compose -p ${projectName} down --remove-orphans\`.`,
-    );
-  }
+    ) ?? []
+  );
 }
 
 /** Removes the server container and everything compose made. Synchronous, so it can run on exit. */
@@ -463,8 +509,8 @@ async function startNetworks(): Promise<RunningService> {
   ];
   const relaysFile = join(dir, "relays.json");
   try {
-    // Left over from a run of this checkout that was killed: global setup's assertNoOtherRun has
-    // refused any other checkout's.
+    // Left over from a run of this checkout that was killed: global setup's waitForOtherRun has
+    // waited out any other checkout's run, or refused it.
     down();
     await Promise.all([fetchImages(), timed("web build", buildPages(pagesDir))]);
     await timed(
@@ -565,7 +611,7 @@ export const dockerServer: Service = {
         const secretDir = dirname(env.TURN_SECRET_FILE ?? "");
         // --init: as PID 1 the server would ignore any signal it has no handler for, such as
         // SIGTERM before it listens, so tini takes PID 1 and forwards docker's signals to it.
-        // ponytail: one server container at a time; assertNoOtherRun refuses a second checkout's run.
+        // ponytail: one server container at a time; waitForOtherRun holds back a second checkout's run.
         return [
           "docker",
           "run",
