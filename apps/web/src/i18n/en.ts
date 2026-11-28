@@ -324,7 +324,7 @@ export const en = {
     },
     continue: "Continue",
     title: "Send a file",
-    lede: "Choose a file, then create a link for each person. Your file is sent from this browser to them. It's encrypted the whole way and never uploaded or stored.",
+    lede: "Choose a file, then add each person you want to send it to. Your file is sent from this browser to them. It's encrypted the whole way and never uploaded or stored.",
     step: (n: number) => `Step ${n} of 3`,
     peopleHeading: "Add recipients",
     peopleLede:
