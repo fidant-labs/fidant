@@ -170,7 +170,8 @@ export function App({
     }
   }, [path, place]);
   // Without Web Crypto the send, secret and receive pages show only the secure-connection screen.
-  const insecureShown = !secure && (route === "send" || route === "secret" || route === "receive");
+  const holdsTransfer = route === "send" || route === "secret" || route === "receive";
+  const insecureShown = !secure && holdsTransfer;
   const icon = insecureShown
     ? "insecure"
     : overallStatus([sendStatus, secretStatus, receiveStatus]);
@@ -240,7 +241,7 @@ export function App({
     heading.focus({ preventScroll: target !== null });
   }, [place]);
 
-  if (route === "send" || route === "secret" || route === "receive") {
+  if (holdsTransfer) {
     kept.current.add(route);
   }
   if (route === "receive" && !receiveUrl.current) {

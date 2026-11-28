@@ -26,7 +26,9 @@ for (const path of ["/privacy", "/privacy/"]) {
   });
 }
 
-test("the Privacy page opens without a secure connection", async ({ page }) => {
+test("without a secure connection, transfer pages say so and Privacy still opens", async ({
+  page,
+}) => {
   // The stack always serves HTTPS, so pretend the context is insecure.
   await page.addInitScript(() =>
     Object.defineProperty(window, "isSecureContext", { value: false }),
@@ -37,6 +39,12 @@ test("the Privacy page opens without a secure connection", async ({ page }) => {
   // The tab names the screen it shows (WCAG 2.4.2) and its icon is the red stop sign.
   await expect(page).toHaveTitle("Secure connection needed – Fidant");
   await expect(icon).toHaveAttribute("href", /%23dc2626/);
+  for (const path of ["/send/secret", "/r/x#k"]) {
+    await page.goto(path);
+    await expect(page).toHaveTitle("Secure connection needed – Fidant");
+  }
+  await page.goto("/sv/skicka");
+  await expect(page).toHaveTitle("Säker anslutning krävs – Fidant");
   await page.goto("/privacy");
   await expect(page.locator("main h1")).toHaveText("Privacy");
   await expect(page).toHaveTitle("Privacy – Fidant");
