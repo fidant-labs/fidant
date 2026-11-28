@@ -999,13 +999,20 @@ export function SendPage({
       }
     >
       <section id={id("choose")} aria-labelledby={id("send-title")}>
-        {/* On a phone the title and the toggle don't fit side by side, so the toggle spans the page above the title. */}
+        {/* On a phone the title and the toggle don't fit side by side, so the toggle spans the page above
+            the title. Only the look moves: the heading stays first for keyboards and screen readers. */}
         <div class="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p class={stepLabel}>{t.send.step(1)}</p>
+            <h1 id={id("send-title")} class="mt-0">
+              {text ? t.menu.secret : t.send.title}
+            </h1>
+          </div>
           <nav
             aria-label={t.send.mode.label}
             // ponytail: a native tooltip, which touch and keyboard never show; a visible note if that matters
             title={unfinished ? t.send.mode.locked : undefined}
-            class={`flex gap-0.5 rounded-xl border border-border p-0.5 sm:order-last sm:flex-none ${unfinished ? "cursor-not-allowed" : ""}`}
+            class={`flex gap-0.5 rounded-xl border border-border p-0.5 max-sm:order-first sm:flex-none ${unfinished ? "cursor-not-allowed" : ""}`}
           >
             {(["file", "secret"] as const).map((mode) => {
               const current = (mode === "secret") === text;
@@ -1042,12 +1049,6 @@ export function SendPage({
               );
             })}
           </nav>
-          <div>
-            <p class={stepLabel}>{t.send.step(1)}</p>
-            <h1 id={id("send-title")} class="mt-0">
-              {text ? t.menu.secret : t.send.title}
-            </h1>
-          </div>
         </div>
         <p class={lede}>{text ? t.secret.lede : t.send.lede}</p>
 
