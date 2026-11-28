@@ -110,6 +110,10 @@ test("the send page's toggle switches between a file and a secret, and the addre
     }
   };
   await insideBar();
+  // Focus scrolls a control to above the bar, not under it.
+  const scrollPadding = () =>
+    page.evaluate(() => getComputedStyle(document.documentElement).scrollPaddingBottom);
+  expect(await scrollPadding()).toBe("96px");
   // The space above and below the box that holds the secret or the file, up to the name field.
   const gaps = () =>
     page
@@ -138,6 +142,7 @@ test("the send page's toggle switches between a file and a secret, and the addre
   await expect(barText(page, "Step 1 of 3: Send a file")).toBeInViewport();
   await page.setViewportSize({ width: 360, height: 1600 });
   await insideBar();
+  expect(await scrollPadding()).toBe("96px");
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
   await page.setViewportSize({ width: 1280, height: 1600 });
   await toggle.getByRole("link", { name: "Secret" }).click();

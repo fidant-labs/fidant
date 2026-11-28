@@ -115,6 +115,14 @@
   html {
     @apply font-sans;
   }
+  /* A visible bottom bar (or the open-transfer pill) covers the end of the viewport, so a control
+     that focus scrolls into view stops above it. These match App's pb-24 and pb-40. */
+  html:has([data-bottom-bar]:not([hidden] *)) {
+    scroll-padding-bottom: 6rem;
+  }
+  html:has([data-page-bar]:not([hidden] *)):has([data-pill]) {
+    scroll-padding-bottom: 10rem;
+  }
   /* Scrolling in a modal dialog, or over its backdrop, never scrolls the page behind it, and the
      page keeps its place. modern-web-guidance prefers overscroll-behavior on the dialog and its
      backdrop, but tried in Playwright that held only in Chromium: Firefox and WebKit still
