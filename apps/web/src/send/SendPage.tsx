@@ -964,7 +964,7 @@ export function SendPage({
         <p class={lede}>{text ? t.secret.lede : t.send.lede}</p>
 
         {text && (
-          <div class={`my-4 ${field}`}>
+          <div class={`my-8 ${field}`}>
             <Label htmlFor="secret-text">{t.secret.label}</Label>
             <textarea
               id="secret-text"

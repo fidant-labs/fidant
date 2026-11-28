@@ -80,10 +80,30 @@ test("the send page's toggle switches between a file and a secret, and the addre
   const { page } = await actor("sender");
   await page.goto("/send/secret");
   await expect(page.getByLabel("Your secret")).toBeVisible();
+  // The space above and below the box that holds the secret or the file, up to the name field.
+  const gaps = () =>
+    page
+      .getByLabel("Your name")
+      .filter({ visible: true })
+      .evaluate((input) => {
+        const field = input.parentElement;
+        const box = field?.previousElementSibling;
+        const above = box?.previousElementSibling;
+        if (!field || !box || !above) {
+          return [];
+        }
+        return [
+          box.getBoundingClientRect().top - above.getBoundingClientRect().bottom,
+          field.getBoundingClientRect().top - box.getBoundingClientRect().bottom,
+        ];
+      });
+  const secretGaps = await gaps();
   const toggle = page.getByRole("navigation", { name: "What to send" }).filter({ visible: true });
   await toggle.getByRole("link", { name: "File" }).click();
   await expect(page).toHaveURL(/\/send\/file$/);
   await expect(page.getByLabel("Your secret")).toBeHidden();
+  // Both boxes sit the same way, so the toggle moves nothing around them.
+  expect(await gaps()).toEqual(secretGaps);
   await expect(page).toHaveTitle("Send a file – Fidant");
   await toggle.getByRole("link", { name: "Secret" }).click();
   await expect(page).toHaveURL(/\/send\/secret$/);
