@@ -652,13 +652,11 @@ export function ServerDrawer({
             <h2 id={titleId} class="m-0 text-[1.25rem] font-bold">
               {t.common.techDetails}
             </h2>
-            <button
-              type="button"
-              class={buttonVariants({ variant: "ghost", size: "sm" })}
-              onClick={() => drawer.current?.close()}
-            >
-              {t.common.close}
-            </button>
+            <form method="dialog">
+              <button type="submit" class={buttonVariants({ variant: "ghost", size: "sm" })}>
+                {t.common.close}
+              </button>
+            </form>
           </div>
           {facts.length > 0 && <Facts rows={facts} />}
           <section class="mt-6" aria-labelledby={headingId}>
