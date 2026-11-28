@@ -805,13 +805,31 @@ test("aborts the sink when a chunk is tampered with", async () => {
 
 test("treats a missing END as truncation, and the next attempt gets only END", async () => {
   const bytes = new Uint8Array(randomBytes(100_000));
+  // Every chunk carries file bytes, so the sink sees one write per chunk taken in.
+  assert.equal(
+    Math.ceil(bytes.length / MAX_CHUNK_BYTES),
+    paddedLength(bytes.length) / MAX_CHUNK_BYTES,
+  );
   const sink = new RecordingSink();
+  let chunks = 0;
+  let endDropped = false;
+  // Close once END is dropped and every chunk before it has reached the sink, not on a timer.
+  const closeWhenAllTakenIn = () => {
+    if (endDropped && sink.writes === chunks) {
+      pair.close();
+    }
+  };
+  sink.onWrite = closeWhenAllTakenIn;
   const pair = channelPair({
-    toRecipient(frame, p) {
+    toRecipient(frame) {
+      if (frame[1] === SenderKind.CHUNK) {
+        chunks++;
+      }
       if (frame[1] !== SenderKind.END) {
         return frame;
       }
-      setTimeout(() => p.close(), 10);
+      endDropped = true;
+      closeWhenAllTakenIn();
       return undefined;
     },
   });
