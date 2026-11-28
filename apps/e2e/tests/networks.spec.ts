@@ -678,8 +678,11 @@ test.describe("a public address that changes mid-transfer", () => {
         "peer-to-peer from the new address",
       ).not.toEqual([]);
     } finally {
-      await edge.stop();
-      await restoreSiteB();
+      try {
+        await edge.stop();
+      } finally {
+        await restoreSiteB();
+      }
     }
 
     await expect(recipient.page.getByText(verifiedText)).toBeVisible();
