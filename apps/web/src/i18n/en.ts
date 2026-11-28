@@ -726,8 +726,8 @@ export const en = {
     }) => {
       if (!online) {
         return mailed
-          ? "Only scrambled counts of the emails it sent for you, for up to an hour, once it notices the connection has closed. That takes up to a minute if the network dropped."
-          : "Nothing once it notices the connection has closed. That takes up to a minute if the network dropped.";
+          ? "Only scrambled counts of the emails it sent for you, for up to an hour, once it notices the connection has closed. That takes up to a minute if the network dropped. If the network dropped during a transfer, it first keeps that transfer's place for up to 30 seconds, within that minute, so this page can take it back when it reconnects."
+          : "Nothing once it notices the connection has closed. That takes up to a minute if the network dropped. If the network dropped during a transfer, it first keeps that transfer's place for up to 30 seconds, within that minute, so this page can take it back when it reconnects.";
       }
       const choice = relay
         ? "Your choice to allow our relay."
@@ -764,14 +764,14 @@ export const en = {
             unpaired:
               "Your email address, which the sender gave for this link, the latest code it emailed you and whether this tab entered it. Only the sender's page can keep them there.",
             closed:
-              "Nothing about this page once it notices the connection has closed, which takes up to a minute if the network dropped, apart from whether this tab entered the right code. Only the sender's page can keep that, your link's ID and your email address there.",
+              "Nothing about this page once it notices the connection has closed, which takes up to a minute if the network dropped, apart from whether this tab entered the right code. If the network dropped during the transfer, it first keeps this page's place in it for up to 30 seconds, within that minute, so this page can take it back when it reconnects. Only the sender's page can keep that, your link's ID and your email address there.",
           }
         : {
             paired: `The ID of your link, never ${items[kind].unlocks}, and that this page is connected to the sender.`,
             unpaired:
               "Nothing that ties this page to your link. Only the sender's page can keep your link's ID there.",
             closed:
-              "Nothing about this page once it notices the connection has closed, which takes up to a minute if the network dropped. Only the sender's page can keep your link's ID there.",
+              "Nothing about this page once it notices the connection has closed, which takes up to a minute if the network dropped. If the network dropped during the transfer, it first keeps this page's place in it for up to 30 seconds, within that minute, so this page can take it back when it reconnects. Only the sender's page can keep your link's ID there.",
           })[tie],
     /** `size` is already formatted, like "9.2 KB". `emailed`: the server emailed a link on this page. */
     passedOn: (messages: number, size: string, emailed: boolean) =>
@@ -956,7 +956,7 @@ export const en = {
           "That is what the safety number is for. Each browser makes a new certificate for every connection. The recipient's browser sends a commitment to its fingerprint, a hash, before the sender's browser makes its offer. Both browsers then compute six digits from the two fingerprints of their own connection. With someone in between there are two connections, so the two screens show different numbers. Because of the commitment, a party in the middle can only guess: one chance in a million per connection. The number is shown on screen only, never sent or stored.",
           "With a safety number, the recipient reads their number aloud and the sender compares it. Nothing about the file is sent until both have said it matches, and “It differs” on either side stops the attempt. Once the recipient's browser has answered an offer, it makes a new connection only when the recipient clicks Try again. Recovering a dropped route, described below, keeps the same connection and the same number. The sender's page stops offering a link after 5 attempts that ended before both confirmed, each limited to 5 minutes. An attempt the sender's page stopped because the two pages run different versions doesn't count: no safety number was shown. The check shows that nobody sat between the two browsers. It can't show that the page code itself is honest.",
           "If the connection to our server drops, both pages try to reconnect by themselves. The sender's page registers its links again. A recipient who was still connecting tries again a few times before giving up. For a minute after our server starts, it tells a recipient whose link it doesn't know yet to wait. So the recipient keeps trying while the sender's page registers the link again. A transfer that has already started doesn't need our server and carries on, as long as the route between the browsers holds.",
-          "If the route between the two browsers drops while their connection is open, the pages try to get one back without starting over. The recipient's page sends its join to our server again, and the server gives both pages the connection details again. The sender's browser then looks for a route again on the same connection, with a new offer and answer, encrypted like the first and checked against the same two certificates. The keys and the safety number stay the same, and the transfer goes on where it stopped, with no click. This never adds the relay to a connection that didn't already use it. If no route comes back within 30 seconds, the attempt ends as a lost connection, and Try again continues a file's download. It works only while both pages are still connected to our server. A change of network that also breaks a page's connection to our server is not recovered this way and ends as a lost connection too. The repeated join shows our server that this transfer's connection dropped, and when. We have tested this only in Chromium, with a route cut for about 6 to 8 seconds; Firefox and Safari are untested.",
+          "If the route between the two browsers drops while their connection is open, the pages try to get one back without starting over. The recipient's page sends its join to our server again, and the server gives both pages the connection details again. The sender's browser then looks for a route again on the same connection, with a new offer and answer, encrypted like the first and checked against the same two certificates. The keys and the safety number stay the same, and the transfer goes on where it stopped, with no click. This never adds the relay to a connection that didn't already use it. If no route comes back within 30 seconds, the attempt ends as a lost connection, and Try again continues a file's download. It needs both pages' connections to our server. A change of network can break a page's connection to our server too. Once the browsers' connection has opened, our server gives each page a random token, and a page whose connection to our server drops connects again and uses its token to take its place in the transfer back. Our server keeps that place for up to 30 seconds after a connection drops without closing, and a page that closes frees it at once. If the page doesn't come back in time, the transfer ends as a lost connection. The repeated join shows our server that this transfer's connection dropped, and when. A page that takes its place back shows it that its new IP address belongs to the same transfer. We have tested the recovery only in Chromium, with a route cut for about 6 to 8 seconds; Firefox and Safari are untested. We have tested taking a place back with a connection cut inside the browser, not yet with a real change of network.",
           "The first setup message each browser sends says which version of the transfer format its page uses. If the versions differ, the browsers don't connect and nothing about the file is sent. Pages that have this check then say which of the two needs a reload. Every page of a release sends the same version, so the version reveals nothing about the transfer.",
         ],
       },
@@ -1058,7 +1058,7 @@ export const en = {
           "The link is the key. Anyone who gets a link can open the file or shared secret behind it until the link has been used. Send each link only to the person it is for, over a channel you trust.",
           "Your browser runs the code our server sends it. A server that sent different code could read files, and could skip the safety number. The code is public, but browsers can't yet check that what they got matches it.",
           "The sender's name is typed by the sender and not verified.",
-          "The other browser sees your IP address. Each browser asks our relay for its public address, so the relay sees both IP addresses and can usually tell that they belong together. The networks on the way, and our relay when the file goes through it, also see when the transfer happens and roughly how big the file is. Our server sees both IP addresses, which recipient connects to which sender and when, and how many recipients a sender has. If a transfer's connection drops and the recipient's page asks our server again, it sees that too, and when. So it learns who sends to whom, though not what.",
+          "The other browser sees your IP address. Each browser asks our relay for its public address, so the relay sees both IP addresses and can usually tell that they belong together. The networks on the way, and our relay when the file goes through it, also see when the transfer happens and roughly how big the file is. Our server sees both IP addresses, which recipient connects to which sender and when, and how many recipients a sender has. If a transfer's connection drops and the recipient's page asks our server again, it sees that too, and when. If a page's connection to our server drops and the page takes its place back, it sees that the new IP address belongs to the same transfer. So it learns who sends to whom, though not what.",
           "Malware on either computer can read the file before it is encrypted or after it is decrypted.",
           "When the recipient copies a shared secret, it goes to the device's clipboard, where clipboard history, clipboard sync to other devices and other apps can read it. Once a shared secret has been shown, Fidant can't reach it: it can't take it back or delete it.",
           "Fidant has not been independently audited yet.",
@@ -1308,6 +1308,10 @@ export const en = {
               "direct,relay",
               "While our relay is available: credentials for it, made for this pair of browsers, in memory while the page is open. A relay connection can start with them for 5 minutes.",
             ],
+            [
+              "",
+              "Once a recipient's connection opens: a random token from our server for that link, in this tab's memory only, so the page can take its place back if its connection to our server drops. A new one replaces it each time the page takes its place back. It stays until the page's next connection to our server uses it, the link connects again or you close the tab.",
+            ],
           ],
         },
         channel: {
@@ -1331,6 +1335,10 @@ export const en = {
             [
               "direct,relay",
               "While our relay is available, it makes relay credentials for this pair of browsers, with which a relay connection can start for 5 minutes, and sends them to both pages without keeping them. It makes new ones each time the recipient's page asks again after a dropped route.",
+            ],
+            [
+              "",
+              "Once the browsers' connection opens: a random token for each page, so a page whose connection to our server drops can take its place in the transfer back. If a page's connection drops without closing, its place, for up to 30 seconds. The tokens are never logged.",
             ],
           ],
         },
@@ -1379,6 +1387,10 @@ export const en = {
             [
               "",
               "If the route between the browsers drops during the transfer and the recipient's page asks our server again: one more line that a recipient joined, or that it was refused as busy if the link had 10 connection attempts in that half minute, or, if the sender had just given up, one that it joined and one that the sender refused it, and lines for the new setup messages. Together they show that this link's connection dropped, and when. They don't show why, on whose side or whether it came back.",
+            ],
+            [
+              "",
+              "If a page's connection to our server drops during the transfer and the page connects again: a line that it took its place back, or that it was refused. It shows that a page's connection dropped, and when, not whose.",
             ],
           ],
         },
@@ -1474,6 +1486,10 @@ export const en = {
               "direct,relay",
               "While our relay is available: credentials for it, made for this pair of browsers, in memory while the page is open. A relay connection can start with them for 5 minutes.",
             ],
+            [
+              "",
+              "Once the connection opens: a random token from our server, in the page's memory only, so the page can take its place back if its connection to our server drops. A new one replaces it each time the page takes its place back; it is gone when the transfer ends or the tab closes.",
+            ],
             ["", "Their theme and language choice, in the browser's local storage, until cleared."],
           ],
         },
@@ -1533,9 +1549,9 @@ export const en = {
         ],
         [
           "The file or secret travels",
-          "Nothing of it. Your page reports the route once, as it first opened: direct, STUN, relay or failed. If the route drops and the recipient's page asks again, that it asked, which shows that the connection dropped.",
-          "Nothing.",
-          "The route. If the recipient's page asked again after a dropped route: that a recipient joined or was refused as busy, or, if the sender had just given up, joined and was then refused by the sender, and the size of each new setup message.",
+          "Nothing of it. Your page reports the route once, as it first opened: direct, STUN, relay or failed. If the route drops and the recipient's page asks again, that it asked, which shows that the connection dropped. If a page's connection to our server drops and the page takes its place back, that it came back, and from which IP address.",
+          "A random token for each page, so a page whose connection to our server drops can take its place back. If a page's connection drops without closing, its place, for up to 30 seconds.",
+          "The route. If the recipient's page asked again after a dropped route: that a recipient joined or was refused as busy, or, if the sender had just given up, joined and was then refused by the sender, and the size of each new setup message. If a page tried to take its place back: that it did, or was refused.",
           "On the relay route, the encrypted packets, which it forwards and doesn't store. Both IP addresses whenever the browsers have added the relay. If the route drops, each browser can ask for its public address again, and browsers that had added the relay may reserve relay addresses again.",
         ],
         [
@@ -1610,7 +1626,7 @@ export const en = {
       ],
       [
         "When a transfer's connection drops",
-        "If the connection between the two browsers drops during a transfer, the recipient's page asks our server to help them find a route again. So we see that this transfer's connection dropped, and when. Our log notes it as one more line that a recipient joined or was refused, and the sizes of the new setup messages. We don't see why it dropped or how far the transfer had got.",
+        "If the connection between the two browsers drops during a transfer, the recipient's page asks our server to help them find a route again. So we see that this transfer's connection dropped, and when. Our log notes it as one more line that a recipient joined or was refused, and the sizes of the new setup messages. We don't see why it dropped or how far the transfer had got. If a page's connection to our server drops too, as when a laptop changes network, the page connects again and takes its place in the transfer back. Then we also see that its new IP address belongs to the same transfer. Our log notes that a page took its place back, or was refused.",
       ],
     ] as ReadonlyArray<readonly [string, string]>,
     keepHeading: "What we keep",

@@ -52,7 +52,24 @@
 //   it still saw the secret, so the card gets a fresh plain link and the page
 //   hosts that instead (reducer `email`); only the page's own `failed`, when
 //   its socket was closed and nothing was sent, keeps the first link. A
-//   reconnect never hosts an emailed link again (reducer `server-lost`).
+//   reconnect never hosts an emailed link again (reducer `server-lost`),
+//   except one whose attempt the new socket takes back (below).
+// - Once a recipient's connection opened, the server sends `resume` with a
+//   token for the sender's side of that attempt (decision 0033), kept only in
+//   memory, per link and attempt, and replaced by each new one. A dropped
+//   socket leaves a recipient whose attempt has a token as it is (reducer
+//   `server-lost` with `armed`): the server holds the attempt and its email
+//   binding. The new socket first sends `resume` for each such attempt, once
+//   per token, and sends `host` only once the server answered them all, so a
+//   link the server refused is never hosted on it. A `resume` with a token
+//   keeps the attempt; one without, or a socket that closes before the
+//   answer, makes the reducer do what `server-lost` would have done
+//   (`resume-refused`).
+// - A socket can die without closing, when the network under it changes. So
+//   when an open connection goes "disconnected", the page sends the same
+//   `host` again: on a dead socket the write draws a reset that closes it,
+//   and the new socket takes the attempts back. On a live one the server
+//   changes nothing and logs nothing.
 //
 // Names, the file or text and link secrets stay in this tab. The server only ever
 // gets link IDs, attempt IDs, opaque sealed signals, refusal reasons,
@@ -83,6 +100,7 @@ import { askToNotify, notify, notifyPermission } from "../lib/notify.ts";
 import { createSenderPeer, type OpenPath, type Peer } from "../lib/peer.ts";
 import { hashFile, sendFile } from "../lib/send-file.ts";
 import {
+  armedLinks,
   CHECK_TIMEOUT_MS,
   emailBound,
   findRecipient,
@@ -274,8 +292,16 @@ export function SendPage({
   const connectionsRef = useRef(new Map<string, Connection>());
   const dispatchRef = useRef<(action: SenderAction) => void>(() => {});
   const refusalsRef = useRef(new Set<ReturnType<typeof setTimeout>>());
+  // Decision 0033: each link's unsent resume token and the attempt it is for, only in memory and
+  // never logged; and the links whose `resume` went out on this socket and wait for an answer.
+  const tokensRef = useRef(new Map<string, { attempt: string; token: string }>());
+  const resumingRef = useRef(new Set<string>());
 
   const host = () => {
+    // The last answer to a `resume` hosts, once the server said which links it gave back.
+    if (resumingRef.current.size > 0) {
+      return;
+    }
     signalingRef.current?.send({
       t: "host",
       links: hostedLinks(senderRef.current),
@@ -315,6 +341,7 @@ export function SendPage({
       return;
     }
     closeConnection(linkId);
+    tokensRef.current.delete(linkId);
     const joinedAt = performance.now();
     const connection: Connection = { abort: new AbortController(), early: [] };
     connectionsRef.current.set(linkId, connection);
@@ -362,6 +389,12 @@ export function SendPage({
       iceServers,
       check: recipient.check === true,
       onPath,
+      // The same `host` again surfaces a socket that died without closing (decision 0033).
+      onDisconnected: () => {
+        if (connectionsRef.current.get(linkId) === connection) {
+          host();
+        }
+      },
       onOpen(channel, info) {
         clearTimeout(connection.deadline);
         void info.path.then(onPath);
@@ -558,14 +591,33 @@ export function SendPage({
       clearTimeout(lost);
       lost = undefined;
       setLostServer(false);
+      // Take back each held attempt before `host`, which then names its link on this socket too.
+      const tokens = tokensRef.current;
+      const armed = armedLinks(senderRef.current, tokens);
+      for (const [linkId, { attempt, token }] of [...tokens]) {
+        tokens.delete(linkId);
+        if (
+          armed.includes(linkId) &&
+          signaling.send({ t: "resume", link: linkId, attempt, token })
+        ) {
+          resumingRef.current.add(linkId);
+        }
+      }
       host();
     });
     signaling.onClose(({ byClient }) => {
       if (byClient || disposed) {
         return;
       }
-      // The server forgot these joins with the socket; the recipients will join again.
-      dispatch({ type: "server-lost" });
+      // A `resume` this socket never answered may have been refused: the token is spent either way.
+      const unanswered = [...resumingRef.current];
+      resumingRef.current.clear();
+      for (const linkId of unanswered) {
+        dispatch({ type: "resume-refused", linkId });
+      }
+      // The server forgot these joins with the socket, except the attempts it holds for a takeover;
+      // the other recipients will join again.
+      dispatch({ type: "server-lost", armed: armedLinks(senderRef.current, tokensRef.current) });
       // Short drops (a server restart) reconnect quietly.
       lost ??= setTimeout(() => setLostServer(true), LOST_AFTER_MS);
     });
@@ -599,6 +651,27 @@ export function SendPage({
           };
           connection.pendingLeft = apply;
           void connection.relayed.then(() => connection.pendingLeft === apply && apply());
+          break;
+        }
+        case "resume": {
+          const linkId = message.link;
+          const answered = resumingRef.current.has(linkId);
+          if (message.token !== undefined) {
+            // A token for the attempt in progress: from its arming, or the answer to our `resume`.
+            if (findRecipient(senderRef.current, linkId)?.attempt === message.attempt) {
+              tokensRef.current.set(linkId, { attempt: message.attempt, token: message.token });
+            }
+          } else if (answered) {
+            // The link still counts as waiting, so the reducer's change hosts nothing yet, and
+            // the `host` below leaves out the link it unbound.
+            dispatch({ type: "resume-refused", linkId });
+          }
+          if (answered) {
+            resumingRef.current.delete(linkId);
+            if (resumingRef.current.size === 0) {
+              host();
+            }
+          }
           break;
         }
         case "hello":
@@ -646,17 +719,24 @@ export function SendPage({
     };
     window.addEventListener("beforeunload", onBeforeUnload);
     // Once the page is really going, close the peers so recipients hear it now, not when ICE
-    // consent runs out about 15 s later.
-    const onPageHide = () => {
+    // consent runs out about 15 s later. Unless the page may come back from the back-forward
+    // cache, also close signaling with 1000, so the server frees every attempt at once instead
+    // of holding it for a takeover (0033).
+    const onPageHide = (event: PageTransitionEvent) => {
       clearRefusals();
       for (const linkId of [...connectionsRef.current.keys()]) {
         closeConnection(linkId);
+      }
+      if (!event.persisted) {
+        signaling.close();
       }
     };
     window.addEventListener("pagehide", onPageHide);
 
     return () => {
       disposed = true;
+      tokensRef.current.clear();
+      resumingRef.current.clear();
       clearTimeout(lost);
       clearTimeout(rehost);
       clearRefusals();
