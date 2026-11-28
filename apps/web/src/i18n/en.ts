@@ -1300,7 +1300,7 @@ export const en = {
             ],
             [
               "",
-              "The tab's icon as it last was, a green dot while a transfer was open or a check once it was done, in the browser's store of page icons beside its history, until you clear it.",
+              "The tab's icon as it last was, a green dot while a transfer was open or a check once it was done, in the browser's store of page icons, beside the history entry of each page this tab showed, until you clear history.",
             ],
             [
               "",
@@ -1470,7 +1470,7 @@ export const en = {
           name: "The recipient's browser",
           kept: "Mostly until the tab closes",
           never:
-            "Fidant saves no key on their device, apart from what the browser's history keeps.",
+            "Fidant saves no key on their device, apart from what the browser keeps with its history: the link, and the tab's icon stored against it.",
           lines: [
             [
               "",
@@ -1498,7 +1498,7 @@ export const en = {
             ],
             [
               "",
-              "The tab's icon as it last was, a green dot while the transfer was open or a check once it arrived, in the browser's store of page icons beside the link in its history, until cleared.",
+              "The tab's icon as it last was, a green dot while the transfer was open or a check once it arrived, in the browser's store of page icons, beside the history entry of each page that tab showed, the link included, until history is cleared.",
             ],
             ["", "Their theme and language choice, in the browser's local storage, until cleared."],
           ],
