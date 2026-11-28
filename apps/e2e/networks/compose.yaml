@@ -3,7 +3,7 @@
 #   site-a 10.89.1.0/24: router-a (.2), net-a1 (.11), net-a2 (.12)
 #   site-b 10.89.2.0/24: router-b (.2), net-b1 (.11)
 #   public 198.51.100.0/24 (TEST-NET-2): router-a (.2), router-b (.3), coturn (.20), box (.30),
-#     relay (.40), alb (.50), pages (.60)
+#     relay (.40), alb (.50), pages (.60); .4 is kept free for router-b's renumbered address
 #   lb 10.89.3.0/24, internal: alb (.2), signal (.10)
 #
 # Each browser-xx shares the network namespace of net-xx, whose default route is its site's
