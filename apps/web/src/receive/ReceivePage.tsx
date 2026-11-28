@@ -53,7 +53,7 @@
 //   `join` re-arms the connect timeout, so the server decides when waiting
 //   ends (decision 0018). `refused: unknown` always ends the attempt.
 // - Once the connection opened, the server sends `resume` with a token for
-//   this side of the attempt (decision 0032), kept only in memory and replaced
+//   this side of the attempt (decision 0033), kept only in memory and replaced
 //   by each new one. While the page holds a token it has not sent, a dropped
 //   signaling socket does neither of the above: the client opens a new socket,
 //   which sends `resume` with the token instead of `gate` or `join`, once per
@@ -431,7 +431,7 @@ export function ReceivePage({
     let joinSent = false;
     /** The token the last `join` carried, so a `starting` refusal can send the same `join` again. */
     let joinToken: string | undefined;
-    // Taking this attempt back on a new socket (decision 0032). The resume token lives only here,
+    // Taking this attempt back on a new socket (decision 0033). The resume token lives only here,
     // in memory: never in storage, the address or a log. Sending it uses it up.
     let resumeToken: string | undefined;
     /** From a close with a token until the server answers the `resume`: no `join` goes out meanwhile. */
@@ -483,7 +483,7 @@ export function ReceivePage({
         ask();
       }
     });
-    /** Goes on without a socket that can take the attempt back, as before decision 0032. */
+    /** Goes on without a socket that can take the attempt back, as before decision 0033. */
     const without = (hasToken: boolean) => {
       switch (
         onSocketClose({
@@ -870,7 +870,7 @@ export function ReceivePage({
     // Once the page is really going, close the peer so the sender hears it now, not when ICE
     // consent runs out about 15 s later. Unless the page may come back from the back-forward
     // cache, also close signaling with 1000, so the server frees the attempt at once instead of
-    // holding it for a takeover (0032).
+    // holding it for a takeover (0033).
     const onPageHide = (event: PageTransitionEvent) => {
       attemptRef.current?.peer?.close();
       if (!event.persisted) {

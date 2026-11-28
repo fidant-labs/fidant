@@ -191,7 +191,7 @@ export const sv: Messages = {
         heading: "Det här lämnas kvar",
         body: [
           "Vi ser aldrig din fil, dess namn eller nyckeln som låser upp den. Vårt relä ser aldrig nyckeln alls.",
-          "Vår server och vårt relä har det de ser i minnet eller i korta loggar. Några spår finns också kvar i de två webbläsarna, och mottagaren har filen.",
+          "Vår server och vårt relä har det de ser i minnet eller i korta loggar, förutom månatliga trafiksummor. Några spår finns också kvar i de två webbläsarna, och mottagaren har filen.",
         ],
       },
       encryption: {
@@ -951,7 +951,7 @@ export const sv: Messages = {
         body: [
           "Den som kan se den krypterade trafiken, till exempel nätverken på vägen eller vårt relä, ser hur stora ramarna är. Därför avrundas storleken uppåt med metoden Padmé, som lägger till högst 12 %, och sedan till hela delar. Alla ramar med fildata är lika stora, och utfyllnaden är nollor som mottagaren kontrollerar. En nedladdning som fortsätter efter en bruten anslutning skickar bara resten, i ramar av samma storlekar, så den som ser båda försöken kan lägga ihop dem till minst den avrundade storleken för en hel överföring, mer om några delar skickades två gånger.",
           "Den exakta storleken finns bara i de krypterade META och END. META är alltid lika stor, så inte heller filnamnets längd syns.",
-          "En delad hemlighet är högst 32 KiB, och varje delad hemlighet fylls ut till exakt en del. Appen ser till det: om en anslutning bara tillåter meddelanden som är för små för en del på 32 KiB skickas ingenting över den, och avsändaren ser att hemligheten inte skickades. Med alla webbläsare vi testade i november 2026 (Chromium, Firefox och WebKit) är delen 48 KiB. Så varje delad hemlighet ser likadan ut på nätet, oavsett längd, och likadan som vilken fil som helst på upp till 48 KiB som skickas i ett försök. En fil vars nedladdning fortsätter efter ett avbrott behöver ibland ingen del alls i det nya försöket, vilket aldrig händer en delad hemlighet, eftersom den alltid börjar om.",
+          "En delad hemlighet är högst 32 KiB, och varje delad hemlighet fylls ut till exakt en del. Appen ser till det: om en anslutning bara tillåter meddelanden som är för små för en del på 32 KiB skickas hemligheten inte över den, och avsändaren ser att den inte skickades. Utan kontrollnummer skickas ingenting alls över en sådan anslutning. Med kontrollnummer jämför de två först numret, som för en fil, så den som har länken kan inte skilja en hemlighet från en fil innan båda har bekräftat. Med alla webbläsare vi testade i november 2026 (Chromium, Firefox och WebKit) är delen 48 KiB. Så varje delad hemlighet ser likadan ut på nätet, oavsett längd, och likadan som vilken fil som helst på upp till 48 KiB som skickas i ett försök. En fil vars nedladdning fortsätter efter ett avbrott behöver ibland ingen del alls i det nya försöket, vilket aldrig händer en delad hemlighet, eftersom den alltid börjar om.",
         ],
       },
       travel: {
@@ -1588,7 +1588,7 @@ export const sv: Messages = {
       ],
     ],
     keepHeading: "Vad vi sparar",
-    keep: "Vi har inga konton, ingen databas över personer eller överföringar, inga cookies och ingen spårning. När avsändarens sida har stängts sparas ingenting om dig, inom högst två minuter, förutom loggraderna nedan och en relälogg medan vi åtgärdar ett fel eller stoppar missbruk.",
+    keep: "Vi har inga konton, ingen databas över personer eller överföringar, inga cookies och ingen spårning. När avsändarens sida har stängts sparas ingenting om dig, inom högst två minuter, förutom loggraderna nedan, en relälogg medan vi åtgärdar ett fel eller stoppar missbruk, och våra månatliga trafiksummor. Summorna räknar ihop all trafik in och ut genom vår server och vårt relä, och vi sparar dem i upp till 15 månader. De pekar inte ut någon överföring. Men vi sparar en ny summa var 5:e minut, så på ett lugnt relä kan skillnaden mellan två summor visa ungefär hur stor en överföring var och när den skedde.",
     logFields,
     logRetention: "Loggraderna raderas efter 30 dagar.",
     relayLog:

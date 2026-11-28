@@ -1434,7 +1434,6 @@ test("every way a checked attempt ends unconfirmed counts", () => {
         { type: "dropped", linkId },
       ],
     ],
-    ["unsendable", (linkId) => [{ type: "unsendable", linkId }]],
     ["a refused relay", (linkId) => [{ type: "path", linkId, attempt: A, path: "relay" }]],
     ["server-lost", () => [{ type: "server-lost" }]],
   ];
@@ -1457,6 +1456,45 @@ test("a left, timeout or drop that locks the link refuses and closes it", () => 
     { type: "refuse", linkId, attempt: B, reason: "drop" },
     { type: "close", linkId },
   ]);
+});
+
+test("a check recipient refused as too small after both confirmed doesn't count", () => {
+  const { state: s0, linkId } = withChecked();
+  const checked = run(
+    s0,
+    joined(linkId, A),
+    { type: "channel-open", linkId },
+    { type: "checked", linkId },
+  ).state;
+  const failed = update(checked, { type: "unsendable", linkId });
+  const recipient = findRecipient(failed.state, linkId);
+  assert.equal(recipient?.status, "failed");
+  assert.equal(recipient?.error, TOO_SMALL_FOR_TEXT);
+  assert.equal(recipient?.checkFailures, undefined);
+  assert.deepEqual(failed.effects, [
+    { type: "refuse", linkId, attempt: A, reason: "drop" },
+    { type: "close", linkId },
+  ]);
+  assert.deepEqual(hostedLinks(failed.state), [linkId]);
+
+  const retry = update(failed.state, joined(linkId, B));
+  assert.equal(statusOf(retry.state, linkId), "connecting");
+  assert.equal(findRecipient(retry.state, linkId)?.error, undefined);
+  assert.deepEqual(retry.effects, [{ type: "start", linkId, attempt: B, iceServers: [] }]);
+});
+
+test("a check recipient is never refused as too small before both confirmed", () => {
+  const { state: s0, linkId } = withChecked();
+  const connecting = run(s0, joined(linkId, A)).state;
+  const checking = update(connecting, { type: "channel-open", linkId }).state;
+  for (const [label, state] of [
+    ["connecting", connecting],
+    ["checking", checking],
+  ] as const) {
+    const result = update(state, { type: "unsendable", linkId });
+    assert.equal(result.state, state, label);
+    assert.deepEqual(result.effects, [], label);
+  }
 });
 
 test("a passed check does not count", () => {

@@ -16,7 +16,7 @@ import {
 import { readPeerConnections, recordPeerConnections } from "../src/ice.ts";
 import { serverStderrLog, serverStdoutLog } from "../src/paths.ts";
 
-// Decision 0032: a page whose signaling socket drops mid-transfer, while the server still holds
+// Decision 0033: a page whose signaling socket drops mid-transfer, while the server still holds
 // the old socket open, connects again, takes its side of the attempt back with its resume token,
 // and the route that dropped with it is recovered by the ICE restart of decision 0031 on the same
 // connection. The socket is cut in Playwright's route, so the server sees nothing until the new
@@ -122,7 +122,7 @@ for (const lost of ["recipient", "sender"] as const) {
       await dropRoute();
     } else {
       // A sender that changed networks gets its socket back before the recipient's browser
-      // notices the route is gone (decision 0032, A2 and A7).
+      // notices the route is gone (decision 0033, A2 and A7).
       await expect.poll(async () => (await tokens("sender")).length).toBe(2);
       await dropRoute();
     }

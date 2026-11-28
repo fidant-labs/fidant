@@ -29,7 +29,7 @@
 //
 // The sender's connection going "disconnected" after the channel opened only
 // calls onDisconnected: its page re-sends `host`, so a dead signaling socket
-// surfaces and can take its attempt back (decision 0032).
+// surfaces and can take its attempt back (decision 0033).
 //
 // Until then the restart signals follow the fallback's rules: each is taken at
 // most once, and ignored once ICE is connected or the channel is open. From its
@@ -57,10 +57,12 @@
 // Each side makes a fresh DTLS certificate for every connection. The recipient
 // commits to its certificate's fingerprint before the sender's offer exists, so
 // someone in the middle must fix both certificates before it can learn the
-// safety number they give (check.ts). Every fingerprint line of an SDP, in any
-// spelling, must be the exact `a=fingerprint:sha-256 <value>` form and all must
-// name one certificate; after setRemoteDescription the page reads the
-// fingerprint back from the browser's own copy and refuses any difference.
+// safety number they give (check.ts). Before its first description the page
+// waits for a getStats round trip, because Chromium was seen handing the
+// certificate to the transport asynchronously. Every fingerprint line of an
+// SDP, in any spelling, must be the exact `a=fingerprint:sha-256 <value>` form
+// and all must name one certificate; after setRemoteDescription the page reads
+// the fingerprint back from the browser's own copy and refuses any difference.
 // `check` says whether the sender's page will ask for the safety number; the
 // server can flip it only for an emailed link, and then the two pages disagree
 // and nothing about the file is shown (see frames.ts).
@@ -542,6 +544,7 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
       // onOpen must not wait for the path: the other side may send at once,
       // and messages that arrive before onmessage is set are lost.
       // Chromium has been seen to fire open twice on one channel; a second reader fails the transfer.
+      // Between the two, readyState reads "connecting", which channel-open.ts waits out.
       if (!closed && !opened) {
         opened = true;
         options.onOpen(next, {
@@ -952,6 +955,12 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
       }
       sendSignal({ kind: "commit", hash: await commitFingerprint(ownFingerprint) }, true);
     }
+    // Chromium was seen handing the certificate to the transport asynchronously:
+    // an offer applied before that fails with "Fingerprint provided but no
+    // identity available", and the connection can't recover. getStats queues
+    // behind the hand-off (FID-194). A browser whose getStats rejects still sets
+    // up, and a real identity failure still surfaces in describe().
+    await next.getStats().catch(() => undefined);
   }
 
   sendSignal(versionMarker(FRAME_VERSION), true);

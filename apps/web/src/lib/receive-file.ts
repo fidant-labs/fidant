@@ -46,6 +46,7 @@
 // No DOM or UI here beyond the data channel API, so tests can drive it with a
 // fake channel. The file name only ever reaches onOffer or onResume.
 
+import { sendWhenOpen, whenOpen } from "./channel-open.ts";
 import {
   ChecksumMismatchError,
   decodeInit,
@@ -193,15 +194,28 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
   let saidDiffers = false;
   let lastWrite: Promise<void> = Promise.resolve();
 
+  // A channel that won't open again is a lost connection, not bad data from the
+  // sender: aborting makes classify() say so, which keeps a part for "Try again".
+  const lost = (error: unknown): never => {
+    abort.abort(error);
+    throw error;
+  };
+
   try {
-    if (channel.readyState !== "open") {
-      throw new Error("data channel is not open");
+    // Only a channel that reads "connecting" after open waits; an open one goes on at once.
+    try {
+      const reopened = whenOpen(channel, signal);
+      if (reopened) {
+        await reopened;
+      }
+    } catch (error) {
+      lost(error);
     }
 
     const send = (frame: Uint8Array<ArrayBuffer>) => {
       signal.throwIfAborted();
       assertFrameFits(maxMessageSize, frame.byteLength);
-      channel.send(frame);
+      return sendWhenOpen(channel, frame, signal).catch(lost);
     };
 
     const transferId = decodeInit(await inbox.takeRaw());
@@ -273,7 +287,7 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
     const answer = async (): Promise<Sink | undefined> => {
       const chosen = await abortable(decision, signal);
       part = chosen && { meta, verifier, sink: chosen };
-      send(
+      await send(
         await (chosen
           ? writer.encrypt(RecipientKind.ACCEPT, encodeAccept(verifier.offset))
           : writer.encrypt(RecipientKind.DECLINE, new Uint8Array())),
@@ -286,7 +300,7 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
     }
     let granted = CREDIT_WINDOW_CHUNKS;
     let written = 0;
-    send(await writer.encrypt(RecipientKind.CREDIT, encodeCredit(granted)));
+    await send(await writer.encrypt(RecipientKind.CREDIT, encodeCredit(granted)));
 
     let reportedAt = 0;
     let sha256: Uint8Array | undefined;
@@ -303,7 +317,7 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
         written++;
         if (written + CREDIT_WINDOW_CHUNKS - granted >= CREDIT_WINDOW_CHUNKS / 2) {
           granted = written + CREDIT_WINDOW_CHUNKS;
-          send(await writer.encrypt(RecipientKind.CREDIT, encodeCredit(granted)));
+          await send(await writer.encrypt(RecipientKind.CREDIT, encodeCredit(granted)));
         }
         const now = Date.now();
         if (now - reportedAt >= PROGRESS_INTERVAL_MS) {
@@ -320,7 +334,10 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
           // Discard the file first, then tell the sender what arrived.
           part = undefined;
           await sink.abort().catch(() => {});
-          send(await writer.encrypt(RecipientKind.RECEIPT, error.actual));
+          // The mismatch is the outcome even if this RECEIPT can't go out.
+          try {
+            await send(await writer.encrypt(RecipientKind.RECEIPT, error.actual));
+          } catch {}
           throw new ReceiveError("checksum", error.message, { cause: error });
         }
       } else {
@@ -331,7 +348,7 @@ export async function receiveFile(options: ReceiveFileOptions): Promise<ReceiveR
 
     const blob = await saving(sink.close());
     part = undefined;
-    send(await writer.encrypt(RecipientKind.RECEIPT, sha256));
+    await send(await writer.encrypt(RecipientKind.RECEIPT, sha256));
     return { type: "received", sha256, blob };
   } catch (error) {
     const failure = classify(error, signal);

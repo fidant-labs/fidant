@@ -39,7 +39,7 @@ export const SIGNAL_PATH = "/signal";
 
 export const HEARTBEAT_MS = 30_000;
 
-/** How long the server holds a side of an armed attempt after its socket closed (decision 0032). */
+/** How long the server holds a side of an armed attempt after its socket closed (decision 0033). */
 export const TAKEOVER_MS = 30_000;
 
 /** Caps on open sockets, incoming messages, bytes queued to a socket, and notices and codes emailed. Tests lower them through the `limits` option. */
@@ -122,9 +122,9 @@ type Peer = {
   notices: number[];
 };
 
-/** A side of an armed attempt whose socket closed, kept for a takeover (decision 0032). */
+/** A side of an armed attempt whose socket closed, kept for a takeover (decision 0033). */
 type Hold = {
-  /** The closed socket's state, kept so the hold's end can run what its close did before 0032. */
+  /** The closed socket's state, kept so the hold's end can run what its close did before 0033. */
   peer: Peer;
   timer: ReturnType<typeof setTimeout>;
   /** Heartbeats left before the socket would have been ended had it stayed open. */
@@ -132,7 +132,7 @@ type Hold = {
 };
 
 /**
- * An attempt whose data channel opened, as the sender reported with its `path` (decision 0032).
+ * An attempt whose data channel opened, as the sender reported with its `path` (decision 0033).
  * The tokens are never logged.
  */
 type Armed = {
@@ -175,6 +175,7 @@ function short(link: string): string {
 }
 
 const STATUS_TEXT = {
+  400: "Bad Request",
   403: "Forbidden",
   404: "Not Found",
   429: "Too Many Requests",
@@ -217,11 +218,21 @@ function prefix64(ip: string): string {
     .join(":")}::/64`;
 }
 
+function trustsForwarding(remote: string | undefined, proxies: BlockList | undefined): boolean {
+  const ip = normalize(remote ?? "");
+  const family = isIP(ip);
+  return (
+    ip === "::1" ||
+    ip.startsWith("127.") ||
+    (proxies !== undefined && family !== 0 && proxies.check(ip, family === 4 ? "ipv4" : "ipv6"))
+  );
+}
+
 /**
  * The address a socket counts against for the per-address cap. X-Forwarded-For is trusted only
- * from loopback (a reverse proxy on the same host) or a peer in `proxies`, and only its rightmost
- * entry, which that proxy wrote. IPv6 clients are keyed by their /64, since one host usually owns
- * a whole /64. The result is used only as a map key and is never logged.
+ * from a peer `trustsForwarding` accepts, and only its rightmost entry, which that proxy wrote.
+ * IPv6 clients are keyed by their /64, since one host usually owns a whole /64. The result is used
+ * only as a map key and is never logged.
  */
 export function clientAddress(
   remote: string | undefined,
@@ -229,12 +240,7 @@ export function clientAddress(
   proxies?: BlockList,
 ): string {
   let ip = normalize(remote ?? "");
-  const family = isIP(ip);
-  if (
-    ip === "::1" ||
-    ip.startsWith("127.") ||
-    (proxies !== undefined && family !== 0 && proxies.check(ip, family === 4 ? "ipv4" : "ipv6"))
-  ) {
+  if (trustsForwarding(ip, proxies)) {
     const header = Array.isArray(forwardedFor) ? forwardedFor.join(",") : (forwardedFor ?? "");
     const forwarded = normalize(header.split(",").at(-1)?.trim() ?? "");
     if (isIP(forwarded) !== 0) {
@@ -353,6 +359,15 @@ export function attachSignaling(
     if (peers.size >= limits.sockets) {
       log("upgrade-rejected", { reason: "full" });
       rejectUpgrade(socket, 503);
+      return;
+    }
+    // Counted from rawHeaders, because req.headers joins repeated lines into one.
+    const forwardedLines = req.rawHeaders.filter(
+      (name, i) => i % 2 === 0 && name.toLowerCase() === "x-forwarded-for",
+    ).length;
+    if (forwardedLines > 1 && trustsForwarding(req.socket.remoteAddress, options.proxies)) {
+      log("upgrade-rejected", { reason: "forwarded" });
+      rejectUpgrade(socket, 400);
       return;
     }
     const address = clientAddress(
@@ -479,7 +494,7 @@ export function attachSignaling(
     }
     for (const link of next) {
       hosts.set(link, socket);
-      // A sender that took its attempt over sets its relay choice for it from here on (0032).
+      // A sender that took its attempt over sets its relay choice for it from here on (0033).
       const record = armed.get(link);
       if (record) {
         record.turn = turn;
@@ -506,7 +521,7 @@ export function attachSignaling(
 
   /** Stops hosting a link, drops its email state and tells its guest, if any, that the host is gone. */
   function unhost(link: string): void {
-    // A held guest leaves as its close did before 0032, so it gets no host-gone.
+    // A held guest leaves as its close did before 0033, so it gets no host-gone.
     const held = disarm(link)?.guestHeld;
     if (held) {
       leave(link, held.peer);
@@ -557,7 +572,7 @@ export function attachSignaling(
     const paired = pairings.get(link) ?? 0;
     const bound = guests.get(link);
     // The bound recipient asks for a restart (0031). Its sender's side may be held, or its
-    // socket may only look open, so a takeover of that side restarts ICE (0032).
+    // socket may only look open, so a takeover of that side restarts ICE (0033).
     const record = armed.get(link);
     if (record && bound === socket && record.attempt === attempt) {
       record.asked = true;
@@ -586,7 +601,7 @@ export function attachSignaling(
     peer.attempt = attempt;
     log("joined", { link: short(link) });
     // An armed attempt keeps the relay choice of the socket that hosted it until a new socket
-    // that took it over sends `host` (0032).
+    // that took it over sends `host` (0033).
     const turn = record?.turn ?? peers.get(hostSocket)?.turn ?? false;
     pair(link, attempt, turn, socket, hostSocket);
   }
@@ -621,7 +636,7 @@ export function attachSignaling(
 
   /**
    * Lets a new socket take one side of an armed attempt with that side's current token (decision
-   * 0032). Every refusal looks the same, so it tells nothing about which check failed.
+   * 0033). Every refusal looks the same, so it tells nothing about which check failed.
    */
   function resume(
     socket: WebSocket,
@@ -707,7 +722,7 @@ export function attachSignaling(
       error(socket, "not-on-link");
       return;
     }
-    // The other end left while this message was in flight, its side is held (0032), or it is
+    // The other end left while this message was in flight, its side is held (0033), or it is
     // not reading what it is sent.
     if (!target || !peers.has(target) || target.bufferedAmount > limits.bufferedBytes) {
       log("relay-dropped", { link: short(link), bytes: data.length });
@@ -740,7 +755,7 @@ export function attachSignaling(
     if (!guest || guestPeer?.attempt !== attempt) {
       return;
     }
-    // The refusal ends the attempt, and a held guest leaves as its close did before 0032.
+    // The refusal ends the attempt, and a held guest leaves as its close did before 0033.
     if (held) {
       leave(link, held.peer);
       return;
@@ -771,7 +786,7 @@ export function attachSignaling(
 
   /**
    * Arms the attempt of a link's bound guest once the sender's connection opened, and gives each
-   * side its own resume token (decision 0032). A later report for the same attempt changes nothing.
+   * side its own resume token (decision 0033). A later report for the same attempt changes nothing.
    * The report can come after a short transfer's guest already left, so it needs a bound guest.
    */
   function arm(socket: WebSocket, peer: Peer, link: string, path: ConnectionPath): void {
@@ -815,7 +830,7 @@ export function attachSignaling(
     return true;
   }
 
-  /** Ends a hold without a takeover: that side's close then does what it did before 0032. */
+  /** Ends a hold without a takeover: that side's close then does what it did before 0033. */
   function expire(link: string, side: "host" | "guest"): void {
     const record = armed.get(link);
     if (side === "host" && record?.hostHeld) {
@@ -835,7 +850,7 @@ export function attachSignaling(
     if (hostSocket) {
       send(hostSocket, { t: "left", link });
     }
-    // The attempt has ended, so a held sender's side is let go as its close did before 0032.
+    // The attempt has ended, so a held sender's side is let go as its close did before 0033.
     if (disarm(link)?.hostHeld) {
       unhost(link);
     }
@@ -1037,7 +1052,7 @@ export function attachSignaling(
     }
     // Only a socket that closed with no close frame, as when the network goes, is held. A page
     // that left (1000, or 1001 when its tab closes), a socket the server ended and a server that
-    // stops hold nothing (decision 0032).
+    // stops hold nothing (decision 0033).
     const held = code === 1006 && !ended.has(socket) && !stopping;
     if (peer.hosted.size > 0) {
       log("host-closed", { links: peer.hosted.size });

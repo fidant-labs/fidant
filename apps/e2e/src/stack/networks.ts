@@ -6,6 +6,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
+import { setTimeout as sleep } from "node:timers/promises";
 import { promisify } from "node:util";
 // ponytail: relative import, not a workspace dependency on the server, for two small functions.
 import { relaySecret, sealRelaySecret } from "../../../server/src/relay-secret.ts";
@@ -18,10 +19,11 @@ import type { RunningService, Service } from "./service.ts";
 // The simulated networks of networks/compose.yaml, and the server on their public network.
 
 const run = promisify(execFile);
+const composeFile = join(e2eDir, "networks", "compose.yaml");
 const compose = [
   "compose",
   "-f",
-  join(e2eDir, "networks", "compose.yaml"),
+  composeFile,
   ...(process.env.FIDANT_E2E_GHA_CACHE
     ? ["-f", join(e2eDir, "networks", "compose.gha-cache.yaml")]
     : []),
@@ -295,6 +297,102 @@ export function assertDocker(): void {
   }
 }
 
+// Must match `name:` in networks/compose.yaml (networks.test.ts checks).
+export const projectName = "fidant-e2e";
+
+/** One row of `docker compose ls --all --format json`. */
+type Project = { Name: string; Status: string; ConfigFiles: string };
+
+/**
+ * Another checkout's networks run that has containers: its compose file, and whether all of them
+ * are stopped. `Status` counts containers per state, like `running(9)`, `created(9)` while compose
+ * creates them, or `running(2), exited(7)`. The server container needs no check of its own: it
+ * starts after the project is up and stops before it.
+ */
+export function otherRun(
+  projects: Project[],
+  ownFile: string,
+): { file: string; stopped: boolean } | undefined {
+  const project = projects.find((p) => p.Name === projectName);
+  const files = project?.ConfigFiles.split(",") ?? [];
+  if (project && !files.includes(ownFile)) {
+    const states = project.Status.split(",").map((state) => state.trim().replace(/\(\d+\)$/, ""));
+    const stopped = states.every((state) => state === "exited" || state === "dead");
+    return { file: files[0] || "an unknown checkout", stopped };
+  }
+  return undefined;
+}
+
+const removeCommand = `\`docker rm -f ${serverName}; docker compose -p ${projectName} down --remove-orphans\``;
+
+/**
+ * Waits while another checkout's networks run is going, and fails when one has only stopped
+ * containers on two checks in a row, a dead run's, or still runs after `timeoutMs`. One check
+ * isn't enough: a run's own teardown passes through stopped containers on its way out. Runs can't
+ * overlap: they share container and network names, subnets and host ports, and setup removes what
+ * it finds, which would kill the other run. This checkout's own leftovers are a killed run's, and
+ * setup removes them. A run still building its images has no containers yet, so two runs started
+ * together, or two waiting for the same run, can still both go ahead.
+ */
+export async function waitForOtherRun({
+  list = listProjects,
+  log = (line: string) => console.log(line),
+  intervalMs = 10_000,
+  logEveryMs = 30_000,
+  timeoutMs = 15 * 60_000,
+}: {
+  list?: () => Project[];
+  log?: (line: string) => void;
+  intervalMs?: number;
+  logEveryMs?: number;
+  timeoutMs?: number;
+} = {}): Promise<void> {
+  const start = Date.now();
+  let logged: number | undefined;
+  let stoppedChecks = 0;
+  for (;;) {
+    const other = otherRun(list(), composeFile);
+    const waited = Date.now() - start;
+    if (!other) {
+      if (logged !== undefined) {
+        log(
+          `The other pnpm e2e:networks run ended after ${Math.round(waited / 1000)} s; starting.`,
+        );
+      }
+      return;
+    }
+    stoppedChecks = other.stopped ? stoppedChecks + 1 : 0;
+    if (stoppedChecks >= 2) {
+      throw new Error(
+        `A pnpm e2e:networks run from ${other.file} left stopped containers, on two checks ${Math.round(intervalMs / 1000)} s apart, and runs on one machine can't overlap. Remove them with ${removeCommand}.`,
+      );
+    }
+    if (waited >= timeoutMs) {
+      throw new Error(
+        `Another pnpm e2e:networks run, from ${other.file}, still runs after ${Math.round(timeoutMs / 60_000)} min of waiting. If it no longer runs, remove its containers with ${removeCommand}.`,
+      );
+    }
+    if (logged === undefined || Date.now() - logged >= logEveryMs) {
+      log(
+        `Waiting for another pnpm e2e:networks run, from ${other.file}, to end: runs on one machine can't overlap (${Math.round(waited / 1000)} s so far, gives up after ${Math.round(timeoutMs / 60_000)} min).`,
+      );
+      logged = Date.now();
+    }
+    await sleep(intervalMs);
+  }
+}
+
+function listProjects(): Project[] {
+  return (
+    JSON.parse(
+      execFileSync("docker", ["compose", "ls", "--all", "--format", "json"], {
+        encoding: "utf8",
+        timeout: 15_000,
+      }) || "[]",
+    ) ?? []
+  );
+}
+
 /** Removes the server container and everything compose made. Synchronous, so it can run on exit. */
 function down(): void {
   execFileSync("docker", ["rm", "-f", serverName], { stdio: "ignore" });
@@ -418,7 +516,8 @@ async function startNetworks(): Promise<RunningService> {
   ];
   const relaysFile = join(dir, "relays.json");
   try {
-    // Left over from a run that was killed.
+    // Left over from a run of this checkout that was killed: global setup's waitForOtherRun has
+    // waited out any other checkout's run, or refused it.
     down();
     await Promise.all([fetchImages(), timed("web build", buildPages(pagesDir))]);
     await timed(
@@ -519,7 +618,7 @@ export const dockerServer: Service = {
         const secretDir = dirname(env.TURN_SECRET_FILE ?? "");
         // --init: as PID 1 the server would ignore any signal it has no handler for, such as
         // SIGTERM before it listens, so tini takes PID 1 and forwards docker's signals to it.
-        // ponytail: one server container at a time; a second run on this machine replaces it.
+        // ponytail: one server container at a time; waitForOtherRun holds back a second checkout's run.
         return [
           "docker",
           "run",

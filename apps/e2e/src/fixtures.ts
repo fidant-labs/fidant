@@ -442,7 +442,7 @@ function logPeerFailures() {
     try {
       Reflect.apply(send, this, [data]);
     } catch (error) {
-      log(`channel send() threw in ${this.readyState}: ${describe(error)}`);
+      log(`channel ${channelTag(this)} send() threw in ${this.readyState}: ${describe(error)}`);
       throw error;
     }
     note(this, "out", data);
@@ -483,7 +483,7 @@ export const recipientRow = (sender: Page, name: string) =>
 export const delivered = (sender: Page, name: string) =>
   recipientRow(sender, name).getByText(`Delivered through ${name}'s link`);
 
-/** Chooses a file the send page accepts, by its path or as name, type and bytes, then waits for the page to move focus to "Your name" a frame later, which would otherwise take the text of a field being filled. */
+/** Chooses a file the send page accepts, by its path or as name, type and bytes, then waits for the page to move focus to "Your name" a frame later, which would otherwise take the text of a field being filled, and continues to step 2. */
 export async function chooseFile(
   page: Page,
   file: string | { name: string; mimeType: string; buffer: Buffer },
@@ -492,6 +492,19 @@ export async function chooseFile(
   await input.focus();
   await input.setInputFiles(file);
   await expect(page.getByLabel("Your name")).toBeFocused();
+  await continueToLinks(page);
+}
+
+/** Clicks Continue in step 1, which reveals step 2, and waits for the frame that focuses its name field. Step 2 is absent until then. */
+export async function continueToLinks(page: Page): Promise<void> {
+  const heading = page.getByRole("heading", { name: "Create a link for each person" });
+  await expect(heading).toHaveCount(0);
+  // Reduced motion makes the page jump to step 2 instead of gliding, so the next click does not wait for the scroll to settle.
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByRole("textbox", { name: "Who is it for?" })).toBeFocused();
+  await expect(heading).toBeInViewport();
+  await page.emulateMedia({ reducedMotion: null });
 }
 
 /** Runs in the page through addInitScript, so it may use nothing from this module: `cut()` closes its peers, `stalled` (set after `stallAt` CHUNKs) drops what its channels send, `held` queues it for `release()`, and `sent` counts frames by kind. */

@@ -99,7 +99,7 @@ export const ERROR_CODES = [
 export type ErrorCode = (typeof ERROR_CODES)[number];
 
 /** Why the server rejects a WebSocket upgrade. */
-export const UPGRADE_REJECT_REASONS = ["path", "origin", "full", "address"] as const;
+export const UPGRADE_REJECT_REASONS = ["path", "origin", "full", "forwarded", "address"] as const;
 export type UpgradeRejectReason = (typeof UPGRADE_REJECT_REASONS)[number];
 
 /** Every value the server may write in a log line's `reason` field. */
@@ -185,7 +185,7 @@ export type CodeMessage = { t: "code"; link: string; code: string; mark?: string
 
 /**
  * A page on a new socket takes its side of an attempt back after its old socket dropped
- * (decision 0032). `token` is the one the server last gave this page for that attempt and side;
+ * (decision 0033). `token` is the one the server last gave this page for that attempt and side;
  * it is never logged.
  */
 export type ResumeMessage = { t: "resume"; link: string; attempt: string; token: string };
@@ -258,7 +258,7 @@ export type TokenMessage = { t: "token"; link: string; token: string };
  * Gives a page the token that lets a new socket take its side of an attempt back, once the
  * attempt's connection opened and again after each takeover, which uses up the old one. Without
  * `token`, it refuses the page's `resume`, and the page carries on as if it had none (decision
- * 0032). The token is never logged.
+ * 0033). The token is never logged.
  */
 export type ResumeAnswerMessage = { t: "resume"; link: string; attempt: string; token?: string };
 

@@ -7,6 +7,7 @@ import {
   canaryFile,
   canaryKey,
   chooseFile,
+  continueToLinks,
   delivered,
   expect,
   fakeSavePicker,
@@ -2106,6 +2107,7 @@ test.describe("emailed links", () => {
     const sender = await demo.open("sender");
     await sender.goto("/send/secret");
     await sender.getByLabel("Your secret").fill(text);
+    await continueToLinks(sender);
     await sender.getByLabel("Email the link for me (less private)").check();
     const email = sender.getByLabel("Their email address");
     await expect(email).toHaveId("secret-recipient-email");

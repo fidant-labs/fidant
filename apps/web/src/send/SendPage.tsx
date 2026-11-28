@@ -24,8 +24,11 @@
 // - When the data channel opens, sendFile runs the transfer and reports
 //   accepted, progress, declined and receipt back to the reducer.
 // - In secret mode, a connection whose max message size can't carry every text in
-//   one chunk (textFitsOneChunk) gets nothing: reducer `unsendable` fails the
-//   recipient's card and refuses the joiner.
+//   one chunk (textFitsOneChunk) gets no META: reducer `unsendable` fails the
+//   recipient's card and refuses the joiner. Without the check that happens as
+//   the channel opens, before INIT; with it, sendFile sends INIT and runs the
+//   check first and ends with `too-small` once both confirmed, as a file would
+//   get that far, so a link's holder can't tell a secret from a file before that.
 // - A peer that closes on another frame version → `outdated`; onClose here, not the reducer,
 //   refuses the joiner at the join deadline, so a joiner still bound then is unbound as a silent one is.
 // - A peer that closes or fails before delivery → `dropped`; a data channel
@@ -52,7 +55,7 @@
 //   reconnect never hosts an emailed link again (reducer `server-lost`),
 //   except one whose attempt the new socket takes back (below).
 // - Once a recipient's connection opened, the server sends `resume` with a
-//   token for the sender's side of that attempt (decision 0032), kept only in
+//   token for the sender's side of that attempt (decision 0033), kept only in
 //   memory, per link and attempt, and replaced by each new one. A dropped
 //   socket leaves a recipient whose attempt has a token as it is (reducer
 //   `server-lost` with `armed`): the server holds the attempt and its email
@@ -113,7 +116,7 @@ import {
 } from "../lib/sender-state.ts";
 import { addRelay, NO_RELAYS } from "../lib/server-facts.ts";
 import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
-import { MAX_TEXT_LENGTH, textFile, textFitsOneChunk } from "../lib/text-secret.ts";
+import { MAX_TEXT_BYTES, MAX_TEXT_LENGTH, textFile, textFitsOneChunk } from "../lib/text-secret.ts";
 import {
   FILE_HREF,
   field,
@@ -222,6 +225,8 @@ export type SendPreview = {
   nameError?: ErrorOf<"nameError">;
   fromError?: ErrorOf<"fromError">;
   emailError?: boolean;
+  /** The sender clicked Continue, so step 2 shows. Defaults to whether the list has a link. */
+  continued?: boolean;
 };
 
 export function SendPage({
@@ -262,6 +267,8 @@ export function SendPage({
   const [allowRelay, setAllowRelay] = useState(true);
   const [textLength, setTextLength] = useState(0);
   const [canAskToNotify, setCanAskToNotify] = useState(false);
+  // Step 2 appears on Continue and stays: its links outlive any later change to step 1.
+  const [continued, setContinued] = useState(false);
   const [notifyAnswer, setNotifyAnswer] = useState<"on" | "blocked" | undefined>(undefined);
   // When the answer replaces the button, it takes the focus the button (or nothing) held.
   useEffect(() => {
@@ -285,7 +292,7 @@ export function SendPage({
   const connectionsRef = useRef(new Map<string, Connection>());
   const dispatchRef = useRef<(action: SenderAction) => void>(() => {});
   const refusalsRef = useRef(new Set<ReturnType<typeof setTimeout>>());
-  // Decision 0032: each link's unsent resume token and the attempt it is for, only in memory and
+  // Decision 0033: each link's unsent resume token and the attempt it is for, only in memory and
   // never logged; and the links whose `resume` went out on this socket and wait for an answer.
   const tokensRef = useRef(new Map<string, { attempt: string; token: string }>());
   const resumingRef = useRef(new Set<string>());
@@ -382,7 +389,7 @@ export function SendPage({
       iceServers,
       check: recipient.check === true,
       onPath,
-      // The same `host` again surfaces a socket that died without closing (decision 0032).
+      // The same `host` again surfaces a socket that died without closing (decision 0033).
       onDisconnected: () => {
         if (connectionsRef.current.get(linkId) === connection) {
           host();
@@ -392,7 +399,9 @@ export function SendPage({
         clearTimeout(connection.deadline);
         void info.path.then(onPath);
         // Judged by the longest text, so a refusal says nothing about this text's length.
-        if (text && !textFitsOneChunk(info.maxMessageSize)) {
+        // With the check on, sendFile refuses after both confirmed instead, so a
+        // link's holder can't tell a secret from a file before that.
+        if (text && !info.check && !textFitsOneChunk(info.maxMessageSize)) {
           dispatch({ type: "unsendable", linkId });
           return;
         }
@@ -428,6 +437,7 @@ export function SendPage({
           attempt,
           sha256: chosen.sha256,
           signal: connection.abort.signal,
+          ...(text && { minChunkBytes: MAX_TEXT_BYTES }),
           ...(confirm && {
             confirm,
             onChecked: () => {
@@ -445,6 +455,8 @@ export function SendPage({
               dispatch({ type: "declined", linkId });
             } else if (result.type === "receipt") {
               dispatch({ type: "receipt", linkId, match: result.match });
+            } else if (result.type === "too-small") {
+              dispatch({ type: "unsendable", linkId });
             }
           },
           () => {
@@ -709,7 +721,7 @@ export function SendPage({
     // Once the page is really going, close the peers so recipients hear it now, not when ICE
     // consent runs out about 15 s later. Unless the page may come back from the back-forward
     // cache, also close signaling with 1000, so the server frees every attempt at once instead
-    // of holding it for a takeover (0032).
+    // of holding it for a takeover (0033).
     const onPageHide = (event: PageTransitionEvent) => {
       clearRefusals();
       for (const linkId of [...connectionsRef.current.keys()]) {
@@ -759,6 +771,7 @@ export function SendPage({
     setFromError(preview.fromError ?? "");
     setEmailError(preview.emailError ?? false);
     setTextLength(preview.text?.length ?? 0);
+    setContinued(preview.continued ?? state.recipients.length > 0);
     // The box is not a controlled field, so its text is set here.
     const box = document.getElementById("secret-text");
     if (text && box instanceof HTMLTextAreaElement) {
@@ -927,7 +940,9 @@ export function SendPage({
   const barText = unfinished
     ? `${sendingText}. ${t.send.keepOpen}.`
     : `${doneText}. ${t.send.closeTab}.`;
-  const goToRecipients = () =>
+  const goToRecipients = () => {
+    setContinued(true);
+    // The frame comes after the render that adds step 2.
     requestAnimationFrame(() => {
       const target = document.getElementById(id("recipients"));
       if (target) {
@@ -935,6 +950,7 @@ export function SendPage({
       }
       document.getElementById(id("recipient-name"))?.focus({ preventScroll: true });
     });
+  };
 
   return (
     <Page>
@@ -1131,183 +1147,195 @@ export function SendPage({
             )}
           </p>
         )}
-      </section>
-
-      <section
-        id={id("recipients")}
-        class="mt-10 scroll-mt-24 border-t border-border pt-8"
-        aria-labelledby={id("recipients-heading")}
-      >
-        <p class={stepLabel}>{t.send.step(2)}</p>
-        <h2 id={id("recipients-heading")} class="mt-0 mb-6 text-[1.75rem] font-bold">
-          {t.send.peopleHeading}
-        </h2>
-        {lostServer && (
+        {/* Until step 2 shows, its warning that no link can be made sits here. */}
+        {lostServer && !continued && (
           <Alert variant="destructive" className="my-4">
             <AlertDescription>{text ? t.secret.lostServer : t.send.lostServer}</AlertDescription>
           </Alert>
         )}
+      </section>
 
-        <form
-          class={formRows}
-          onSubmit={onAdd}
-          // A held Enter that started on the last Remove button lands here and would submit an empty name.
-          onKeyDown={(event) => {
-            if (event.repeat && event.key === "Enter") {
-              event.preventDefault();
-            }
-          }}
-          noValidate
+      {continued && (
+        <section
+          id={id("recipients")}
+          class="mt-10 scroll-mt-24 border-t border-border pt-8"
+          aria-labelledby={id("recipients-heading")}
         >
-          <div class={`basis-full ${field}`}>
-            <Label htmlFor={id("recipient-name")}>{t.send.recipientLabel}</Label>
-            <Input
-              id={id("recipient-name")}
-              name="name"
-              type="text"
-              placeholder={t.send.recipientPlaceholder}
-              autoComplete="off"
-              maxLength={100}
-              disabled={!file || full}
-              onInput={() => setNameError("")}
-              aria-invalid={nameError ? "true" : "false"}
-              aria-describedby={
-                nameError ? `${id("name-error")} ${id("recipient-hint")}` : id("recipient-hint")
+          <p class={stepLabel}>{t.send.step(2)}</p>
+          <h2 id={id("recipients-heading")} class="mt-0 mb-6 text-[1.75rem] font-bold">
+            {t.send.peopleHeading}
+          </h2>
+          {lostServer && (
+            <Alert variant="destructive" className="my-4">
+              <AlertDescription>{text ? t.secret.lostServer : t.send.lostServer}</AlertDescription>
+            </Alert>
+          )}
+
+          <form
+            class={formRows}
+            onSubmit={onAdd}
+            // A held Enter that started on the last Remove button lands here and would submit an empty name.
+            onKeyDown={(event) => {
+              if (event.repeat && event.key === "Enter") {
+                event.preventDefault();
               }
-            />
-            {nameError && (
-              <p id={id("name-error")} class={fieldError}>
-                {t.send.nameError[nameError]}
-              </p>
-            )}
-          </div>
-          {mail && (
+            }}
+            noValidate
+          >
             <div class={`basis-full ${field}`}>
-              {/* Off by default: the safe way is to pass the link on yourself. */}
-              <Label className="items-start leading-snug font-normal">
-                <input
-                  type="checkbox"
-                  class="mt-0.5 size-4 flex-none accent-primary"
-                  checked={useEmail}
-                  disabled={!file || full}
-                  onChange={(event) => {
-                    const checked = event.currentTarget.checked;
-                    setUseEmail(checked);
-                    setEmailError(false);
-                  }}
-                />
-                {t.send.emailChoice}
-              </Label>
-              {useEmail && (
-                <>
-                  <Alert role="note" id={id("email-notice")}>
-                    <AlertDescription>
-                      {text ? t.secret.emailNotice : t.send.emailNotice}{" "}
-                      <Link href="/how/link" class="font-medium underline underline-offset-4">
-                        {t.send.emailMore}
-                      </Link>
-                    </AlertDescription>
-                  </Alert>
-                  <Label htmlFor={id("recipient-email")}>{t.send.emailLabel}</Label>
-                  <Input
-                    id={id("recipient-email")}
-                    name="email"
-                    type="email"
-                    required
-                    autoComplete="off"
-                    maxLength={MAX_ADDRESS}
+              <Label htmlFor={id("recipient-name")}>{t.send.recipientLabel}</Label>
+              <Input
+                id={id("recipient-name")}
+                name="name"
+                type="text"
+                placeholder={t.send.recipientPlaceholder}
+                autoComplete="off"
+                maxLength={100}
+                disabled={!file || full}
+                onInput={() => setNameError("")}
+                aria-invalid={nameError ? "true" : "false"}
+                aria-describedby={
+                  nameError ? `${id("name-error")} ${id("recipient-hint")}` : id("recipient-hint")
+                }
+              />
+              {nameError && (
+                <p id={id("name-error")} class={fieldError}>
+                  {t.send.nameError[nameError]}
+                </p>
+              )}
+            </div>
+            {mail && (
+              <div class={`basis-full ${field}`}>
+                {/* Off by default: the safe way is to pass the link on yourself. */}
+                <Label className="items-start leading-snug font-normal">
+                  <input
+                    type="checkbox"
+                    class="mt-0.5 size-4 flex-none accent-primary"
+                    checked={useEmail}
                     disabled={!file || full}
-                    onInput={() => setEmailError(false)}
-                    aria-invalid={emailError ? "true" : "false"}
-                    aria-describedby={
-                      emailError ? `${id("email-error")} ${id("email-notice")}` : id("email-notice")
-                    }
+                    onChange={(event) => {
+                      const checked = event.currentTarget.checked;
+                      setUseEmail(checked);
+                      setEmailError(false);
+                    }}
                   />
-                  {emailError && (
-                    <p id={id("email-error")} class={fieldError}>
-                      {t.send.emailError}
-                    </p>
-                  )}
+                  {t.send.emailChoice}
+                </Label>
+                {useEmail && (
+                  <>
+                    <Alert role="note" id={id("email-notice")}>
+                      <AlertDescription>
+                        {text ? t.secret.emailNotice : t.send.emailNotice}{" "}
+                        <Link href="/how/link" class="font-medium underline underline-offset-4">
+                          {t.send.emailMore}
+                        </Link>
+                      </AlertDescription>
+                    </Alert>
+                    <Label htmlFor={id("recipient-email")}>{t.send.emailLabel}</Label>
+                    <Input
+                      id={id("recipient-email")}
+                      name="email"
+                      type="email"
+                      required
+                      autoComplete="off"
+                      maxLength={MAX_ADDRESS}
+                      disabled={!file || full}
+                      onInput={() => setEmailError(false)}
+                      aria-invalid={emailError ? "true" : "false"}
+                      aria-describedby={
+                        emailError
+                          ? `${id("email-error")} ${id("email-notice")}`
+                          : id("email-notice")
+                      }
+                    />
+                    {emailError && (
+                      <p id={id("email-error")} class={fieldError}>
+                        {t.send.emailError}
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+            <div class="flex basis-full flex-wrap gap-2">
+              {mail && useEmail ? (
+                <>
+                  <Button
+                    type="submit"
+                    value="check"
+                    disabled={!file || full}
+                    aria-describedby={file && !full ? id("check-hint") : undefined}
+                  >
+                    {t.send.addEmailCheck}
+                  </Button>
+                  <Button type="submit" variant="outline" value="plain" disabled={!file || full}>
+                    {t.send.addEmail}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button type="submit" value="plain" disabled={!file || full}>
+                    {t.send.add}
+                  </Button>
+                  <Button
+                    type="submit"
+                    variant="outline"
+                    value="check"
+                    disabled={!file || full}
+                    aria-describedby={file && !full ? id("check-hint") : undefined}
+                  >
+                    {t.send.addCheck}
+                  </Button>
                 </>
               )}
             </div>
+          </form>
+          {file && !full && (
+            <p id={id("check-hint")} class={`mb-0 ${hint}`}>
+              {t.send.check.hint(text ? "secret" : "file")}
+            </p>
           )}
-          <div class="flex basis-full flex-wrap gap-2">
-            {mail && useEmail ? (
-              <>
-                <Button
-                  type="submit"
-                  value="check"
-                  disabled={!file || full}
-                  aria-describedby={file && !full ? id("check-hint") : undefined}
-                >
-                  {t.send.addEmailCheck}
-                </Button>
-                <Button type="submit" variant="outline" value="plain" disabled={!file || full}>
-                  {t.send.addEmail}
-                </Button>
-              </>
-            ) : (
-              <>
-                <Button type="submit" value="plain" disabled={!file || full}>
-                  {t.send.add}
-                </Button>
-                <Button
-                  type="submit"
-                  variant="outline"
-                  value="check"
-                  disabled={!file || full}
-                  aria-describedby={file && !full ? id("check-hint") : undefined}
-                >
-                  {t.send.addCheck}
-                </Button>
-              </>
-            )}
-          </div>
-        </form>
-        {file && !full && (
-          <p id={id("check-hint")} class={`mb-0 ${hint}`}>
-            {t.send.check.hint(text ? "secret" : "file")}
+          <p id={id("recipient-hint")} class={hint}>
+            {!file
+              ? text
+                ? tooLong
+                  ? t.secret.tooLong
+                  : t.secret.first
+                : t.send.fileFirst
+              : full
+                ? t.send.full(MAX_LINKS)
+                : t.send.oneLinkEach}
           </p>
-        )}
-        <p id={id("recipient-hint")} class={hint}>
-          {!file
-            ? text
-              ? tooLong
-                ? t.secret.tooLong
-                : t.secret.first
-              : t.send.fileFirst
-            : full
-              ? t.send.full(MAX_LINKS)
-              : t.send.oneLinkEach}
-        </p>
-        <details class="mt-6 text-[0.9rem]">
-          <summary class="cursor-pointer text-muted-foreground">{t.send.connectionOptions}</summary>
-          <div class="mt-4 flex items-start gap-2.5">
-            <input
-              type="checkbox"
-              id={id("allow-relay")}
-              class="mt-0.5 size-4 flex-none accent-primary"
-              checked={allowRelay}
-              aria-describedby={`${id("allow-relay")}-description`}
-              onChange={(event) => {
-                const checked = event.currentTarget.checked;
-                allowRelayRef.current = checked;
-                setAllowRelay(checked);
-                host();
-              }}
-            />
-            <div class="flex flex-col gap-1">
-              <Label htmlFor={id("allow-relay")} className="leading-snug">
-                {t.send.allowRelay}
-              </Label>
-              <p id={`${id("allow-relay")}-description`} class={`m-0 leading-snug ${hint}`}>
-                {t.send.allowRelayHint(text ? "secret" : "file")}
-              </p>
+          <details class="mt-6 text-[0.9rem]">
+            <summary class="cursor-pointer text-muted-foreground">
+              {t.send.connectionOptions}
+            </summary>
+            <div class="mt-4 flex items-start gap-2.5">
+              <input
+                type="checkbox"
+                id={id("allow-relay")}
+                class="mt-0.5 size-4 flex-none accent-primary"
+                checked={allowRelay}
+                aria-describedby={`${id("allow-relay")}-description`}
+                onChange={(event) => {
+                  const checked = event.currentTarget.checked;
+                  allowRelayRef.current = checked;
+                  setAllowRelay(checked);
+                  host();
+                }}
+              />
+              <div class="flex flex-col gap-1">
+                <Label htmlFor={id("allow-relay")} className="leading-snug">
+                  {t.send.allowRelay}
+                </Label>
+                <p id={`${id("allow-relay")}-description`} class={`m-0 leading-snug ${hint}`}>
+                  {t.send.allowRelayHint(text ? "secret" : "file")}
+                </p>
+              </div>
             </div>
-          </div>
-        </details>
-      </section>
+          </details>
+        </section>
+      )}
 
       {hasRecipients && (
         <section class="mt-12 border-t border-border pt-8" aria-labelledby={id("links-heading")}>

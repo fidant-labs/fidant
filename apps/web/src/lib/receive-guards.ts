@@ -36,13 +36,13 @@ export function joinedAction(attempt: {
   return attempt.hasPeer ? "rejoin" : "pair";
 }
 
-// Taking the recipient's side of an attempt back on a new socket (decision 0032). The server
+// Taking the recipient's side of an attempt back on a new socket (decision 0033). The server
 // gives the page a resume token once the attempt's connection opened, and a new one after each
 // takeover. A token is sent at most once: sending it uses it up here, whatever the answer.
 
 /**
  * What the page does when its signaling socket closes: take the attempt back on the next socket
- * while it holds an unsent token, otherwise as before 0032. Once the channel is open, signaling
+ * while it holds an unsent token, otherwise as before 0033. Once the channel is open, signaling
  * is closed for good, or the attempt ends if its peer already dropped; before it opens, a peer
  * that answered the sender's offer ends the attempt, and otherwise a new attempt starts.
  */

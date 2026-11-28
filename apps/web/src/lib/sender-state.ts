@@ -24,7 +24,7 @@
 // | receiving                      | receipt(false) | failed     | close              |
 // | connecting ... receiving (2)   | dropped        | waiting    | refuse drop, close |
 // | connecting, checking           | timeout        | waiting    | refuse drop, close |
-// | connecting                     | unsendable     | failed     | refuse drop, close |
+// | connecting (no check), offered (check) | unsendable | failed | refuse drop, close |
 // | connecting                     | outdated       | failed     | close              |
 // | connecting                     | left           | waiting    | close              |
 // | connecting (5)                 | server-lost    | waiting    | close              |
@@ -83,7 +83,7 @@
 // - A recipient whose current attempt the page holds a resume token for
 //   (`armed` in `server-lost`, see armedLinks) is left as it is by
 //   `server-lost`: the server holds that attempt, with its email binding, for
-//   the page's next socket to take back (decision 0032). If the server refuses
+//   the page's next socket to take back (decision 0033). If the server refuses
 //   that `resume`, or the socket closes before it answers, `resume-refused`
 //   does to the recipient what `server-lost` would have done.
 // - Every join carries the recipient's attempt ID, and every refusal names the
@@ -103,11 +103,15 @@
 // - A mismatching RECEIPT marks the recipient "failed" with an error. The link
 //   stays usable: the next join clears the error and starts over, exactly like
 //   a join from "waiting".
-// - `unsendable` means the data channel just opened but the connection can't
-//   carry a text in one chunk (see textFitsOneChunk in text-secret.ts), so
-//   nothing was sent. The recipient is marked "failed" with an error, the
-//   joiner is refused with "drop" and the connection closed, and the next join
-//   starts over, as after a mismatching RECEIPT.
+// - `unsendable` means the connection can't carry a text in one chunk (see
+//   textFitsOneChunk in text-secret.ts). Without the check it arrives when the
+//   data channel just opened, so nothing was sent. With the check on it arrives
+//   only after `checked`: INIT and CHECK went but no META, so a link's holder
+//   can't tell a secret from a file before both confirmed, and it never counts
+//   in `checkFailures`, like a file sender's own floor. The recipient is marked
+//   "failed" with an error, the joiner is refused with "drop" and the
+//   connection closed, and the next join starts over, as after a mismatching
+//   RECEIPT.
 // - `outdated` means the two pages run different frame versions, so the
 //   sender's peer made no offer (see peer.ts). The recipient is marked "failed"
 //   with SENDER_OUTDATED when this page is the older one, else
@@ -173,11 +177,12 @@
 //   someone in the middle could otherwise hold one attempt open while it
 //   makes the recipient connect again and again.
 // - Every attempt of a `check` recipient that ends in connecting or checking
-//   (dropped, timeout, left, server-lost, unsendable, a refused relay,
-//   check-differs) adds one to `checkFailures`, and nothing lowers it: someone
+//   (dropped, timeout, left, server-lost, a refused relay, check-differs)
+//   adds one to `checkFailures`, and nothing lowers it: someone
 //   in the middle learns the sender's number from the offer, so it must not get
 //   unlimited tries at a matching one. An attempt that ends with `outdated`
-//   doesn't count, because it ends before the offer. At CHECK_ATTEMPTS the recipient is
+//   doesn't count, because it ends before the offer, and neither does one that
+//   ends with `unsendable`, which comes only after both confirmed. At CHECK_ATTEMPTS the recipient is
 //   "failed" with CHECK_LIMIT and `locked`, its attempt refused and closed,
 //   every later join refused with "used", and `hostedLinks` leaves it out.
 //
@@ -363,7 +368,7 @@ export function emailBound(recipient: Recipient): boolean {
 /**
  * The links whose current attempt a held resume token can take back: those of
  * `tokens` (link ID → the attempt its token is for) still hosted, whose
- * recipient's attempt is still that attempt (decision 0032).
+ * recipient's attempt is still that attempt (decision 0033).
  */
 export function armedLinks(
   state: SenderState,
@@ -545,14 +550,10 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
         effects: [{ type: "close", linkId }],
       };
     case "unsendable":
-      if (current.status !== "connecting") {
+      if (current.status !== (current.check ? "offered" : "connecting")) {
         return { state, effects: [] };
       }
-      return end(
-        state,
-        current,
-        failedCheck(current, { ...reset(current, "failed"), error: TOO_SMALL_FOR_TEXT }),
-      );
+      return end(state, current, { ...reset(current, "failed"), error: TOO_SMALL_FOR_TEXT });
     case "outdated":
       if (current.status !== "connecting") {
         return { state, effects: [] };

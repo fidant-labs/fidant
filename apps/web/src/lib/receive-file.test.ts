@@ -42,7 +42,15 @@ type Transit = {
   afterToSender?(frame: Uint8Array<ArrayBuffer>, pair: Pair): void;
 };
 
-type Pair = { sender: FrameChannel; recipient: FrameChannel; close(): void };
+type Pair = {
+  sender: FrameChannel;
+  recipient: FrameChannel;
+  close(): void;
+  /** The recipient's end reads "connecting" after open, as Chromium's can (FID-385). */
+  flap(): void;
+  /** Ends the flap with a second open event on the recipient's end. */
+  reopen(): void;
+};
 
 /**
  * Two fake data channel ends wired to each other. Messages are copied and
@@ -51,6 +59,7 @@ type Pair = { sender: FrameChannel; recipient: FrameChannel; close(): void };
 function channelPair(transit: Transit = {}): Pair {
   const ends = [new EventTarget(), new EventTarget()] as const;
   let readyState: RTCDataChannelState = "open";
+  let flapping = false;
 
   const deliver = (to: EventTarget, data: Uint8Array<ArrayBuffer>) => {
     setTimeout(() => {
@@ -64,11 +73,14 @@ function channelPair(transit: Transit = {}): Pair {
     bufferedAmount: 0,
     bufferedAmountLowThreshold: 0,
     get readyState() {
-      return readyState;
+      return !toRecipient && flapping && readyState === "open" ? "connecting" : readyState;
     },
     send(data) {
       if (readyState !== "open") {
         throw new Error("channel is closed");
+      }
+      if (!toRecipient && flapping) {
+        throw new DOMException("RTCDataChannel.readyState is not 'open'", "InvalidStateError");
       }
       const copy = data.slice();
       if (toRecipient) {
@@ -96,6 +108,13 @@ function channelPair(transit: Transit = {}): Pair {
       for (const end of ends) {
         end.dispatchEvent(new Event("close"));
       }
+    },
+    flap() {
+      flapping = true;
+    },
+    reopen() {
+      flapping = false;
+      ends[1].dispatchEvent(new Event("open"));
     },
   };
   return pair;
@@ -250,6 +269,79 @@ test("receives a file, verifies it and sends a matching receipt", async () => {
     { name: "report.bin", size: bytes.length, type: "application/octet-stream", from: "Anna" },
   ]);
   assert.equal(r.progress.at(-1), bytes.length);
+});
+
+test("waits out a channel that reads connecting after open, then answers", async () => {
+  const bytes = new Uint8Array(randomBytes(100_001));
+  const pair = channelPair();
+  const sink = new RecordingSink();
+  const r = run({
+    bytes,
+    pair,
+    sink,
+    onOffer: async () => {
+      pair.flap();
+      setTimeout(() => pair.reopen(), 20);
+      return sink;
+    },
+  });
+  const result = await r.receiving;
+  assert.equal(result.type, "received");
+  assert.deepEqual(await r.sending, { type: "receipt", match: true });
+});
+
+test("a channel that closes while it reads connecting fails the transfer", async () => {
+  const pair = channelPair();
+  const r = run({
+    bytes: new Uint8Array(1000),
+    pair,
+    onOffer: async () => {
+      pair.flap();
+      setTimeout(() => pair.close(), 20);
+      return new RecordingSink();
+    },
+  });
+  await assert.rejects(r.receiving, ReceiveError);
+  await assert.rejects(r.sending);
+});
+
+test("a channel that stays connecting counts as a lost connection and keeps the part", async (t) => {
+  const pair = channelPair();
+  const sink = new RecordingSink();
+  // whenOpen listens for "open" right after it sets its timer, so tick only once it has.
+  let waiting = () => {};
+  const listening = new Promise<void>((resolve) => {
+    waiting = resolve;
+  });
+  const listen = pair.recipient.addEventListener;
+  pair.recipient.addEventListener = ((...args: Parameters<FrameChannel["addEventListener"]>) => {
+    if (args[0] === "open") {
+      waiting();
+    }
+    listen(...args);
+  }) as FrameChannel["addEventListener"];
+  const r = run({
+    bytes: new Uint8Array(randomBytes(100_001)),
+    pair,
+    sink,
+    onOffer: async () => {
+      pair.flap();
+      t.mock.timers.enable({ apis: ["setTimeout"] });
+      return sink;
+    },
+  });
+  await listening;
+  t.mock.timers.tick(5000);
+  const error = await r.receiving.then(
+    () => undefined,
+    (e: unknown) => e,
+  );
+  t.mock.timers.reset();
+  pair.close();
+  assert.ok(error instanceof ReceiveError);
+  assert.equal(error.reason, "connection");
+  assert.ok(error.resumable, "the part is kept for Try again");
+  await error.resumable.sink.abort();
 });
 
 test("receives an empty file", async () => {
@@ -429,6 +521,23 @@ test("a checksum mismatch discards the file and tells the sender", async () => {
   assert.equal(sink.aborted, true);
   assert.equal(sink.closed, false);
   assert.deepEqual(await r.sending, { type: "receipt", match: false });
+});
+
+test("a checksum mismatch stays one when the channel closes before its receipt", async () => {
+  const pair = channelPair();
+  const sink = new (class extends RecordingSink {
+    override async abort(): Promise<void> {
+      pair.close();
+      await super.abort();
+    }
+  })();
+  const bytes = new Uint8Array(randomBytes(100_000));
+  const wrong = sha256(bytes);
+  wrong[0] = (wrong[0] as number) ^ 1;
+  const r = run({ bytes, sink, pair, senderSha256: wrong });
+  await assert.rejects(r.receiving, failedWith("checksum"));
+  assert.equal(sink.aborted, true);
+  await assert.rejects(r.sending);
 });
 
 test("failures say whether the sender, the connection or the sink failed", async () => {
@@ -805,13 +914,31 @@ test("aborts the sink when a chunk is tampered with", async () => {
 
 test("treats a missing END as truncation, and the next attempt gets only END", async () => {
   const bytes = new Uint8Array(randomBytes(100_000));
+  // Every chunk carries file bytes, so the sink sees one write per chunk taken in.
+  assert.equal(
+    Math.ceil(bytes.length / MAX_CHUNK_BYTES),
+    paddedLength(bytes.length) / MAX_CHUNK_BYTES,
+  );
   const sink = new RecordingSink();
+  let chunks = 0;
+  let endDropped = false;
+  // Close once END is dropped and every chunk before it has reached the sink, not on a timer.
+  const closeWhenAllTakenIn = () => {
+    if (endDropped && sink.writes === chunks) {
+      pair.close();
+    }
+  };
+  sink.onWrite = closeWhenAllTakenIn;
   const pair = channelPair({
-    toRecipient(frame, p) {
+    toRecipient(frame) {
+      if (frame[1] === SenderKind.CHUNK) {
+        chunks++;
+      }
       if (frame[1] !== SenderKind.END) {
         return frame;
       }
-      setTimeout(() => p.close(), 10);
+      endDropped = true;
+      closeWhenAllTakenIn();
       return undefined;
     },
   });

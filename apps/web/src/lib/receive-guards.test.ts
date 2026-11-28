@@ -65,7 +65,7 @@ test("onSocketClose takes the attempt back while an unsent token is held", () =>
   }
 });
 
-test("onSocketClose goes on as before 0032 without a token", () => {
+test("onSocketClose goes on as before 0033 without a token", () => {
   const open = { channelOpen: true, answered: true, hasToken: false };
   assert.equal(onSocketClose({ ...open, aborted: false }), "close");
   assert.equal(onSocketClose({ ...open, aborted: true }), "lost");
