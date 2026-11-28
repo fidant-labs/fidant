@@ -37,7 +37,7 @@ async function addLink(leaks: Leaks, sender: Page, name: string, check = false) 
   await sender.locator("#secret-recipient-name").fill(name);
   await sender
     .getByRole("button", {
-      name: check ? "Create link with safety number" : "Create link",
+      name: check ? "Add with safety number" : "Add",
       exact: true,
     })
     .click();
@@ -218,7 +218,7 @@ test("a pasted text over 10,000 characters stays whole and can't be shared until
   const field = sender.getByLabel("Your secret");
   const error = sender.locator("#secret-text-error");
   const live = error.locator("[role=status]");
-  const add = sender.getByRole("button", { name: "Create link", exact: true });
+  const add = sender.getByRole("button", { name: "Add", exact: true });
   await expect(live).toBeAttached();
   await expect(live).toBeEmpty();
   // Step 2 stays once shown, so the secret can grow too long after Continue.

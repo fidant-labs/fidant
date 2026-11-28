@@ -957,6 +957,16 @@ export function SendPage({
   const stepText = continued
     ? `${t.send.step(2)}: ${t.send.peopleHeading}`
     : `${t.send.step(1)}: ${text ? t.menu.secret : t.send.title}`;
+  // Step 2's explanation says what the hint would say before anything goes wrong, so the hint only reports problems.
+  const recipientHint = !file
+    ? text
+      ? tooLong
+        ? t.secret.tooLong
+        : t.secret.first
+      : t.send.fileFirst
+    : full
+      ? t.send.full(MAX_LINKS)
+      : undefined;
   const goToRecipients = () => {
     setContinued(true);
     // The frame comes after the render that adds step 2.
@@ -1198,9 +1208,10 @@ export function SendPage({
           aria-labelledby={id("recipients-heading")}
         >
           <p class={stepLabel}>{t.send.step(2)}</p>
-          <h2 id={id("recipients-heading")} class="mt-0 mb-6 text-[1.75rem] font-bold">
+          <h2 id={id("recipients-heading")} class="m-0 text-[1.75rem] font-bold">
             {t.send.peopleHeading}
           </h2>
+          <p class={lede}>{t.send.peopleLede}</p>
           <form
             class={formRows}
             onSubmit={onAdd}
@@ -1225,7 +1236,9 @@ export function SendPage({
                 onInput={() => setNameError("")}
                 aria-invalid={nameError ? "true" : "false"}
                 aria-describedby={
-                  nameError ? `${id("name-error")} ${id("recipient-hint")}` : id("recipient-hint")
+                  [nameError && id("name-error"), recipientHint && id("recipient-hint")]
+                    .filter(Boolean)
+                    .join(" ") || undefined
                 }
               />
               {nameError && (
@@ -1325,17 +1338,11 @@ export function SendPage({
               {t.send.check.hint(text ? "secret" : "file")}
             </p>
           )}
-          <p id={id("recipient-hint")} class={hint}>
-            {!file
-              ? text
-                ? tooLong
-                  ? t.secret.tooLong
-                  : t.secret.first
-                : t.send.fileFirst
-              : full
-                ? t.send.full(MAX_LINKS)
-                : t.send.oneLinkEach}
-          </p>
+          {recipientHint && (
+            <p id={id("recipient-hint")} class={hint}>
+              {recipientHint}
+            </p>
+          )}
           <details class="mt-6 text-[0.9rem]">
             <summary class="cursor-pointer text-muted-foreground">
               {t.send.connectionOptions}

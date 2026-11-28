@@ -293,7 +293,7 @@ for (const row of scenarios) {
           buffer: file.bytes,
         });
         await sender.page.getByLabel("Who is it for?").fill(name);
-        await sender.page.getByRole("button", { name: "Create link", exact: true }).click();
+        await sender.page.getByRole("button", { name: "Add", exact: true }).click();
         const link =
           (await sender.page.getByLabel(`Link for ${name}`, { exact: true }).textContent()) ?? "";
         leaks.watchKey("link secret", new URL(link).hash.slice(1));
@@ -367,7 +367,7 @@ for (const row of scenarios) {
           });
         }
         await sender.page.getByLabel("Who is it for?").fill(name);
-        await sender.page.getByRole("button", { name: "Create link", exact: true }).click();
+        await sender.page.getByRole("button", { name: "Add", exact: true }).click();
         const link =
           (await sender.page.getByLabel(`Link for ${name}`, { exact: true }).textContent()) ?? "";
         leaks.watchKey("link secret", new URL(link).hash.slice(1));
@@ -461,7 +461,7 @@ test.describe("a route cut mid-transfer", () => {
     await sender.page.getByText("Connection options", { exact: true }).press("Enter");
     await sender.page.getByLabel("Use our relay if needed").uncheck();
     await sender.page.getByLabel("Who is it for?").fill(name);
-    await sender.page.getByRole("button", { name: "Create link", exact: true }).click();
+    await sender.page.getByRole("button", { name: "Add", exact: true }).click();
     const link =
       (await sender.page.getByLabel(`Link for ${name}`, { exact: true }).textContent()) ?? "";
     leaks.watchKey("link secret", new URL(link).hash.slice(1));
@@ -618,7 +618,7 @@ test.describe("the box", () => {
       buffer: file.bytes,
     });
     await sender.page.getByLabel("Who is it for?").fill(name);
-    await sender.page.getByRole("button", { name: "Create link", exact: true }).click();
+    await sender.page.getByRole("button", { name: "Add", exact: true }).click();
     const link =
       (await sender.page.getByLabel(`Link for ${name}`, { exact: true }).textContent()) ?? "";
     leaks.watchKey("link secret", new URL(link).hash.slice(1));
@@ -1523,7 +1523,7 @@ test.describe("pages from the edge function", () => {
     );
     await chooseFile(sender.page, { name: file.name, mimeType: file.mime, buffer: file.bytes });
     await sender.page.getByLabel("Who is it for?").fill(name);
-    await sender.page.getByRole("button", { name: "Create link", exact: true }).click();
+    await sender.page.getByRole("button", { name: "Add", exact: true }).click();
     const link =
       (await sender.page.getByLabel(`Link for ${name}`, { exact: true }).textContent()) ?? "";
     leaks.watchKey("link secret", new URL(link).hash.slice(1));
