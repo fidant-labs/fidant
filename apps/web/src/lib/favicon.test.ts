@@ -20,16 +20,21 @@ test("every icon is inline, so no change of status asks the server for anything"
   assert.equal(new Set(icons).size, 3);
 });
 
-test("the inline mark is the drawing in public/favicon.svg, in its colours", () => {
+test("the idle icon is the drawing in public/favicon.svg, in its colours", () => {
   const file = readFileSync(new URL("../../public/favicon.svg", import.meta.url), "utf8");
-  for (const status of ["idle", "active"] as const) {
-    const icon = svg(faviconHref(status));
-    for (const d of ['d="M11.25 24.25V12.75a5 5 0 0 1 10 0v.5"', 'cx="21.25" cy="19.75" r="2.5"']) {
-      assert.ok(file.includes(d) && icon.includes(d), d);
-    }
+  const icon = svg(faviconHref("idle"));
+  for (const d of ['d="M11.25 24.25V12.75a5 5 0 0 1 10 0v.5"', 'cx="21.25" cy="19.75" r="2.5"']) {
+    assert.ok(file.includes(d) && icon.includes(d), d);
   }
   for (const colour of ["#111", "#f5f5f5", "#fff"]) {
-    assert.ok(file.includes(colour) && svg(faviconHref("idle")).includes(colour), colour);
+    assert.ok(file.includes(colour) && icon.includes(colour), colour);
   }
-  assert.ok(!svg(faviconHref("done")).includes("M11.25"));
+});
+
+test("an open transfer shows only the header's green dot, a finished one the check", () => {
+  const active = svg(faviconHref("active"));
+  assert.ok(active.includes("#10b981"));
+  assert.ok(!active.includes("M11.25") && !active.includes("<rect"));
+  const done = svg(faviconHref("done"));
+  assert.ok(done.includes("M9 16.5l5 5") && !done.includes("M11.25"));
 });

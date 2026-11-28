@@ -217,6 +217,9 @@ test("delivers a file to two recipients with a verified checksum", async ({
   for (const name of names) {
     links.push(await addRecipient(leaks, sender, name));
   }
+  // While links wait for delivery, the tab's icon is the header's green dot, not the logo.
+  const tabIcon = (page: Page) => page.locator('link[rel="icon"][type="image/svg+xml"]');
+  await expect(tabIcon(sender)).toHaveAttribute("href", /^data:image\/svg.*%2310b981/);
 
   const received = await Promise.all(
     links.map((link, i) => receive(demo, `recipient-${i + 1}`, link, file, "8.4 MB", from, sender)),
@@ -230,10 +233,7 @@ test("delivers a file to two recipients with a verified checksum", async ({
   }
   // The tab's icon shows the check, on both sides.
   for (const page of [sender, ...received.map(({ page }) => page)]) {
-    await expect(page.locator('link[rel="icon"][type="image/svg+xml"]')).toHaveAttribute(
-      "href",
-      /^data:image\/svg.*M9%2016\.5l5/,
-    );
+    await expect(tabIcon(page)).toHaveAttribute("href", /^data:image\/svg.*M9%2016\.5l5/);
   }
   const cards = names.map((name) => recipientRow(sender, name));
   for (const scope of [...cards, ...received.map(({ page }) => page)]) {
