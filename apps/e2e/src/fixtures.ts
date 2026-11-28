@@ -7,6 +7,7 @@ import {
   expect,
   type Locator,
   type Page,
+  type WebSocketRoute,
 } from "@playwright/test";
 import { parseStackOrigins } from "./hosts.ts";
 import { failOnLeaks, type Leaks, LeakWatch } from "./leak-watch.ts";
@@ -585,6 +586,148 @@ export function breakableSender() {
       out();
     }
   } as RTCDataChannel["send"];
+}
+
+/**
+ * Runs in the page through addInitScript, so it may use nothing from this module. Simulates a route
+ * that drops under an open peer connection (decision 0031) without touching the network:
+ * `dropRoute()` makes every peer report "disconnected" and queues what its channels send, until
+ * that peer's local ICE password changed in a stable signaling state, the end of an ICE restart.
+ * Then it lets the queue go and reports the browser's own state again. `holdAt` queues the
+ * channels' frames from that CHUNK on, so a transfer is still in flight, and sets `held`.
+ */
+export function breakableRoute() {
+  const g = globalThis as { dropRoute?: () => void; holdAt?: number; held?: boolean };
+  const CHUNK = 2;
+  let chunks = 0;
+  const queue: Array<() => void> = [];
+  const release = () => {
+    g.held = false;
+    for (const flush of queue.splice(0)) {
+      flush();
+    }
+  };
+  const peers: RTCPeerConnection[] = [];
+  const Native = globalThis.RTCPeerConnection;
+  globalThis.RTCPeerConnection = class extends Native {
+    constructor(config?: RTCConfiguration) {
+      super(config);
+      peers.push(this);
+    }
+  };
+  // Firefox's dispatchEvent reaches listeners but not the onconnectionstatechange handler, so the
+  // handler is called directly, once, in every engine.
+  const announce = (pc: RTCPeerConnection) => {
+    const event = new Event("connectionstatechange");
+    const handler = pc.onconnectionstatechange;
+    pc.onconnectionstatechange = null;
+    pc.dispatchEvent(event);
+    pc.onconnectionstatechange = handler;
+    handler?.call(pc, event);
+  };
+  const pwdOf = (pc: RTCPeerConnection) =>
+    /^a=ice-pwd:(\S+)/m.exec(pc.currentLocalDescription?.sdp ?? "")?.[1];
+  g.dropRoute = () => {
+    g.held = true;
+    for (const pc of peers) {
+      const before = pwdOf(pc);
+      Object.defineProperty(pc, "connectionState", {
+        configurable: true,
+        get: () => "disconnected",
+      });
+      const lift = () => {
+        if (pc.signalingState !== "stable" || pwdOf(pc) === before) {
+          return;
+        }
+        pc.removeEventListener("signalingstatechange", lift);
+        Reflect.deleteProperty(pc, "connectionState");
+        release();
+        announce(pc);
+      };
+      pc.addEventListener("signalingstatechange", lift);
+      announce(pc);
+    }
+  };
+  const send = RTCDataChannel.prototype.send;
+  RTCDataChannel.prototype.send = function (this: RTCDataChannel, ...args: unknown[]) {
+    const out = () => Reflect.apply(send, this, args);
+    if (g.held) {
+      queue.push(out);
+      return;
+    }
+    out();
+    const [frame] = args;
+    if (frame instanceof Uint8Array && frame[1] === CHUNK && ++chunks === g.holdAt) {
+      g.held = true;
+    }
+  } as RTCDataChannel["send"];
+}
+
+/** A page's /signal sockets, passed through to the server until one is cut. */
+export interface CuttableSignal {
+  /**
+   * Cuts the page's first socket the way a lost network does: the page side closes, while the
+   * server side stays open and hears nothing more. Resolves once the page side is closed.
+   */
+  cut(): Promise<void>;
+  /** Stops forwarding in both directions without closing the page side: the socket is dead but looks open. */
+  silence(): void;
+  /** The `t` of each message the page sent into a cut or silenced socket, which the server never saw. */
+  swallowed(): string[];
+  /** When the server closed the cut socket's server side, or undefined while it is open. */
+  serverClosedAt(): number | undefined;
+}
+
+/** Routes `page`'s /signal sockets through Playwright so that `cut()` can drop the first one. */
+export async function cuttableSignal(page: Page): Promise<CuttableSignal> {
+  const sockets: { page: WebSocketRoute; server: WebSocketRoute; cut: boolean }[] = [];
+  let closedAt: number | undefined;
+  const swallowed: string[] = [];
+  await page.routeWebSocket("/signal", (ws) => {
+    const server = ws.connectToServer();
+    const socket = { page: ws, server, cut: false };
+    sockets.push(socket);
+    ws.onMessage((message) => {
+      if (!socket.cut) {
+        server.send(message);
+      } else if (typeof message === "string") {
+        try {
+          swallowed.push(String((JSON.parse(message) as { t?: unknown }).t));
+        } catch {
+          swallowed.push("?");
+        }
+      }
+    });
+    server.onMessage((message) => {
+      if (!socket.cut) {
+        ws.send(message);
+      }
+    });
+  });
+  return {
+    silence() {
+      const [first] = sockets;
+      if (!first) {
+        throw new Error("The page opened no /signal socket to silence.");
+      }
+      first.cut = true;
+    },
+    async cut() {
+      const [first] = sockets;
+      if (!first) {
+        throw new Error("The page opened no /signal socket to cut.");
+      }
+      first.cut = true;
+      // A handler of its own stops Playwright from passing a close on to the other side.
+      first.page.onClose(() => {});
+      first.server.onClose(() => {
+        closedAt = Date.now();
+      });
+      await first.page.close({ code: 1006 });
+    },
+    swallowed: () => [...swallowed],
+    serverClosedAt: () => closedAt,
+  };
 }
 
 /**

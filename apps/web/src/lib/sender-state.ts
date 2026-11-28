@@ -27,7 +27,8 @@
 // | connecting (no check), offered (check) | unsendable | failed | refuse drop, close |
 // | connecting                     | outdated       | failed     | close              |
 // | connecting                     | left           | waiting    | close              |
-// | connecting                     | server-lost    | waiting    | close              |
+// | connecting (5)                 | server-lost    | waiting    | close              |
+// | connecting                     | resume-refused | waiting    | close              |
 // | connecting ... receiving (2)   | path relay (1) | waiting    | refuse drop, close |
 // | (its attempt matches)          | path           | (same)     |                    |
 // | (not on the list)              | joined         | -          | refuse unknown     |
@@ -36,6 +37,7 @@
 // (2) connecting, checking, offered or receiving: the active statuses.
 // (3) With the attempt ID of the attempt in progress: the server's answer to that recipient joining again.
 // (4) With the attempt ID of the recipient's last attempt that ended (`ended`).
+// (5) Unless the page holds a resume token for its attempt (`armed`).
 //
 // Rules:
 // - A link is used only once the recipient's RECEIPT matches (delivered).
@@ -78,6 +80,12 @@
 // - `server-lost` (our own signaling socket dropped) does the same for every
 //   connecting recipient, since the server forgot their joins with the socket.
 //   Unlike `left` it never sets `noRelay` or `noConnect`: the server dropped, not the relay.
+// - A recipient whose current attempt the page holds a resume token for
+//   (`armed` in `server-lost`, see armedLinks) is left as it is by
+//   `server-lost`: the server holds that attempt, with its email binding, for
+//   the page's next socket to take back (decision 0033). If the server refuses
+//   that `resume`, or the socket closes before it answers, `resume-refused`
+//   does to the recipient what `server-lost` would have done.
 // - Every join carries the recipient's attempt ID, and every refusal names the
 //   attempt it refuses. A join is refused with its own attempt; `dropped`,
 //   `timeout` and `unsendable` refuse the attempt stored when the recipient
@@ -150,7 +158,7 @@
 //   its name and mail status; `hostedLinks` then names the new link ID, not the
 //   old. The page's own `failed` (its socket was closed, so nothing was sent)
 //   carries no `fresh` link and keeps the plain link.
-// - `server-lost` also unbinds every recipient whose link the server emailed
+// - `server-lost` (and `resume-refused`) also unbinds every recipient whose link the server emailed
 //   or may have emailed (a mark, "sending", or "verifying"/"verified" without
 //   a mark, see `unmarked`): the server dropped its binding with the socket,
 //   so `hostedLinks` leaves the link out from then on and nobody can host its
@@ -264,7 +272,10 @@ export type SenderAction =
   | { type: "dropped"; linkId: string }
   | { type: "timeout"; linkId: string }
   | { type: "left"; linkId: string }
-  | { type: "server-lost" }
+  /** Our signaling socket closed. `armed` names the links whose attempt the next socket may take back. */
+  | { type: "server-lost"; armed?: readonly string[] }
+  /** The server refused to give a link's attempt back to our new socket, or never answered. */
+  | { type: "resume-refused"; linkId: string }
   | { type: "declined"; linkId: string }
   | { type: "unsendable"; linkId: string }
   /** The two pages run different frame versions; `older` is the one that must reload. */
@@ -355,6 +366,26 @@ export function emailBound(recipient: Recipient): boolean {
 }
 
 /**
+ * The links whose current attempt a held resume token can take back: those of
+ * `tokens` (link ID → the attempt its token is for) still hosted, whose
+ * recipient's attempt is still that attempt (decision 0033).
+ */
+export function armedLinks(
+  state: SenderState,
+  tokens: ReadonlyMap<string, { readonly attempt: string }>,
+): string[] {
+  return state.recipients
+    .filter(
+      (r) =>
+        !r.unbound &&
+        !r.locked &&
+        r.attempt !== undefined &&
+        r.attempt === tokens.get(r.linkId)?.attempt,
+    )
+    .map((r) => r.linkId);
+}
+
+/**
  * Every link ID the sender should host: all recipients, including delivered
  * ones, so that the sender can answer a late join on them with "used", except
  * those whose email binding the server dropped or whose check locked them.
@@ -386,15 +417,7 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
     const effects: SenderEffect[] = [];
     let changed = false;
     const recipients = state.recipients.map((r) => {
-      let next = r;
-      if (emailBound(r)) {
-        const { noRelay: _noRelay, noConnect: _noConnect, ...rest } = next;
-        next = { ...rest, unbound: true };
-      }
-      if (r.status === "connecting") {
-        effects.push({ type: "close", linkId: r.linkId });
-        next = failedCheck(r, waiting(next, false));
-      }
+      const next = action.armed?.includes(r.linkId) ? r : lose(r, effects);
       changed ||= next !== r;
       return next;
     });
@@ -542,6 +565,11 @@ export function update(state: SenderState, action: SenderAction): SenderUpdate {
         }),
         effects: [{ type: "close", linkId }],
       };
+    case "resume-refused": {
+      const effects: SenderEffect[] = [];
+      const next = lose(current, effects);
+      return { state: next === current ? state : replace(state, next), effects };
+    }
     case "path":
       if (current.attempt !== action.attempt) {
         return { state, effects: [] };
@@ -610,6 +638,23 @@ function swap(
     state: { recipients: state.recipients.map((r) => (r === current ? next : r)) },
     effects,
   };
+}
+
+/**
+ * What losing our signaling socket does to a recipient: the server dropped its email binding with
+ * the socket, and forgot its join if it was still connecting. Pushes the close effect, if any.
+ */
+function lose(recipient: Recipient, effects: SenderEffect[]): Recipient {
+  let next = recipient;
+  if (emailBound(recipient)) {
+    const { noRelay: _noRelay, noConnect: _noConnect, ...rest } = next;
+    next = { ...rest, unbound: true };
+  }
+  if (recipient.status === "connecting") {
+    effects.push({ type: "close", linkId: recipient.linkId });
+    next = failedCheck(recipient, waiting(next, false));
+  }
+  return next;
 }
 
 /** Ends the current attempt as `next`: its joiner refused and its connection closed. */

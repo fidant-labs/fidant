@@ -684,6 +684,77 @@ test("rejects each emailed-link message in the wrong direction", () => {
   assert.equal(client({ t: "token", link, token }), undefined);
 });
 
+test("parses a page's resume and the server's answer, with and without a token", () => {
+  assert.deepEqual(client({ t: "resume", link, attempt, token }), {
+    t: "resume",
+    link,
+    attempt,
+    token,
+  });
+  assert.deepEqual(server({ t: "resume", link, attempt, token }), {
+    t: "resume",
+    link,
+    attempt,
+    token,
+  });
+  // Without a token, the server refuses the page's resume.
+  assert.deepEqual(server({ t: "resume", link, attempt }), { t: "resume", link, attempt });
+  // A page has nothing to resume with unless it holds a token.
+  assert.equal(client({ t: "resume", link, attempt }), undefined);
+});
+
+test("rejects a resume with extra, missing or malformed fields", () => {
+  for (const extra of [{ x: 1 }, { mark }, { turn: true }, { data: "abc" }]) {
+    assert.equal(client({ t: "resume", link, attempt, token, ...extra }), undefined);
+    assert.equal(server({ t: "resume", link, attempt, token, ...extra }), undefined);
+    assert.equal(server({ t: "resume", link, attempt, ...extra }), undefined);
+  }
+  for (const message of [
+    { t: "resume" },
+    { t: "resume", link },
+    { t: "resume", link, token },
+    { t: "resume", attempt, token },
+  ]) {
+    assert.equal(client(message), undefined, JSON.stringify(message));
+    assert.equal(server(message), undefined, JSON.stringify(message));
+  }
+  for (const value of [
+    "",
+    "short",
+    `${link}A`,
+    link.slice(1),
+    "AAAAAAAAAAAAAAAAAAAAA=",
+    42,
+    null,
+  ]) {
+    for (const message of [
+      { t: "resume", link: value, attempt, token },
+      { t: "resume", link, attempt: value, token },
+    ]) {
+      assert.equal(client(message), undefined, `${JSON.stringify(message)}`);
+      assert.equal(server(message), undefined, `${JSON.stringify(message)}`);
+    }
+  }
+});
+
+test("treats a present but invalid resume token as invalid, not as absent", () => {
+  for (const value of [
+    "",
+    "short",
+    `${token}T`,
+    token.slice(1),
+    "TTTTTTTTTTTTTTTTTTTTT=",
+    "TTTTTTTTTTTTTTTTTTTTT+",
+    42,
+    null,
+    true,
+    [token],
+  ]) {
+    assert.equal(client({ t: "resume", link, attempt, token: value }), undefined, String(value));
+    assert.equal(server({ t: "resume", link, attempt, token: value }), undefined, String(value));
+  }
+});
+
 // From the security audit of 2026-11-25, which ran this over 1.2 million mutations.
 test("one mutation of a valid message never throws, and what is accepted parses to itself", () => {
   // A fixed xorshift seed, so a failure repeats.
@@ -725,6 +796,8 @@ test("one mutation of a valid message never throws, and what is accepted parses 
     { t: "gate", link, to: "" },
     { t: "code", link, result: "wrong" },
     { t: "token", link, token },
+    { t: "resume", link, attempt, token },
+    { t: "resume", link, attempt },
   ];
   for (const message of valid) {
     const raw = JSON.stringify(message);

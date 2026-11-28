@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { joinedAction, joinsAgain, takesGate, takesRefusal } from "./receive-guards.ts";
+import {
+  createRestartWatch,
+  joinedAction,
+  joinsAgain,
+  onSocketClose,
+  onSocketOpen,
+  resumeAction,
+  takesGate,
+  takesRefusal,
+} from "./receive-guards.ts";
 
 test("joinsAgain joins again only for a live attempt the sender's socket still holds", () => {
   assert.equal(joinsAgain({ current: true, hostGone: false, aborted: false }), true);
@@ -44,4 +53,79 @@ test("joinedAction pairs, hands a repeat to the peer, or ignores another or an e
   assert.equal(joinedAction({ current: true, ours: false, hasPeer: true }), "ignore");
   assert.equal(joinedAction({ current: false, ours: true, hasPeer: true }), "ignore");
   assert.equal(joinedAction({ current: false, ours: true, hasPeer: false }), "ignore");
+});
+
+test("onSocketClose takes the attempt back while an unsent token is held", () => {
+  for (const channelOpen of [false, true]) {
+    for (const answered of [false, true]) {
+      assert.equal(
+        onSocketClose({ channelOpen, aborted: false, answered, hasToken: true }),
+        "resume",
+      );
+    }
+  }
+});
+
+test("onSocketClose goes on as before 0033 without a token", () => {
+  const open = { channelOpen: true, answered: true, hasToken: false };
+  assert.equal(onSocketClose({ ...open, aborted: false }), "close");
+  assert.equal(onSocketClose({ ...open, aborted: true }), "lost");
+  const before = { channelOpen: false, aborted: false, hasToken: false };
+  assert.equal(onSocketClose({ ...before, answered: true }), "lost");
+  assert.equal(onSocketClose({ ...before, answered: false }), "restart");
+});
+
+test("onSocketClose ends an open attempt whose peer already dropped, token or not", () => {
+  assert.equal(
+    onSocketClose({ channelOpen: true, aborted: true, answered: true, hasToken: true }),
+    "lost",
+  );
+});
+
+test("onSocketOpen sends resume with a token, and never gate or join after the channel opened", () => {
+  assert.equal(onSocketOpen({ channelOpen: true, hasToken: true }), "resume");
+  assert.equal(onSocketOpen({ channelOpen: false, hasToken: true }), "resume");
+  assert.equal(onSocketOpen({ channelOpen: true, hasToken: false }), "none");
+  assert.equal(onSocketOpen({ channelOpen: false, hasToken: false }), "ask");
+});
+
+test("resumeAction keeps each token, and joins again only while a stall's restart is pending", () => {
+  const ours = { current: true, ours: true, token: true };
+  assert.equal(resumeAction({ ...ours, waiting: false, restartPending: false }), "keep");
+  assert.equal(resumeAction({ ...ours, waiting: true, restartPending: false }), "keep");
+  assert.equal(resumeAction({ ...ours, waiting: true, restartPending: true }), "keep-and-join");
+  // The stall came before the socket's close: its `join` went onto the dead socket, and the
+  // restart is still pending when the resume answer arrives.
+  assert.equal(resumeAction({ ...ours, waiting: false, restartPending: true }), "keep");
+});
+
+test("a stall before its socket's close still joins again once the resume answers", () => {
+  const watch = createRestartWatch();
+  // The connection stalls while the page does not know its socket died: the join goes out at once.
+  assert.equal(watch.stalled(false), true);
+  // The close arrives, the page waits, and the server answers the new socket's `resume`.
+  const ours = { current: true, ours: true, token: true };
+  assert.equal(
+    resumeAction({ ...ours, waiting: true, restartPending: watch.pending }),
+    "keep-and-join",
+  );
+  // A stall while waiting joins only after the answer; connected ends the wait for a restart.
+  assert.equal(watch.stalled(true), false);
+  watch.connected();
+  assert.equal(watch.pending, false);
+  assert.equal(resumeAction({ ...ours, waiting: true, restartPending: watch.pending }), "keep");
+});
+
+test("resumeAction takes a refusal only as the answer to this page's resume", () => {
+  const refused = { current: true, ours: true, token: false, restartPending: true };
+  assert.equal(resumeAction({ ...refused, waiting: true }), "refused");
+  assert.equal(resumeAction({ ...refused, waiting: false }), "ignore");
+});
+
+test("resumeAction ignores another link or attempt, and an ended attempt", () => {
+  for (const token of [false, true]) {
+    const base = { token, waiting: true, restartPending: true };
+    assert.equal(resumeAction({ ...base, current: true, ours: false }), "ignore");
+    assert.equal(resumeAction({ ...base, current: false, ours: true }), "ignore");
+  }
 });

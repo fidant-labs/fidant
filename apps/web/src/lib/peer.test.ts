@@ -328,7 +328,7 @@ async function harness(
   iceServers: RTCIceServer[] = [],
   wait = true,
   marked = wait,
-  callbacks: Pick<PeerOptions, "onStalled" | "onPath"> = {},
+  callbacks: Pick<PeerOptions, "onStalled" | "onDisconnected" | "onPath"> = {},
 ) {
   const { linkId, secret } = createLink("https://localhost");
   const key = await deriveSignalKey(secret, linkId);
@@ -1232,6 +1232,37 @@ test("the recipient asks on each drop after its channel opened, and the sender n
   openChannel(lastPc());
   setState(lastPc(), "disconnected");
   assert.equal(stalled, 0);
+});
+
+test("the sender says when its open connection goes disconnected, and only then", async () => {
+  resetFake(SENDER_FP);
+  let disconnected = 0;
+  const sender = await harness("s", undefined, [], true, true, {
+    onDisconnected: () => disconnected++,
+  });
+  await sender.relay({ kind: "commit", hash: await commitFingerprint(RECIPIENT_FP) });
+  await sender.relay({ kind: "answer", sdp: sdpWith(RECIPIENT_FP, "r1") });
+  const pc = lastPc();
+  setState(pc, "disconnected");
+  assert.equal(disconnected, 0, "not before the channel opened");
+  setState(pc, "connected");
+  openChannel(pc);
+  setState(pc, "disconnected");
+  assert.equal(disconnected, 1);
+  setState(pc, "connected");
+  setState(pc, "disconnected");
+  assert.equal(disconnected, 2);
+  assert.deepEqual(sender.closes, []);
+
+  resetFake(RECIPIENT_FP);
+  const recipient = await harness("r", undefined, [], true, true, {
+    onDisconnected: () => disconnected++,
+  });
+  await recipient.relay({ kind: "offer", sdp: sdpWith(SENDER_FP, "s1"), check: false });
+  setState(lastPc(), "connected");
+  openChannel(lastPc());
+  setState(lastPc(), "disconnected");
+  assert.equal(disconnected, 2, "never on the recipient");
 });
 
 test("a recipient that has asked answers every restart-offer, with the new STUN URLs only", async (t) => {
