@@ -77,15 +77,16 @@ export function onSocketOpen(attempt: {
 
 /**
  * The server's `resume` for this attempt. One with a token is kept, replacing any earlier one;
- * if it answers this page's `resume` and the peer stalled meanwhile, the repeated `join` that
- * could not go out goes now (0031). One without a token refuses this page's `resume`.
+ * if it answers this page's `resume` and a stall still waits for its restart (the connection has
+ * not been connected since), the repeated `join` goes now (0031): it may have gone onto the socket
+ * that died, or waited for this answer. One without a token refuses this page's `resume`.
  */
 export function resumeAction(attempt: {
   current: boolean;
   ours: boolean;
   token: boolean;
   waiting: boolean;
-  stalled: boolean;
+  restartPending: boolean;
 }): "ignore" | "keep" | "keep-and-join" | "refused" {
   if (!attempt.current || !attempt.ours) {
     return "ignore";
@@ -93,5 +94,31 @@ export function resumeAction(attempt: {
   if (!attempt.token) {
     return attempt.waiting ? "refused" : "ignore";
   }
-  return attempt.waiting && attempt.stalled ? "keep-and-join" : "keep";
+  return attempt.waiting && attempt.restartPending ? "keep-and-join" : "keep";
+}
+
+/**
+ * Whether a stall's restart is still pending: from each stall until the connection reports
+ * connected again, not merely until a `joined`. A stall can come before its socket's close, so
+ * its `join` goes onto a socket that is already dead and no one can tell (0033).
+ */
+export function createRestartWatch(): {
+  /** The connection stalled; true when its repeated `join` can go out now, false while waiting for a `resume`. */
+  stalled(waiting: boolean): boolean;
+  connected(): void;
+  readonly pending: boolean;
+} {
+  let pending = false;
+  return {
+    stalled(waiting) {
+      pending = true;
+      return !waiting;
+    },
+    connected() {
+      pending = false;
+    },
+    get pending() {
+      return pending;
+    },
+  };
 }

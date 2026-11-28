@@ -42,8 +42,15 @@ async function frames(
 
 const ofType = (messages: Message[], t: string) => messages.filter((message) => message.t === t);
 
-for (const lost of ["recipient", "sender"] as const) {
-  test(`a ${lost} page that loses its signaling socket mid-transfer takes its attempt back`, async ({
+const variants = [
+  { lost: "recipient", stallFirst: false },
+  { lost: "sender", stallFirst: false },
+  // The recipient's connection stalls before its page sees the socket close (decision 0033).
+  { lost: "recipient", stallFirst: true },
+] as const;
+for (const { lost, stallFirst } of variants) {
+  const order = stallFirst ? " whose route stalls before it sees the close" : "";
+  test(`a ${lost} page${order} that loses its signaling socket mid-transfer takes its attempt back`, async ({
     actor,
     observed,
     leaks,
@@ -114,9 +121,19 @@ for (const lost of ["recipient", "sender"] as const) {
           page.evaluate(() => (globalThis as { dropRoute?: () => void }).dropRoute?.()),
         ),
       );
+    if (stallFirst) {
+      // The socket is dead but looks open: the route drops, the stall's `join` goes onto it and is
+      // swallowed, and only then does the page see the close.
+      const swallowedJoins = () => cut.swallowed().filter((t) => t === "join").length;
+      cut.silence();
+      await dropRoute();
+      await expect.poll(swallowedJoins, { timeout: 25_000 }).toBe(1);
+    }
     await cut.cut();
     const cutAt = Date.now();
-    if (lost === "recipient") {
+    if (stallFirst) {
+      // The only stall is the one whose `join` was swallowed.
+    } else if (lost === "recipient") {
       // The route drops with the socket: the recipient stalls while it has none, and asks again
       // once it took its attempt back.
       await dropRoute();
@@ -168,6 +185,15 @@ for (const lost of ["recipient", "sender"] as const) {
     // One attempt: every join, joined and resume names the same one.
     const joins = ofType(sent.recipient, "join");
     expect(joins.length, "the recipient joined again after the drop").toBeGreaterThanOrEqual(2);
+    if (stallFirst) {
+      // The swallowed `join` does not count: the resume answer must send one more.
+      const kinds = sent.recipient.flatMap((m) =>
+        m.t === "resume" || m.t === "join" ? [m.t] : [],
+      );
+      expect(kinds.lastIndexOf("join"), "a join after the resume").toBeGreaterThan(
+        kinds.indexOf("resume"),
+      );
+    }
     const attempts = new Set(
       [
         ...joins,

@@ -174,6 +174,8 @@ export type PeerOptions = {
    * Called once per such state change; the recipient's onStalled starts the recovery.
    */
   onDisconnected?(): void;
+  /** The connection reports connected after the channel opened, which ends the page's wait for a restart. */
+  onConnected?(): void;
   /** The connection is connected again after the channel opened: how it runs now. */
   onPath?(path: OpenPath): void;
 };
@@ -909,6 +911,9 @@ function startPeer(options: PeerOptions, side: Direction): Peer {
         clearTimeout(recoveryTimer);
         recoveryTimer = undefined;
         deadlineEarly = false;
+        if (opened) {
+          options.onConnected?.();
+        }
         if (opened && options.onPath) {
           // ponytail: a restart that never leaves "connected" reports no new path.
           const path = readPath();

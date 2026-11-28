@@ -122,6 +122,7 @@ import { createRecipientPeer, type OpenPath, type Peer, type PeerOpenInfo } from
 import type { FileOffer, Resumable } from "../lib/receive-file.ts";
 import { ReceiveError, receiveFile } from "../lib/receive-file.ts";
 import {
+  createRestartWatch,
   joinedAction,
   joinsAgain,
   onSocketClose,
@@ -436,8 +437,8 @@ export function ReceivePage({
     let resumeToken: string | undefined;
     /** From a close with a token until the server answers the `resume`: no `join` goes out meanwhile. */
     let waiting = false;
-    /** The peer stalled while waiting, so its repeated `join` goes out once the attempt is back. */
-    let stalled = false;
+    /** From each stall until the connection is connected again: a `join` sent then may have gone onto a dead socket. */
+    const restart = createRestartWatch();
     const ask = () => {
       if (!opened || !signalKey || !current()) {
         return;
@@ -500,6 +501,7 @@ export function ReceivePage({
         case "close":
           // The transfer goes on without the server, which can no longer recover a dropped route.
           waiting = false;
+          setTie("closed");
           signaling.close();
           break;
         case "lost":
@@ -637,13 +639,12 @@ export function ReceivePage({
                 })
               ) {
                 // No socket holds the attempt yet, so the `join` waits for the server's `resume`.
-                if (waiting) {
-                  stalled = true;
-                } else {
+                if (restart.stalled(waiting)) {
                   join(joinToken);
                 }
               }
             },
+            onConnected: () => restart.connected(),
             onClose: (reason) =>
               reason === "unsupported"
                 ? finish({ s: "failed", problem: "browser" })
@@ -660,14 +661,13 @@ export function ReceivePage({
             ours: message.link === linkId && message.attempt === attemptId,
             token: message.token !== undefined,
             waiting,
-            stalled,
+            restartPending: restart.pending,
           });
           if (action === "ignore") {
             break;
           }
           const answered = waiting;
           waiting = false;
-          stalled = false;
           if (action === "refused") {
             without(false);
             break;

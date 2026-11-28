@@ -644,6 +644,10 @@ export interface CuttableSignal {
    * server side stays open and hears nothing more. Resolves once the page side is closed.
    */
   cut(): Promise<void>;
+  /** Stops forwarding in both directions without closing the page side: the socket is dead but looks open. */
+  silence(): void;
+  /** The `t` of each message the page sent into a cut or silenced socket, which the server never saw. */
+  swallowed(): string[];
   /** When the server closed the cut socket's server side, or undefined while it is open. */
   serverClosedAt(): number | undefined;
 }
@@ -652,6 +656,7 @@ export interface CuttableSignal {
 export async function cuttableSignal(page: Page): Promise<CuttableSignal> {
   const sockets: { page: WebSocketRoute; server: WebSocketRoute; cut: boolean }[] = [];
   let closedAt: number | undefined;
+  const swallowed: string[] = [];
   await page.routeWebSocket("/signal", (ws) => {
     const server = ws.connectToServer();
     const socket = { page: ws, server, cut: false };
@@ -659,6 +664,12 @@ export async function cuttableSignal(page: Page): Promise<CuttableSignal> {
     ws.onMessage((message) => {
       if (!socket.cut) {
         server.send(message);
+      } else if (typeof message === "string") {
+        try {
+          swallowed.push(String((JSON.parse(message) as { t?: unknown }).t));
+        } catch {
+          swallowed.push("?");
+        }
       }
     });
     server.onMessage((message) => {
@@ -668,6 +679,13 @@ export async function cuttableSignal(page: Page): Promise<CuttableSignal> {
     });
   });
   return {
+    silence() {
+      const [first] = sockets;
+      if (!first) {
+        throw new Error("The page opened no /signal socket to silence.");
+      }
+      first.cut = true;
+    },
     async cut() {
       const [first] = sockets;
       if (!first) {
@@ -681,6 +699,7 @@ export async function cuttableSignal(page: Page): Promise<CuttableSignal> {
       });
       await first.page.close({ code: 1006 });
     },
+    swallowed: () => [...swallowed],
     serverClosedAt: () => closedAt,
   };
 }
