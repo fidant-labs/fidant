@@ -153,7 +153,7 @@ const hint = "text-[0.9rem] text-muted-foreground";
 const stepLabel = "m-0 mb-1 text-[0.85rem] font-medium text-muted-foreground";
 const GLIDE_MS = 450;
 /** On the last open step: tall enough to the page's end that a glide always brings its top to its scroll margin. */
-const lastStep = "min-h-[calc(100dvh-6rem)]";
+const lastStep = "min-h-[calc(100dvh-4rem)]";
 
 /** Scrolls the window to `el` with an ease-in-out curve; stops if the user scrolls, jumps if they prefer less motion. */
 function glideTo(el: HTMLElement) {
@@ -1118,7 +1118,7 @@ export function SendPage({
       {continued && (
         <section
           id={id("recipients")}
-          class={`mt-10 scroll-mt-24 border-t border-border pt-8 ${hasRecipients ? "" : lastStep}`}
+          class={`mt-10 scroll-mt-16 border-t border-border pt-8 ${hasRecipients ? "" : lastStep}`}
           aria-labelledby={id("recipients-heading")}
         >
           <p class={stepLabel}>{t.send.step(2)}</p>
@@ -1299,7 +1299,7 @@ export function SendPage({
       {hasRecipients && (
         <section
           id={id("links")}
-          class={`mt-12 scroll-mt-24 border-t border-border pt-8 ${lastStep}`}
+          class={`mt-12 scroll-mt-16 border-t border-border pt-8 ${lastStep}`}
           aria-labelledby={id("links-heading")}
         >
           <p class={stepLabel}>{t.send.step(3)}</p>
