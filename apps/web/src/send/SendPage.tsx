@@ -108,7 +108,7 @@ import {
   lede,
   Page,
   SECRET_HREF,
-  ServerPanel,
+  ServerDrawer,
 } from "../ui.tsx";
 import { type CheckView, RecipientList } from "./RecipientList.tsx";
 
@@ -1277,9 +1277,9 @@ export function SendPage({
         </section>
       )}
 
-      <ServerPanel
+      <ServerDrawer
         visible={shown}
-        details={
+        facts={
           file && !text
             ? [
                 [t.common.size, t.format.bytes(file.size)],
