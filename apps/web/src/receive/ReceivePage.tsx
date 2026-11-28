@@ -30,7 +30,7 @@
 // - If the connection drops after the data channel opened, the peer says so
 //   (onStalled) and the page sends the same `join` again on the same socket,
 //   with the same attempt ID and token (decision 0031). It doesn't once the
-//   attempt has ended, the transfer has stopped, the signaling socket is gone
+//   attempt has ended, the transfer has stopped, the signaling client is closed
 //   or `host-gone` came: joining the sender's new socket would be a new
 //   pairing. The `joined` that answers goes to the peer (rejoined), which
 //   restarts ICE with the sender on the same connection; its ICE servers are
@@ -51,10 +51,19 @@
 //   sender is still reconnecting, and refuses with `starting`: the page sends
 //   the same `join` again on the same socket after STARTING_RETRY_MS, and each
 //   `join` re-arms the connect timeout, so the server decides when waiting
-//   ends (decision 0018). `refused: unknown` always ends the attempt. Once the
-//   channel is open the transfer needs the server only to recover a dropped
-//   route (decision 0031), so a drop then closes the signaling client, and the
-//   page can no longer restart ICE after a dropped route.
+//   ends (decision 0018). `refused: unknown` always ends the attempt.
+// - Once the connection opened, the server sends `resume` with a token for
+//   this side of the attempt (decision 0032), kept only in memory and replaced
+//   by each new one. While the page holds a token it has not sent, a dropped
+//   signaling socket does neither of the above: the client opens a new socket,
+//   which sends `resume` with the token instead of `gate` or `join`, once per
+//   token. The server's `resume` with a new token gives the attempt back; if
+//   the peer stalled meanwhile, its repeated `join` waited and goes now, since
+//   the sender's page restarts ICE only when asked. A `resume` without a token,
+//   or a drop with no unsent token, goes on as before: once the channel is
+//   open, the transfer needs the server only to recover a dropped route
+//   (decision 0031), so the signaling client closes and the page can no longer
+//   restart ICE after a dropped route; before it opens, as above.
 //   Reaching the code step resets the rejoin count (a token holder's rejoins
 //   do not), and the code field survives a rejoin. A `failed` or `expired`
 //   code result asks the gate again, so a binding that is gone ends as "no
@@ -112,7 +121,15 @@ import { LINK_ID_BYTES, parseRecipientLocation } from "../lib/link.ts";
 import { createRecipientPeer, type OpenPath, type Peer, type PeerOpenInfo } from "../lib/peer.ts";
 import type { FileOffer, Resumable } from "../lib/receive-file.ts";
 import { ReceiveError, receiveFile } from "../lib/receive-file.ts";
-import { joinedAction, joinsAgain, takesGate, takesRefusal } from "../lib/receive-guards.ts";
+import {
+  joinedAction,
+  joinsAgain,
+  onSocketClose,
+  onSocketOpen,
+  resumeAction,
+  takesGate,
+  takesRefusal,
+} from "../lib/receive-guards.ts";
 import { keepsPart, peerLostProblem, refusedProblem } from "../lib/receive-problem.ts";
 import { addRelay, type Kind, NO_RELAYS, type Tie } from "../lib/server-facts.ts";
 import { connectSignaling, type SignalingClient } from "../lib/signaling-client.ts";
@@ -414,6 +431,13 @@ export function ReceivePage({
     let joinSent = false;
     /** The token the last `join` carried, so a `starting` refusal can send the same `join` again. */
     let joinToken: string | undefined;
+    // Taking this attempt back on a new socket (decision 0032). The resume token lives only here,
+    // in memory: never in storage, the address or a log. Sending it uses it up.
+    let resumeToken: string | undefined;
+    /** From a close with a token until the server answers the `resume`: no `join` goes out meanwhile. */
+    let waiting = false;
+    /** The peer stalled while waiting, so its repeated `join` goes out once the attempt is back. */
+    let stalled = false;
     const ask = () => {
       if (!opened || !signalKey || !current()) {
         return;
@@ -448,8 +472,50 @@ export function ReceivePage({
       }
       opened = true;
       setTie("unpaired");
-      ask();
+      const action = onSocketOpen({
+        channelOpen: attempt.channelOpen,
+        hasToken: resumeToken !== undefined,
+      });
+      if (action === "resume" && resumeToken !== undefined) {
+        signaling.send({ t: "resume", link: linkId, attempt: attemptId, token: resumeToken });
+        resumeToken = undefined;
+      } else if (action === "ask") {
+        ask();
+      }
     });
+    /** Goes on without a socket that can take the attempt back, as before decision 0032. */
+    const without = (hasToken: boolean) => {
+      switch (
+        onSocketClose({
+          channelOpen: attempt.channelOpen,
+          aborted: attempt.abort.signal.aborted,
+          answered: attempt.peer?.answered ?? false,
+          hasToken,
+        })
+      ) {
+        case "resume":
+          // The signaling client opens a new socket, and onOpen sends `resume` on it.
+          waiting = true;
+          break;
+        case "close":
+          // The transfer goes on without the server, which can no longer recover a dropped route.
+          waiting = false;
+          signaling.close();
+          break;
+        case "lost":
+          // Before the channel opened, the answer gave anyone in the middle this connection's
+          // safety number, so a new one would be another guess: only the recipient's Try again makes it.
+          finish({ s: "failed", problem: lostMessage() });
+          break;
+        case "restart":
+          if (rejoins < MAX_REJOINS) {
+            start(rejoins + 1);
+          } else {
+            finish({ s: "failed", problem: "server" });
+          }
+          break;
+      }
+    };
     signaling.onClose(({ byClient }) => {
       if (byClient || !current()) {
         return;
@@ -459,25 +525,7 @@ export function ReceivePage({
         // The client retries; CONNECT_TIMEOUT_MS bounds the wait.
         return;
       }
-      if (attempt.channelOpen) {
-        if (attempt.abort.signal.aborted) {
-          finish({ s: "failed", problem: lostMessage() });
-        } else {
-          signaling.close();
-        }
-        return;
-      }
-      // The answer gave anyone in the middle this connection's safety number, so
-      // a new one would be another guess: only the recipient's Try again makes it.
-      if (attempt.peer?.answered) {
-        finish({ s: "failed", problem: lostMessage() });
-        return;
-      }
-      if (rejoins < MAX_REJOINS) {
-        start(rejoins + 1);
-      } else {
-        finish({ s: "failed", problem: "server" });
-      }
+      without(resumeToken !== undefined);
     });
     signaling.subscribe((message) => {
       switch (message.t) {
@@ -588,7 +636,12 @@ export function ReceivePage({
                   aborted: attempt.abort.signal.aborted,
                 })
               ) {
-                join(joinToken);
+                // No socket holds the attempt yet, so the `join` waits for the server's `resume`.
+                if (waiting) {
+                  stalled = true;
+                } else {
+                  join(joinToken);
+                }
               }
             },
             onClose: (reason) =>
@@ -598,6 +651,42 @@ export function ReceivePage({
                   ? outdated(reason)
                   : lost(),
           });
+          break;
+        }
+        case "resume": {
+          // A token arrives when the connection opened and answers each `resume`; none refuses one.
+          const action = resumeAction({
+            current: current(),
+            ours: message.link === linkId && message.attempt === attemptId,
+            token: message.token !== undefined,
+            waiting,
+            stalled,
+          });
+          if (action === "ignore") {
+            break;
+          }
+          const answered = waiting;
+          waiting = false;
+          stalled = false;
+          if (action === "refused") {
+            without(false);
+            break;
+          }
+          resumeToken = message.token;
+          if (answered) {
+            setTie("paired");
+          }
+          // The sender's page restarts ICE only when asked, so the `join` the stall wanted goes now.
+          if (
+            action === "keep-and-join" &&
+            joinsAgain({
+              current: current(),
+              hostGone: attempt.hostGone,
+              aborted: attempt.abort.signal.aborted,
+            })
+          ) {
+            join(joinToken);
+          }
           break;
         }
         case "relay":

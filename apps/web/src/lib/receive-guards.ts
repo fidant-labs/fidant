@@ -35,3 +35,63 @@ export function joinedAction(attempt: {
   }
   return attempt.hasPeer ? "rejoin" : "pair";
 }
+
+// Taking the recipient's side of an attempt back on a new socket (decision 0032). The server
+// gives the page a resume token once the attempt's connection opened, and a new one after each
+// takeover. A token is sent at most once: sending it uses it up here, whatever the answer.
+
+/**
+ * What the page does when its signaling socket closes: take the attempt back on the next socket
+ * while it holds an unsent token, otherwise as before 0032. Once the channel is open, signaling
+ * is closed for good, or the attempt ends if its peer already dropped; before it opens, a peer
+ * that answered the sender's offer ends the attempt, and otherwise a new attempt starts.
+ */
+export function onSocketClose(attempt: {
+  channelOpen: boolean;
+  aborted: boolean;
+  answered: boolean;
+  hasToken: boolean;
+}): "resume" | "close" | "lost" | "restart" {
+  if (attempt.channelOpen && attempt.aborted) {
+    return "lost";
+  }
+  if (attempt.hasToken && !attempt.aborted) {
+    return "resume";
+  }
+  if (attempt.channelOpen) {
+    return "close";
+  }
+  return attempt.answered ? "lost" : "restart";
+}
+
+/** What a new socket sends first: `resume` with a token, else `gate` or `join`, which never follow an open channel. */
+export function onSocketOpen(attempt: {
+  channelOpen: boolean;
+  hasToken: boolean;
+}): "resume" | "ask" | "none" {
+  if (attempt.hasToken) {
+    return "resume";
+  }
+  return attempt.channelOpen ? "none" : "ask";
+}
+
+/**
+ * The server's `resume` for this attempt. One with a token is kept, replacing any earlier one;
+ * if it answers this page's `resume` and the peer stalled meanwhile, the repeated `join` that
+ * could not go out goes now (0031). One without a token refuses this page's `resume`.
+ */
+export function resumeAction(attempt: {
+  current: boolean;
+  ours: boolean;
+  token: boolean;
+  waiting: boolean;
+  stalled: boolean;
+}): "ignore" | "keep" | "keep-and-join" | "refused" {
+  if (!attempt.current || !attempt.ours) {
+    return "ignore";
+  }
+  if (!attempt.token) {
+    return attempt.waiting ? "refused" : "ignore";
+  }
+  return attempt.waiting && attempt.stalled ? "keep-and-join" : "keep";
+}
