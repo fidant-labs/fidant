@@ -396,6 +396,17 @@ test("a sender who loses the server sees the text wording", async ({ actor }) =>
   await expect(sender.getByRole("alert")).toHaveText(
     "Lost the connection to the server. Trying to reconnect… Secrets already on their way can finish. Nobody new can connect until it's back, so keep this page open.",
   );
+  // It is a bar just below the header, and nothing on the page lies under it.
+  const header = await sender.getByRole("banner").boundingBox();
+  const bar = await sender.getByRole("alert").boundingBox();
+  const title = await sender.getByRole("heading", { level: 1 }).boundingBox();
+  expect(header && bar && title).toBeTruthy();
+  if (header && bar && title) {
+    expect(bar.y).toBeGreaterThanOrEqual(header.y + header.height - 1);
+    expect(bar.y).toBeLessThanOrEqual(header.y + header.height + 1);
+    expect(bar.width).toBe(header.width);
+    expect(title.y).toBeGreaterThanOrEqual(bar.y + bar.height);
+  }
 });
 
 test("a recipient whose browser can't read the received text is told so, with nothing to copy", async ({

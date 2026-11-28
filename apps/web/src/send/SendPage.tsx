@@ -873,7 +873,22 @@ export function SendPage({
   };
 
   return (
-    <Page>
+    <Page
+      banner={
+        lostServer && (
+          // A bar like the localhost bar, just below the header and held there while the page
+          // scrolls. The header gives its height back to the page, so the top margin puts the bar
+          // under it, and the bottom margin gives that back too: the page moves down by the bar's
+          // height only, and nothing on it ends up under the bar.
+          <p
+            role="alert"
+            class="sticky top-[calc(4rem+1px)] z-40 mt-[calc(4rem+1px)] -mb-[calc(4rem+1px)] bg-red-700 px-4 py-1.5 text-center text-sm text-white"
+          >
+            {text ? t.secret.lostServer : t.send.lostServer}
+          </p>
+        )
+      }
+    >
       <section aria-labelledby={id("send-title")}>
         <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
           <div>
@@ -890,7 +905,10 @@ export function SendPage({
           >
             {(["file", "secret"] as const).map((mode) => {
               const current = (mode === "secret") === text;
-              const look = buttonVariants({ variant: current ? "secondary" : "ghost", size: "sm" });
+              const look = buttonVariants({
+                variant: current ? "secondary" : "ghost",
+                size: "sm",
+              });
               const label = (
                 <>
                   <Icon name={mode === "secret" ? "key" : "file"} class="size-4" />
@@ -1067,12 +1085,6 @@ export function SendPage({
             )}
           </p>
         )}
-        {/* Until step 2 shows, its warning that no link can be made sits here. */}
-        {lostServer && !continued && (
-          <Alert variant="destructive" className="my-4">
-            <AlertDescription>{text ? t.secret.lostServer : t.send.lostServer}</AlertDescription>
-          </Alert>
-        )}
       </section>
 
       {continued && (
@@ -1085,12 +1097,6 @@ export function SendPage({
           <h2 id={id("recipients-heading")} class="mt-0 mb-6 text-[1.75rem] font-bold">
             {t.send.peopleHeading}
           </h2>
-          {lostServer && (
-            <Alert variant="destructive" className="my-4">
-              <AlertDescription>{text ? t.secret.lostServer : t.send.lostServer}</AlertDescription>
-            </Alert>
-          )}
-
           <form
             class={formRows}
             onSubmit={onAdd}
