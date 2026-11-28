@@ -45,7 +45,7 @@ test("senderHolds follows links, connections, the relay choice and the server co
   );
   assert.equal(
     senderHolds({ online: false, links: 3, connected: 1, relay: false, ...PLAIN }),
-    "Nothing once it notices the connection has closed. That takes up to a minute if the network dropped.",
+    "Nothing once it notices the connection has closed. That takes up to a minute if the network dropped. If the network dropped during a transfer, it first keeps that transfer's place for up to 30 seconds, within that minute, so this page can take it back when it reconnects.",
   );
 });
 
@@ -71,7 +71,7 @@ test("recipientHolds for a paired, unpaired and closed page", () => {
   );
   assert.equal(
     recipientHolds("closed", false, "file"),
-    "Nothing about this page once it notices the connection has closed, which takes up to a minute if the network dropped. Only the sender's page can keep your link's ID there.",
+    "Nothing about this page once it notices the connection has closed, which takes up to a minute if the network dropped. If the network dropped during the transfer, it first keeps this page's place in it for up to 30 seconds, within that minute, so this page can take it back when it reconnects. Only the sender's page can keep your link's ID there.",
   );
 });
 
@@ -115,7 +115,7 @@ test("an emailed link adds what the server holds for it and how long its counts 
   );
   assert.equal(
     senderHolds({ ...online, online: false, links: 0, emailed: 0, sending: 0, mailed: true }),
-    "Only scrambled counts of the emails it sent for you, for up to an hour, once it notices the connection has closed. That takes up to a minute if the network dropped.",
+    "Only scrambled counts of the emails it sent for you, for up to an hour, once it notices the connection has closed. That takes up to a minute if the network dropped. If the network dropped during a transfer, it first keeps that transfer's place for up to 30 seconds, within that minute, so this page can take it back when it reconnects.",
   );
   assert.equal(
     senderAfterwards(true, true),
